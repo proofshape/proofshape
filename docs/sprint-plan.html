@@ -1,0 +1,1186 @@
+<title>ProofShape Sprint Plan</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F4F6F8; --surface:#FFFFFF; --sunken:#EAEEF2;
+  --ink:#16202B; --ink-2:#3C4A57; --muted:#66757F; --rule:#D8DFE6; --rule-2:#C3CDD6;
+  --l1:#1F4E79; --l1-soft:#E4EDF5;
+  --l2:#0E6E62; --l2-soft:#DFEFEC;
+  --l3:#B45309; --l3-soft:#FAEBDC;
+  --shared:#4A5560; --shared-soft:#E6E9EC;
+  --gate:#16202B; --ok:#15803D; --warn:#B45309; --stop:#B3261E;
+  --shadow:0 1px 2px rgba(22,32,43,.06),0 6px 16px -8px rgba(22,32,43,.14);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0E1519; --surface:#161F26; --sunken:#111A20;
+    --ink:#E6EDF2; --ink-2:#B7C4CE; --muted:#8496A2; --rule:#27333C; --rule-2:#35434E;
+    --l1:#7FB2DC; --l1-soft:#16303F;
+    --l2:#5FC4B4; --l2-soft:#0F2E2C;
+    --l3:#E8A55C; --l3-soft:#33230F;
+    --shared:#9AA7B2; --shared-soft:#1D262D;
+    --gate:#E6EDF2; --ok:#5FBE7F; --warn:#E0A45C; --stop:#E4796F;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 20px -10px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0E1519; --surface:#161F26; --sunken:#111A20;
+  --ink:#E6EDF2; --ink-2:#B7C4CE; --muted:#8496A2; --rule:#27333C; --rule-2:#35434E;
+  --l1:#7FB2DC; --l1-soft:#16303F;
+  --l2:#5FC4B4; --l2-soft:#0F2E2C;
+  --l3:#E8A55C; --l3-soft:#33230F;
+  --shared:#9AA7B2; --shared-soft:#1D262D;
+  --gate:#E6EDF2; --ok:#5FBE7F; --warn:#E0A45C; --stop:#E4796F;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 20px -10px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.6; margin:0;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1120px; margin:0 auto; padding:38px 24px 80px;}
+h1,h2,h3,h4{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",Arial,sans-serif; text-wrap:balance; margin:0;}
+h1{font-size:40px; font-weight:700; letter-spacing:-.01em; line-height:1.08;}
+h2{font-size:24px; font-weight:700; letter-spacing:.004em;}
+h3{font-size:17px; font-weight:600;}
+p{margin:0;}
+a{color:var(--l1);}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums;}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:500;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muted);
+}
+
+/* ---------- header ---------- */
+header{border-bottom:2px solid var(--ink); padding-bottom:22px; margin-bottom:34px;}
+.hdr-top{display:flex; justify-content:space-between; align-items:baseline; gap:20px; flex-wrap:wrap; margin-bottom:14px;}
+.lede{color:var(--ink-2); max-width:66ch; margin-top:12px;}
+.meta{display:flex; flex-wrap:wrap; gap:0; margin-top:22px; border:1px solid var(--rule); background:var(--surface); border-radius:3px; overflow:hidden;}
+.meta div{flex:1 1 150px; padding:11px 15px; border-right:1px solid var(--rule);}
+.meta div:last-child{border-right:none;}
+.meta dt{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-bottom:3px;}
+.meta dd{margin:0; font-size:16px; font-weight:600; font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;}
+
+section{margin-top:52px;}
+.sec-head{display:flex; align-items:baseline; gap:14px; border-bottom:1px solid var(--rule-2); padding-bottom:9px; margin-bottom:20px;}
+.sec-head .num{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted); font-weight:500;}
+.note{color:var(--ink-2); max-width:70ch;}
+.note + .note{margin-top:11px;}
+
+/* ---------- capacity ---------- */
+.finding{
+  background:var(--surface); border:1px solid var(--rule); border-left:3px solid var(--l3);
+  border-radius:3px; padding:18px 20px; margin-bottom:22px;
+}
+.finding p{color:var(--ink-2); max-width:72ch;}
+.finding strong{color:var(--ink);}
+.bal{width:100%; border-collapse:collapse; font-size:14px; background:var(--surface); border:1px solid var(--rule);}
+.bal th,.bal td{padding:9px 13px; text-align:left; border-bottom:1px solid var(--rule);}
+.bal thead th{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:500; background:var(--sunken);}
+.bal tbody tr:last-child td{border-bottom:none;}
+.bal td.n{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; text-align:right; width:88px;}
+.bal .was{color:var(--muted); text-decoration:line-through;}
+.dot{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:8px; vertical-align:baseline;}
+
+/* ---------- swimlane ---------- */
+.scroller{overflow-x:auto; border:1px solid var(--rule); border-radius:3px; background:var(--surface);}
+.grid{display:grid; grid-template-columns:118px repeat(9,minmax(132px,1fr)); min-width:1240px;}
+.grid > *{border-right:1px solid var(--rule); border-bottom:1px solid var(--rule); padding:9px 10px;}
+.grid > *:nth-child(10n){border-right:none;}
+.corner{background:var(--sunken);}
+.sp-head{background:var(--sunken);}
+.sp-head .id{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600; color:var(--ink);}
+.sp-head .nm{font-family:"IBM Plex Sans Condensed",sans-serif; font-size:12.5px; font-weight:600; color:var(--ink-2); line-height:1.25; margin-top:1px;}
+.sp-head .dt{font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted); margin-top:3px;}
+.lane-lbl{background:var(--sunken); display:flex; flex-direction:column; justify-content:center;}
+.lane-lbl .who{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+.lane-lbl .nm{font-family:"IBM Plex Sans Condensed",sans-serif; font-weight:700; font-size:14.5px; line-height:1.2; margin-top:2px;}
+.cell{font-size:12.5px; line-height:1.42; color:var(--ink-2); display:flex; flex-direction:column; justify-content:space-between; gap:7px; min-height:92px;}
+.cell .hrs{font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600; align-self:flex-start; padding:1px 6px; border-radius:2px;}
+.cell.idle{color:var(--muted); font-style:italic; background:repeating-linear-gradient(135deg,transparent,transparent 7px,var(--sunken) 7px,var(--sunken) 8px);}
+.r1{background:var(--l1-soft);} .r1 .hrs{background:var(--l1); color:var(--surface);}
+.r2{background:var(--l2-soft);} .r2 .hrs{background:var(--l2); color:var(--surface);}
+.r3{background:var(--l3-soft);} .r3 .hrs{background:var(--l3); color:var(--surface);}
+.r4{background:var(--shared-soft);} .r4 .hrs{background:var(--shared); color:var(--surface);}
+.gate-lbl{background:var(--ink); color:var(--ground);}
+.gate-lbl .who{color:var(--ground); opacity:.72;}
+.gate{background:var(--ink); color:var(--ground); font-size:11.5px; line-height:1.35;}
+.gate .g{font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:12px; display:block; margin-bottom:2px;}
+.integ{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:10px; font-weight:600; letter-spacing:.06em; padding:1px 5px; border:1px solid currentColor; border-radius:2px; margin-top:4px;}
+.legend{display:flex; flex-wrap:wrap; gap:16px; margin-top:13px; font-size:12.5px; color:var(--muted);}
+.legend span{display:flex; align-items:center; gap:7px;}
+
+/* ---------- contracts ---------- */
+.contracts{display:grid; grid-template-columns:repeat(auto-fit,minmax(268px,1fr)); gap:14px;}
+.ct{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:17px 18px; display:flex; flex-direction:column; gap:9px;}
+.ct .tag{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted);}
+.ct h3{color:var(--ink);}
+.ct p{font-size:13.5px; color:var(--ink-2);}
+.ct .frees{margin-top:auto; padding-top:10px; border-top:1px dashed var(--rule-2); font-size:12.5px; color:var(--muted);}
+.ct .frees b{color:var(--ink-2); font-weight:600;}
+.file{font-family:"IBM Plex Mono",monospace; font-size:12px; background:var(--sunken); padding:1px 5px; border-radius:2px; color:var(--ink);}
+
+/* ---------- dependency table ---------- */
+.dep{width:100%; border-collapse:collapse; font-size:13.5px; background:var(--surface); border:1px solid var(--rule);}
+.dep th,.dep td{padding:10px 12px; text-align:left; border-bottom:1px solid var(--rule); vertical-align:top;}
+.dep thead th{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:500; background:var(--sunken);}
+.dep tbody tr:last-child td{border-bottom:none;}
+.dep td:first-child{font-family:"IBM Plex Mono",monospace; font-weight:600; width:44px; color:var(--muted);}
+.dep .from{font-size:12.5px; color:var(--ink-2); white-space:nowrap;}
+
+/* ---------- sprints ---------- */
+.sprints{display:flex; flex-direction:column; gap:12px;}
+.sp{background:var(--surface); border:1px solid var(--rule); border-radius:3px; overflow:hidden;}
+.sp-bar{display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 17px; background:var(--sunken); border-bottom:1px solid var(--rule);}
+.sp-bar .id{font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:13px; color:var(--surface); background:var(--ink); padding:2px 8px; border-radius:2px;}
+.sp-bar h3{flex:1 1 auto;}
+.sp-bar .dt{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--muted);}
+.sp-bar .cap{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600; color:var(--ink-2); border:1px solid var(--rule-2); padding:1px 7px; border-radius:2px;}
+.sp-body{padding:15px 17px; display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:15px;}
+.task{font-size:13.5px;}
+.task .lane{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; font-weight:600; margin-bottom:6px; display:flex; align-items:center; gap:7px;}
+.task ul{margin:0; padding-left:17px; color:var(--ink-2);}
+.task li{margin-bottom:3px;}
+.sp-gate{padding:11px 17px; border-top:1px dashed var(--rule-2); font-size:13px; color:var(--ink-2); background:var(--sunken);}
+.sp-gate b{font-family:"IBM Plex Sans Condensed",sans-serif; color:var(--ink);}
+
+/* ---------- generic list blocks ---------- */
+.cols{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:22px;}
+.blk h3{margin-bottom:9px;}
+.blk ol,.blk ul{margin:0; padding-left:19px; color:var(--ink-2); font-size:14px;}
+.blk li{margin-bottom:6px;}
+.blk li b{color:var(--ink);}
+.rule-list{list-style:none; padding:0; margin:0; counter-reset:r;}
+.rule-list li{counter-increment:r; padding:11px 0 11px 40px; border-bottom:1px solid var(--rule); position:relative; color:var(--ink-2); font-size:14px;}
+.rule-list li:last-child{border-bottom:none;}
+.rule-list li::before{content:counter(r,decimal-leading-zero); position:absolute; left:0; top:11px; font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--muted); font-weight:600;}
+.rule-list b{color:var(--ink);}
+.cut{display:flex; flex-wrap:wrap; gap:7px; align-items:center; margin-top:6px;}
+.cut span{font-size:12.5px; font-family:"IBM Plex Mono",monospace; padding:3px 9px; border:1px solid var(--rule-2); border-radius:2px; background:var(--surface); color:var(--ink-2);}
+.cut .arrow{border:none; background:none; color:var(--muted); padding:0;}
+.cut .never{border-color:var(--ok); color:var(--ok); font-weight:600;}
+.code{font-family:"IBM Plex Mono",monospace; font-size:12.5px; line-height:1.65; background:var(--sunken);
+  border:1px solid var(--rule); border-radius:3px; padding:12px 14px; overflow-x:auto; margin:0; color:var(--ink);}
+.code .own{color:var(--muted);}
+.warn-box{background:var(--surface); border:1px solid var(--rule); border-left:3px solid var(--stop);
+  border-radius:3px; padding:16px 18px;}
+.warn-box p{color:var(--ink-2); max-width:72ch;}
+.warn-box strong{color:var(--ink);}
+footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font-size:13px; color:var(--muted);}
+@media (max-width:640px){ h1{font-size:30px;} .wrap{padding:26px 16px 60px;} }
+
+/* ---------- gantt ---------- */
+.gantt{min-width:1000px; padding:0 18px 12px 0; font-size:12.5px;}
+.g-row{display:flex; align-items:stretch;}
+.g-lbl{flex:0 0 120px;}
+.g-months .g-lbl,.g-gates .g-lbl{flex:0 0 340px;}
+.g-task{flex:0 0 220px; padding:5px 12px 5px 10px; color:var(--ink-2); line-height:1.3; border-right:1px solid var(--rule);}
+.g-track{flex:1 1 auto; position:relative; min-height:26px;}
+.g-months{border-bottom:1px solid var(--rule-2); background:var(--sunken);}
+.g-months .g-track{min-height:26px;}
+.g-month{position:absolute; top:0; bottom:0; display:flex; align-items:center; justify-content:center;
+  font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--muted); border-left:1px solid var(--rule-2);}
+.g-gates{border-bottom:1px solid var(--rule-2); background:var(--sunken);}
+.g-gates .g-lbl{display:flex; align-items:center; padding-left:10px;
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted);}
+.g-gates .g-track{min-height:46px;}
+.g-gate{position:absolute; top:0; bottom:0; transform:translateX(-50%); display:flex; flex-direction:column;
+  align-items:center; justify-content:flex-start; padding-top:7px; gap:3px;}
+.g-gate.low .g-gname{margin-top:14px;}
+.g-dia{width:8px; height:8px; background:var(--ink); transform:rotate(45deg);}
+.g-gname{font-family:"IBM Plex Mono",monospace; font-size:10px; font-weight:600; color:var(--ink);}
+.g-revs{border-bottom:1px solid var(--rule-2); background:var(--sunken);}
+.g-revs .g-lbl{display:flex; align-items:center; padding-left:10px;
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted);}
+.g-revs .g-track{min-height:30px;}
+.g-rev{position:absolute; top:0; bottom:0; transform:translateX(-50%); display:flex; align-items:center; gap:4px;}
+.g-dot{width:9px; height:9px; border-radius:50%; border:2px solid var(--l3); background:var(--surface);}
+.g-rname{font-family:"IBM Plex Mono",monospace; font-size:10px; font-weight:600; color:var(--l3);}
+.g-guide{position:absolute; top:0; bottom:0; width:1px; background:var(--rule); pointer-events:none;}
+.g-lane{display:flex; border-bottom:1px solid var(--rule-2);}
+.g-lane:last-child{border-bottom:none;}
+.g-lane > .g-lbl{display:flex; flex-direction:column; justify-content:center; padding:8px 10px;
+  background:var(--sunken); border-right:1px solid var(--rule);}
+.g-lane > .g-lbl .who{font-family:"IBM Plex Mono",monospace; font-size:10px; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--muted);}
+.g-lane > .g-lbl .nm{font-family:"IBM Plex Sans Condensed",sans-serif; font-weight:700; font-size:13px; line-height:1.2; margin-top:2px;}
+.g-rows{flex:1 1 auto; min-width:0;}
+.g-rows .g-row{border-bottom:1px solid var(--rule);}
+.g-rows .g-row:last-child{border-bottom:none;}
+.g-bar{position:absolute; top:5px; height:15px; border-radius:2px; min-width:5px;}
+.g-bar.crit{outline:1.5px solid var(--warn); outline-offset:1.5px;}
+.l-a > .g-lbl .nm{color:var(--l1);} .l-a .g-bar{background:var(--l1);}
+.l-b > .g-lbl .nm{color:var(--l2);} .l-b .g-bar{background:var(--l2);}
+.l-c > .g-lbl .nm{color:var(--l3);} .l-c .g-bar{background:var(--l3);}
+.l-s > .g-lbl .nm{color:var(--shared);} .l-s .g-bar{background:var(--shared);}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="hdr-top">
+    <div>
+      <div class="eyebrow">CS595 Capstone &middot; Fall 2026 &middot; San Francisco Bay University</div>
+      <h1>ProofShape Sprint Plan</h1>
+    </div>
+  </div>
+  <p class="lede">Nine sprints from the spike to the defense, run as three lanes that never block each other. Every cross-lane dependency is broken by a stub, a fixture, or a frozen contract, so no member ever waits on another member's code to keep working.</p>
+  <div class="meta">
+    <div><dt>Duration</dt><dd>Sep 3 &ndash; Dec 18</dd></div>
+    <div><dt>Sprints</dt><dd>9</dd></div>
+    <div><dt>Capacity</dt><dd>349 h</dd></div>
+    <div><dt>Committed</dt><dd>324 h</dd></div>
+    <div><dt>Reserve</dt><dd>25 h &middot; 7%</dd></div>
+    <div><dt>Velocity</dt><dd>27 h / wk</dd></div>
+    <div><dt>Reviews</dt><dd>7 &middot; biweekly</dd></div>
+  </div>
+</header>
+
+<!-- 01 CAPACITY -->
+<section>
+  <div class="sec-head"><span class="num">01</span><h2>Capacity, rebalanced</h2></div>
+  <div class="finding">
+    <p><strong>The lane budgets in the proposal do not fit the people.</strong> Each member has 9 hours a week for 13 weeks, so 116 hours each and no more &mdash; the team raised its commitment from 8 hours specifically to fund the generative-AI work. Splitting the 40 shared hours three ways puts the reconstruction lane at 113 hours against a 104-hour ceiling, while the capture lane finishes 11 hours short. That is a 20-hour swing, and it lands on the one lane carrying the most technical risk.</p>
+  </div>
+  <table class="bal">
+    <thead><tr><th>Lane</th><th>Owner</th><th class="n">Proposal</th><th class="n">Rebalanced</th><th class="n">+ shared</th><th>Fit against 116 h</th></tr></thead>
+    <tbody>
+      <tr><td><span class="dot" style="background:var(--l1)"></span>Capture front end</td><td>Member A</td><td class="n was">80</td><td class="n">97</td><td class="n">115</td><td>Balanced</td></tr>
+      <tr><td><span class="dot" style="background:var(--l2)"></span>Reconstruction backend</td><td>Member B</td><td class="n was">100</td><td class="n">97</td><td class="n">115</td><td>Balanced</td></tr>
+      <tr><td><span class="dot" style="background:var(--l3)"></span>Inspection and truth</td><td>Member C</td><td class="n was">90</td><td class="n">97</td><td class="n">115</td><td>Balanced</td></tr>
+      <tr><td><span class="dot" style="background:var(--shared)"></span>Shared, reviews and integration</td><td>All three</td><td class="n">40</td><td class="n">54</td><td class="n">&mdash;</td><td>Split evenly</td></tr>
+    </tbody>
+  </table>
+  <p class="note" style="margin-top:14px;">The fix is one transfer. Next-view scoring moves from the reconstruction lane to the capture lane, along with the client-side check for whether the reference board is visible in frame. Both are guidance features, the capture lane already owns guidance, and the scoring runs on the processor rather than the graphics card, so it does not drag GPU work across the boundary.</p>
+</section>
+
+<!-- 02 SWIMLANE -->
+<section>
+  <div class="sec-head"><span class="num">02</span><h2>Nine sprints, three lanes</h2></div>
+  <p class="note" style="margin-bottom:18px;">Sprint boundaries land exactly on the milestone dates already committed in the proposal, so sprint lengths are deliberately uneven. Hours per cell are planned, not ceilings.</p>
+  <div class="scroller">
+    <div class="grid">
+      <div class="corner"></div>
+      <div class="sp-head"><span class="id">S0</span><div class="nm">Spike</div><div class="dt">Sep 3&ndash;8</div></div>
+      <div class="sp-head"><span class="id">S1</span><div class="nm">Walking skeleton</div><div class="dt">Sep 9&ndash;25</div></div>
+      <div class="sp-head"><span class="id">S2</span><div class="nm">Capture quality</div><div class="dt">Sep 28&ndash;Oct 9</div></div>
+      <div class="sp-head"><span class="id">S3</span><div class="nm">Ground truth</div><div class="dt">Oct 12&ndash;16</div></div>
+      <div class="sp-head"><span class="id">S4</span><div class="nm">Inspection</div><div class="dt">Oct 19&ndash;30</div></div>
+      <div class="sp-head"><span class="id">S5</span><div class="nm">Feature complete</div><div class="dt">Nov 2&ndash;13</div></div>
+      <div class="sp-head"><span class="id">S6</span><div class="nm">Harden</div><div class="dt">Nov 16&ndash;Dec 2</div></div>
+      <div class="sp-head"><span class="id">S7</span><div class="nm">Freeze</div><div class="dt">Dec 3&ndash;4</div></div>
+      <div class="sp-head"><span class="id">S8</span><div class="nm">Defense</div><div class="dt">Dec 7&ndash;18</div></div>
+
+      <div class="lane-lbl"><span class="who">Member A</span><span class="nm" style="color:var(--l1)">Capture</span></div>
+      <div class="cell r1"><span>Print board, capture the golden fixture set, prove camera and gyro permissions on a real iPhone</span><span class="hrs">6 h</span></div>
+      <div class="cell r1"><span>App shell, live camera, session link, frame upload against the mock, model viewer</span><span class="hrs">20 h</span></div>
+      <div class="cell r1"><span>Frame gate, gyro arrow, next-view scoring, reject-with-reason messages, VLM coaching hint in the UI</span><span class="hrs">18 h</span></div>
+      <div class="cell r1"><span>Observed and unobserved coloring, report page skeleton</span><span class="hrs">7 h</span></div>
+      <div class="cell r1"><span>Deviation heatmap rendering, full report page</span><span class="hrs">15 h</span></div>
+      <div class="cell r1"><span>Buyer setup, board PDF, prose requirement box and parsed-spec table, next-view arrow driven by the disagreement map, the agent conversation view, report export</span><span class="hrs">20 h</span></div>
+      <div class="cell r1"><span>iPhone and Android testing, interface bugs, keyboard access</span><span class="hrs">11 h</span></div>
+      <div class="cell r1 idle">code frozen</div>
+      <div class="cell r1 idle">presenting</div>
+
+      <div class="lane-lbl"><span class="who">Member B</span><span class="nm" style="color:var(--l2)">Reconstruction</span></div>
+      <div class="cell r2"><span>Environment, reconstruction bake-off on the fixture set, draft the interface contract</span><span class="hrs">8 h</span></div>
+      <div class="cell r2"><span>Service and container, board pose per frame, reconstruction endpoint returning a model file, agent tool-interface design</span><span class="hrs">26 h</span></div>
+      <div class="cell r2"><span>Segmentation, volume fusion, per-vertex certainty, stage timing table, VLM capture supervision</span><span class="hrs">20 h</span></div>
+      <div class="cell r2"><span>Fusion fixes, frame count tuning, integrate the generative completion model and run the first samples</span><span class="hrs">7 h</span></div>
+      <div class="cell r2"><span>Expose certainty through the interface, the sample-disagreement map, three-source scale agreement check</span><span class="hrs">13 h</span></div>
+      <div class="cell r2"><span>The agent tool-calling loop and its deterministic fallback, the prose-spec parser, larger sample count, deployment runbook</span><span class="hrs">12 h</span></div>
+      <div class="cell r2"><span>Reliability, error handling, sample-count tuning against the timing budget, re-provisioning drill</span><span class="hrs">11 h</span></div>
+      <div class="cell r2 idle">code frozen</div>
+      <div class="cell r2 idle">presenting</div>
+
+      <div class="lane-lbl"><span class="who">Member C</span><span class="nm" style="color:var(--l3)">Inspection</span></div>
+      <div class="cell r3"><span>Confirm printer access or commit the fallback, design three test parts, order calipers</span><span class="hrs">4 h</span></div>
+      <div class="cell r3"><span>Synthetic mesh generator, design-file loading, first alignment on synthetic input</span><span class="hrs">13 h</span></div>
+      <div class="cell r3"><span>Alignment hardening, symmetry ambiguity check, printer characterization</span><span class="hrs">9 h</span></div>
+      <div class="cell r3"><span>Caliper the printed parts, noise floor per reference tier, print the defect ladder</span><span class="hrs">13 h</span></div>
+      <div class="cell r3"><span>Deviation computation, verdict logic, the unobserved-geometry rule</span><span class="hrs">19 h</span></div>
+      <div class="cell r3"><span>Intake pre-check fed by the parsed spec, the unverifiable path, test suite</span><span class="hrs">19 h</span></div>
+      <div class="cell r3"><span>Accuracy, planted defect and robustness runs. Does the agent actually beat the deterministic policy?</span><span class="hrs">20 h</span></div>
+      <div class="cell r3 idle">code frozen</div>
+      <div class="cell r3 idle">presenting</div>
+
+      <div class="lane-lbl"><span class="who">All three</span><span class="nm" style="color:var(--shared)">Shared</span></div>
+      <div class="cell r4"><span>Freeze the contract, ratify lane ownership</span><span class="hrs">0 h</span></div>
+      <div class="cell r4"><span>First real frames through the real service<span class="integ">I1</span> &middot; reviews R1, R2</span><span class="hrs">9 h</span></div>
+      <div class="cell r4"><span>Guidance loop closed, commit to live or batch<span class="integ">I2</span> &middot; review R3</span><span class="hrs">7 h</span></div>
+      <div class="cell r4"><span>Noise floor sets the demo tolerances</span><span class="hrs">0 h</span></div>
+      <div class="cell r4"><span>Verdict proven end to end<span class="integ">I3</span> &middot; review R4</span><span class="hrs">7 h</span></div>
+      <div class="cell r4"><span>Review R5. The stretch pool is gone: the added hour a week is fully committed to the AI work</span><span class="hrs">3 h</span></div>
+      <div class="cell r4"><span>Whole system on both phones, record the backup demo<span class="integ">I4</span> &middot; review R6</span><span class="hrs">10 h</span></div>
+      <div class="cell r4"><span>Written report and slides &middot; review R7</span><span class="hrs">10 h</span></div>
+      <div class="cell r4"><span>Presentation and live demo</span><span class="hrs">8 h</span></div>
+
+      <div class="lane-lbl gate-lbl"><span class="who">Exit gate</span><span class="nm">Proof</span></div>
+      <div class="gate"><span class="g">M0</span>A mesh exists from real photos, or the batch-only variant is presented</div>
+      <div class="gate"><span class="g">M1</span>A team phone finishes a session end to end</div>
+      <div class="gate"><span class="g">M2</span>Timing table exists, capture mode committed</div>
+      <div class="gate"><span class="g">M3</span>Noise floor per tier is a number on paper</div>
+      <div class="gate"><span class="g">M4</span>Planted 4 mm hole shift fails, unseen region rescans</div>
+      <div class="gate"><span class="g">M5</span>Feature freeze, nothing new after today</div>
+      <div class="gate"><span class="g">M6</span>Test results tabulated, demo recorded</div>
+      <div class="gate"><span class="g">M7</span>Code freeze</div>
+      <div class="gate"><span class="g">M8</span>Presented, with the recording as backup</div>
+    </div>
+  </div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--l1)"></span>Capture front end</span>
+    <span><span class="dot" style="background:var(--l2)"></span>Reconstruction backend</span>
+    <span><span class="dot" style="background:var(--l3)"></span>Inspection and truth</span>
+    <span><span class="dot" style="background:var(--shared)"></span>Shared</span>
+    <span class="mono" style="font-size:11px;">I1&ndash;I4 &middot; integration points, whole team, everything else stops</span>
+  </div>
+
+  <h3 style="margin-top:30px;">Biweekly progress reviews</h3>
+  <p class="note" style="margin:8px 0 16px;">The course requires a progress presentation every two weeks. These are graded deliverables, so they are planned work rather than something absorbed on the day. <b>Assumed cadence: every second Friday from 11 September</b> &mdash; confirm the real dates with the instructor. If they shift, the mapping below still holds, because each review shows whatever gate most recently cleared.</p>
+  <div class="scroller" style="border:none;">
+  <table class="dep">
+    <thead><tr><th>#</th><th class="from">Date</th><th>Position</th><th>What we demo</th></tr></thead>
+    <tbody>
+      <tr><td>R1</td><td class="from">Fri Sep 11</td><td>inside S1</td><td>The spike: a 3D mesh built from real phone photographs. Which reconstruction engine we chose, and why.</td></tr>
+      <tr><td>R2</td><td class="from">Fri Sep 25</td><td><b>S1 boundary &middot; M1</b></td><td>Live, end to end: phone, upload, 3D model in the browser.</td></tr>
+      <tr><td>R3</td><td class="from">Fri Oct 9</td><td><b>S2 boundary &middot; M2</b></td><td>Guidance arrow driving capture, the timing table, and the live-versus-batch decision.</td></tr>
+      <tr><td>R4</td><td class="from">Fri Oct 23</td><td>inside S4</td><td>Measured accuracy and the noise floor per reference tier. Alignment working on printed parts.</td></tr>
+      <tr><td>R5</td><td class="from">Fri Nov 6</td><td>inside S5</td><td>Live: a planted defect comes back as a failure with the region highlighted.</td></tr>
+      <tr><td>R6</td><td class="from">Fri Nov 20</td><td>inside S6</td><td>Feature-complete walkthrough, including the intake pre-check and the unverifiable outcome.</td></tr>
+      <tr><td>R7</td><td class="from">Fri Dec 4</td><td><b>S7 boundary &middot; M7</b></td><td>Test results, the recorded demo, and what we would do next.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="cols" style="margin-top:20px;">
+    <div class="blk">
+      <h3>Why this cadence works</h3>
+      <p class="note" style="font-size:13.5px;">Three reviews land exactly on sprint boundaries. The other four fall about a week <i>after</i> a gate closes, which is better than landing on one: we demo work that has been finished and tested for a few days rather than something that started working that morning. Every review in the table has a gate cleared within the preceding week, so there is never a review with nothing to show.</p>
+    </div>
+    <div class="blk">
+      <h3>The standing template</h3>
+      <p class="note" style="font-size:13.5px; margin-bottom:8px;">Four slides, the same every time, so preparing one is assembly rather than invention.</p>
+      <ol style="margin:0; padding-left:19px; color:var(--ink-2); font-size:13.5px;">
+        <li>What we said we would do last time.</li>
+        <li>What works now &mdash; always something running, never only slides.</li>
+        <li>What slipped, and why.</li>
+        <li>What we will have by the next review.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="finding" style="margin-top:18px; border-left-color:var(--l3);">
+    <p><strong>Cost, stated honestly.</strong> Seven reviews at about 2.5 person-hours each is <b>18 person-hours</b>, drawn from the reserve, which falls from 45 hours to 27. That is the real price of a recurring public commitment. It stays at 18 only if each review repackages the sprint demo using the template above; if every review becomes bespoke slide-building, the reserve is gone before November. <b>From R2 onward, keep a screen recording of the current working path</b> &mdash; if the network or the pod fails on the day, play it and keep talking.</p>
+  </div>
+
+</section>
+
+<!-- 03 GANTT -->
+<section>
+  <div class="sec-head"><span class="num">03</span><h2>Gantt</h2></div>
+  <p class="note" style="margin-bottom:18px;">The same plan on a continuous calendar, so overlaps and slack are visible in a way the sprint grid cannot show. Bars outlined in amber are the critical path: the model choice sets the timing budget, which gates fusion and certainty, which gate the measured noise floor, which sets every tolerance the verdict logic uses. Slip any one of them and the finish date moves.</p>
+  <div class="scroller"><div class="gantt">
+    <div class="g-row g-months"><div class="g-lbl"></div><div class="g-track">
+      <div class="g-month" style="left:0.000%;width:26.168%">September</div>
+      <div class="g-month" style="left:26.168%;width:28.972%">October</div>
+      <div class="g-month" style="left:55.140%;width:28.037%">November</div>
+      <div class="g-month" style="left:83.178%;width:16.822%">December</div>
+    </div></div>
+    <div class="g-row g-gates"><div class="g-lbl">Gates</div><div class="g-track">
+      <div class="g-guide" style="left:4.673%"></div>
+      <div class="g-guide" style="left:20.561%"></div>
+      <div class="g-guide" style="left:33.645%"></div>
+      <div class="g-guide" style="left:40.187%"></div>
+      <div class="g-guide" style="left:53.271%"></div>
+      <div class="g-guide" style="left:66.355%"></div>
+      <div class="g-guide" style="left:84.112%"></div>
+      <div class="g-guide" style="left:85.981%"></div>
+      <div class="g-gate" style="left:4.673%"><span class="g-dia"></span><span class="g-gname">M0</span></div>
+      <div class="g-gate" style="left:20.561%"><span class="g-dia"></span><span class="g-gname">M1</span></div>
+      <div class="g-gate" style="left:33.645%"><span class="g-dia"></span><span class="g-gname">M2</span></div>
+      <div class="g-gate" style="left:40.187%"><span class="g-dia"></span><span class="g-gname">M3</span></div>
+      <div class="g-gate" style="left:53.271%"><span class="g-dia"></span><span class="g-gname">M4</span></div>
+      <div class="g-gate" style="left:66.355%"><span class="g-dia"></span><span class="g-gname">M5</span></div>
+      <div class="g-gate" style="left:84.112%"><span class="g-dia"></span><span class="g-gname">M6</span></div>
+      <div class="g-gate low" style="left:85.981%"><span class="g-dia"></span><span class="g-gname">M7</span></div>
+      <div class="g-gate" style="left:99.065%"><span class="g-dia"></span><span class="g-gname">M8</span></div>
+    </div></div>
+    <div class="g-row g-revs"><div class="g-lbl">Reviews</div><div class="g-track">
+      <div class="g-guide" style="left:4.673%"></div>
+      <div class="g-guide" style="left:20.561%"></div>
+      <div class="g-guide" style="left:33.645%"></div>
+      <div class="g-guide" style="left:40.187%"></div>
+      <div class="g-guide" style="left:53.271%"></div>
+      <div class="g-guide" style="left:66.355%"></div>
+      <div class="g-guide" style="left:84.112%"></div>
+      <div class="g-guide" style="left:85.981%"></div>
+      <div class="g-rev" style="left:7.477%"><span class="g-dot"></span><span class="g-rname">R1</span></div>
+      <div class="g-rev" style="left:20.561%"><span class="g-dot"></span><span class="g-rname">R2</span></div>
+      <div class="g-rev" style="left:33.645%"><span class="g-dot"></span><span class="g-rname">R3</span></div>
+      <div class="g-rev" style="left:46.729%"><span class="g-dot"></span><span class="g-rname">R4</span></div>
+      <div class="g-rev" style="left:59.813%"><span class="g-dot"></span><span class="g-rname">R5</span></div>
+      <div class="g-rev" style="left:72.897%"><span class="g-dot"></span><span class="g-rname">R6</span></div>
+      <div class="g-rev" style="left:85.981%"><span class="g-dot"></span><span class="g-rname">R7</span></div>
+    </div></div>
+    <div class="g-lane l-a"><div class="g-lbl"><span class="who">Member A</span><span class="nm">Capture front end</span></div><div class="g-rows">
+      <div class="g-row"><div class="g-task">Golden capture, phone permissions</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:0.000%;width:5.607%" title="Golden capture, phone permissions"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">App shell, camera, upload</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:5.607%;width:9.346%" title="App shell, camera, upload"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Model viewer</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:14.953%;width:6.542%" title="Model viewer"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Frame gate</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:23.364%;width:4.673%" title="Frame gate"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Guidance arrow, next-view scoring</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:29.907%;width:4.673%" title="Guidance arrow, next-view scoring"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Seen / unseen coloring, report shell</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:36.449%;width:4.673%" title="Seen / unseen coloring, report shell"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Heatmap rendering, report page</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:42.991%;width:11.215%" title="Heatmap rendering, report page"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Buyer setup, printable board</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:56.075%;width:11.215%" title="Buyer setup, printable board"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Device testing, interface bugs</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:69.159%;width:15.888%" title="Device testing, interface bugs"></div>
+      </div></div>
+    </div></div>
+    <div class="g-lane l-b"><div class="g-lbl"><span class="who">Member B</span><span class="nm">Reconstruction backend</span></div><div class="g-rows">
+      <div class="g-row"><div class="g-task">Environment, model bake-off</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar crit" style="left:0.000%;width:5.607%" title="Environment, model bake-off"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Interface contract</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:0.000%;width:5.607%" title="Interface contract"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Service, container, secure address</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:5.607%;width:7.477%" title="Service, container, secure address"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Board pose per frame</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:10.280%;width:5.607%" title="Board pose per frame"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Reconstruction endpoint</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar crit" style="left:14.019%;width:7.477%" title="Reconstruction endpoint"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Segmentation, volume fusion</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar crit" style="left:23.364%;width:8.411%" title="Segmentation, volume fusion"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Certainty per vertex, timing table</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar crit" style="left:29.907%;width:4.673%" title="Certainty per vertex, timing table"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Fusion fixes, resolution tuning</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:36.449%;width:4.673%" title="Fusion fixes, resolution tuning"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Certainty through the interface, scale check</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:42.991%;width:11.215%" title="Certainty through the interface, scale check"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Sheet and card tiers, runbook</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:56.075%;width:11.215%" title="Sheet and card tiers, runbook"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Reliability, re-provisioning drill</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:69.159%;width:15.888%" title="Reliability, re-provisioning drill"></div>
+      </div></div>
+    </div></div>
+    <div class="g-lane l-c"><div class="g-lbl"><span class="who">Member C</span><span class="nm">Inspection and truth</span></div><div class="g-rows">
+      <div class="g-row"><div class="g-task">Printer access, test parts designed</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:0.000%;width:5.607%" title="Printer access, test parts designed"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Synthetic mesh generator</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:5.607%;width:6.542%" title="Synthetic mesh generator"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Alignment on synthetic input</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:12.150%;width:9.346%" title="Alignment on synthetic input"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">First specimens printed</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:16.822%;width:4.673%" title="First specimens printed"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Symmetry ambiguity check</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:23.364%;width:5.607%" title="Symmetry ambiguity check"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Printer characterization</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar crit" style="left:29.907%;width:4.673%" title="Printer characterization"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Caliper parts, noise floor per tier</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar crit" style="left:36.449%;width:4.673%" title="Caliper parts, noise floor per tier"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Defect ladder printed</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:38.318%;width:2.804%" title="Defect ladder printed"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Deviation maths, verdict logic</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar crit" style="left:42.991%;width:11.215%" title="Deviation maths, verdict logic"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Intake pre-check, test suite</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:56.075%;width:11.215%" title="Intake pre-check, test suite"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Accuracy and planted-defect runs</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar crit" style="left:69.159%;width:11.215%" title="Accuracy and planted-defect runs"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Usability run</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:82.243%;width:2.804%" title="Usability run"></div>
+      </div></div>
+    </div></div>
+    <div class="g-lane l-s"><div class="g-lbl"><span class="who">All three</span><span class="nm">Shared</span></div><div class="g-rows">
+      <div class="g-row"><div class="g-task">I1  first frames through the service</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:19.626%;width:1.869%" title="I1  first frames through the service"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">I2  guidance loop closed</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:32.710%;width:1.869%" title="I2  guidance loop closed"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">I3  verdict end to end</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:52.336%;width:1.869%" title="I3  verdict end to end"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">I4  whole system, backup demo recorded</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:72.897%;width:12.150%" title="I4  whole system, backup demo recorded"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Report and slides</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:85.047%;width:1.869%" title="Report and slides"></div>
+      </div></div>
+      <div class="g-row"><div class="g-task">Presentation window</div><div class="g-track">
+        <div class="g-guide" style="left:4.673%"></div>
+        <div class="g-guide" style="left:20.561%"></div>
+        <div class="g-guide" style="left:33.645%"></div>
+        <div class="g-guide" style="left:40.187%"></div>
+        <div class="g-guide" style="left:53.271%"></div>
+        <div class="g-guide" style="left:66.355%"></div>
+        <div class="g-guide" style="left:84.112%"></div>
+        <div class="g-guide" style="left:85.981%"></div>
+        <div class="g-bar" style="left:88.785%;width:11.215%" title="Presentation window"></div>
+      </div></div>
+    </div></div>
+  </div></div>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--l1)"></span>Capture</span>
+    <span><span class="dot" style="background:var(--l2)"></span>Reconstruction</span>
+    <span><span class="dot" style="background:var(--l3)"></span>Inspection</span>
+    <span><span class="dot" style="background:var(--shared)"></span>Shared</span>
+    <span><span class="dot" style="background:transparent;border:1.5px solid var(--warn);width:13px;height:9px;border-radius:2px"></span>Critical path</span>
+    <span class="mono" style="font-size:11px;">&#9670; milestone gate &middot; &#9711; biweekly class review &middot; vertical rules are sprint boundaries</span>
+  </div>
+</section>
+
+<!-- 04 CONTRACTS -->
+<section>
+  <div class="sec-head"><span class="num">04</span><h2>What keeps the lanes independent</h2></div>
+  <p class="note" style="margin-bottom:18px;">Three lanes on one pipeline are naturally coupled: the app needs a service to talk to, the service needs photographs to process, and the inspection logic needs a finished model to measure. Four artifacts break all three couplings. Each one is cheap, each is built in the first two sprints, and each replaces a teammate's unfinished work with something good enough to develop against.</p>
+  <div class="contracts">
+    <div class="ct">
+      <span class="tag">Contract &middot; built S0</span>
+      <h3>The frozen interface</h3>
+      <p>One <span class="file">openapi.yaml</span> in the repository describes every request and response before either side is written. The capture lane codes against it, the reconstruction lane implements it. Changing it requires all three members to agree at a sprint boundary, never mid-sprint.</p>
+      <div class="frees"><b>Frees:</b> capture from backend, viewer from inspection</div>
+    </div>
+    <div class="ct">
+      <span class="tag">Fixture &middot; built S0</span>
+      <h3>The golden capture</h3>
+      <p>Thirty photographs of one printed part on a printed board, plus that part's design file and its caliper measurements, committed once and never changed. The reconstruction and inspection lanes develop against this set all semester.</p>
+      <div class="frees"><b>Frees:</b> reconstruction and inspection from the phone app entirely</div>
+    </div>
+    <div class="ct">
+      <span class="tag">Stub &middot; built S1</span>
+      <h3>The synthetic mesh generator</h3>
+      <p>Sixty lines that take a design file, apply a random rotation, add measurement noise at a chosen level, delete a surface patch, and label vertices seen or unseen. It produces exactly what the reconstruction lane will eventually produce, months earlier.</p>
+      <div class="frees"><b>Frees:</b> the entire inspection lane, from sprint one</div>
+    </div>
+    <div class="ct">
+      <span class="tag">Stub &middot; built S1</span>
+      <h3>The mock service</h3>
+      <p>A forty-line stand-in that answers every call in the frozen contract with a canned model file and a canned verdict. The capture lane builds the whole capture experience, viewer and report page against it without a graphics card in the loop.</p>
+      <div class="frees"><b>Frees:</b> capture front end from the graphics service</div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 DEPENDENCIES -->
+<section>
+  <div class="sec-head"><span class="num">05</span><h2>Dependency register</h2></div>
+  <p class="note" style="margin-bottom:18px;">Every place one lane needs something another lane produces, with the stand-in that removes the wait and the sprint the real version arrives.</p>
+  <div class="scroller" style="border:none;">
+  <table class="dep">
+    <thead><tr><th>#</th><th>Who waits</th><th>On what</th><th>Stand-in that removes the wait</th><th class="from">Real from</th></tr></thead>
+    <tbody>
+      <tr><td>D1</td><td>Capture</td><td>Upload and session interface</td><td>Frozen contract plus the mock service</td><td class="from">S1 &middot; I1</td></tr>
+      <tr><td>D2</td><td>Reconstruction</td><td>Real phone photographs</td><td>The golden capture, taken in S0 with any phone</td><td class="from">S1 &middot; I1</td></tr>
+      <tr><td>D3</td><td>Inspection</td><td>Finished mesh with certainty labels</td><td>The synthetic mesh generator</td><td class="from">S2</td></tr>
+      <tr><td>D4</td><td>Capture</td><td>Heatmap colors to display</td><td>Vertex colors carried in the model file, canned sample in the mock</td><td class="from">S4 &middot; I3</td></tr>
+      <tr><td>D5</td><td>Inspection</td><td>Printed specimens</td><td>Print service fallback, decided in S0, not discovered in October</td><td class="from">S1</td></tr>
+      <tr><td>D6</td><td>All three</td><td>A running graphics service</td><td>Whole non-neural stack runs natively on Apple Silicon; rented pod as backup</td><td class="from">S0</td></tr>
+      <tr><td>D7</td><td>Capture</td><td>Which direction to point the arrow</td><td>Scoring moved into the capture lane, reads a fixture mesh</td><td class="from">S2</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note" style="margin-top:16px;">Two dependencies cannot be stubbed away and are handled by scheduling instead. The noise floor measured in sprint three sets the tolerances the verdict logic uses in sprint four, so the measurement is deliberately placed one sprint earlier than the logic that consumes it. The choice of reconstruction model in sprint zero determines the timing budget everything else assumes, which is why the spike runs before the topic is presented rather than after.</p>
+</section>
+
+<!-- 06 SPRINT DETAIL -->
+<section>
+  <div class="sec-head"><span class="num">06</span><h2>Sprint detail</h2></div>
+  <div class="sprints">
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S0</span><h3>Spike and setup</h3><span class="dt">Thu Sep 3 &ndash; Tue Sep 8</span><span class="cap">20 h</span></div>
+      <div class="sp-body">
+        <div class="task"><div class="lane" style="color:var(--l1)"><span class="dot" style="background:var(--l1)"></span>Capture &middot; 6 h</div><ul><li>Print the reference board</li><li>Shoot the golden capture, thirty frames</li><li>Prove camera and motion access work in a phone browser over a secure connection</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l2)"><span class="dot" style="background:var(--l2)"></span>Reconstruction &middot; 8 h</div><ul><li>Working environment on the laptop</li><li>Run the bake-off on the golden capture, pick the model</li><li>Draft the interface contract for ratification</li><li>Create the public repo, protect main, add CODEOWNERS and a CI skeleton</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l3)"><span class="dot" style="background:var(--l3)"></span>Inspection &middot; 4 h</div><ul><li>Confirm printer access or commit to a print service</li><li>Design three test parts in CAD</li><li>Order calipers</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M0.</b> A mesh exists, produced from real photographs of a real object. If it does not, the presentation shows the batch-only variant and the live loop is dropped from scope on the spot.</div>
+    </div>
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S1</span><h3>Walking skeleton</h3><span class="dt">Wed Sep 9 &ndash; Fri Sep 25</span><span class="cap">68 h</span></div>
+      <div class="sp-body">
+        <div class="task"><div class="lane" style="color:var(--l1)"><span class="dot" style="background:var(--l1)"></span>Capture &middot; 20 h</div><ul><li>Installable web app shell and live camera</li><li>Session link, frame upload against the mock service</li><li>Model viewer loading a canned file</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l2)"><span class="dot" style="background:var(--l2)"></span>Reconstruction &middot; 22 h</div><ul><li>Service and container, reachable over a secure address</li><li>Board detection giving a real-world camera position per frame</li><li>Reconstruction endpoint returning a model file</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l3)"><span class="dot" style="background:var(--l3)"></span>Inspection &middot; 14 h</div><ul><li>Build the synthetic mesh generator</li><li>Design-file loading and first alignment, on synthetic input only</li><li>Print the first specimen batch</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M1, integration point I1.</b> A phone belonging to this team completes link, capture, upload, reconstruction and model display without anyone touching a terminal.</div>
+    </div>
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S2</span><h3>Capture quality</h3><span class="dt">Mon Sep 28 &ndash; Fri Oct 9</span><span class="cap">54 h</span></div>
+      <div class="sp-body">
+        <div class="task"><div class="lane" style="color:var(--l1)"><span class="dot" style="background:var(--l1)"></span>Capture &middot; 18 h</div><ul><li>Frame gate for blur, exposure and duplicates</li><li>Motion overlay and next-position arrow</li><li>Next-view scoring, moved from the backend lane</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l2)"><span class="dot" style="background:var(--l2)"></span>Reconstruction &middot; 16 h</div><ul><li>Separate the part from the reference sheet</li><li>Volume fusion, mesh cleanup, certainty per vertex</li><li>Stage-by-stage timing table</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l3)"><span class="dot" style="background:var(--l3)"></span>Inspection &middot; 10 h</div><ul><li>Harden alignment, add the symmetry ambiguity check</li><li>Characterize the printer with a calibration cube</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M2, integration point I2.</b> The timing table decides whether reconstruction runs live during capture or once at the end, and the team commits to that answer for the rest of the semester.</div>
+    </div>
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S3</span><h3>Ground truth</h3><span class="dt">Mon Oct 12 &ndash; Fri Oct 16</span><span class="cap">27 h</span></div>
+      <div class="sp-body">
+        <div class="task"><div class="lane" style="color:var(--l1)"><span class="dot" style="background:var(--l1)"></span>Capture &middot; 6 h</div><ul><li>Color the model by what was seen and what was not</li><li>Report page skeleton</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l2)"><span class="dot" style="background:var(--l2)"></span>Reconstruction &middot; 6 h</div><ul><li>Fusion fixes surfaced at the last integration</li><li>Tune frame count and resolution against the timing budget</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l3)"><span class="dot" style="background:var(--l3)"></span>Inspection &middot; 12 h</div><ul><li>Caliper five to eight printed parts</li><li>Measure error and the noise floor for each reference tier</li><li>Print the defect ladder at 2, 4 and 8 millimetres</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M3.</b> The noise floor is a measured number, not an assumption. Every tolerance the demo uses is set from it, and any defect size below it is declared unverifiable rather than attempted.</div>
+    </div>
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S4</span><h3>Inspection</h3><span class="dt">Mon Oct 19 &ndash; Fri Oct 30</span><span class="cap">54 h</span></div>
+      <div class="sp-body">
+        <div class="task"><div class="lane" style="color:var(--l1)"><span class="dot" style="background:var(--l1)"></span>Capture &middot; 14 h</div><ul><li>Render the deviation heatmap in the viewer</li><li>Report page with verdict, heatmap and coverage figures</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l2)"><span class="dot" style="background:var(--l2)"></span>Reconstruction &middot; 12 h</div><ul><li>Expose certainty and provenance through the interface</li><li>Three-source scale agreement check</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l3)"><span class="dot" style="background:var(--l3)"></span>Inspection &middot; 18 h</div><ul><li>Deviation computation against the design file</li><li>Verdict logic, all four outcomes</li><li>Enforce the rule that unseen geometry never passes or fails a part</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M4, integration point I3.</b> A planted 4 millimetre hole shift comes back as a failure, an unseen region comes back as a rescan, and a substituted part is caught on scale or shape.</div>
+    </div>
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S5</span><h3>Feature complete</h3><span class="dt">Mon Nov 2 &ndash; Fri Nov 13</span><span class="cap">54 h</span></div>
+      <div class="sp-body">
+        <div class="task"><div class="lane" style="color:var(--l1)"><span class="dot" style="background:var(--l1)"></span>Capture &middot; 14 h</div><ul><li>Buyer setup: design file upload, tolerances, critical features</li><li>Generate the board with its order code</li><li>Report export</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l2)"><span class="dot" style="background:var(--l2)"></span>Reconstruction &middot; 14 h</div><ul><li>Blank sheet and credit card reference tiers</li><li>Deployment runbook someone else can follow</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l3)"><span class="dot" style="background:var(--l3)"></span>Inspection &middot; 14 h</div><ul><li>Intake pre-check against the measured noise floor</li><li>The unverifiable outcome, declared before any photo</li><li>Automated test suite</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M5. Feature freeze.</b> Nothing new is started after this date. The six-hour stretch pool is the only route to optional work, and it opens only when a lane finishes its committed stories early.</div>
+    </div>
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S6</span><h3>Harden</h3><span class="dt">Mon Nov 16 &ndash; Wed Dec 2</span><span class="cap">52 h</span></div>
+      <div class="sp-body">
+        <div class="task"><div class="lane" style="color:var(--l1)"><span class="dot" style="background:var(--l1)"></span>Capture &middot; 12 h</div><ul><li>Test on one iPhone and one Android device</li><li>Interface bugs, keyboard access, error messages</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l2)"><span class="dot" style="background:var(--l2)"></span>Reconstruction &middot; 10 h</div><ul><li>Reliability and error handling</li><li>Rehearse losing the service and bringing it back</li></ul></div>
+        <div class="task"><div class="lane" style="color:var(--l3)"><span class="dot" style="background:var(--l3)"></span>Inspection &middot; 16 h</div><ul><li>Accuracy and planted-defect runs</li><li>Robustness set: glossy, dark, thin, screen photo, wrong part</li><li>Informal usability run with five or six volunteers</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M6, integration point I4.</b> Thanksgiving week is bug fixing only, no new work. The recorded backup demo is produced here, not in December.</div>
+    </div>
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S7</span><h3>Freeze</h3><span class="dt">Thu Dec 3 &ndash; Fri Dec 4</span><span class="cap">11 h</span></div>
+      <div class="sp-body">
+        <div class="task" style="grid-column:1/-1"><div class="lane" style="color:var(--shared)"><span class="dot" style="background:var(--shared)"></span>All three &middot; 10 h</div><ul><li>Code freeze. No commits that change behavior.</li><li>Written report and final slides</li><li>Rehearse the demo script against the recording</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M7.</b> The repository is frozen and the deliverables are written.</div>
+    </div>
+
+    <div class="sp">
+      <div class="sp-bar"><span class="id">S8</span><h3>Defense</h3><span class="dt">Mon Dec 7 &ndash; Fri Dec 18</span><span class="cap">9 h</span></div>
+      <div class="sp-body">
+        <div class="task" style="grid-column:1/-1"><div class="lane" style="color:var(--shared)"><span class="dot" style="background:var(--shared)"></span>All three &middot; 8 h</div><ul><li>Final presentation, everyone speaks</li><li>Live demo, with the recording ready to cut to</li></ul></div>
+      </div>
+      <div class="sp-gate"><b>Exit gate M8.</b> Presented. The recording is not optional insurance, it is the plan of record if the network fails.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- 07 WORKING AGREEMENTS -->
+<section>
+  <div class="sec-head"><span class="num">07</span><h2>Working agreements</h2></div>
+  <div class="cols">
+    <div class="blk">
+      <h3>Rules that keep lanes apart</h3>
+      <ol class="rule-list">
+        <li><b>One public repository, three top-level directories</b> matching the three lanes, with review rules in section 08. Two people editing the same file is the exception, so merge conflicts stay rare by structure rather than by discipline.</li>
+        <li><b>Nobody blocks for more than one day.</b> If a teammate's real component is not ready, use the stub and keep moving. Raise it at the next standup, not by waiting.</li>
+        <li><b>The interface contract changes only at a sprint boundary,</b> with all three present. Mid-sprint contract drift is what turns three independent lanes back into one tangled one.</li>
+        <li><b>No story crosses a gate.</b> Anything unfinished at a sprint boundary is either cut or explicitly carried, never silently rolled forward.</li>
+        <li><b>Work in progress is capped at two stories per person.</b> Three half-finished features at a milestone is worse than one finished one.</li>
+      </ol>
+    </div>
+    <div class="blk">
+      <h3>Cadence</h3>
+      <ul>
+        <li><b>Written standup, Monday and Thursday.</b> Three lines each in a shared channel: done, next, blocked. No meeting.</li>
+        <li><b>Sprint boundary call, 30 minutes.</b> Demo what works, check the gate, agree the next sprint's stories, one retro question. Held on the milestone date.</li>
+        <li><b>Biweekly progress review, every second Friday.</b> The graded class presentation. Uses the standing four-slide template and always shows something running.</li>
+        <li><b>Integration points are calendar events,</b> not intentions. During I1 through I4 all other work stops until the pieces talk to each other.</li>
+        <li><b>Ceremony overhead is about 15 minutes per person per day</b> and is already inside the eight hours a week, not added on top.</li>
+      </ul>
+      <h3 style="margin-top:20px;">Definition of done</h3>
+      <ul>
+        <li>Reviewed and approved by one other member in a pull request</li>
+        <li>Merged to the main branch</li>
+        <li>Runs on a second member's machine from a clean checkout</li>
+        <li>Has one automated test or one written manual check</li>
+        <li>Demonstrated at the sprint boundary call</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 08 REPOSITORY -->
+<section>
+  <div class="sec-head"><span class="num">08</span><h2>Repository and code review</h2></div>
+  <div class="finding">
+    <p><strong>One public repository on GitHub.</strong> Every change reaches <span class="file">main</span> through a pull request approved by at least one other member. Deployment runs only from <span class="file">main</span>, so <b>deployment is gated by construction</b> rather than by a second approval step.</p>
+  </div>
+
+  <div class="cols">
+    <div class="blk">
+      <h3>Why public</h3>
+      <p class="note" style="font-size:14px;">Branch protection, rulesets and deployment approval gates are all free on public repositories. On private ones, branch protection needs GitHub Pro and the deploy-time gate needs Enterprise. Public also sidesteps a trap: a team Organization on the free tier cannot protect private branches even if one member holds Pro, because Pro is a personal plan.</p>
+      <p class="note" style="font-size:14px; margin-top:10px;">Consequences we accept deliberately: secret scanning and push protection are on by default and will block a committed key before it reaches the remote; nothing sensitive goes in the repository at all; and a <span class="file">LICENSE</span> lands in week one. Our own code can be permissive, with a README note that the reconstruction weights are non-commercial, which constrains reuse rather than publication.</p>
+    </div>
+    <div class="blk">
+      <h3>Branch protection on <span class="file">main</span></h3>
+      <ol class="rule-list">
+        <li>Require a pull request before merging</li>
+        <li>Required approvals: <b>1</b></li>
+        <li>Dismiss stale approvals when new commits are pushed</li>
+        <li>Require status checks to pass</li>
+        <li>Require branches to be up to date before merging</li>
+        <li>Block force pushes and branch deletion</li>
+        <li><b>Do not allow bypassing the above settings</b> &mdash; the one teams forget, and without it an administrator merges straight past the rule</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="cols" style="margin-top:24px;">
+    <div class="blk">
+      <h3>Pull request rules</h3>
+      <ul>
+        <li><b>One or two work sessions per pull request.</b> Review quality collapses on large diffs.</li>
+        <li><b>Merge within a day or two.</b> Long-lived branches quietly destroy the lane independence this plan rests on.</li>
+        <li><b>Review within 24 hours,</b> matching the rule that nobody blocks for more than a day. Reviewing is the first thing you do in a work session, not the last.</li>
+        <li><b>Never review formatting.</b> The linter runs in CI and wins those arguments for us.</li>
+        <li><b>The interface contract needs two approvals,</b> because it is the surface all three lanes build against.</li>
+        <li>Branch names carry the lane: <span class="file">capture/…</span>, <span class="file">recon/…</span>, <span class="file">inspect/…</span></li>
+      </ul>
+    </div>
+    <div class="blk">
+      <h3>CODEOWNERS</h3>
+      <p class="note" style="font-size:13.5px; margin-bottom:10px;">The three lanes map straight onto it, so the right reviewer is requested automatically.</p>
+      <pre class="code">/capture/     <span class="own">@member-a</span>
+/recon/       <span class="own">@member-b</span>
+/inspect/     <span class="own">@member-c</span>
+/contracts/   <span class="own">@member-a @member-b @member-c</span></pre>
+    </div>
+  </div>
+
+  <h3 style="margin-top:26px;">CI on every pull request</h3>
+  <p class="note" style="margin:8px 0 14px;">Keep the whole run under about two minutes, or people start routing around it.</p>
+  <div class="scroller" style="border:none;">
+  <table class="dep">
+    <thead><tr><th>Lane</th><th>Checks</th></tr></thead>
+    <tbody>
+      <tr><td>Python</td><td>ruff lint and format check, mypy on changed modules, pytest on the fast unit tests</td></tr>
+      <tr><td>TypeScript</td><td>eslint, prettier check, <span class="file">tsc --noEmit</span>, vitest</td></tr>
+      <tr><td>Inspection</td><td>verdict and registration tests run against the synthetic mesh generator, so they need no GPU and no fixtures</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note" style="margin-top:14px;">The synthetic mesh generator earns its keep twice: it unblocks the inspection lane in sprint one, and it makes those tests fast and hardware-free so they run on every pull request. Reconstruction tests need a GPU and stay out of CI; they run locally before a release and at each integration point.</p>
+
+  <div class="cols" style="margin-top:24px;">
+    <div class="warn-box">
+      <h3 style="margin-bottom:9px;">Never commit these</h3>
+      <ul style="margin:0; padding-left:19px; color:var(--ink-2); font-size:13.5px;">
+        <li><b>The golden capture set.</b> Thirty photographs is hundreds of megabytes, and git never forgets &mdash; a large file bloats the repository permanently even after deletion. Keep fixtures in cloud storage behind a download script; commit the script and a checksum.</li>
+        <li><b>Model weights.</b> Same reason, larger. Downloaded at setup.</li>
+        <li><b>Any key or token.</b> Actions secrets, plus a gitignored local env file.</li>
+      </ul>
+    </div>
+    <div class="blk">
+      <h3>Cost, and the tripwire</h3>
+      <p class="note" style="font-size:14px;">Review time sits inside the existing lane estimates the same way writing tests does; it is part of shipping a change, not extra to it. Budget roughly half an hour per person per week. <b>If reviews start taking materially longer than that, the pull requests are too big.</b> That is the earliest warning signal this plan has, and the fix is smaller pull requests, not less review.</p>
+      <p class="note" style="font-size:14px; margin-top:10px;">Setup is about two hours in S0: create the repository, protect <span class="file">main</span>, add <span class="file">CODEOWNERS</span>, and stand up a CI skeleton that runs nothing but the linters on day one.</p>
+      <p class="note" style="font-size:14px; margin-top:10px;"><b>Feeding the biweekly review:</b> link every pull request to an issue, and the issues closed since the last class presentation become the &ldquo;what we did&rdquo; slide.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 09 STORIES -->
+<section>
+  <div class="sec-head"><span class="num">09</span><h2>Stories</h2></div>
+  <div class="finding">
+    <p><strong>Backend first.</strong> The reconstruction engine &mdash; photographs in, metric 3D model out &mdash; is built before the other layers, so the hardest risk is retired before anything is built on top of it. The full backlog lives in <span class="file">proofshape_stories.md</span>: 22 stories written out for foundations and the engine, 93 hours, with everything after that left as titles until its sprint planning.</p>
+  </div>
+
+  <div class="cols">
+    <div class="blk">
+      <h3>How stories are picked up</h3>
+      <ul>
+        <li><b>Lanes become places, not people.</b> The three directories stay; any member picks up any story in any of them. That is what lets all three push on the engine at once.</li>
+        <li><b>One person per story,</b> claimed visibly before work starts. Stuck is fine and asking for help is expected; two people quietly working the same story is not.</li>
+        <li><b>Either of the other two reviews.</b> No fixed reviewer per area.</li>
+        <li><b>Completion is recorded on the story:</b> who, the date, the pull request, and actual hours against the estimate.</li>
+      </ul>
+    </div>
+    <div class="blk">
+      <h3>Story states</h3>
+      <ol class="rule-list">
+        <li><b>Blocked</b> &mdash; a dependency is unfinished. Do not start it.</li>
+        <li><b>Ready</b> &mdash; dependencies done, nobody has claimed it. Anyone can take it.</li>
+        <li><b>Claimed</b> &mdash; a name is on it, visibly, before work begins.</li>
+        <li><b>In review</b> &mdash; pull request open, waiting on one approval.</li>
+        <li><b>Done</b> &mdash; merged, with the completion record filled in.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="warn-box" style="margin-top:22px;">
+    <h3 style="margin-bottom:9px;">The chain sets the date, not the hour total</h3>
+    <p>Ninety-three hours across three people at 27 hours a week looks like three and a half weeks. It is not. About <b>42 of those hours can only run one story after another</b>, and a serial chain advances at one person&rsquo;s pace no matter how many people are free:</p>
+    <pre class="code" style="margin:12px 0;">F-02 &rarr; F-07 &rarr; R-01 &rarr; R-04 &rarr; R-06 &rarr; R-07 &rarr; R-08 &rarr; R-14 &rarr; R-15</pre>
+    <p>That is roughly <b>five weeks</b>. Adding a third person does not shorten it. Two consequences: the chain is always somebody&rsquo;s top priority and gets handed off the same day if its owner stalls; and the September 25 milestone is tight, since a working endpoint needs about 40 hours of that chain. We leave the date as it stands and revisit at the second sprint boundary with real velocity rather than estimates.</p>
+  </div>
+
+  <p class="note" style="margin-top:16px;">The off-chain stories &mdash; board detection, intrinsics, the scale check, provenance, uncertainty, both fallback backbones and the latency table &mdash; are where the other two people work while the chain advances. There is enough of that to keep everyone busy, which is the point of laying the backlog out this way. <b>Three stories have no dependencies at all</b> and are the ones to start on day one, one each: the public repository, the GPU pod, and the golden capture set.</p>
+</section>
+
+<!-- 10 BUFFER -->
+<section>
+  <div class="sec-head"><span class="num">10</span><h2>Buffer and the cut list</h2></div>
+  <p class="note">Sprints commit required and expected work plus the seven biweekly reviews and the generative-AI work, which is 324 of the 349 available hours. The remaining 25 hours are not scheduled. They absorb integration friction, bugs, and the sprint that runs long, and only what is left over buys optional features. This is why the plan can carry the proposal's full scope without pretending the team has more time than it does. The reviews are why that reserve is thinner than it first looks, and why the four-slide template is worth keeping fixed.</p>
+  <p class="note" style="margin-top:14px;">When a sprint runs short, cut in this order, and record the cut at the sprint boundary rather than deciding again each time:</p>
+  <div class="cut">
+    <span>Visual hole filling</span><span class="arrow">&rarr;</span>
+    <span>Defect-aware guidance</span><span class="arrow">&rarr;</span>
+    <span>Session integrity</span><span class="arrow">&rarr;</span>
+    <span>Live capture loop</span><span class="arrow">&rarr;</span>
+    <span>Report polish</span><span class="arrow">&rarr;</span>
+    <span>Report narrative</span>
+  </div>
+  <p class="note" style="margin-top:16px;">Three things are never cut. Batch capture survives even if the live loop goes, so a working phone-to-model pipeline always exists. The rule that unseen geometry can neither pass nor fail a part stays in force regardless of schedule, because without it the report means nothing. And the generative components, the capture agent, shape completion, vision-language capture supervision and the plain-English inspection spec, carry the same protection as the core, because they are a course requirement.</p>
+  <div class="finding" style="margin-top:18px; border-left-color:var(--l3);"><p><strong>The cut list used to be upside down.</strong> Its previous ordering dropped the report narrative and the frame checks first, which were the only generative-AI components in the project. Under any schedule pressure it would have cut precisely what the course grades. Those components are now protected, and the narrative sits last among the cuttable items rather than first.</p></div>
+</section>
+
+<footer>
+  Sprint boundaries match the milestone dates in the CS595 project proposal. Member names are placeholders pending the team's confirmation of lane ownership. Hours are planning estimates and are revised at each sprint boundary against actual velocity.
+</footer>
+
+</div>

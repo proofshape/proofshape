@@ -1,0 +1,47 @@
+# fixtures and captured data — downloaded, never committed (see fixtures/README)
+fixtures/**
+!fixtures/*.py
+!fixtures/*.sh
+!fixtures/*.json
+!fixtures/README.md
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.ply
+*.glb
+*.obj
+*.stl
+
+# model weights
+*.pt
+*.pth
+*.safetensors
+weights/
+checkpoints/
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# node
+node_modules/
+dist/
+.vite/
+
+# os / editor
+.DS_Store
+.idea/
+*.swp
