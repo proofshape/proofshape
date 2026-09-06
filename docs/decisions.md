@@ -22,6 +22,13 @@ table shows it is nearly free.
 *Why:* the interactive loop is the most latency-sensitive part of the system and the most likely
 to be impossible on available hardware. Batch always works.
 
+**Amended 2026-09-06.** Batch remains the guaranteed path and now includes **one completion-driven
+recapture round**: after the first reconstruction, K completions run over the mesh and high
+disagreement over a critical region triggers a request for a few more photographs from named
+positions (§6.6). Interactive mode remains optional. This resolves a contradiction — completion
+guidance previously had no consumer in batch mode, so cutting interactive mode would have stranded
+it. The verdict path is untouched; D-005 and D-006 stand.
+
 **D-003 · No metrology claims.** (2026-09-02)
 Coarse geometric inspection, several millimetres on hand-sized parts. Complements CMM
 inspection, never replaces it.
@@ -71,20 +78,31 @@ Chosen for real at M0 by running all three on the golden capture.
 *Why:* VGGT is fast enough for guidance and works on glossy featureless parts where COLMAP has
 nothing to match. Its failure mode is quiet, so the fallbacks stay one flag away.
 
-**D-010 · Development on the M2 Max MacBook; rented GPU as fallback.** (2026-09-03)
-Measured: Metal works, 26.8 GB working set, the whole non-neural stack runs natively.
-*Why:* removes pod re-provisioning from daily work and cuts the infrastructure budget. Compute
-is the constraint, not memory.
+**D-010 · The rented pod is the canonical environment; local development is optional.** (2026-09-03)
+*Why:* every milestone demonstration and every latency measurement must run in one place, or
+results are not comparable between people or across weeks.
 
-**D-011 · Force fp16 on Apple Silicon.** (2026-09-03)
-Measured: bf16 runs at 5.4 TFLOP/s against fp16 at 10.9 — half speed on Metal, the opposite of
-a modern NVIDIA card.
+**Amended 2026-09-06.** Inverted. The original made an Apple Silicon laptop primary and the pod a
+fallback, which made the reference environment depend on hardware only one member has. The pod is
+now primary and local development on Apple Silicon is a convenience for whoever has it. Measurements
+quoted anywhere come from the pod.
+
+**D-011 · If you develop on Apple Silicon, force fp16.** (2026-09-03)
+Measured on Apple Silicon: bf16 runs at roughly half the throughput of fp16 on Metal, the opposite
+of a modern NVIDIA card.
 *Why:* reconstruction models commonly select bf16 automatically when they detect a capable GPU.
-That default is wrong here and must be overridden.
+That default is wrong on Metal and must be overridden.
 
-**D-012 · Run natively for local development; containers are for the pod.** (2026-09-03)
-*Why:* Docker Desktop on macOS gives containers no Metal access, so the "one image, one command"
-story does not survive on a laptop.
+**Amended 2026-09-06.** Demoted from a project-wide decision to a documented gotcha for the optional
+local path, following D-010's inversion. It does not apply on the pod.
+
+**D-012 · The container image is the unit of deployment; local native runs are the exception.** (2026-09-03)
+*Why:* one image, one command, on the pod. Docker Desktop on macOS gives containers no Metal access,
+so anyone developing locally on Apple Silicon runs natively instead — that is the exception, not the
+rule.
+
+**Amended 2026-09-06.** Reframed to match D-010. The container path is canonical; the native path is
+the local-only workaround.
 
 ---
 
@@ -106,14 +124,23 @@ Assumed every second Friday from 11 September, using a fixed four-slide template
 *Why:* graded deliverables are planned work, not something absorbed on the day. The fixed
 template is what keeps the cost at roughly 18 person-hours.
 
-**D-016 · Capacity raised to 9 hours per person per week, and every added hour goes to AI.** (2026-09-03)
-*Why:* adding capacity without spending it on generative AI *lowers* the share, because the
-denominator grows faster than the numerator. Spending only the agent's 30 hours across 39 new
-hours would have produced 30.4%, worse than building it inside the old budget.
+**D-016 · Capacity raised to 9 hours per person per week.** (2026-09-03)
+*Why:* the added hours fund the components the project's differentiation depends on — guidance,
+gating, and communicating with a non-expert supplier.
+
+**Amended 2026-09-06.** The original reasoning was ratio arithmetic about a share target. Component
+sizing is now on merit, so that reasoning no longer governs and has been moved to private notes
+(see `docs/needs-human-decision.md`). The capacity figure itself is unchanged.
 
 **D-017 · Generative-AI components are never cut; the cut list was inverted.** (2026-09-03)
 *Why:* the original ordering dropped the report narrative and frame checks first, which were the
 only generative components. Any schedule pressure would have cut precisely what the course grades.
+
+**Amended 2026-09-06.** The protection stands, but the reasoning above is superseded. These
+components are protected because after D-002's amendment they are **structurally load-bearing** —
+completion decides where the recapture round photographs, the VLM gates whether a session can pass,
+the spec parser produces the tolerances the pre-check runs on. Cutting them removes function, not
+polish. The note that the earlier cut list was inverted is retained as history.
 
 **D-018 · The reconstruction backbone is a learned model, not a generative one.** (2026-09-03)
 It is counted separately in the AI share and described that way everywhere.
@@ -158,8 +185,11 @@ and all eight settings survived the transfer.
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
-Worth 28 hours. With it the share is 33.0%; without it, 24.9%. Ask the instructor before
-restructuring anything further.
+D-018 states our position: it is a large learned model, deterministic, and we do not count it.
+
+**Updated 2026-09-06.** Not raised with the instructor, and not escalated. D-018 states our position;
+no ruling is needed unless the question is asked of us. Components are sized on merit rather than to
+reach a share, so the answer no longer changes what we build. It was never listed in §16.
 
 **O-002 · The final presentation date is inherited and unconfirmed.**
 December 7 to 18 came from an earlier draft where it was explicitly provisional and anchored to

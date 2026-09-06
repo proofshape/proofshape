@@ -18,6 +18,13 @@ Source for that page: `proofshape_sprint_plan.html` (edit it, then republish to 
 
 ---
 
+> **Dates below are unconfirmed against the academic calendar.** The presentation window (O-002)
+> and the biweekly review cadence (O-003) are inherited assumptions, not verified dates, and every
+> sprint boundary is anchored to them. Confirm with the instructor at the September 8 presentation
+> before treating this schedule as fixed.
+
+---
+
 ## 1 · Capacity, rebalanced
 
 **The lane budgets in the original proposal did not fit the people.** Each member now has 9 h/week × 13 weeks = ~116 hours and no more — the team raised its commitment from 8 hours specifically to fund the generative-AI work. Splitting the 40 shared hours three ways put the reconstruction lane at 113 h against a 104 h ceiling, while the capture lane finished 11 h short. A 20-hour swing, landing on the lane carrying the most technical risk.
@@ -407,6 +414,32 @@ Phases 1 and 2, foundations and the reconstruction engine, are written out in fu
 
 ---
 
+## 9b · Revision of 2026-09-06 — hours moved to risk
+
+Shrinking the LLM capture agent from a planned ~30 h to ~12 h of orchestration (§6.7 of the
+proposal) freed 18 planning hours. Total capacity is unchanged at 349. The movement:
+
+| From | To | Hours |
+|---|---|---|
+| LLM capture agent, reduced to orchestration | — | −18 |
+| — | Placement notes drafted by the spec parser (§7.4) | +3 |
+| — | Reliability curve: predicted σ against measured error (§12 item 3) | +6 |
+| — | Specimen breadth: glossy, dark and thin-walled finishes (§12 item 2) | +4 |
+| — | Session integrity, promoted Tier 3 → Tier 2 | +5 |
+| | **Net** | **0** |
+
+Separately, the completion component absorbs ~8 h for the recapture round (D-002 as amended),
+funded by removing the same from coverage-only interactive guidance. Net zero, so lane totals stay
+at 97 each.
+
+**The remainder going to reserve is zero.** Every freed hour is allocated above. Reserve therefore
+stays at 25 h, about **7% of capacity**, which is thin for a team building this stack for the first
+time. It is the first thing that will hurt if the reconstruction engine takes longer than the
+chain estimate suggests, and it is worth revisiting at the second sprint boundary against real
+velocity rather than estimates.
+
+---
+
 ## 10 · Buffer and the cut list
 
 Sprints commit Tier 1 and Tier 2 work plus the seven biweekly reviews and the generative-AI work, 324 of the 349 available hours. The remaining 25 are unscheduled: they absorb integration friction, bugs, and the sprint that runs long. Only what is left buys Tier 3 features.
@@ -415,9 +448,9 @@ The reviews are the reason this reserve is thinner than it looks on paper. Eight
 
 **Cut in this order,** and record the cut at the sprint boundary rather than deciding again each time:
 
-visual hole filling → defect-aware guidance → session integrity → interactive mode (batch stays) → report polish → LLM report narrative.
+visual hole filling → defect-aware guidance → interactive mode (batch stays) → voice guidance → multilingual → cause hypotheses → report polish → LLM report narrative.
 
-**Three things are never cut.** Batch capture survives even if the interactive loop goes, so a working phone-to-model pipeline always exists. The rule that unobserved geometry can neither pass nor fail a part stays in force regardless of schedule, because without it the report means nothing. And the generative-AI components — the capture agent, shape completion, VLM capture supervision and the natural-language inspection spec — carry the same protection as Tier 1, because they are a course requirement. The earlier ordering put them first to go, which would have cut precisely what the course grades.
+**Three things are never cut.** Batch capture survives even if the interactive loop goes, so a working phone-to-model pipeline always exists. The rule that unobserved geometry can neither pass nor fail a part stays in force regardless of schedule, because without it the report means nothing. And the generative components, plus session integrity, are protected because they are structurally load-bearing after D-002's amendment — completion decides where the recapture round photographs, the VLM gates whether a session can pass, the spec parser produces the tolerances the pre-check runs on. Cutting them removes function, not polish. Interactive mode can now be cut without stranding completion, which was the point of that amendment.
 
 ---
 

@@ -49,3 +49,13 @@ dist/
 # personal / local-only — never committed
 project-playbook.md
 **/project-playbook.md
+
+# --- 4d: explicit coverage ---
+*.env
+*.ckpt
+*.bin
+captures/
+outputs/
+*.ply
+*.glb
+!fixtures/checksums.json

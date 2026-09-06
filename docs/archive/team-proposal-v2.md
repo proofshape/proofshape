@@ -269,7 +269,7 @@ flowchart LR
 
 **GPU: rented, not requested.** The reconstruction, K completions and CDC renderer are CUDA workloads. A 24 GB RTX 4090 on RunPod's community tier runs about $0.34/hr; a 48 GB A6000 about $0.49/hr. Ten hours a week for thirteen weeks is ~$45–65 total. This removes the single biggest critical-path dependency from university procurement. Use a persistent pod during sessions — serverless cold starts would wreck interactive latency.
 
-**IBM LinuxONE (SFBU/IBM capstone relationship): application layer only.** LinuxONE is s390x, big-endian, no NVIDIA GPUs — the model stack cannot run there. What can: the PWA static frontend, session and link management, the PO/reference store, and the condition-report dashboard. Frames go from the browser **directly** to the GPU service, never proxied through LinuxONE. Before committing: confirm a public IP with inbound 443 (camera access requires HTTPS, and Let's Encrypt won't issue for a bare IP — point a domain at it), get the VM expiry date in writing (the public tier has historically been 120 days, which barely covers the semester), and check every container image has an s390x variant. Ask Banafa whether the relationship extends to IBM Cloud GPU instances — a different product from LinuxONE Community Cloud.
+**IBM LinuxONE (SFBU/IBM capstone relationship): application layer only.** LinuxONE is s390x, big-endian, no NVIDIA GPUs — the model stack cannot run there. What can: the PWA static frontend, session and link management, the PO/reference store, and the condition-report dashboard. Frames go from the browser **directly** to the GPU service, never proxied through LinuxONE. Before committing: confirm a public IP with inbound 443 (camera access requires HTTPS, and Let's Encrypt won't issue for a bare IP — point a domain at it), get the VM expiry date in writing (the public tier has historically been 120 days, which barely covers the semester), and check every container image has an s390x variant. Ask the instructor whether the relationship extends to IBM Cloud GPU instances — a different product from LinuxONE Community Cloud.
 
 **Licensing, eyes open.** Leading pose-free reconstruction models ship under non-commercial research licenses. Fine for the capstone; blocks commercialization without swapping the backbone. Verify the checkpoint license at M0.
 
@@ -297,9 +297,9 @@ Zero slack, which is why these are cut now: profile-deviation and shortened-tab 
 
 ## 8 · Milestones
 
-Each is falsifiable: something demonstrably works by the date, or a named fallback activates. Align against CS570's week-6 proposal and week-15 presentation once Banafa's calendar is confirmed; Thanksgiving is Nov 26.
+Each is falsifiable: something demonstrably works by the date, or a named fallback activates. Align against CS570's week-6 proposal and week-15 presentation once the course calendar is confirmed; Thanksgiving is Nov 26.
 
-**M0 — by Mon Sept 7, before the presentation.** The topic locks at the presentation, so the spike runs first: 5–8 phone photos of a printed part on a board → reconstruction → one completion → provenance overlay → recovered scale, on a rented GPU. Also this week: GPU pod running, printer access confirmed, IRB question asked, Banafa's AI-use policy and milestone-report format asked, LinuxONE HTTPS/expiry questions asked. *Gate: spike fails → present the batch (non-interactive) variant, same science, no live loop.*
+**M0 — by Mon Sept 7, before the presentation.** The topic locks at the presentation, so the spike runs first: 5–8 phone photos of a printed part on a board → reconstruction → one completion → provenance overlay → recovered scale, on a rented GPU. Also this week: GPU pod running, printer access confirmed, IRB question asked, the instructor's AI-use policy and milestone-report format asked, LinuxONE HTTPS/expiry questions asked. *Gate: spike fails → present the batch (non-interactive) variant, same science, no live loop.*
 
 **M1 — Fri Sept 25: serving skeleton.** Link → browser capture → upload → reconstruction returned; board detection on stock tooling; defect-library schema and shifted-hole synthesis working on one CAD. *Falsifiable: a phone on this team completes a session end to end.*
 
@@ -373,5 +373,5 @@ CDC is the largest single workstream; whoever authored it should own it. Everyon
 
 - Run M0's spike — before the topic locks, not after.
 - Rent the GPU pod this week; don't wait on procurement.
-- Ask Banafa: AI-use policy and disclosure format; milestone reporting format; whether the IBM relationship reaches IBM Cloud GPUs; LinuxONE HTTPS and expiry.
+- Ask the instructor: AI-use policy and disclosure format; milestone reporting format; whether the IBM relationship reaches IBM Cloud GPUs; LinuxONE HTTPS and expiry.
 - Agree the sentences we will not improvise: coarse escapes not metrology; the hard rule; the Unverifiable outcome; and where the generative AI lives (σ in every CDC score).

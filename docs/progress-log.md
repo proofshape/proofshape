@@ -66,3 +66,32 @@ All eight rules verified intact after the transfer.
 collaborator **no pull request can merge at all**. Correct behaviour, but it makes adding the
 other two members the hard blocker on all further work.
 **Next:** add collaborators, then PR #1 can be approved. F-02 and F-03 become Ready on merge.
+
+## 2026-09-06 — proposal revision pass: sizing on merit, hours moved to risk (revised)
+
+**Who:** @TabeenRaoof
+**What changed:** a revision pass across the proposal, decisions log, sprint plan and stories.
+
+- **Component sizing is now on merit, not to reach a share.** The generative-AI proportion is not
+  being audited, so components are sized by what they do. The LLM capture agent drops from ~30 h to
+  ~12 h of orchestration, on the grounds the proposal itself already argued: a language model
+  choosing a direction is worse than the geometric scorer, so most of what an "agent" might do is
+  work we should not want it doing.
+- **A real contradiction was fixed.** Batch was the guaranteed path, completion drove only
+  interactive guidance, and interactive mode was cuttable — so cutting it stranded completion.
+  Batch now includes one completion-driven recapture round, which is the single decision batch mode
+  retains. D-002 amended; D-005 and D-006 untouched.
+- **Freed hours went to risk, not features:** the reliability curve that justifies k and sigma_floor
+  (6 h), specimen breadth across glossy, dark and thin-walled finishes (4 h), session integrity
+  promoted from Tier 3 to Tier 2 (5 h), and placement notes drafted by the spec parser (3 h).
+- **The ratio arithmetic left the public repository.** Two §9 passages and D-016's original
+  reasoning are quoted verbatim in `docs/needs-human-decision.md` for relocation to private notes.
+- **The pod is now the canonical environment** (D-010 inverted); local Apple Silicon development is
+  optional and its fp16 finding is a documented gotcha rather than a project-wide decision.
+
+**Decisions amended:** D-002, D-010, D-011, D-012, D-016, D-017, and O-001 updated.
+**Concluded:** the cut list was still ordered so that cutting interactive mode broke a Tier 2
+component. Reserve remains ~7% of capacity, which is thin, and nothing in this pass improved it —
+every freed hour was allocated.
+**Next:** the items in `docs/needs-human-decision.md` need a human, particularly whether
+`AGENTS.md` and `CLAUDE.md` stay public while the AI-use policy is unanswered.

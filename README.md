@@ -66,6 +66,10 @@ Full detail in [AGENTS.md](AGENTS.md) and [docs/sprint-plan.md](docs/sprint-plan
 
 ## Licence
 
-Our own code is MIT (see `LICENSE`). Note separately that the reconstruction model weights we
-build on carry **non-commercial research licences**. That constrains commercial reuse of a
-deployed system, not publication of this repository or the coursework.
+MIT covers **this repository's own code only**. Third-party components, their licences, and
+confirmation that we redistribute no model weights and vendor no third-party code, are listed in
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+Note that the reconstruction model weights carry **non-commercial research licences**. That
+constrains commercial reuse of a deployed system, not publication of this repository or the
+coursework.

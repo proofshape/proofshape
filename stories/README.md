@@ -164,13 +164,26 @@ C-04 app shell · C-05 live camera · C-06 frame gate · C-07 gyro overlay and a
 I-01 synthetic mesh generator · I-02 CAD loading · I-03 global registration · I-04 robust ICP · I-05 symmetry ambiguity check · I-06 deviation computation · I-07 verdict logic · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
 
 **Ground truth**
-G-01 printer characterisation · G-02 specimen batch · G-03 caliper measurement · G-04 noise floor per tier · G-05 defect ladder
+G-01 printer characterisation · G-02 specimen batch, **widened to glossy, dark and thin-walled** (+4 h) · G-03 caliper measurement · G-04 noise floor per tier · G-05 defect ladder
 
 **Generative AI**
-A-01 VLM frame supervision · A-02 VLM verdict veto · A-03 prose-to-spec parser · A-04 shape completion integration · A-05 disagreement map · A-06 agent tool definitions · A-07 agent loop · A-08 deterministic fallback · A-09 report narrative
+A-01 VLM frame supervision · A-02 VLM verdict veto, **now including veto logging and human override** · A-03 prose-to-spec parser, **now also drafting the placement note** (~11 h) · A-04 shape completion integration · A-05 disagreement map · A-06 agent tool definitions · A-07 agent loop, **reduced to orchestration** (~12 h, was ~30) · A-08 deterministic fallback · A-09 report narrative
+
+**Generative AI — Tier 3, not semester scope unless Tier 2 finishes early**
+A-11 voice guidance · A-12 multilingual capture and report · A-13 cause hypotheses
 
 **Cross-cutting**
 X-01 integration point I1 · X-02 I2 · X-03 I3 · X-04 I4 · X-05 recorded backup demo
+
+### Written out by the 2026-09-06 revision
+
+These three had real scope changes, so they have files already rather than waiting for their sprint.
+
+| ID | Story | Est | Depends on | State |
+|---|---|---|---|---|
+| [A-10](A-10.md) | Completion-driven recapture round | 8 h | A-04, A-05, C-08 | Blocked |
+| [G-06](G-06.md) | Reliability curve | 6 h | G-03, R-10 | Blocked |
+| [X-06](X-06.md) | Session integrity checks (promoted to Tier 2) | 5 h | R-02, R-04 | Blocked |
 
 ---
 
