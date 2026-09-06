@@ -53,3 +53,16 @@ into `docs/`, the story index into `stories/README.md`, plus a `README.md` and `
 **Concluded:** the presentation happened on 5 September, three days earlier than the M0 date the
 plan assumed. Whether the M0 spike ran before it is not recorded here — someone should note it.
 **Next:** initialise the git repository and push, which is story F-01.
+
+## 2026-09-05 — F-01: repository created, protected, and moved to an org (built)
+
+**Who:** @TabeenRaoof
+**What changed:** repo created public, MIT licence, eight branch protection rules applied, then
+transferred from the personal account to the new `proofshape` organisation.
+**Result:** both gates proven, not just configured — a merge without approval was refused
+("base branch policy prohibits the merge") and a direct push to `main` was rejected (GH006).
+All eight rules verified intact after the transfer.
+**Concluded:** `enforce_admins` means nobody can bypass, including the owner, so with one
+collaborator **no pull request can merge at all**. Correct behaviour, but it makes adding the
+other two members the hard blocker on all further work.
+**Next:** add collaborators, then PR #1 can be approved. F-02 and F-03 become Ready on merge.

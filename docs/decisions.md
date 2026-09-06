@@ -144,6 +144,15 @@ no GPU work crosses the boundary. It also levelled a 20-hour imbalance between l
 *Why:* stories accumulate implementation notes, decisions and review discussion. One long file
 becomes unnavigable and generates merge conflicts on every edit.
 
+**D-024 · The repository lives in the `proofshape` organisation, not a personal account.** (2026-09-05)
+`proofshape/proofshape`, public, free org plan.
+*Why:* a project-specific home rather than one member's profile, so ownership is shared and the
+repository does not depend on a single account. This reverses the earlier recommendation in
+D-013, which argued against an organisation — that argument was specific to *private*
+repositories, where a free org cannot protect branches. Going public removed the constraint, so
+the only remaining cost was one setup step. Free orgs do get protected branches on public repos,
+and all eight settings survived the transfer.
+
 ---
 
 ## Open — not yet decided
