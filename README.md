@@ -44,10 +44,13 @@ docs/              internal working documents
 stories/           one file per story; README.md is the index
 submissions/       what was handed to the course, dated
 
-recon/             reconstruction engine (backend)
+recon/             reconstruction engine: poses, backbone, fusion, provenance
+service/           FastAPI app, sessions, gated capture links, the per-order store
+inspect/           CAD registration, verdict logic, ground-truth calibration
 capture/           progressive web app (front end)
-inspect/           CAD registration, verdict logic, ground truth
-contracts/         the frozen interface between capture and recon
+ai/                model clients, prompts, structured outputs
+common/            types shared across the above; imports nothing local
+contracts/         the frozen interface between capture and service
 fixtures/          download script and checksums only — never the images
 scripts/           one-command helpers
 ```
@@ -59,7 +62,7 @@ story in any of them.
 
 - Every change reaches `main` through a pull request approved by one other member.
 - One person per story, claimed visibly before work starts.
-- Tests alongside the code, not batched before or after it.
+- **Unit tests ship in the same pull request as the code they cover.** Never deferred to a follow-up.
 - Never commit fixtures, model weights, or secrets. This repository is public.
 
 Full detail in [AGENTS.md](AGENTS.md) and [docs/sprint-plan.md](docs/sprint-plan.md).

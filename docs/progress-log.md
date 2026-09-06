@@ -95,3 +95,17 @@ component. Reserve remains ~7% of capacity, which is thin, and nothing in this p
 every freed hour was allocated.
 **Next:** the items in `docs/needs-human-decision.md` need a human, particularly whether
 `AGENTS.md` and `CLAUDE.md` stay public while the AI-use policy is unanswered.
+
+## 2026-09-06 (later) — module layout completed; tests-with-code made a rule (built)
+
+**Who:** @TabeenRaoof
+**What changed:** added `ai/`, `service/` and `common/` with README stubs, and a test convention for
+every module. Made "unit tests ship in the same pull request as the code" a standing rule rather
+than a style preference.
+**Concluded:** thirteen A-prefix stories had no directory to live in. The layout had been written
+from the system diagram and the story prefixes were written later from the work, so nobody noticed
+until asked directly. Prompts and API-key handling would have scattered across three modules.
+**Also:** the tests rule now appears in four places — the standing rules, the definition of done,
+the story template and the refusal list — because a rule that lives only in prose is a preference.
+**Decisions added:** D-025 (module layout, AI grouped by technology), D-026 (tests in the same PR).
+**Next:** F-02 creates these directories properly with their package structure.

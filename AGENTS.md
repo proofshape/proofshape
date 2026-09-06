@@ -39,6 +39,18 @@ noise floor, hours: all provisional. **Do not invent a measured value, and do no
 planning estimate as a result.** If a number is needed and does not exist yet, say it does not
 exist yet and name the milestone that will produce it.
 
+### Tests ship with the code, always
+**Any implementation must have its unit tests written and passing in the same pull request.** Not
+before as a batch, not afterwards as a batch, not "in a follow-up story" — the test for each piece
+of logic is written as that logic is written, and the pull request does not open without them.
+
+This is not negotiable and does not get traded for schedule. A story that arrives without tests is
+incomplete, not fast.
+
+The narrow exception is behaviour that genuinely cannot be unit tested — a gyro overlay on a
+physical handset, a camera permission prompt. Those get a written manual check instead, and the
+story must say *why* automation was not possible. "It was quicker" is not a reason.
+
 ### The generative-AI requirement
 The course requires roughly one third of the project to be generative AI. Five components
 carry that: the capture agent, generative shape completion, VLM capture supervision, the
@@ -75,8 +87,8 @@ Ready, whatever the index says.
 
 ## While building
 
-- **Tests alongside the code.** Not written first as a batch, not bolted on afterwards as a
-  batch — add the test for each piece of logic as that logic is written.
+- **Tests alongside the code.** See the standing rule above: the tests ship in the same pull
+  request as the code they cover.
 - **Verbose inline comments that explain *why*, not what.** Someone returning to this in
   November needs the reasoning, not a restatement of the line below.
 - **Progressive logic.** Build up incrementally before abstracting. Explicit loops are
@@ -104,7 +116,8 @@ Every story, without exception:
 - Merged to `main` through a pull request.
 - Reviewed and approved by one other team member.
 - Runs on a second member's machine from a clean checkout.
-- Has one automated test or one written manual check.
+- **Unit tests written alongside the implementation and passing, in the same pull request.** A
+  written manual check only where automation is genuinely impossible, with the reason stated.
 - Demonstrated at the sprint boundary.
 - **Completion recorded on the story file**: who, the date, the pull request, and actual hours
   against the estimate.
@@ -131,11 +144,15 @@ docs/
 stories/               — one file per story; README.md is the index
 submissions/           — what was handed to the course, dated
 
-recon/                 — reconstruction engine (backend)
+recon/                 — reconstruction engine: poses, backbone, fusion, provenance
+service/               — FastAPI app, sessions, gated capture links, the per-order store
+inspect/               — CAD registration, verdict logic, ground-truth calibration
 capture/               — progressive web app (front end)
-inspect/               — CAD registration, verdict logic, ground truth
-contracts/openapi.yaml — the frozen interface between capture and recon
+ai/                    — model clients, prompts, structured outputs (see D-025)
+common/                — types and schemas shared across the above; imports nothing local
+contracts/openapi.yaml — the frozen interface between capture and service
 fixtures/              — download script and checksums only; never the images
+scripts/               — one-command helpers
 ```
 
 **Lanes are places, not people.** Those three directories are code locations. Any team member
@@ -161,6 +178,7 @@ picks up any story in any of them.
 ## Things to refuse or flag rather than do
 
 - Weakening the hard rule about unobserved geometry.
+- Opening a pull request whose code has no tests, or deferring tests to a later story.
 - Cutting a generative-AI component to save schedule.
 - Writing a specific accuracy, latency or tolerance figure that has not been measured.
 - Committing fixtures, weights or secrets.

@@ -180,6 +180,26 @@ repositories, where a free org cannot protect branches. Going public removed the
 the only remaining cost was one setup step. Free orgs do get protected branches on public repos,
 and all eight settings survived the transfer.
 
+**D-025 · Module layout, and AI code grouped by technology.** (2026-09-06)
+`recon/` reconstruction, `service/` API and sessions, `inspect/` registration and verdicts,
+`capture/` front end, `ai/` model clients and prompts, `common/` shared types, plus `contracts/`,
+`fixtures/` and `scripts/`. Tests live inside their module: `<module>/tests/` for Python,
+`*.test.ts` beside the source for TypeScript.
+*Why:* thirteen A-prefix stories had no home and would have scattered prompts and API-key handling
+across three modules. Grouping model calls by technology keeps prompts, keys, retries and
+structured-output parsing in one place; the *policy* about when to call a model stays with the
+module that owns the decision. `service/` is split from `recon/` so reconstruction can run from a
+script or a test without starting a server, and the service can be tested without a GPU.
+`common/` imports nothing local, which is what prevents an import cycle.
+
+**D-026 · Unit tests ship in the same pull request as the code they cover.** (2026-09-06)
+Applies to everything that reaches production, without exception for schedule.
+*Why:* tests written afterwards are written to pass, not to find defects, and tests deferred to a
+follow-up story are not written at all. Writing them alongside the logic is also the only point at
+which the author still remembers the edge cases. The narrow exception is behaviour that cannot be
+economically automated — device permissions, a gyro overlay on real hardware — which takes a written
+manual check, and the story must state why automation was not possible.
+
 ---
 
 ## Open — not yet decided

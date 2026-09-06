@@ -19,6 +19,12 @@ One or two sentences. What breaks, or what stays impossible, if this is not done
 
 Keep these to two to four items. If you need more, the story is too big — split it.
 
+## Tests
+
+Which unit tests cover this, written alongside the implementation and passing in the same pull
+request. If any part of this story cannot be unit tested, name it here and say why — "it was
+quicker" is not a reason.
+
 ## Notes and decisions
 
 Written while working. What you tried, what surprised you, what you chose and why. If a decision
