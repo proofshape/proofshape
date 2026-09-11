@@ -66,3 +66,17 @@ All eight rules verified intact after the transfer.
 collaborator **no pull request can merge at all**. Correct behaviour, but it makes adding the
 other two members the hard blocker on all further work.
 **Next:** add collaborators, then PR #1 can be approved. F-02 and F-03 become Ready on merge.
+
+## 2026-09-11 — F-02: repository skeleton and module boundaries (built)
+
+**Who:** @dalwalyk
+**What changed:** `/recon`, `/capture`, `/inspect`, `/contracts`, `/fixtures`, `/scripts` created,
+each with a `README.md`. Root `pyproject.toml` registers `recon` as an editable package;
+`inspect` deliberately left unregistered (D-025 — it collides with the standard library
+`inspect` module). Root README gained a "Running each part" section.
+**Command / how to reproduce:** `pip install -e .` from a clean venv.
+**Result:** installs cleanly; `import recon` works; `import inspect` still resolves to the
+standard library, confirmed in a scratch venv.
+**Concluded:** the `inspect/` directory name (fixed by D-020) and a top-level Python import of
+the same name can't both exist safely — packaging has to route around it, not the directory.
+**Next:** F-04 (CI skeleton) and F-07 (reproducible dev environment) become Ready on merge.

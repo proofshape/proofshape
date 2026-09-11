@@ -153,6 +153,17 @@ repositories, where a free org cannot protect branches. Going public removed the
 the only remaining cost was one setup step. Free orgs do get protected branches on public repos,
 and all eight settings survived the transfer.
 
+**D-025 · `inspect/` is not an installed Python package; `recon/` is.** (2026-09-11)
+The repository-skeleton `pyproject.toml` registers only `recon` as a top-level package.
+`inspect/` stays a plain directory with no `__init__.py` until inspection-lane code exists.
+*Why:* `inspect` is the name of a Python standard-library module. Installing our `inspect/`
+directory as a top-level package of the same name would shadow that module for the whole
+environment — anything doing `import inspect`, including tooling like pytest, would silently
+get our (empty) package instead. The directory name is fixed by D-020 and the story's
+acceptance criteria, so the fix is on the packaging side: whoever starts I-01 picks a real
+import name for that lane's code (a prefix, a namespace package, or something else) once there
+is actual code to hang it off, rather than guessing now.
+
 ---
 
 ## Open — not yet decided
