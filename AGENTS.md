@@ -113,6 +113,13 @@ Every story, without exception:
   follow-up, not the next person's problem — the merge and the state change happen together.
   A story left `In review` after merging is exactly what makes the index untrustworthy, which
   is what then leads someone to work a story that is actually already blocked or already done.
+- **Then run `python3 scripts/check_story_states.py --fix`, in the same pull request, and commit
+  whatever it changes.** This is not the approver's job specifically, and it does not need to
+  be — it is mechanical: it reads the dependency graph and flips any story from `Blocked` to
+  `Ready` once every one of its dependencies is verifiably `Done`, and it flags (but never
+  silently resolves) any story whose file and index disagree. Anyone finishing a merge runs it.
+  It never marks anything `Done` or `Claimed` — only a human does that, by actually finishing
+  the work.
 
 Acceptance criteria are per story. The definition of done is not — it is the same every time.
 

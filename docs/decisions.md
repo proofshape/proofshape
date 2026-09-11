@@ -153,6 +153,24 @@ repositories, where a free org cannot protect branches. Going public removed the
 the only remaining cost was one setup step. Free orgs do get protected branches on public repos,
 and all eight settings survived the transfer.
 
+**D-027 · Unblocking a dependent story is a mechanical check, not a role.** (2026-09-11)
+`scripts/check_story_states.py` reads the dependency graph in `stories/README.md`, flags any
+story whose file and index disagree, and (`--fix`) flips `Blocked` → `Ready` once every
+dependency is `Done`. Run after every merge that sets a story to `Done`, by whoever does the
+merge — not reserved to the approver.
+*Why:* the question this answers was "should the approver be the one who unblocks dependent
+stories." Making it one specific person's job is the same single-point-of-memory failure that
+already caused two bugs (F-01 left `In review` after merging; F-02/F-03 unblocked in the index
+but not in their own files). The fix isn't a better-chosen owner, it's removing the step from
+memory entirely — a deterministic script gives the same answer regardless of who runs it or
+whether they remember to. The script never marks anything `Done` or `Claimed`; only a human
+decides work is actually finished.
+*Note on numbering:* `D-025` is independently claimed on both `chore/proposal-revisions-2026-09-05`
+(module layout) and `chore/pr-template-dod-checklist` (PR template), and `D-026` on the former
+(tests ship with code). This entry uses the first number free across *every* open branch at the
+time of writing. **When any of these branches merge, reconcile all of D-025 through D-027 in one
+pass** rather than resolving them one at a time as each branch lands.
+
 ---
 
 ## Open — not yet decided
