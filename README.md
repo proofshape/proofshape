@@ -11,6 +11,8 @@ inspection; it does not replace it.
 
 **CS595 capstone · Fall 2026 · San Francisco Bay University**
 
+https://github.com/proofshape/proofshape
+
 ---
 
 ## Start here
