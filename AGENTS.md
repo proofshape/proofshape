@@ -155,6 +155,14 @@ picks up any story in any of them.
 - **Record decisions as they are made.** If a conversation settles something that will govern
   later work, add it to `docs/decisions.md` with a number and the reasoning. A decision without
   its reasoning gets reversed by whoever forgets it.
+- **Before picking the next decision number, check every open branch, not just the one you're
+  merging into.** `docs/decisions.md` differs across branches until they merge, so two branches
+  can independently pick the same next number for two unrelated decisions — this has already
+  happened three times on this project. Run something like:
+  `for b in $(git branch -r | sed 's/origin\///'); do echo -n "$b: "; git show origin/$b:docs/decisions.md 2>/dev/null | grep -oE '^\*\*D-[0-9]+' | tail -1; done`
+  and take the next number free everywhere. If a collision turns up anyway, don't silently pick
+  around it — say so explicitly in the entry (see D-027 for the pattern) so whoever merges the
+  colliding branches later knows to reconcile them together, not one at a time.
 - **Append to the progress log** after any story is completed, any pull request is reviewed, or
   any measurement run is done. Newest entry at the bottom, never delete an old one. This is what
   makes the biweekly review slides almost write themselves.

@@ -153,6 +153,16 @@ repositories, where a free org cannot protect branches. Going public removed the
 the only remaining cost was one setup step. Free orgs do get protected branches on public repos,
 and all eight settings survived the transfer.
 
+**D-028 · Check every open branch's `docs/decisions.md` before claiming the next number.** (2026-09-12)
+Documented in `AGENTS.md` under *Working with the team*, with the one-liner to run.
+*Why:* three unrelated decisions independently claimed `D-025`, and one more claimed `D-026`,
+each written against only its own branch tip — see D-027 for the first fix and the collision it
+was already responding to. This entry's own number was picked using the check it describes: as
+of writing, six other branches were at D-024, D-024, D-025, D-025, D-026 and D-027, so D-028 was
+the first free everywhere. Doesn't prevent every future collision on its own — a branch opened
+after this check still won't see it — but it turns "guess and hope" into "check and know," which
+is most of the fix.
+
 ---
 
 ## Open — not yet decided
