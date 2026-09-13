@@ -108,6 +108,11 @@ Every story, without exception:
 - Demonstrated at the sprint boundary.
 - **Completion recorded on the story file**: who, the date, the pull request, and actual hours
   against the estimate.
+- **The moment a pull request merges, whoever merges it sets `State: Done` on the story file
+  and updates the matching row in `stories/README.md` to `Done`, in the same action.** Not a
+  follow-up, not the next person's problem — the merge and the state change happen together.
+  A story left `In review` after merging is exactly what makes the index untrustworthy, which
+  is what then leads someone to work a story that is actually already blocked or already done.
 
 Acceptance criteria are per story. The definition of done is not — it is the same every time.
 
