@@ -153,7 +153,7 @@ repositories, where a free org cannot protect branches. Going public removed the
 the only remaining cost was one setup step. Free orgs do get protected branches on public repos,
 and all eight settings survived the transfer.
 
-**D-025 · `inspect/` is not an installed Python package; `recon/` is.** (2026-09-11)
+**D-030 · `inspect/` is not an installed Python package; `recon/` is.** (2026-09-11)
 The repository-skeleton `pyproject.toml` registers only `recon` as a top-level package.
 `inspect/` stays a plain directory with no `__init__.py` until inspection-lane code exists.
 *Why:* `inspect` is the name of a Python standard-library module. Installing our `inspect/`
@@ -163,6 +163,11 @@ get our (empty) package instead. The directory name is fixed by D-020 and the st
 acceptance criteria, so the fix is on the packaging side: whoever starts I-01 picks a real
 import name for that lane's code (a prefix, a namespace package, or something else) once there
 is actual code to hang it off, rather than guessing now.
+*Note on numbering:* originally written as `D-025`, which collided with independent decisions on
+`chore/pr-template-dod-checklist` and `chore/proposal-revisions-2026-09-05`. Renumbered to
+`D-030` per the check `D-028` describes — as of this update the highest claimed number on any
+open branch was `D-029` (`chore/tests-during-implementation-rule`). A branch opened after this
+check still won't see it; **reconcile again if D-030 turns out to collide too.**
 
 ---
 

@@ -72,7 +72,7 @@ other two members the hard blocker on all further work.
 **Who:** @dalwalyk
 **What changed:** `/recon`, `/capture`, `/inspect`, `/contracts`, `/fixtures`, `/scripts` created,
 each with a `README.md`. Root `pyproject.toml` registers `recon` as an editable package;
-`inspect` deliberately left unregistered (D-025 — it collides with the standard library
+`inspect` deliberately left unregistered (D-030 — it collides with the standard library
 `inspect` module). Root README gained a "Running each part" section.
 **Command / how to reproduce:** `pip install -e .` from a clean venv.
 **Result:** installs cleanly; `import recon` works; `import inspect` still resolves to the
