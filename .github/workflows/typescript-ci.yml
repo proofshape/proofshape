@@ -8,7 +8,6 @@ permissions:
 
 jobs:
   typescript:
-    if: ${{ hashFiles('package.json') != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
@@ -16,12 +15,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Check for a TypeScript project
+        id: detect
+        run: |
+          if [ -f package.json ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Node.js
+        if: steps.detect.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install dependencies
+        if: steps.detect.outputs.exists == 'true'
         run: |
           if [ -f package-lock.json ]; then
             npm ci
@@ -30,7 +40,9 @@ jobs:
           fi
 
       - name: TypeScript type check
+        if: steps.detect.outputs.exists == 'true'
         run: npx --no-install tsc --noEmit
 
       - name: ESLint
+        if: steps.detect.outputs.exists == 'true'
         run: npx --no-install eslint .
