@@ -12,6 +12,7 @@ parameter, so these tests monkeypatch those two attributes to point at a throwaw
 built fresh for each test, then exercise the real functions against it. That keeps the tests
 honest about what the script actually does, without touching the real stories/ directory.
 """
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -73,7 +74,14 @@ def test_consistent_states_report_success(css, capsys):
     _write_story(css, "F-03", "Ready", "nothing")
     # F-02 depends on F-03, which is only Ready (not Done) - correctly still Blocked.
     _write_story(css, "F-02", "Blocked", "F-03")
-    _write_index(css, [("F-01", "nothing", "Done"), ("F-02", "F-03", "Blocked"), ("F-03", "nothing", "Ready")])
+    _write_index(
+        css,
+        [
+            ("F-01", "nothing", "Done"),
+            ("F-02", "F-03", "Blocked"),
+            ("F-03", "nothing", "Ready"),
+        ],
+    )
 
     exit_code = css.main()
 
@@ -100,11 +108,14 @@ def test_blocked_becomes_ready_only_when_every_dependency_is_done(css, capsys):
     _write_story(css, "F-05", "Done", "nothing")
     _write_story(css, "F-06", "Ready", "nothing")  # not Done yet
     _write_story(css, "F-07", "Blocked", "F-05, F-06")
-    _write_index(css, [
-        ("F-05", "nothing", "Done"),
-        ("F-06", "nothing", "Ready"),
-        ("F-07", "F-05, F-06", "Blocked"),
-    ])
+    _write_index(
+        css,
+        [
+            ("F-05", "nothing", "Done"),
+            ("F-06", "nothing", "Ready"),
+            ("F-07", "F-05, F-06", "Blocked"),
+        ],
+    )
 
     exit_code = css.main()
     out = capsys.readouterr().out
@@ -114,11 +125,14 @@ def test_blocked_becomes_ready_only_when_every_dependency_is_done(css, capsys):
 
     # Now finish F-06 too - only then should F-07 be flagged.
     _write_story(css, "F-06", "Done", "nothing")
-    _write_index(css, [
-        ("F-05", "nothing", "Done"),
-        ("F-06", "nothing", "Done"),
-        ("F-07", "F-05, F-06", "Blocked"),
-    ])
+    _write_index(
+        css,
+        [
+            ("F-05", "nothing", "Done"),
+            ("F-06", "nothing", "Done"),
+            ("F-07", "F-05, F-06", "Blocked"),
+        ],
+    )
 
     exit_code = css.main()
     out = capsys.readouterr().out
