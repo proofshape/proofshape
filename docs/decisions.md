@@ -177,6 +177,35 @@ of writing, six other branches were at D-024, D-024, D-025, D-025, D-026 and D-0
 the first free everywhere. Doesn't prevent every future collision on its own — a branch opened
 after this check still won't see it — but it turns "guess and hope" into "check and know," which
 is most of the fix.
+*Amended (2026-09-14):* the original one-liner had two bugs, caught in review by dalwalyk —
+`git branch -r` lists `origin/HEAD -> origin/main` as a single line, which a naive `sed`/`grep -v
+HEAD` mangles into malformed output; and it only checked already-fetched local remote-tracking
+branches, silently missing a branch nobody had fetched yet. Fixed in `AGENTS.md` with a
+`git fetch --prune` first and a filter on the long refname rather than the short one, since
+`refs/remotes/origin/HEAD`'s *short* name is literally `origin`, not `origin/HEAD` — a subtlety
+that would have broken a short-name filter too. Verified by reproducing both failures before
+landing the fix.
+
+**D-029 · Tests are written during implementation, and it's a joint obligation — engineer and assistant. (2026-09-12)**
+Brought forward onto `main` now: unit tests for a story's logic ship in the same pull request as
+that logic, written as it's written, not batched before or after and never deferred to a
+follow-up. Reflected in `AGENTS.md` (*While building*, the definition of done, and the refusal
+list) and in `docs/story-template.md`, which now asks for tests explicitly per story.
+*Why:* `main` only had the softer form of this — "one automated test or one written manual
+check," phrased as an either-or with no enforcement of *when*. Tests written after code exists
+are written to pass, not to find defects; a story that defers tests to a follow-up rarely gets
+one. The genuinely new part is naming this a **joint** obligation: an AI assistant doesn't get to
+skip tests because a turn didn't ask for them, and the engineer directing it doesn't get to skip
+them because the assistant didn't offer. Neither party gets to point at the other afterwards.
+*Note:* this substance already exists as `D-026` on the unmerged `chore/proposal-revisions-2026-09-05`
+branch (added 2026-09-06, before this project's decision-numbering collisions were even
+understood as a pattern). That entry and this one cover the same ground; when that branch
+merges, keep one of the two — this one additionally has the joint-accountability framing and the
+refusal-list/story-template wiring, so folding D-026's wording into this entry (or vice versa)
+is preferable to keeping both. **Also note:** this branch was created before `D-028` (the
+cross-branch numbering check this entry's own reasoning refers to) had merged, so `D-028` won't
+literally appear in this file until that PR lands too — the reference above is to the practice,
+not a broken link.
 
 ---
 
