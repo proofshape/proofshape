@@ -4,6 +4,9 @@ Read this before doing any work on this project. It applies to every assistant t
 Claude and ChatGPT alike. The point is that all three of us get the same behaviour out of our
 tools, and that the tools do not quietly undo decisions we have already made.
 
+Arrived here directly rather than through `AGENTS_START_HERE.md`? Go read that file too — it's
+the step-by-step order this document assumes you're already following.
+
 ---
 
 ## What ProofShape is
@@ -119,7 +122,12 @@ Every story, without exception:
   the fallback for what can't be automated, not an alternative to trying.
 - Demonstrated at the sprint boundary.
 - **Completion recorded on the story file**: who, the date, the pull request, and actual hours
-  against the estimate.
+  against the estimate. **The actual-hours figure must be a real, measured number — never the
+  estimate copied over, and never left implied by silence.** If the true number genuinely is not
+  known yet, write `<n> h actual` and leave it visibly unfilled rather than closing the record
+  with a guess. A completion record with the estimate quietly duplicated into the actual slot is
+  indistinguishable from one that was actually measured, which defeats the entire reason this
+  field exists — see D-033.
 - **The moment a pull request merges, whoever merges it sets `State: Done` on the story file
   and updates the matching row in `stories/README.md` to `Done`, in the same action.** Not a
   follow-up, not the next person's problem — the merge and the state change happen together.
@@ -144,6 +152,7 @@ each item before merging — the state/index item specifically has been missed t
 
 ```
 README.md              — repository front door
+AGENTS_START_HERE.md   — read this first, every session; the step-by-step order of operations
 AGENTS.md              — this file; instructions for every AI assistant
 CLAUDE.md              — Claude-specific notes; points here for everything else
 
@@ -208,6 +217,8 @@ picks up any story in any of them.
 - Weakening the hard rule about unobserved geometry.
 - Cutting a generative-AI component to save schedule.
 - Writing a specific accuracy, latency or tolerance figure that has not been measured.
+- Filling a completion record's actual-hours field with the estimate, or any other number that
+  was not actually measured.
 - Committing fixtures, weights or secrets.
 - Opening a pull request whose code has no tests, or agreeing to "add tests in a follow-up."
 - Reversing a decision in `docs/decisions.md` without the team agreeing first.
