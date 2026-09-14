@@ -161,8 +161,18 @@ picks up any story in any of them.
 - **Before picking the next decision number, check every open branch, not just the one you're
   merging into.** `docs/decisions.md` differs across branches until they merge, so two branches
   can independently pick the same next number for two unrelated decisions — this has already
-  happened three times on this project. Run something like:
-  `for b in $(git branch -r | sed 's/origin\///'); do echo -n "$b: "; git show origin/$b:docs/decisions.md 2>/dev/null | grep -oE '^\*\*D-[0-9]+' | tail -1; done`
+  happened three times on this project. Fetch first, so a branch nobody's fetched locally yet
+  doesn't get silently skipped, then check every branch — filtering on the long refname, not
+  the short one, since `refs/remotes/origin/HEAD`'s short name is just `origin`, not
+  `origin/HEAD`, and a naive filter misses it:
+  ```
+  git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+  git for-each-ref --format='%(refname)' refs/remotes/origin/ | grep -v '^refs/remotes/origin/HEAD$' \
+    | sed 's#^refs/remotes/##' | while read -r ref; do
+      printf '%s: ' "$ref"
+      git show "$ref:docs/decisions.md" 2>/dev/null | grep -oE '^\*\*D-[0-9]+' | tail -1
+    done
+  ```
   and take the next number free everywhere. If a collision turns up anyway, don't silently pick
   around it — say so explicitly in the entry (see D-027 for the pattern) so whoever merges the
   colliding branches later knows to reconcile them together, not one at a time.
