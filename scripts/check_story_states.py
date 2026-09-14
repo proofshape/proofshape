@@ -19,6 +19,7 @@ Usage:
 
 Run this after any merge that sets a story to Done - see AGENTS.md.
 """
+
 import argparse
 import re
 import sys
@@ -29,11 +30,11 @@ STORIES_DIR = ROOT / "stories"
 INDEX = STORIES_DIR / "README.md"
 
 ROW_RE = re.compile(
-    r"^\|\s*\[([A-Z]-\d\d)\]\([A-Z]-\d\d\.md\)\s*\|"   # | [ID](ID.md) |
-    r".*?\|"                                            # title
-    r"\s*[\d.]+\s*h\s*\|"                               # estimate
-    r"\s*(.*?)\s*\|"                                    # depends-on
-    r"\s*(\w[\w ]*?)\s*\|\s*$",                         # state
+    r"^\|\s*\[([A-Z]-\d\d)\]\([A-Z]-\d\d\.md\)\s*\|"  # | [ID](ID.md) |
+    r".*?\|"  # title
+    r"\s*[\d.]+\s*h\s*\|"  # estimate
+    r"\s*(.*?)\s*\|"  # depends-on
+    r"\s*(\w[\w ]*?)\s*\|\s*$",  # state
     re.MULTILINE,
 )
 FILE_STATE_RE = re.compile(r"\*\*State:\*\*\s*(\w[\w ]*?)\s*$", re.MULTILINE)
@@ -43,7 +44,9 @@ def parse_index():
     text = INDEX.read_text(encoding="utf-8")
     rows = {}
     for sid, deps, state in ROW_RE.findall(text):
-        dep_ids = [] if deps.strip().lower() == "nothing" else re.findall(r"[A-Z]-\d\d", deps)
+        dep_ids = (
+            [] if deps.strip().lower() == "nothing" else re.findall(r"[A-Z]-\d\d", deps)
+        )
         rows[sid] = {"deps": dep_ids, "index_state": state.strip()}
     return rows, text
 
@@ -58,20 +61,27 @@ def file_state(sid):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--fix", action="store_true", help="apply Blocked->Ready fixes to disk")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--fix", action="store_true", help="apply Blocked->Ready fixes to disk"
+    )
     args = ap.parse_args()
 
     rows, index_text = parse_index()
     if not rows:
-        print("No story rows parsed from stories/README.md — check the table format.", file=sys.stderr)
+        print(
+            "No story rows parsed from stories/README.md — check the table format.",
+            file=sys.stderr,
+        )
         return 2
 
     problems = []
     fixes = []  # (sid, old_state, new_state) for stories we will flip Blocked -> Ready
 
     for sid, info in rows.items():
-        fstate, ftext = file_state(sid)
+        fstate, _ftext = file_state(sid)
         if fstate is None:
             problems.append(f"{sid}: no story file, or no **State:** line found")
             continue
@@ -95,7 +105,9 @@ def main():
                 fixes.append(sid)
 
     if not problems:
-        print("All story states consistent; nothing is stuck Blocked with satisfied dependencies.")
+        print(
+            "All story states consistent; nothing is stuck Blocked with satisfied dependencies."
+        )
         return 0
 
     print(f"{len(problems)} issue(s) found:\n")

@@ -3,6 +3,7 @@
 If someone later adds inspect/__init__.py and registers it in pyproject.toml without
 re-reading D-030, this fails immediately instead of silently reintroducing the shadow.
 """
+
 import inspect
 
 
