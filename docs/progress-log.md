@@ -130,3 +130,23 @@ actually auto-loads (`CLAUDE.md`) to point at it, is the mechanical fix rather t
 paragraph nobody re-reads.
 **Next:** whoever knows F-01's real hours can fill them in directly; otherwise it stays `<n>`
 until someone does.
+
+## 2026-09-14 — AGENTS_START_HERE.md trimmed before review (built)
+
+**Who:** @TabeenRaoof
+**What changed:** the entry above described `AGENTS_START_HERE.md`'s 17 steps as "naming which
+file governs each step, rather than restating any of them" — true for about half the steps, not
+all of it. Steps 6–9 (before starting a story), 10–11 (while working) and 14–17 (on merge) had
+paraphrased `AGENTS.md`'s own sections instead of just pointing at them. Collapsed each of those
+three groups into a single pointer line, kept only the genuinely new content (model-file
+detection, the pre-PR check list, and one explicit callout on the actual-hours rule, since that
+gap is the whole reason this file exists). Prompted by the user asking, directly, whether a
+fourth instruction file was worth it given how many already exist — a fair question this repo's
+own history (D-025) had already answered once.
+**Result:** file is now pointers-plus-five-new-facts rather than a partial second copy of
+`AGENTS.md`. Confirmed no code path touched: `pytest tests/` and
+`python3 scripts/check_story_states.py` unchanged.
+**Concluded:** a startup checklist earns its place by adding facts that exist nowhere else
+(what to check for, what to run, in what order) — not by re-explaining rules a different file
+already owns. Worth checking any future addition to this file against that before it's merged
+in, not after.

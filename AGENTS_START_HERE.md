@@ -1,49 +1,43 @@
 # Start here — every session, before anything else
 
 The order of operations, not a restatement of the rules. Each step names the file that actually
-governs it; go read that file when you hit its step, don't just take this file's word for it.
+governs it — go read that file, don't take this file's word for it. Duplicating rule content
+here is exactly the drift this project keeps getting burned by (see D-025); pointers only.
 
 ## Before touching anything
 
-1. **Read `AGENTS.md` in full.** Project description, standing rules, definition of done.
-   Everything below assumes it.
-2. **Check for a file named after your assistant** (`CLAUDE.md`, `CODEX.md`, ...). Read it if it
-   exists — it only adds to `AGENTS.md`, never replaces it. None for yours yet? `AGENTS.md`
-   alone governs.
-3. **Read `stories/README.md`.** How stories work, the state table, the claim-to-merge workflow.
-4. **Skim `docs/decisions.md`.** What's already settled — don't reopen it. Think one's wrong?
-   Say so and stop; don't build past it either way.
-5. **Check `docs/glossary.md`** for any term that isn't obviously plain English here.
+1. Read `AGENTS.md` in full.
+2. Check for a file named after your assistant (`CLAUDE.md`, `CODEX.md`, ...) and read it if it
+   exists — it only adds to `AGENTS.md`, never replaces it.
+3. Read `stories/README.md`.
+4. Skim `docs/decisions.md` — don't reopen it. Think one's wrong? Say so and stop, don't build
+   past it.
+5. Check `docs/glossary.md` for any unfamiliar term.
 
 ## Before starting a specific story
 
-6. **Read the story file in full**, then every story it depends on and every story that depends
-   on it.
-7. **Check for conflicts**: other Claimed/In-review stories, open branches touching the same
-   files or endpoints.
-8. Ambiguous acceptance criteria → resolve first. An ambiguous story is not Ready, whatever the
-   index says. Ask, don't guess.
-9. **Plan before building**, for anything non-trivial — surface real design forks before code.
+6–9. Follow **"Before starting any story"** in `AGENTS.md`: read the story and its dependencies,
+check `docs/decisions.md` for this area, check for conflicts, resolve any ambiguity, plan before
+building anything non-trivial.
 
 ## While working
 
-10. **Claim it before writing code**: Owner + `State: Claimed`, committed and pushed immediately.
-11. **Tests alongside the code, not after** — one test per piece of logic as you write it, same
-    pull request. Never batched, never deferred to "a follow-up."
+10–11. Follow **"While building"** in `AGENTS.md` and the claim step in `stories/README.md`:
+claim before writing code, tests alongside the logic as you write it — never batched, never
+deferred.
 
 ## Before opening the pull request
 
 12. Run the test suite, `ruff check .`, `ruff format --check .`, and
     `python3 scripts/check_story_states.py`. All clean.
-13. Tick every box in `.github/PULL_REQUEST_TEMPLATE.md` before requesting review.
+13. Tick every box in `.github/PULL_REQUEST_TEMPLATE.md`.
 
-## On merge — whoever merges it, author or reviewer, same action as the merge
+## On merge — whoever merges it, same action as the merge
 
-14. `State: Done` in the story file **and** its row in `stories/README.md`.
-15. Completion record filled with a **real, measured** hour count — never the estimate copied
-    in. Genuinely don't know it yet? Leave `<n> h actual` visibly unfilled instead of guessing.
-16. `python3 scripts/check_story_states.py --fix`, committed.
-17. Append one entry to `docs/progress-log.md`.
+14–17. Follow the **Definition of Done**'s merge-time steps in `AGENTS.md`: `State: Done` in the
+story file and the index, `check_story_states.py --fix` committed, an entry in
+`docs/progress-log.md` — **and the completion record's hours must be real and measured, never
+the estimate copied in** (this exact gap is why this file exists).
 
-If a step doesn't apply — nothing to plan, no conflicts found — say that explicitly. Silence
-reads as "done," not "didn't apply."
+If a step doesn't apply, say so explicitly. Silence reads as "done," not "didn't apply." Missing
+something this file should have caught? Flag it and add it — this file is expected to grow.
