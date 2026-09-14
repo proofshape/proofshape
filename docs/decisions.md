@@ -170,7 +170,6 @@ decides work is actually finished.
 (tests ship with code). This entry uses the first number free across *every* open branch at the
 time of writing. **When any of these branches merge, reconcile all of D-025 through D-027 in one
 pass** rather than resolving them one at a time as each branch lands.
-
 **D-030 · `inspect/` is not an installed Python package; `recon/` is.** (2026-09-11)
 The repository-skeleton `pyproject.toml` registers only `recon` as a top-level package.
 `inspect/` stays a plain directory with no `__init__.py` until inspection-lane code exists.
