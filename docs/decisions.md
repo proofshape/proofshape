@@ -239,6 +239,27 @@ cross-branch numbering check this entry's own reasoning refers to) had merged, s
 literally appear in this file until that PR lands too — the reference above is to the practice,
 not a broken link.
 
+**D-033 · `AGENTS_START_HERE.md` is the entry point; actual-hours must be measured, never copied from the estimate.** (2026-09-14)
+Added `AGENTS_START_HERE.md` at the repo root as the literal first file to open, every session —
+a numbered order of operations that points at the file governing each step rather than
+restating any of them. `CLAUDE.md` (auto-loaded at the start of every Claude Code session in
+this repo) now sends the reader there before `AGENTS.md`; `README.md`'s front door does the
+same for a human or another assistant. Also closes a real gap `AGENTS.md`'s definition of done
+already covers in spirit but not in words: `stories/F-01.md`'s completion record has sat with
+its actual-hours field as the unfilled `<n>` placeholder since 2026-09-11, and nothing said
+in writing that copying the *estimate* into that slot would be worse than leaving it unfilled.
+`AGENTS.md` now says so explicitly, in both the definition of done and the refusal list.
+*Why:* a startup file only works if something forces it to be opened first — a good checklist
+nobody's pointed at is no better than no checklist. Wiring `CLAUDE.md`'s auto-loaded content to
+name it is what actually makes this session-start-time, not just a file that exists. On the
+hours question: the actual-hours field exists specifically so estimates get less wrong over
+time (`stories/README.md`'s own words); a completion record with the estimate silently
+duplicated into the actual slot is visually indistinguishable from one that was really measured,
+which quietly defeats that mechanism while looking complete.
+*Checked against D-028 at write time:* D-033 was free on every open branch as of 2026-09-14 —
+fourteen branches checked, highest claimed anywhere was D-032 (on the unmerged
+`foundations/F-03-interface-contract-v1`).
+
 ---
 
 ## Open — not yet decided

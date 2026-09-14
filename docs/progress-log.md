@@ -107,3 +107,26 @@ first `State:` line was still technically correct.
 match in a file. If a duplicate block like this recurs, the script would silently read the first
 (possibly stale) one and miss the corruption entirely. Consider having it also flag a file with
 more than one `**State:**` line, once PR #5 merges.
+
+## 2026-09-14 — AGENTS_START_HERE.md added; actual-hours rule tightened (built)
+
+**Who:** @TabeenRaoof
+**What changed:** new `AGENTS_START_HERE.md` — a 17-step, numbered order of operations naming
+which file governs each step, rather than restating any of them. `CLAUDE.md` (auto-loaded every
+Claude Code session in this repo) and `README.md`'s front door now both point to it first.
+`AGENTS.md`'s definition of done and refusal list were also tightened: the actual-hours field in
+a completion record must be a real, measured number — copying the estimate in, or leaving it
+implied, is now explicitly listed as something to refuse. Recorded as D-033.
+**Command / how to reproduce:** n/a — documentation only; `pytest tests/` and
+`python3 scripts/check_story_states.py` still pass, confirming this touched no code path.
+**Result:** caught in passing while reviewing this: `stories/F-01.md`'s completion record has
+carried the unfilled `<n> h actual` placeholder since the PR merged on 2026-09-11. Left as-is
+rather than guessed — the real number isn't known, and guessing it is exactly what D-033 now
+says not to do.
+**Concluded:** a rule that exists only in `AGENTS.md`'s prose gets read once at onboarding and
+then forgotten under real work — the same lesson D-025 already drew for the state/index gap.
+Making the entry point itself carry the checklist, and wiring the one file every session
+actually auto-loads (`CLAUDE.md`) to point at it, is the mechanical fix rather than another
+paragraph nobody re-reads.
+**Next:** whoever knows F-01's real hours can fill them in directly; otherwise it stays `<n>`
+until someone does.
