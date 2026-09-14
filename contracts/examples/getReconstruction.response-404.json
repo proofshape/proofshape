@@ -1,0 +1,4 @@
+{
+  "code": "session_not_found",
+  "message": "No session with that id, or the session has not been finished yet."
+}

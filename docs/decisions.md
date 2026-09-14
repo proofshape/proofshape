@@ -239,26 +239,38 @@ cross-branch numbering check this entry's own reasoning refers to) had merged, s
 literally appear in this file until that PR lands too — the reference above is to the practice,
 not a broken link.
 
-**D-033 · `AGENTS_START_HERE.md` is the entry point; actual-hours must be measured, never copied from the estimate.** (2026-09-14)
-Added `AGENTS_START_HERE.md` at the repo root as the literal first file to open, every session —
-a numbered order of operations that points at the file governing each step rather than
-restating any of them. `CLAUDE.md` (auto-loaded at the start of every Claude Code session in
-this repo) now sends the reader there before `AGENTS.md`; `README.md`'s front door does the
-same for a human or another assistant. Also closes a real gap `AGENTS.md`'s definition of done
-already covers in spirit but not in words: `stories/F-01.md`'s completion record has sat with
-its actual-hours field as the unfilled `<n>` placeholder since 2026-09-11, and nothing said
-in writing that copying the *estimate* into that slot would be worse than leaving it unfilled.
-`AGENTS.md` now says so explicitly, in both the definition of done and the refusal list.
-*Why:* a startup file only works if something forces it to be opened first — a good checklist
-nobody's pointed at is no better than no checklist. Wiring `CLAUDE.md`'s auto-loaded content to
-name it is what actually makes this session-start-time, not just a file that exists. On the
-hours question: the actual-hours field exists specifically so estimates get less wrong over
-time (`stories/README.md`'s own words); a completion record with the estimate silently
-duplicated into the actual slot is visually indistinguishable from one that was really measured,
-which quietly defeats that mechanism while looking complete.
-*Checked against D-028 at write time:* D-033 was free on every open branch as of 2026-09-14 —
-fourteen branches checked, highest claimed anywhere was D-032 (on the unmerged
-`foundations/F-03-interface-contract-v1`).
+**D-031 · Changing the frozen contract needs both other members' approval, at a sprint boundary.** (2026-09-13)
+`CONTRIBUTING.md` states the rule for changing `contracts/openapi.yaml` after v1: approval from
+both other team members — which, with the author, is all three signed off — merged only at a
+sprint boundary. This is a written rule, not a branch-protection setting: `main` still requires
+one approval repo-wide, left alone rather than raised project-wide to cover one directory.
+*Why:* F-03's third acceptance criterion said the contract needs "all three approvals," but
+GitHub cannot count the PR author's own approval — the author is barred from approving their own
+PR — so on a three-person team the mechanical ceiling is two. `docs/sprint-plan.md` §7 already
+says "two approvals" for exactly this reason. This entry reconciles the two: they were never in
+tension, "all three agree" and "two reviewer approvals" describe the same outcome once GitHub's
+approval-counting limit is accounted for. Recorded so nobody re-opens this as a contradiction
+between the story and the sprint plan.
+*Checked against D-028 at write time:* D-031 and D-032 were free on every open branch, `main`
+included, as of 2026-09-13 — thirteen branches checked, highest claimed anywhere was D-030.
+
+**D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
+`contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
+reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
+define those fields. The verdict result freezes only the envelope the existing decisions already
+settle: the four verdict values (D-005's hard rule needs exactly these), per-region provenance,
+and reason codes. Tolerance-table internals, `k` and `σ_floor` are marked
+`x-proofshape-extends-at` in the schema rather than invented.
+*Why:* Phase 3 (inspection) is deliberately titles-only in `stories/README.md` — "we elaborate
+one sprint ahead... because most of these would be wrong if written in September." Freezing
+tolerance-table shapes now would mean designing I-01 through I-10's data model before any of
+those stories exist, and would violate the "no promised numbers" rule by giving `k` and
+`σ_floor` a schema presence before the October calibration study measures them. The API is
+versioned by the `/v1` path prefix specifically so a v2 can be introduced alongside this one,
+once inspection is designed, rather than requiring this frozen file to be reopened.
+*What this leaves as future work:* whoever picks up I-01 onwards defines the tolerance-table
+schema and requests the D-031 approval to add it — this decision does not pre-approve any
+particular shape for it.
 
 ---
 

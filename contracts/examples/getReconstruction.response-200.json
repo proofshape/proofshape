@@ -1,0 +1,18 @@
+{
+  "status": "complete",
+  "glb_url": "https://pod.example/sessions/sess_9f2c1d/model.glb",
+  "reference_tier_used": "charuco_board",
+  "metric": true,
+  "observed_fraction": 0.91,
+  "scale_agreement": {
+    "sources_compared": ["board_pitch", "caliper_reading", "cad_registration_residual"],
+    "flagged": false
+  },
+  "stage_timings_s": {
+    "board_detection": 1.2,
+    "reconstruction": 4.8,
+    "fusion": 2.1,
+    "export": 0.4
+  },
+  "warnings": []
+}

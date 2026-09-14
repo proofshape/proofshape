@@ -1,0 +1,22 @@
+{
+  "verdict": "Rescan",
+  "declared_at": "post_reconstruction",
+  "orientation_ambiguous": true,
+  "regions": [
+    {
+      "name": "mounting_hole_A",
+      "provenance": "observed",
+      "deviation_mm": 0.11,
+      "contributes_to_verdict": true
+    },
+    {
+      "name": "sealing_face",
+      "provenance": "unobserved",
+      "contributes_to_verdict": false
+    }
+  ],
+  "reason_codes": [
+    "sealing_face_not_seen",
+    "registration_orientation_ambiguous"
+  ]
+}
