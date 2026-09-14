@@ -1,0 +1,36 @@
+name: TypeScript CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typescript:
+    if: ${{ hashFiles('package.json') != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: TypeScript type check
+        run: npx --no-install tsc --noEmit
+
+      - name: ESLint
+        run: npx --no-install eslint .
