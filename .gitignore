@@ -35,6 +35,8 @@ venv/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+*.egg-info/
+build/
 
 # node
 node_modules/

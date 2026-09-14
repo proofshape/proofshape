@@ -55,6 +55,24 @@ scripts/           one-command helpers
 `recon/`, `capture/` and `inspect/` are **places, not people**. Any team member picks up any
 story in any of them.
 
+## Running each part
+
+This is the repository skeleton (F-02) — none of the lanes have working code yet. What exists
+today:
+
+| Part | How to run it |
+|---|---|
+| Python project | `pip install -e .` from the repository root, one command. Installs `recon` in editable mode. |
+| `recon/` | Nothing runnable yet. First piece lands with R-01. |
+| `capture/` | No npm project yet. Lands with the capture stories, starting C-01. |
+| `inspect/` | No runnable code yet, and not registered as a Python package — see `inspect/README.md`. Lands with the I-0x stories. |
+| `contracts/` | Empty until F-03 freezes `openapi.yaml`. |
+| `fixtures/` | Empty until F-06 adds the download script. |
+| `scripts/` | Empty until a story needs a one-command helper. |
+
+Each directory has its own `README.md` with more detail. A fully reproducible environment
+(pinned dependency versions, one command on both the laptop and the pod) is F-07, not this one.
+
 ## Working agreements, in brief
 
 - Every change reaches `main` through a pull request approved by one other member.
