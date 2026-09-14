@@ -80,3 +80,30 @@ standard library, confirmed in a scratch venv.
 **Concluded:** the `inspect/` directory name (fixed by D-020) and a top-level Python import of
 the same name can't both exist safely — packaging has to route around it, not the directory.
 **Next:** F-04 (CI skeleton) and F-07 (reproducible dev environment) become Ready on merge.
+
+## 2026-09-14 — F-02 marked Done; found a merged-but-corrupted story file (build)
+
+**Who:** @TabeenRaoof
+**What changed:** PR #6 merged, but `stories/F-02.md` was left at `State: In review` — the third
+time this exact gap has hit us — and worse, the file was actually **corrupted**: it had two
+`State:`/`Owner:` blocks stacked back to back (`In review`/`@dalwalyk` immediately followed by
+`Ready`/`_unclaimed_`, the pre-merge content from `main`). Fixed: de-duplicated the header, set
+`State: Done`, filled the completion record (PR #6, merged 2026-09-14, reviewed by
+@TabeenRaoof — actual hours left blank, real data). Flipped `stories/README.md` and `F-02` to
+`Done`, and `F-04` (its only remaining dependency) to `Ready`. `F-07` stays `Blocked` — it also
+needs F-05, which is only `Ready`, not `Done`.
+**Result:** verified by reading `git show <merge-commit>^1:stories/F-02.md` and
+`^2:stories/F-02.md` directly — both parents made a single-line edit to the same `State:` and
+`Owner:` lines, and the merge silently kept both instead of conflicting.
+**Concluded:** GitHub's `mergeable: MERGEABLE` only means no conflict *markers* were left — it
+does not mean the merged content is *correct*. A clean two-parent line-merge can still silently
+duplicate a small, adjacent block instead of flagging it as a conflict, especially when both
+sides touch only a line or two. We checked `mergeable` before every approval in this session and
+treated it as sufficient; it isn't. This is a new failure mode, distinct from the state-drift
+bug `scripts/check_story_states.py` (still unmerged, on PR #5) already guards against — that
+script would have caught the *un-updated* state, but not this *duplicated* one, since the file's
+first `State:` line was still technically correct.
+**Next:** worth a follow-up: `check_story_states.py`'s regex only reads the *first* `**State:**`
+match in a file. If a duplicate block like this recurs, the script would silently read the first
+(possibly stale) one and miss the corruption entirely. Consider having it also flag a file with
+more than one `**State:**` line, once PR #5 merges.
