@@ -183,6 +183,24 @@ branch for unrelated decisions (module layout; tests ship with code). This entry
 from what is actually on `main`. **Renumber one side when that branch merges** — do not let two
 different `D-025` entries coexist.
 
+**D-028 · Check every open branch's `docs/decisions.md` before claiming the next number.** (2026-09-12)
+Documented in `AGENTS.md` under *Working with the team*, with the one-liner to run.
+*Why:* three unrelated decisions independently claimed `D-025`, and one more claimed `D-026`,
+each written against only its own branch tip — see D-027 for the first fix and the collision it
+was already responding to. This entry's own number was picked using the check it describes: as
+of writing, six other branches were at D-024, D-024, D-025, D-025, D-026 and D-027, so D-028 was
+the first free everywhere. Doesn't prevent every future collision on its own — a branch opened
+after this check still won't see it — but it turns "guess and hope" into "check and know," which
+is most of the fix.
+*Amended (2026-09-14):* the original one-liner had two bugs, caught in review by dalwalyk —
+`git branch -r` lists `origin/HEAD -> origin/main` as a single line, which a naive `sed`/`grep -v
+HEAD` mangles into malformed output; and it only checked already-fetched local remote-tracking
+branches, silently missing a branch nobody had fetched yet. Fixed in `AGENTS.md` with a
+`git fetch --prune` first and a filter on the long refname rather than the short one, since
+`refs/remotes/origin/HEAD`'s *short* name is literally `origin`, not `origin/HEAD` — a subtlety
+that would have broken a short-name filter too. Verified by reproducing both failures before
+landing the fix.
+
 **D-029 · Tests are written during implementation, and it's a joint obligation — engineer and assistant. (2026-09-12)**
 Brought forward onto `main` now: unit tests for a story's logic ship in the same pull request as
 that logic, written as it's written, not batched before or after and never deferred to a
