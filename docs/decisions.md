@@ -153,6 +153,21 @@ repositories, where a free org cannot protect branches. Going public removed the
 the only remaining cost was one setup step. Free orgs do get protected branches on public repos,
 and all eight settings survived the transfer.
 
+**D-025 · The definition-of-done checklist ships as the PR template.** (2026-09-11)
+`.github/PULL_REQUEST_TEMPLATE.md` mirrors the definition-of-done list in `AGENTS.md`, with the
+`State: Done` / index-row item called out specifically.
+*Why:* F-01 merged twice without its story state or index row updated — once on the initial
+merge, once again after the fix PR itself merged without anyone re-checking it. A rule stated
+only in `AGENTS.md` is read once, at onboarding, and forgotten under a real merge. Putting it in
+front of every PR as a checkbox costs nothing and is the cheapest thing that could plausibly
+catch the specific failure that already happened twice. Deliberately *not* duplicated into
+`CLAUDE.md` — that split exists precisely so there is one source of truth; copying the rule into
+a second file is the same failure mode as the one being fixed here.
+*Note:* `D-025` and `D-026` are also claimed on the unmerged `chore/proposal-revisions-2026-09-05`
+branch for unrelated decisions (module layout; tests ship with code). This entry was numbered
+from what is actually on `main`. **Renumber one side when that branch merges** — do not let two
+different `D-025` entries coexist.
+
 ---
 
 ## Open — not yet decided
