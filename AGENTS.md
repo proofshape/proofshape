@@ -123,6 +123,9 @@ Every story, without exception:
 
 Acceptance criteria are per story. The definition of done is not — it is the same every time.
 
+Every pull request carries this list as a checklist (`.github/PULL_REQUEST_TEMPLATE.md`). Tick
+each item before merging — the state/index item specifically has been missed twice already.
+
 ---
 
 ## Repo map
