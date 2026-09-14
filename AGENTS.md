@@ -75,8 +75,17 @@ Ready, whatever the index says.
 
 ## While building
 
-- **Tests alongside the code.** Not written first as a batch, not bolted on afterwards as a
-  batch — add the test for each piece of logic as that logic is written.
+- **Tests alongside the code — during implementation, not after the story is "done."** Not
+  written first as a batch, not bolted on afterwards as a batch, and never deferred to a
+  follow-up story — add the test for each piece of logic as that logic is written. **This is
+  the joint responsibility of the engineer and whatever AI assistant they're working with: the
+  assistant does not get to skip it because it wasn't asked for that turn, and the engineer does
+  not get to skip it because the assistant didn't offer.** Tests written after the fact are
+  written to pass, not to find defects — they document the path you built, not the paths you
+  missed — and a "we'll add tests later" story almost never gets that later. The narrow
+  exception is behaviour that genuinely cannot be economically automated (a device permission
+  prompt, a sensor overlay on real hardware); that takes a written manual check instead, with
+  the story stating *why* automation wasn't possible. "It was quicker" is not a reason.
 - **Verbose inline comments that explain *why*, not what.** Someone returning to this in
   November needs the reasoning, not a restatement of the line below.
 - **Progressive logic.** Build up incrementally before abstracting. Explicit loops are
@@ -104,7 +113,10 @@ Every story, without exception:
 - Merged to `main` through a pull request.
 - Reviewed and approved by one other team member.
 - Runs on a second member's machine from a clean checkout.
-- Has one automated test or one written manual check.
+- **Unit tests for this story's logic, written while the logic was written and passing in the
+  same pull request** — or, only where automation was genuinely impossible, a written manual
+  check with the reason stated. Not "one or the other, whichever's easier": the manual check is
+  the fallback for what can't be automated, not an alternative to trying.
 - Demonstrated at the sprint boundary.
 - **Completion recorded on the story file**: who, the date, the pull request, and actual hours
   against the estimate.
@@ -122,6 +134,9 @@ Every story, without exception:
   the work.
 
 Acceptance criteria are per story. The definition of done is not — it is the same every time.
+
+Every pull request carries this list as a checklist (`.github/PULL_REQUEST_TEMPLATE.md`). Tick
+each item before merging — the state/index item specifically has been missed twice already.
 
 ---
 
@@ -176,5 +191,6 @@ picks up any story in any of them.
 - Cutting a generative-AI component to save schedule.
 - Writing a specific accuracy, latency or tolerance figure that has not been measured.
 - Committing fixtures, weights or secrets.
+- Opening a pull request whose code has no tests, or agreeing to "add tests in a follow-up."
 - Reversing a decision in `docs/decisions.md` without the team agreeing first.
 - Expanding scope beyond the current tier because it "would be easy to add."

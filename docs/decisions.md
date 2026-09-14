@@ -171,6 +171,57 @@ decides work is actually finished.
 time of writing. **When any of these branches merge, reconcile all of D-025 through D-027 in one
 pass** rather than resolving them one at a time as each branch lands.
 
+**D-030 · `inspect/` is not an installed Python package; `recon/` is.** (2026-09-11)
+The repository-skeleton `pyproject.toml` registers only `recon` as a top-level package.
+`inspect/` stays a plain directory with no `__init__.py` until inspection-lane code exists.
+*Why:* `inspect` is the name of a Python standard-library module. Installing our `inspect/`
+directory as a top-level package of the same name would shadow that module for the whole
+environment — anything doing `import inspect`, including tooling like pytest, would silently
+get our (empty) package instead. The directory name is fixed by D-020 and the story's
+acceptance criteria, so the fix is on the packaging side: whoever starts I-01 picks a real
+import name for that lane's code (a prefix, a namespace package, or something else) once there
+is actual code to hang it off, rather than guessing now.
+*Note on numbering:* originally written as `D-025`, which collided with independent decisions on
+`chore/pr-template-dod-checklist` and `chore/proposal-revisions-2026-09-05`. Renumbered to
+`D-030` per the check `D-028` describes — as of this update the highest claimed number on any
+open branch was `D-029` (`chore/tests-during-implementation-rule`). A branch opened after this
+check still won't see it; **reconcile again if D-030 turns out to collide too.**
+**D-025 · The definition-of-done checklist ships as the PR template.** (2026-09-11)
+`.github/PULL_REQUEST_TEMPLATE.md` mirrors the definition-of-done list in `AGENTS.md`, with the
+`State: Done` / index-row item called out specifically.
+*Why:* F-01 merged twice without its story state or index row updated — once on the initial
+merge, once again after the fix PR itself merged without anyone re-checking it. A rule stated
+only in `AGENTS.md` is read once, at onboarding, and forgotten under a real merge. Putting it in
+front of every PR as a checkbox costs nothing and is the cheapest thing that could plausibly
+catch the specific failure that already happened twice. Deliberately *not* duplicated into
+`CLAUDE.md` — that split exists precisely so there is one source of truth; copying the rule into
+a second file is the same failure mode as the one being fixed here.
+*Note:* `D-025` and `D-026` are also claimed on the unmerged `chore/proposal-revisions-2026-09-05`
+branch for unrelated decisions (module layout; tests ship with code). This entry was numbered
+from what is actually on `main`. **Renumber one side when that branch merges** — do not let two
+different `D-025` entries coexist.
+
+**D-029 · Tests are written during implementation, and it's a joint obligation — engineer and assistant. (2026-09-12)**
+Brought forward onto `main` now: unit tests for a story's logic ship in the same pull request as
+that logic, written as it's written, not batched before or after and never deferred to a
+follow-up. Reflected in `AGENTS.md` (*While building*, the definition of done, and the refusal
+list) and in `docs/story-template.md`, which now asks for tests explicitly per story.
+*Why:* `main` only had the softer form of this — "one automated test or one written manual
+check," phrased as an either-or with no enforcement of *when*. Tests written after code exists
+are written to pass, not to find defects; a story that defers tests to a follow-up rarely gets
+one. The genuinely new part is naming this a **joint** obligation: an AI assistant doesn't get to
+skip tests because a turn didn't ask for them, and the engineer directing it doesn't get to skip
+them because the assistant didn't offer. Neither party gets to point at the other afterwards.
+*Note:* this substance already exists as `D-026` on the unmerged `chore/proposal-revisions-2026-09-05`
+branch (added 2026-09-06, before this project's decision-numbering collisions were even
+understood as a pattern). That entry and this one cover the same ground; when that branch
+merges, keep one of the two — this one additionally has the joint-accountability framing and the
+refusal-list/story-template wiring, so folding D-026's wording into this entry (or vice versa)
+is preferable to keeping both. **Also note:** this branch was created before `D-028` (the
+cross-branch numbering check this entry's own reasoning refers to) had merged, so `D-028` won't
+literally appear in this file until that PR lands too — the reference above is to the practice,
+not a broken link.
+
 ---
 
 ## Open — not yet decided

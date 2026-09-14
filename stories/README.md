@@ -93,7 +93,7 @@ Full detail in each story file.
 | ID | Story | Est | Depends on | State |
 |---|---|---|---|---|
 | [F-01](F-01.md) | Public repository with branch protection | 2 h | nothing | Done |
-| [F-02](F-02.md) | Repository skeleton and module boundaries | 3 h | F-01 | Ready |
+| [F-02](F-02.md) | Repository skeleton and module boundaries | 3 h | F-01 | In review |
 | [F-03](F-03.md) | Interface contract v1, frozen | 3 h | F-01 | Ready |
 | [F-04](F-04.md) | CI skeleton | 3 h | F-02 | Blocked |
 | [F-05](F-05.md) | GPU pod provisioned, three-way access | 4 h | nothing | Ready |

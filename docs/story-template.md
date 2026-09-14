@@ -19,6 +19,12 @@ One or two sentences. What breaks, or what stays impossible, if this is not done
 
 Keep these to two to four items. If you need more, the story is too big — split it.
 
+## Tests
+
+Which unit tests cover this, written while the logic was written — not after the story is
+otherwise finished. If any part of this story genuinely can't be unit tested, name it here and
+say why; "it was quicker" doesn't count.
+
 ## Notes and decisions
 
 Written while working. What you tried, what surprised you, what you chose and why. If a decision
