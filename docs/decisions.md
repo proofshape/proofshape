@@ -153,6 +153,21 @@ repositories, where a free org cannot protect branches. Going public removed the
 the only remaining cost was one setup step. Free orgs do get protected branches on public repos,
 and all eight settings survived the transfer.
 
+**D-025 · The definition-of-done checklist ships as the PR template.** (2026-09-11)
+`.github/PULL_REQUEST_TEMPLATE.md` mirrors the definition-of-done list in `AGENTS.md`, with the
+`State: Done` / index-row item called out specifically.
+*Why:* F-01 merged twice without its story state or index row updated — once on the initial
+merge, once again after the fix PR itself merged without anyone re-checking it. A rule stated
+only in `AGENTS.md` is read once, at onboarding, and forgotten under a real merge. Putting it in
+front of every PR as a checkbox costs nothing and is the cheapest thing that could plausibly
+catch the specific failure that already happened twice. Deliberately *not* duplicated into
+`CLAUDE.md` — that split exists precisely so there is one source of truth; copying the rule into
+a second file is the same failure mode as the one being fixed here.
+*Note:* `D-025` and `D-026` are also claimed on the unmerged `chore/proposal-revisions-2026-09-05`
+branch for unrelated decisions (module layout; tests ship with code). This entry was numbered
+from what is actually on `main`. **Renumber one side when that branch merges** — do not let two
+different `D-025` entries coexist.
+
 **D-029 · Tests are written during implementation, and it's a joint obligation — engineer and assistant. (2026-09-12)**
 Brought forward onto `main` now: unit tests for a story's logic ship in the same pull request as
 that logic, written as it's written, not batched before or after and never deferred to a
@@ -169,7 +184,10 @@ branch (added 2026-09-06, before this project's decision-numbering collisions we
 understood as a pattern). That entry and this one cover the same ground; when that branch
 merges, keep one of the two — this one additionally has the joint-accountability framing and the
 refusal-list/story-template wiring, so folding D-026's wording into this entry (or vice versa)
-is preferable to keeping both.
+is preferable to keeping both. **Also note:** this branch was created before `D-028` (the
+cross-branch numbering check this entry's own reasoning refers to) had merged, so `D-028` won't
+literally appear in this file until that PR lands too — the reference above is to the practice,
+not a broken link.
 
 ---
 
