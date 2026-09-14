@@ -1,8 +1,10 @@
 # ProofShape — CLAUDE.md
 
-**Read `AGENTS.md` first.** It holds the project description, the standing rules, the workflow
-before and during a story, the definition of done, and the repo map. Everything there applies
-to Claude. This file only adds what is specific to working with Claude on this project.
+**Read `AGENTS_START_HERE.md` first, every session** — it is the order of operations, and its
+own first step sends you to `AGENTS.md`, which holds the project description, the standing
+rules, the workflow before and during a story, the definition of done, and the repo map.
+Everything there applies to Claude. This file only adds what is specific to working with Claude
+on this project.
 
 ---
 

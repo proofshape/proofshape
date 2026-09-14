@@ -19,8 +19,9 @@ https://github.com/proofshape/proofshape
 
 | If you want to | Read |
 |---|---|
+| **Work on this project at all, human or AI** | **[AGENTS_START_HERE.md](AGENTS_START_HERE.md)** — read this first, every session |
 | Understand what we are building | [the proposal](submissions/2026-09-05-proposal.md) |
-| Work on the project with an AI assistant | **[AGENTS.md](AGENTS.md)** — read this first |
+| Work on the project with an AI assistant | [AGENTS.md](AGENTS.md) |
 | Pick up a task | [the story index](stories/README.md) |
 | Know why something is the way it is | [docs/decisions.md](docs/decisions.md) |
 | Know what a term means | [docs/glossary.md](docs/glossary.md) |
@@ -30,26 +31,27 @@ https://github.com/proofshape/proofshape
 ## Layout
 
 ```
-AGENTS.md          instructions for every AI assistant — the rules that govern how we work
-CLAUDE.md          Claude-specific notes; points to AGENTS.md for everything else
+AGENTS_START_HERE.md  read this first, every session — the step-by-step order of operations
+AGENTS.md             instructions for every AI assistant — the rules that govern how we work
+CLAUDE.md             Claude-specific notes; points to AGENTS.md for everything else
 
-docs/              internal working documents
-  decisions.md       settled decisions, D-001 onwards; do not relitigate
-  glossary.md        project vocabulary
-  sprint-plan.md     schedule, capacity, lanes, reviews, repository process
-  progress-log.md    running journal, newest at the bottom
-  story-template.md  template for a new story
-  archive/           superseded drafts, kept for their reasoning
+docs/                 internal working documents
+  decisions.md          settled decisions, D-001 onwards; do not relitigate
+  glossary.md           project vocabulary
+  sprint-plan.md        schedule, capacity, lanes, reviews, repository process
+  progress-log.md       running journal, newest at the bottom
+  story-template.md     template for a new story
+  archive/              superseded drafts, kept for their reasoning
 
-stories/           one file per story; README.md is the index
-submissions/       what was handed to the course, dated
+stories/              one file per story; README.md is the index
+submissions/          what was handed to the course, dated
 
-recon/             reconstruction engine (backend)
-capture/           progressive web app (front end)
-inspect/           CAD registration, verdict logic, ground truth
-contracts/         the frozen interface between capture and recon
-fixtures/          download script and checksums only — never the images
-scripts/           one-command helpers
+recon/                reconstruction engine (backend)
+capture/              progressive web app (front end)
+inspect/              CAD registration, verdict logic, ground truth
+contracts/            the frozen interface between capture and recon
+fixtures/             download script and checksums only — never the images
+scripts/              one-command helpers
 ```
 
 `recon/`, `capture/` and `inspect/` are **places, not people**. Any team member picks up any
