@@ -168,6 +168,27 @@ branch for unrelated decisions (module layout; tests ship with code). This entry
 from what is actually on `main`. **Renumber one side when that branch merges** — do not let two
 different `D-025` entries coexist.
 
+**D-029 · Tests are written during implementation, and it's a joint obligation — engineer and assistant. (2026-09-12)**
+Brought forward onto `main` now: unit tests for a story's logic ship in the same pull request as
+that logic, written as it's written, not batched before or after and never deferred to a
+follow-up. Reflected in `AGENTS.md` (*While building*, the definition of done, and the refusal
+list) and in `docs/story-template.md`, which now asks for tests explicitly per story.
+*Why:* `main` only had the softer form of this — "one automated test or one written manual
+check," phrased as an either-or with no enforcement of *when*. Tests written after code exists
+are written to pass, not to find defects; a story that defers tests to a follow-up rarely gets
+one. The genuinely new part is naming this a **joint** obligation: an AI assistant doesn't get to
+skip tests because a turn didn't ask for them, and the engineer directing it doesn't get to skip
+them because the assistant didn't offer. Neither party gets to point at the other afterwards.
+*Note:* this substance already exists as `D-026` on the unmerged `chore/proposal-revisions-2026-09-05`
+branch (added 2026-09-06, before this project's decision-numbering collisions were even
+understood as a pattern). That entry and this one cover the same ground; when that branch
+merges, keep one of the two — this one additionally has the joint-accountability framing and the
+refusal-list/story-template wiring, so folding D-026's wording into this entry (or vice versa)
+is preferable to keeping both. **Also note:** this branch was created before `D-028` (the
+cross-branch numbering check this entry's own reasoning refers to) had merged, so `D-028` won't
+literally appear in this file until that PR lands too — the reference above is to the practice,
+not a broken link.
+
 ---
 
 ## Open — not yet decided
