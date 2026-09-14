@@ -1,0 +1,378 @@
+openapi: "3.1.0"
+
+info:
+  title: ProofShape capture/reconstruction/inspection API
+  version: "1.0.0"
+  description: >
+    The frozen interface between the capture app and the reconstruction/inspection service
+    (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
+    both other team members' approval, at a sprint boundary only — see CONTRIBUTING.md and
+    D-031. Versioned by the `/v1` path prefix, so a v2 can be introduced alongside this one
+    rather than replacing it in place (D-032).
+
+servers:
+  - url: /v1
+
+paths:
+  /sessions:
+    post:
+      operationId: createSession
+      summary: Create a capture session
+      description: >
+        Starts a session against a purchase order / order code. Batch mode is the guaranteed
+        path (D-002): frames are uploaded over the course of the session and reconstruction runs
+        once, on finishSession.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: The order code is unknown or the request is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /sessions/{session_id}/frames:
+    post:
+      operationId: uploadFrame
+      summary: Upload one accepted frame
+      description: >
+        One frame that has already passed the on-device gate (blur/exposure/duplicate), plus the
+        gyro reading at capture time. The VLM capture supervision check (proposal §6.5) and the
+        capture agent's `check_frame()`/`vlm_inspect()` tools run against what this endpoint
+        accepts or rejects.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/UploadFrameRequest"
+      responses:
+        "202":
+          description: Frame accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadFrameResult"
+        "422":
+          description: >
+            Frame rejected — a structured error naming why, from the failure modes R-02 and R-04
+            report (R-14's third acceptance criterion). Does not end the session; capture retries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /sessions/{session_id}/finish:
+    post:
+      operationId: finishSession
+      summary: End capture and hand off to reconstruction
+      description: >
+        The capture agent's `finish_session()` tool. No more frames are accepted after this call;
+        reconstruction begins. Batch mode only for v1 (D-002) — there is no separate "start
+        reconstruction" call because capture does not reconstruct incrementally yet.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "202":
+          description: Reconstruction started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "409":
+          description: The session has too few accepted frames, or was already finished.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /sessions/{session_id}/reconstruction:
+    get:
+      operationId: getReconstruction
+      summary: Fetch the reconstruction result
+      description: >
+        Polled after finishSession. `status: pending` while the pipeline runs; the viewer polls
+        until `status: complete` or `status: failed`. Per-vertex provenance and uncertainty
+        (R-09, R-10) travel inside the GLB itself, not in this JSON body — this response carries
+        only the summary a viewer needs before it has fetched the mesh.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Current reconstruction status, and the result once complete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReconstructionResult"
+        "404":
+          description: No session with this id, or finishSession has not been called yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /sessions/{session_id}/verdict:
+    get:
+      operationId: getVerdict
+      summary: Fetch the inspection verdict
+      description: >
+        Only meaningful when the buyer uploaded a CAD file (D-004: no CAD, no verdict). This is
+        the **envelope only** for v1 — the four verdict values, per-region provenance and reason
+        codes that D-005 and the existing decisions already settle. Tolerance-table internals,
+        `k` and `σ_floor` are extension points for the inspection stories (Phase 3, not yet
+        written) and are marked `x-proofshape-extends-at` below rather than invented here.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Verdict result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerdictResult"
+        "404":
+          description: No CAD was supplied for this session — no verdict exists (D-004).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+components:
+  parameters:
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Opaque session identifier returned by createSession.
+
+  schemas:
+    ReferenceTier:
+      type: string
+      enum: [charuco_board, blank_sheet, credit_card, none]
+      description: >
+        Which reference sheet was detected (glossary; proposal §5). `none` means no reference was
+        detected, so the resulting model carries no dimensional claims — plain grid paper is
+        rejected on purpose, not silently accepted as a weaker tier.
+
+    Provenance:
+      type: string
+      enum: [observed, unobserved, inferred]
+      description: >
+        Per-region/per-vertex label (glossary). `observed` = seen in at least two frames with
+        adequate triangulation baseline. `unobserved` = everything else that was not seen.
+        `inferred` = filled by generative shape completion (proposal §6.6) — drawn distinctly in
+        the viewer and, per the hard rule (D-005), never contributes to a verdict.
+
+    Verdict:
+      type: string
+      enum: [Pass, Fail, Rescan, Unverifiable]
+      description: >
+        Exactly these four values (proposal §7.2). No fifth value may be added without a decision
+        entry — the hard rule's guarantees are stated in terms of this closed set.
+
+    ScaleAgreement:
+      type: object
+      description: >
+        The three independent scale sources that must agree (D-007): printed board pitch, an
+        optional typed caliper reading, and the CAD registration residual. The ~2% disagreement
+        threshold is a rule recorded in D-007, not a measured value, so it is not encoded as a
+        schema constraint here — only whether the check flagged the session is.
+      required: [sources_compared, flagged]
+      properties:
+        sources_compared:
+          type: array
+          items:
+            type: string
+            enum: [board_pitch, caliper_reading, cad_registration_residual]
+          minItems: 2
+          description: >
+            At least the board pitch and one other source are always present; the caliper
+            reading is optional and untrusted input (D-007) — never the sole source.
+        flagged:
+          type: boolean
+          description: True if any two of the compared sources disagreed by more than the D-007 threshold.
+
+    Region:
+      type: object
+      description: One named critical region or surface area, as used by the verdict and the deviation heatmap.
+      required: [name, provenance, contributes_to_verdict]
+      properties:
+        name:
+          type: string
+        provenance:
+          $ref: "#/components/schemas/Provenance"
+        deviation_mm:
+          type: number
+          description: >
+            Signed point-to-mesh distance to the CAD, in millimetres. Present only for `observed`
+            regions — omitted, not zero, when there is nothing measured to report.
+        contributes_to_verdict:
+          type: boolean
+          description: >
+            D-005 made structural. A region with `provenance: unobserved` MUST have this set to
+            `false` — unobserved geometry can only ever trigger a Rescan, never a Pass or a Fail.
+            Enforced by tests/test_contract.py across every committed example, not just described
+            here.
+
+    ErrorDetail:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - board_not_detected
+            - board_partially_occluded
+            - insufficient_baseline
+            - metric_alignment_failed
+            - scale_disagreement
+            - no_reference_detected
+            - frame_rejected_blur
+            - frame_rejected_exposure
+            - frame_rejected_duplicate
+            - vlm_veto
+            - session_not_found
+            - session_already_finished
+            - too_few_frames
+            - order_code_unknown
+            - no_cad_uploaded
+          description: >
+            Covers the failure modes R-02 and R-04 report (R-14's third acceptance criterion),
+            plus the session-lifecycle and frame-gate errors this contract's own endpoints need.
+        message:
+          type: string
+          description: Human-readable, safe to show to the supplier holding the phone.
+        frame_indices:
+          type: array
+          items:
+            type: integer
+          description: Which uploaded frames the error applies to, when relevant.
+
+    CreateSessionRequest:
+      type: object
+      required: [order_code]
+      properties:
+        order_code:
+          type: string
+          description: The single-use, PO-bound code printed on the reference sheet.
+
+    Session:
+      type: object
+      required: [session_id, order_code, status]
+      properties:
+        session_id:
+          type: string
+        order_code:
+          type: string
+        status:
+          type: string
+          enum: [capturing, finished]
+
+    UploadFrameRequest:
+      type: object
+      required: [frame, gyro]
+      properties:
+        frame:
+          type: string
+          contentEncoding: base64
+          contentMediaType: image/jpeg
+          description: The accepted frame image. Sent as multipart in the real request, base64 here only so a JSON example can represent it.
+        gyro:
+          type: object
+          required: [alpha, beta, gamma]
+          properties:
+            alpha: { type: number }
+            beta: { type: number }
+            gamma: { type: number }
+          description: Device orientation at capture time, as used by the gyro-guided next-position arrow.
+
+    UploadFrameResult:
+      type: object
+      required: [accepted, frame_index]
+      properties:
+        accepted:
+          type: boolean
+        frame_index:
+          type: integer
+
+    ReconstructionResult:
+      type: object
+      required: [status]
+      description: >
+        Per-vertex provenance and uncertainty (R-09, R-10) travel inside the exported GLB itself
+        (labels and vertex colors), not as JSON fields here — this object is the summary a viewer
+        needs before it has fetched and parsed the mesh.
+      properties:
+        status:
+          type: string
+          enum: [pending, complete, failed]
+        glb_url:
+          type: string
+          description: Present once status is complete.
+        reference_tier_used:
+          $ref: "#/components/schemas/ReferenceTier"
+        metric:
+          type: boolean
+          description: False when reference_tier_used is `none` — no dimensional claims are made.
+        observed_fraction:
+          type: number
+          description: Fraction of the exported mesh's surface area labelled Observed.
+        scale_agreement:
+          $ref: "#/components/schemas/ScaleAgreement"
+        stage_timings_s:
+          type: object
+          description: Per-stage latency in seconds (R-13), keyed by stage name.
+          additionalProperties:
+            type: number
+        warnings:
+          type: array
+          items:
+            type: string
+
+    VerdictResult:
+      type: object
+      required: [verdict, declared_at, orientation_ambiguous, regions]
+      properties:
+        verdict:
+          $ref: "#/components/schemas/Verdict"
+        declared_at:
+          type: string
+          enum: [intake, post_reconstruction]
+          description: >
+            `intake` is proposal §7.3's ingestion pre-check — Unverifiable declared before any
+            photo is taken, when a tolerance sits below the reference tier's floor.
+            `post_reconstruction` is every other verdict.
+        orientation_ambiguous:
+          type: boolean
+          description: D-008 — near-symmetric parts with two plausible alignments within the ambiguity threshold.
+        regions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Region"
+        reason_codes:
+          type: array
+          items:
+            type: string
+          description: Machine-readable reasons behind a Rescan or Fail, for the report page to explain in plain language.
+      x-proofshape-extends-at:
+        description: >
+          Not a real field — a vendor-extension marker at the schema level, so tooling and
+          readers can both see it. The tolerance table structure, `k`, and `σ_floor` are
+          deliberately not modelled in this schema; Phase 3's inspection stories (not yet
+          written) define them once the October calibration study produces real numbers.
+          Leaving this unfilled is intentional, not an oversight — see D-032.

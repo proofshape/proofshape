@@ -107,3 +107,34 @@ first `State:` line was still technically correct.
 match in a file. If a duplicate block like this recurs, the script would silently read the first
 (possibly stale) one and miss the corruption entirely. Consider having it also flag a file with
 more than one `**State:**` line, once PR #5 merges.
+
+## 2026-09-13 — F-03: interface contract v1, frozen (built)
+
+**Who:** @TabeenRaoof
+**What changed:** `contracts/openapi.yaml` (five operations: createSession, uploadFrame,
+finishSession, getReconstruction, getVerdict), ten example request/response files under
+`contracts/examples/`, `tests/test_contract.py` (six tests, written alongside each schema per
+D-029), and a new `CONTRIBUTING.md` recording the contract's change rule. Tier 1 is specified in
+full; the verdict result is an envelope only, with tolerance-table internals marked
+`x-proofshape-extends-at` for the not-yet-written inspection stories. D-031 reconciles F-03's
+"all three approvals" with the sprint plan's "two approvals" (GitHub can't count the author's
+own approval, so they're the same rule); D-032 records what v1 freezes and what it deliberately
+leaves open.
+**Command / how to reproduce:** `pip install -e ".[dev]"` then `pytest tests/ -v`.
+**Result:** 13 tests pass (7 pre-existing plus 6 new). Confirmed each new test actually catches
+its own defect, not just passes: mutated an unobserved region to `contributes_to_verdict: true`
+(caught — D-005 hard rule), added a fifth verdict value (caught), deleted a required example
+(caught — this also surfaced a real gap, four documented error responses had no example, fixed
+by adding them plus a missing `no_cad_uploaded` error code the getVerdict 404 case needed and
+didn't have), and renamed an operationId without renaming its examples (caught — orphan check).
+All four mutations reverted after confirming.
+**Concluded:** writing the "every operation has an example" test before filling in every example
+found a real spec gap (missing error examples, a missing error code) that reading the acceptance
+criteria alone did not surface — the same pattern as F-02's review-caught issues, just caught
+before review this time.
+**Next:** R-14 (reconstruction endpoint) and the S1 mock service can now build against a real
+contract. Flagged separately, not fixed here: PR #11 (F-04)'s CI runs only ruff, no pytest job,
+so the existing test suites don't gate any merge yet, and `required_status_checks` on `main` is
+still empty so no CI result can block a merge — both are F-04's own acceptance criteria to meet.
+Also flagged: an untracked, unrelated `capture/test.py` (a LeetCode exercise) is sitting in the
+capture lane and should be removed before F-04's ruff job starts linting it.

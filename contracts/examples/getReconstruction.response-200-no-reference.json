@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "glb_url": "https://pod.example/sessions/sess_a10efd/model.glb",
+  "reference_tier_used": "none",
+  "metric": false,
+  "observed_fraction": 0.88,
+  "warnings": [
+    "No reference sheet detected in any frame — this model carries no dimensional claims."
+  ]
+}

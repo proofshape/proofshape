@@ -1,0 +1,4 @@
+{
+  "code": "too_few_frames",
+  "message": "Not enough frames were captured yet to reconstruct — keep going around the part."
+}

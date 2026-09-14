@@ -239,6 +239,39 @@ cross-branch numbering check this entry's own reasoning refers to) had merged, s
 literally appear in this file until that PR lands too — the reference above is to the practice,
 not a broken link.
 
+**D-031 · Changing the frozen contract needs both other members' approval, at a sprint boundary.** (2026-09-13)
+`CONTRIBUTING.md` states the rule for changing `contracts/openapi.yaml` after v1: approval from
+both other team members — which, with the author, is all three signed off — merged only at a
+sprint boundary. This is a written rule, not a branch-protection setting: `main` still requires
+one approval repo-wide, left alone rather than raised project-wide to cover one directory.
+*Why:* F-03's third acceptance criterion said the contract needs "all three approvals," but
+GitHub cannot count the PR author's own approval — the author is barred from approving their own
+PR — so on a three-person team the mechanical ceiling is two. `docs/sprint-plan.md` §7 already
+says "two approvals" for exactly this reason. This entry reconciles the two: they were never in
+tension, "all three agree" and "two reviewer approvals" describe the same outcome once GitHub's
+approval-counting limit is accounted for. Recorded so nobody re-opens this as a contradiction
+between the story and the sprint plan.
+*Checked against D-028 at write time:* D-031 and D-032 were free on every open branch, `main`
+included, as of 2026-09-13 — thirteen branches checked, highest claimed anywhere was D-030.
+
+**D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
+`contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
+reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
+define those fields. The verdict result freezes only the envelope the existing decisions already
+settle: the four verdict values (D-005's hard rule needs exactly these), per-region provenance,
+and reason codes. Tolerance-table internals, `k` and `σ_floor` are marked
+`x-proofshape-extends-at` in the schema rather than invented.
+*Why:* Phase 3 (inspection) is deliberately titles-only in `stories/README.md` — "we elaborate
+one sprint ahead... because most of these would be wrong if written in September." Freezing
+tolerance-table shapes now would mean designing I-01 through I-10's data model before any of
+those stories exist, and would violate the "no promised numbers" rule by giving `k` and
+`σ_floor` a schema presence before the October calibration study measures them. The API is
+versioned by the `/v1` path prefix specifically so a v2 can be introduced alongside this one,
+once inspection is designed, rather than requiring this frozen file to be reopened.
+*What this leaves as future work:* whoever picks up I-01 onwards defines the tolerance-table
+schema and requests the D-031 approval to add it — this decision does not pre-approve any
+particular shape for it.
+
 ---
 
 ## Open — not yet decided

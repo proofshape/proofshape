@@ -1,0 +1,20 @@
+{
+  "verdict": "Pass",
+  "declared_at": "post_reconstruction",
+  "orientation_ambiguous": false,
+  "regions": [
+    {
+      "name": "mounting_hole_A",
+      "provenance": "observed",
+      "deviation_mm": 0.14,
+      "contributes_to_verdict": true
+    },
+    {
+      "name": "sealing_face",
+      "provenance": "observed",
+      "deviation_mm": -0.06,
+      "contributes_to_verdict": true
+    }
+  ],
+  "reason_codes": []
+}

@@ -1,0 +1,5 @@
+{
+  "code": "frame_rejected_blur",
+  "message": "That frame was too blurry to use — hold the phone steadier for a moment.",
+  "frame_indices": [14]
+}
