@@ -162,3 +162,31 @@ all states consistent afterward.
 record's hour field stays `<n>` rather than guessed, per D-033.
 **Next:** nothing downstream depends on F-04, so this wasn't blocking anyone; it was purely
 bookkeeping hygiene.
+
+## 2026-09-15 — F-03 closed out; PR #16's D-031 claim corrected (built)
+
+**Who:** @TabeenRaoof
+**What changed:** PR #16 (@mbj1994) proposed keeping F-03 `In review` on the theory that D-031
+required a second explicit approval before it could close, since @dalwalyk's review on PR #13
+was recorded as `COMMENTED` rather than `APPROVED`. Checked the actual text: both `CONTRIBUTING.md`
+and D-031 scope the two-approval rule to changes made **after v1 is frozen** — PR #13 is what
+froze v1, so the rule never applied to PR #13's own merge, which needed and got the standard
+single approval (from `@mbj1994`, who also merged it). The Codex review bot flagged the same
+misreading independently, citing the same two sources. Requested changes on #16 rather than
+approving it — it also turned out to be stale, opened before PR #15 merged, so its F-04 content
+would have reverted that already-landed fix. Separately, correct the one real, valid point PR #16
+surfaced: F-03 genuinely was still stuck `In review` despite a fully valid merge, because nobody
+ran the merge-time DoD steps — the same gap class PR #15 fixed for F-04, just for a different
+story. Also filled the Notes section, which @dalwalyk's own review on #13 correctly flagged as
+still the unfilled template.
+**Result:** `stories/F-03.md` → `State: Done`, completion record filled (PR #13, 4.5 h actual
+against a 3 h estimate — the honest number I flagged at the time, not the estimate). Index
+row → `Done`. `check_story_states.py` reports consistent afterward; nothing further unblocks
+since R-14 also needs R-08, still `Blocked`.
+**Concluded:** the class of bug PR #15 first caught (a merged story never closed out) isn't
+unique to F-04 — `check_story_states.py` can't detect it at all, since it only flags file/index
+*disagreement*, and a story stuck `In review` with both file and index agreeing looks
+consistent to that script. Worth a genuine follow-up: teach the script to also flag any story
+whose state is `In review` or `Claimed` while its own linked PR shows `MERGED`, rather than
+relying on someone noticing by hand a second time.
+**Next:** none — F-03 has no dependents besides R-14, which also needs R-08.
