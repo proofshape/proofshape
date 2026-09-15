@@ -138,3 +138,27 @@ so the existing test suites don't gate any merge yet, and `required_status_check
 still empty so no CI result can block a merge — both are F-04's own acceptance criteria to meet.
 Also flagged: an untracked, unrelated `capture/test.py` (a LeetCode exercise) is sitting in the
 capture lane and should be removed before F-04's ruff job starts linting it.
+
+## 2026-09-14 — F-04 closed out; required status checks wired up (built)
+
+**Who:** @TabeenRaoof
+**What changed:** #11 and #12 (F-04's Python and TypeScript CI lanes) merged this morning, but
+neither PR set `State: Done`, updated the index, or filled the completion record — the exact
+gap `AGENTS.md`'s merge-time DoD steps and `AGENTS_START_HERE.md` exist to catch, caught this
+time by the mechanical check (`check_story_states.py`) rather than by either PR itself.
+Corrected: `stories/F-04.md` → `State: Done`, `Owner: @dalwalyk` (was "Yashi" — the same
+naming-convention nit flagged in review, fixed here since nobody else had), completion record
+citing both PR numbers. Index row → `Done`. Separately, registered `ruff` and `typescript` as
+required status checks on `main`'s branch protection — an admin-only setting that had been
+sitting open since F-01, and the one piece of F-04's acceptance criteria (a lint failure
+actually blocks a merge) that no amount of code in either PR could satisfy on its own.
+**Command / how to reproduce:** `gh api .../branches/main/protection/required_status_checks
+--method PATCH` with `contexts: ["ruff", "typescript"]`; `python3
+scripts/check_story_states.py --fix` for the story bookkeeping.
+**Result:** `required_status_checks.contexts` now lists both checks (confirmed by reading the
+protection settings back, not just assuming the PATCH took). `check_story_states.py` reports
+all states consistent afterward.
+**Concluded:** actual hours for F-04 are unknown — neither PR recorded them — so the completion
+record's hour field stays `<n>` rather than guessed, per D-033.
+**Next:** nothing downstream depends on F-04, so this wasn't blocking anyone; it was purely
+bookkeeping hygiene.
