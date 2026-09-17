@@ -1,8 +1,12 @@
+import importlib
+import runpy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from scripts.check_gpu import gpu_report
+GPU_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_gpu.py"
+gpu_report = runpy.run_path(str(GPU_SCRIPT))["gpu_report"]
 
 
 class FakeCuda:
@@ -23,7 +27,9 @@ class FakeCuda:
 
 
 def test_gpu_report_when_cuda_available() -> None:
-    fake_torch = SimpleNamespace(__version__="2.8.0", cuda=FakeCuda(True, 1, "Tesla T4"))
+    fake_torch = SimpleNamespace(
+        __version__="2.8.0", cuda=FakeCuda(True, 1, "Tesla T4")
+    )
 
     report = gpu_report(fake_torch)
 
@@ -48,12 +54,14 @@ def test_gpu_report_when_cuda_unavailable() -> None:
     }
 
 
-def test_gpu_report_has_clear_error_when_torch_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gpu_report_has_clear_error_when_torch_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def missing_import(name: str):
         assert name == "torch"
         raise ModuleNotFoundError(name)
 
-    monkeypatch.setattr("scripts.check_gpu.importlib.import_module", missing_import)
+    monkeypatch.setattr(importlib, "import_module", missing_import)
 
     with pytest.raises(RuntimeError, match="PyTorch is not installed"):
         gpu_report()
