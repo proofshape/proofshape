@@ -303,15 +303,17 @@ flag it. `mergeable: MERGEABLE` on the resulting PR never meant the content was 
 the new entry on this exact failure mode below, D-035.
 
 **D-034 · ChArUco golden-capture board: `DICT_5X5_250`, 8×6 squares at 20 mm, 15 mm markers.** (2026-09-17)
-Board generated with OpenCV's own `cv2.aruco` module (matching the ChArUco detector R-02/R-03
-will use, avoiding any dictionary or version mismatch between what's printed and what gets
-detected), exported to PDF and printed at 100% scale — never "fit to page." Physical pattern
-size 160 mm × 120 mm, comfortably inside both A4 and Letter with wide margins (~25–28 mm sides,
-~60–88 mm top/bottom), leaving room for the per-PO QR code and orientation arrow the proposal's
-design already reserves margin space for. 35 interior corners ((8−1)×(6−1)) for a stable
-pose/intrinsics solve even with part of the board occluded by a part, per R-02's own acceptance
-criterion. Marker size is 0.75× the square size (15 mm in a 20 mm square), a standard detection
-margin. ~24 markers needed, well inside the 250-ID dictionary.
+Board generated with [calib.io's Camera Calibration Pattern Generator](https://calib.io/pages/camera-calibration-pattern-generator)
+(free for educational use; picked over generating directly via `cv2.aruco` for print precision —
+it targets exact physical dimensions and explicitly warns against printer-driver rescaling, the
+same risk this decision's margin reasoning is built around), exported to PDF and printed at 100%
+scale — never "fit to page." Physical pattern size 160 mm × 120 mm, comfortably inside both A4
+and Letter with wide margins (~25–28 mm sides, ~60–88 mm top/bottom), leaving room for the
+per-PO QR code and orientation arrow the proposal's design already reserves margin space for.
+35 interior corners ((8−1)×(6−1)) for a stable pose/intrinsics solve even with part of the board
+occluded by a part, per R-02's own acceptance criterion. Marker size is 0.75× the square size
+(15 mm in a 20 mm square), a standard detection margin. ~24 markers needed, well inside the
+250-ID dictionary.
 *Why:* R-02 (board detection) and R-03 (camera intrinsics from the board) both need to agree
 with F-06 on these exact parameters, and nothing had fixed them yet. `DICT_5X5_250` is the most
 widely documented ChArUco choice in OpenCV's own tutorials, which matters more than an
@@ -322,6 +324,16 @@ if there's a clean, measurable margin between the pattern and the paper edge in 
 *Not yet decided:* whether/when the per-PO QR code and orientation arrow actually get added to
 the printed sheet — margin space is reserved for them, but F-06's golden capture set does not
 need them (there is no real PO to bind to yet).
+*Amended 2026-09-17:* generating the actual print file surfaced a parameter this entry originally
+missed — calib.io's "ChArUco Legacy" toggle, which selects OpenCV's older pre-4.6 marker-to-
+square layout versus the current default. **Left unchecked (non-legacy),** matching a fresh
+build against OpenCV ≥4.7 with no old boards to stay compatible with; R-02/R-03's code must
+construct its `cv2.aruco.CharucoBoard` the same way, since legacy and non-legacy boards can fail
+to detect against the wrong mode's detector even with dictionary and geometry both correct. The
+final print file is committed at `fixtures/charuco_board.pdf` (an exception to fixtures/ normally
+holding nothing but a download script — this is the calibration target itself, not captured
+data, and small enough to version directly) so the exact parameters, including this one, never
+have to be re-derived from a third-party tool's UI.
 
 **D-035 · A two-parent merge can silently keep only one side's independent addition, with no conflict markers.** (2026-09-17)
 Two branches each appended a different new decision at the same location in `docs/decisions.md`
