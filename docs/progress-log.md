@@ -190,3 +190,50 @@ consistent to that script. Worth a genuine follow-up: teach the script to also f
 whose state is `In review` or `Claimed` while its own linked PR shows `MERGED`, rather than
 relying on someone noticing by hand a second time.
 **Next:** none — F-03 has no dependents besides R-14, which also needs R-08.
+
+## 2026-09-17 — D-033 found silently dropped from main; restored; ChArUco board decided (built)
+
+**Who:** @TabeenRaoof
+**What changed:** while running the routine D-028 cross-branch decision-number check before
+adding a new decision, the *numeric* maximum on `main` came back as D-032 — one lower than
+D-033, a decision known to have merged via PR #14 on 2026-09-14. Traced it commit by commit:
+D-033 was present in `17db023` (PR #14's own merge commit), then absent starting at `493164b`
+("Merge branch 'main' into foundations/F-03-interface-contract-v1"). That merge combined two
+branch tips that had each independently appended different content — D-033 on one side, D-031/
+D-032 on the other — at the identical insertion point in `docs/decisions.md` (immediately before
+the "Open" section). No line was edited by both sides, so git found no conflict to flag, and the
+merge silently kept only one side's addition. `mergeable: MERGEABLE` on PR #13 (which carried
+this merge forward) never reflected the loss.
+**Command / how to reproduce:** `git show <commit>:docs/decisions.md | grep -c D-033`, walked
+across every commit on `main`'s first-parent-plus-merges history in order, to find the exact
+commit where the count went from 1 to 0.
+**Result:** restored D-033 verbatim (recovered from `33bf3dc`, its last known-good state) back
+into `docs/decisions.md`, with a note on the entry itself explaining what happened and when it
+was restored. Also recorded the new finding as D-035: a two-parent merge can silently drop one
+side's entire independent addition to an append-only file, with zero conflict markers, when
+both sides insert different new content at the same location rather than editing the same
+lines — a variant of the F-02 corruption class (2026-09-14 entry above), not a duplicate of it.
+**Concluded:** D-033 was not merely hidden by file order — it was genuinely absent from every
+branch's actual content except the one already-merged source branch, so file-order `tail -1`
+would have reported the same (wrong) answer as a true numeric max here; this incident's cause
+was the merge, not the check command. But double-checking with the numeric max surfaced a real,
+separate latent bug in the check `AGENTS.md` documents: `tail -1` on `grep -oE '^\*\*D-[0-9]+'`
+takes the *last matching line in file order*, not the numeric maximum, and this file's entries
+are demonstrably not in strict numeric order already (D-027/D-030/D-025/D-028 sit out of
+sequence further up). A future branch could have a genuinely higher number sitting earlier in
+the file than its own last-in-order entry, and the documented check would silently miss it.
+**Next:** `AGENTS.md`'s documented D-028 check command should be corrected to sort numerically
+rather than rely on file order — filed as a real follow-up, not fixed in this PR since it's a
+distinct, separately-reviewable change to the instructions file itself.
+
+## 2026-09-17 — ChArUco board parameters decided (D-034)
+
+**Who:** @TabeenRaoof
+**What changed:** F-06 (claimed by @mbj1994) and R-02/R-03 all need to agree on the same board
+parameters, and nothing had fixed them yet. Decided: `DICT_5X5_250`, 8×6 squares at 20 mm,
+15 mm markers, generated via `cv2.aruco` and printed at 100% scale. Recorded as D-034, with the
+reasoning tied directly to this project's own scale-integrity design (the sheet outline as one
+of three scale checks) rather than picked from general best practice alone.
+**Next:** whoever builds F-06 (mbj1994, pending a check-in with @TabeenRaoof about possibly
+claiming it) prints against these exact numbers; R-02/R-03 implement against the same dictionary
+and geometry.
