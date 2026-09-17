@@ -190,3 +190,61 @@ consistent to that script. Worth a genuine follow-up: teach the script to also f
 whose state is `In review` or `Claimed` while its own linked PR shows `MERGED`, rather than
 relying on someone noticing by hand a second time.
 **Next:** none — F-03 has no dependents besides R-14, which also needs R-08.
+
+## 2026-09-17 — progress-review deck built for the 18 Sept review (built)
+
+**Who:** @TabeenRaoof
+**What changed:** built `submissions/2026-09-18-progress-review-deck.pptx` — 14 slides covering
+how the project was planned (stories, the GitHub gate, the decisions log), what has shipped,
+and the change of plan from three per-person lanes to all three of us on foundations and then
+the reconstruction engine. Includes a re-planned Gantt reflecting that shape. The generator is
+committed at `scripts/build_review_deck.js` so the next six reviews are assembly rather than
+invention, which is the only way the 18-person-hour review budget in D-015 survives.
+**Command / how to reproduce:** `cd scripts && npm install && node build_review_deck.js
+../submissions/2026-09-18-progress-review-deck.pptx`
+**Result:** every figure in the deck was read from the repository rather than recalled — 4 of 7
+foundation stories Done, 19 pull requests (15 merged, 2 closed, 2 open), 32 decisions logged,
+13 tests green, 2 required CI checks, 79 golden-capture frames across 3 sessions. The deck
+states plainly that there is no runnable pipeline yet and that M1 (25 Sept) will slip to early
+October, because the critical-chain arithmetic in `stories/README.md` has said so since it was
+written.
+**Concluded:** the lane change is real and documentable, not a retrofit. The archived
+pre-proposal draft (`docs/archive/team-proposal-v2.md`) has a "Lanes (to argue about)" section
+with one owner per lane, and the submitted proposal still carries a Lane/Owner table with 97
+hours budgeted per person. D-019 and D-020 replaced that with backend-first and
+lanes-are-places on 4 September; what we have actually *done* since confirms it — all three of
+us have worked only in foundations, and nobody has touched `capture/` or `inspect/`.
+**Next:** see the marker below.
+
+---
+
+## ► NEXT DECK: covers 18 Sept → next review (~2 Oct 2026)
+
+**Read this before building the next progress deck.** The 18 September deck covers everything up
+to and including 17 September. **The next one starts from 18 September** — do not re-present
+foundations, the GitHub process, or the lane change; the professor has seen all three. Those
+slides exist to be cut, not repeated.
+
+What the next deck needs to answer, using the standing four-slide template:
+
+1. **What we said we would do** — this is already on record, from slide 13 of the 18 Sept deck:
+   F-05, F-06, F-07, then R-02, R-01, R-04. The commitment made out loud was *"the golden capture
+   going into the reconstruction model and a metric point cloud coming out — a running pipeline,
+   not slides."* Hold the next deck to exactly that sentence.
+2. **What works now** — a demo or a recording. If R-01 runs, show it running. Per the sprint plan's
+   own rule, from R2 onward keep a screen recording of the working path in case the pod or the
+   network fails in the room.
+3. **What slipped** — M1 (25 Sept) was already flagged as slipping to early October *before* the
+   gate. Report what actually happened against that, honestly, including real actual-hours
+   numbers now that D-033 requires them.
+4. **What we will have by the review after** — the next chain stories, R-06 onward.
+
+Also carry forward, still open as of this entry:
+- **O-003 — the review cadence is still unconfirmed.** The plan assumed every second Friday from
+  11 September (R1 11 Sept, R2 25 Sept), but the real review is 18 September, which matches
+  neither. Re-anchor the review dates in `docs/sprint-plan.md` once the actual schedule is known,
+  rather than leaving the Gantt carrying dates nobody has verified.
+- **Actual hours are missing on F-01 and F-04.** If anyone can still remember them, fill them in;
+  if not, they stay blank, which is what D-033 requires.
+
+---
