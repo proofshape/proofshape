@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Verify that the current Python environment can see an NVIDIA GPU through PyTorch.
 
 F-05 uses this as the shared smoke test. The logic is deliberately tiny: this story is proving
