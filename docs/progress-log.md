@@ -194,10 +194,15 @@ relying on someone noticing by hand a second time.
 ## 2026-09-17 — progress-review deck built for the 18 Sept review (built)
 
 **Who:** @TabeenRaoof
-**What changed:** built `submissions/2026-09-18-progress-review-deck.pptx` — 14 slides covering
+**What changed:** built `submissions/2026-09-18-progress-review-deck.pptx` — 15 slides covering
 how the project was planned (stories, the GitHub gate, the decisions log), what has shipped,
 and the change of plan from three per-person lanes to all three of us on foundations and then
-the reconstruction engine. Includes a re-planned Gantt reflecting that shape. The generator is
+the reconstruction engine. Includes a re-planned Gantt reflecting that shape, and six
+screenshots taken during the work — a story file, the definition-of-done checklist on a live
+PR, a reviewer blocking a merge for missing tests, the approval gate, the GPU smoke test
+passing, and a golden-capture frame. Assets live in `submissions/assets/2026-09-18/`, with a
+narrowly scoped `.gitignore` exception so they can be committed without ever whitelisting
+capture photographs. The generator is
 committed at `scripts/build_review_deck.js` so the next six reviews are assembly rather than
 invention, which is the only way the 18-person-hour review budget in D-015 survives.
 **Command / how to reproduce:** `cd scripts && npm install && node build_review_deck.js

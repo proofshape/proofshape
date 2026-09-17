@@ -108,6 +108,27 @@ function table(s, rows, o = {}) {
 function th(t) { return { text: t, options: { bold: true, color: PAPER, fill: { color: ACCENT }, fontSize: 12.5 } }; }
 function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts } }; }
 
+// Slide assets live beside the deck they belong to, so a dated submission stays
+// self-contained. Resolved from __dirname so the script runs from any directory.
+const path = require("path");
+const A = path.join(__dirname, "..", "submissions", "assets", "2026-09-18") + path.sep;
+
+// Screenshot with a thin border and a caption underneath.
+function shot(s, file, o) {
+  s.addShape(pres.ShapeType.rect, {
+    x: o.x - 0.035, y: o.y - 0.035, w: o.w + 0.07, h: o.h + 0.07,
+    fill: { color: "E6ECF0" }, line: { color: "D3DCE3", width: 0.75 },
+  });
+  s.addImage({ path: A + file, x: o.x, y: o.y, w: o.w, h: o.h });
+  if (o.caption) {
+    s.addText(o.caption, {
+      x: o.x - 0.035, y: o.y + o.h + 0.09, w: o.w + 0.07, h: 0.42,
+      fontSize: o.capSize || 10.5, color: MUTED, align: o.capAlign || "left",
+      fontFace: "Helvetica", valign: "top",
+    });
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 1 · Title
 // ═══════════════════════════════════════════════════════════════════════════
@@ -134,10 +155,10 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
     { x: M, y: 1.62, w: W - 2 * M, h: 0.5, fontSize: 13.5, color: MUTED, italic: true, fontFace: "Helvetica" });
 
   const qs = [
-    ["1", "What we said we would do last time", "slides 6"],
-    ["2", "What works now", "slides 7–9"],
-    ["3", "What slipped, and why", "slide 12"],
-    ["4", "What we will have by the next review", "slide 13"],
+    ["1", "What we said we would do last time", "slide 6"],
+    ["2", "What works now", "slides 7–10"],
+    ["3", "What slipped, and why", "slide 13"],
+    ["4", "What we will have by the next review", "slide 14"],
   ];
   let y = 2.35;
   qs.forEach(([n, q, where]) => {
@@ -158,14 +179,18 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
   header(s, "We planned the work as stories, not as a to-do list", "how we planned it · 1 of 3");
   bullets(s, [
     { text: "One story = one pull request = one or two work sessions.", bold: true },
-    { text: "If it grows past that, it gets split. Review quality collapses on large diffs.", sub: true },
-    { text: "22 stories written out in full — 7 foundations, 15 reconstruction engine.", bold: true },
-    { text: "Later phases are titles only, elaborated one sprint ahead. Most detail written in September would be wrong by November.", sub: true },
+    { text: "If it grows past that, it gets split — review quality collapses on large diffs.", sub: true },
+    { text: "22 stories written out in full.", bold: true },
+    { text: "7 foundations, 15 reconstruction engine. Later phases are titles only, elaborated one sprint ahead — most detail written in September would be wrong by November.", sub: true },
     { text: "The ID says where the work lives, not its priority.", bold: true },
-    { text: "F = foundations, R = reconstruction, C = capture, I = inspection, A = generative AI. R-04 is not \"step 4\" — the Depends-on line is the only ordering that matters.", sub: true },
-    { text: "Every story carries a state, and a script checks they stay honest.", bold: true },
-    { text: "Blocked → Ready → Claimed → In review → Done. Ready means nobody has claimed it and nothing blocks it, so anyone can take it without asking.", sub: true },
-  ], { y: 1.72, fontSize: 15.5 });
+    { text: "F foundations · R reconstruction · C capture · I inspection · A generative AI. R-04 is not \"step 4\" — the Depends-on line is the only ordering that matters.", sub: true },
+    { text: "Every story carries a state, and a script keeps them honest.", bold: true },
+    { text: "Blocked → Ready → Claimed → In review → Done.", sub: true },
+  ], { y: 1.72, w: 6.35, fontSize: 14 });
+  shot(s, "story-file-anatomy.jpg", {
+    x: 7.35, y: 1.78, w: 5.36, h: 3.43,
+    caption: "Every story is a file with the same shape: dependencies, state, owner, testable acceptance criteria, working notes, and a completion record that takes real hours — not the estimate copied across.",
+  });
   footer(s, 3);
 }
 
@@ -211,12 +236,16 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
 
   bullets(s, [
     { text: "A decision without its reasoning gets reversed by whoever forgets it.", bold: true },
-    { text: "Example — D-005, the hard rule: geometry the camera did not see can never pass or fail a part. It may only trigger a Rescan. Enforced structurally in the data format, with a test that fails the build if a report violates it.", sub: true },
+    { text: "D-005, the hard rule: geometry the camera did not see can never pass or fail a part — only trigger a Rescan. Enforced in the data format, with a test that fails the build if a report violates it.", sub: true },
     { text: "Where a rule could be a script, it is a script.", bold: true },
-    { text: "check_story_states.py reads the dependency graph and flags any story whose file and index disagree, or that is stuck Blocked when its dependencies are Done. A checklist raises the odds a person does the right thing; it does not verify they did.", sub: true },
-    { text: "Tests are written during implementation — a joint obligation of engineer and AI assistant.", bold: true },
-    { text: "Not before as a batch, not after, and never deferred to a follow-up story.", sub: true },
-  ], { y: 3.24, fontSize: 14.5, h: 3.3 });
+    { text: "A checklist raises the odds a person does the right thing; it does not verify they did.", sub: true },
+    { text: "Tests are written during implementation — a joint obligation.", bold: true },
+    { text: "Engineer and AI assistant both. Never deferred to a follow-up story.", sub: true },
+  ], { y: 3.24, w: 6.35, fontSize: 13.5, h: 3.2 });
+  shot(s, "dod-checklist.jpg", {
+    x: 7.35, y: 3.3, w: 5.36, h: 2.46,
+    caption: "The definition-of-done checklist on a live pull request — unticked boxes are the point. This one is held open because D-031 requires both other members to approve a change to the file that rule itself governs.",
+  });
   footer(s, 5);
 }
 
@@ -265,6 +294,30 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 7b · Hard evidence
+// ═══════════════════════════════════════════════════════════════════════════
+{
+  const s = slide();
+  header(s, "The parts that are real today", "question 2 · evidence, not claims");
+
+  shot(s, "gpu-smoke-test-pass.jpg", {
+    x: M, y: 1.78, w: 6.0, h: 3.05,
+    caption: "GPU workspace running the shared smoke test: Tesla T4, PyTorch 2.8.0+cu128, CUDA available, GPU CHECK: PASS.",
+  });
+  shot(s, "golden-capture-lock.jpg", {
+    x: 7.0, y: 1.78, w: 5.71, h: 3.05,
+    caption: "Golden capture in progress — printed ChArUco board verified at 100% scale with calipers, part centred, whole sheet in frame.",
+  });
+
+  s.addText("Both are honestly incomplete", { x: M, y: 5.42, w: 6, h: 0.32, fontSize: 15, bold: true, color: WARN, fontFace: "Helvetica" });
+  bullets(s, [
+    { text: "F-05 — GPU access is proven for one member, not three. RunPod needed a payment method for the network volume, so Lightning AI was evaluated as a no-upfront-cost alternative. Which platform we standardise on is an open team decision, and the story stays Claimed until all three can connect and re-provisioning has been rehearsed." },
+    { text: "F-06 — two of three objects shot, 79 frames, both lighting conditions done for the lock. Still needed: a third object and a CAD model for at least one of them." },
+  ], { y: 5.74, fontSize: 12, h: 1.25 });
+  footer(s, 8);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 8 · Story board
 // ═══════════════════════════════════════════════════════════════════════════
 {
@@ -285,7 +338,7 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
 
   s.addText("Two of the four completed stories have no actual hours recorded. We have since made that a rule: the field takes a measured number or stays visibly blank — never the estimate copied across.",
     { x: M, y: 5.6, w: W - 2 * M, h: 0.55, fontSize: 13, color: WARN, fontFace: "Helvetica" });
-  footer(s, 8);
+  footer(s, 9);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -295,16 +348,19 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
   const s = slide();
   header(s, "Every change was reviewed — including the ones we got wrong", "question 2 · the process working");
 
+  shot(s, "peer-review-demands-tests.jpg", {
+    x: M, y: 1.72, w: 6.0, h: 2.94,
+    caption: "A reviewer blocking a merge on our own rules: \u201cit adds 134 lines of state-management logic without any automated tests, which violates the current definition of done in AGENTS.md\u201d \u2014 followed by the exact test cases required.",
+  });
+  shot(s, "pr-approval-gate.jpg", {
+    x: 7.0, y: 1.72, w: 5.71, h: 2.94,
+    caption: "The gate itself: \u201cAt least 1 approving review is required to merge this pull request.\u201d It applies to the repository owner too \u2014 nobody has an override.",
+  });
   bullets(s, [
-    { text: "Review caught real defects, not typos:", bold: true },
-    { text: "A clean merge silently duplicated a story's status block — GitHub reported it mergeable, and it was still corrupt. Found by reading both parents of the merge.", sub: true },
-    { text: "A second clean merge silently dropped an entire decision entry. Found by a routine cross-branch check computing the true maximum decision number.", sub: true },
-    { text: "Three separate branches independently claimed the same decision number. Now there is a documented check before claiming one.", sub: true },
-    { text: "Two pull requests were closed rather than merged.", bold: true },
-    { text: "#9 was redundant. #16 proposed keeping a story open based on a misreading of our own approval rule — that rule scopes to changes after the contract is frozen, and the PR in question was the freeze itself.", sub: true },
-    { text: "The disagreement was settled by quoting the rule, not by seniority.", sub: true, color: ACCENT },
-  ], { y: 1.75, fontSize: 14, h: 4.5 });
-  footer(s, 9);
+    { text: "Review also caught two defects that looked clean: a merge that silently duplicated a story's status block, and a second that silently dropped an entire decision entry. Both reported as mergeable by GitHub; both found by reading the merge, not trusting it." },
+    { text: "Two pull requests were closed rather than merged — one redundant, one based on a misreading of our own approval rule. That disagreement was settled by quoting the rule, not by seniority.", color: ACCENT },
+  ], { y: 5.5, fontSize: 12.5, h: 1.3 });
+  footer(s, 10);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -358,7 +414,7 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
     { text: "Total hours do not set the finish date — the serial chain does. About 42 of the 93 engine hours can only run one story after another, so that chain advances at one person's pace no matter how many people are free. Adding people to it changes nothing." },
     { text: "The reconstruction engine is the hardest risk in the project. Retiring it first means everything downstream is built against something real instead of a guess." },
   ], { y: 5.3, fontSize: 13, h: 1.5 });
-  footer(s, 10);
+  footer(s, 11);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -430,7 +486,7 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
 
   s.addText("M1 (25 Sept) is at risk. The chain needs ~40 hours to reach a working endpoint — about four and a half weeks from a 3 Sept start, which lands in early October, not late September. We are flagging it now rather than at the gate.",
     { x: M, y: 6.22, w: W - 2 * M, h: 0.5, fontSize: 12, color: WARN, fontFace: "Helvetica" });
-  footer(s, 11);
+  footer(s, 12);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -451,7 +507,7 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
     { text: "Golden capture needed three attempts.", bold: true },
     { text: "First set framed the part too small; the retake caught the phone silently switching lenses mid-session, which would have invalidated the camera calibration.", sub: true },
   ], { y: 1.68, fontSize: 13, h: 5.0 });
-  footer(s, 12);
+  footer(s, 13);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -475,7 +531,7 @@ function td(t, opts = {}) { return { text: t, options: { fontSize: 12.5, ...opts
   s.addText("The commitment", { x: M, y: 5.05, w: 6, h: 0.34, fontSize: 16, bold: true, color: ACCENT, fontFace: "Helvetica" });
   s.addText("By the next review we will show the golden capture going into the reconstruction model and a metric point cloud coming out — a running pipeline, not slides. If the chain stalls, that is the first thing we will say.",
     { x: M, y: 5.42, w: W - 2 * M, h: 0.7, fontSize: 15, color: INK, fontFace: "Helvetica" });
-  footer(s, 13);
+  footer(s, 14);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
