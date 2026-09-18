@@ -22,6 +22,11 @@ def gpu_report(torch_module: Any | None = None) -> dict[str, object]:
         try:
             torch_module = importlib.import_module("torch")
         except ModuleNotFoundError as exc:
+            # Only translate the error when torch itself is absent. If torch is installed but
+            # one of its import-time dependencies is missing, preserving that dependency name
+            # makes a fresh-workspace failure diagnosable instead of falsely blaming PyTorch.
+            if exc.name != "torch":
+                raise
             raise RuntimeError(
                 "PyTorch is not installed in this environment; F-05 GPU verification cannot run."
             ) from exc
