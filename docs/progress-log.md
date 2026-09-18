@@ -138,3 +138,55 @@ so the existing test suites don't gate any merge yet, and `required_status_check
 still empty so no CI result can block a merge — both are F-04's own acceptance criteria to meet.
 Also flagged: an untracked, unrelated `capture/test.py` (a LeetCode exercise) is sitting in the
 capture lane and should be removed before F-04's ruff job starts linting it.
+
+## 2026-09-14 — F-04 closed out; required status checks wired up (built)
+
+**Who:** @TabeenRaoof
+**What changed:** #11 and #12 (F-04's Python and TypeScript CI lanes) merged this morning, but
+neither PR set `State: Done`, updated the index, or filled the completion record — the exact
+gap `AGENTS.md`'s merge-time DoD steps and `AGENTS_START_HERE.md` exist to catch, caught this
+time by the mechanical check (`check_story_states.py`) rather than by either PR itself.
+Corrected: `stories/F-04.md` → `State: Done`, `Owner: @dalwalyk` (was "Yashi" — the same
+naming-convention nit flagged in review, fixed here since nobody else had), completion record
+citing both PR numbers. Index row → `Done`. Separately, registered `ruff` and `typescript` as
+required status checks on `main`'s branch protection — an admin-only setting that had been
+sitting open since F-01, and the one piece of F-04's acceptance criteria (a lint failure
+actually blocks a merge) that no amount of code in either PR could satisfy on its own.
+**Command / how to reproduce:** `gh api .../branches/main/protection/required_status_checks
+--method PATCH` with `contexts: ["ruff", "typescript"]`; `python3
+scripts/check_story_states.py --fix` for the story bookkeeping.
+**Result:** `required_status_checks.contexts` now lists both checks (confirmed by reading the
+protection settings back, not just assuming the PATCH took). `check_story_states.py` reports
+all states consistent afterward.
+**Concluded:** actual hours for F-04 are unknown — neither PR recorded them — so the completion
+record's hour field stays `<n>` rather than guessed, per D-033.
+**Next:** nothing downstream depends on F-04, so this wasn't blocking anyone; it was purely
+bookkeeping hygiene.
+
+## 2026-09-15 — F-03 closed out; PR #16's D-031 claim corrected (built)
+
+**Who:** @TabeenRaoof
+**What changed:** PR #16 (@mbj1994) proposed keeping F-03 `In review` on the theory that D-031
+required a second explicit approval before it could close, since @dalwalyk's review on PR #13
+was recorded as `COMMENTED` rather than `APPROVED`. Checked the actual text: both `CONTRIBUTING.md`
+and D-031 scope the two-approval rule to changes made **after v1 is frozen** — PR #13 is what
+froze v1, so the rule never applied to PR #13's own merge, which needed and got the standard
+single approval (from `@mbj1994`, who also merged it). The Codex review bot flagged the same
+misreading independently, citing the same two sources. Requested changes on #16 rather than
+approving it — it also turned out to be stale, opened before PR #15 merged, so its F-04 content
+would have reverted that already-landed fix. Separately, correct the one real, valid point PR #16
+surfaced: F-03 genuinely was still stuck `In review` despite a fully valid merge, because nobody
+ran the merge-time DoD steps — the same gap class PR #15 fixed for F-04, just for a different
+story. Also filled the Notes section, which @dalwalyk's own review on #13 correctly flagged as
+still the unfilled template.
+**Result:** `stories/F-03.md` → `State: Done`, completion record filled (PR #13, 4.5 h actual
+against a 3 h estimate — the honest number I flagged at the time, not the estimate). Index
+row → `Done`. `check_story_states.py` reports consistent afterward; nothing further unblocks
+since R-14 also needs R-08, still `Blocked`.
+**Concluded:** the class of bug PR #15 first caught (a merged story never closed out) isn't
+unique to F-04 — `check_story_states.py` can't detect it at all, since it only flags file/index
+*disagreement*, and a story stuck `In review` with both file and index agreeing looks
+consistent to that script. Worth a genuine follow-up: teach the script to also flag any story
+whose state is `In review` or `Claimed` while its own linked PR shows `MERGED`, rather than
+relying on someone noticing by hand a second time.
+**Next:** none — F-03 has no dependents besides R-14, which also needs R-08.
