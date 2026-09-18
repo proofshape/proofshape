@@ -21,6 +21,7 @@ https://github.com/proofshape/proofshape
 |---|---|
 | **Work on this project at all, human or AI** | **[AGENTS_START_HERE.md](AGENTS_START_HERE.md)** — read this first, every session |
 | Understand what we are building | [the proposal](submissions/2026-09-05-proposal.md) |
+| Actually use the system, or print the reference sheet | [docs/manual.md](docs/manual.md) |
 | Work on the project with an AI assistant | [AGENTS.md](AGENTS.md) |
 | Pick up a task | [the story index](stories/README.md) |
 | Know why something is the way it is | [docs/decisions.md](docs/decisions.md) |

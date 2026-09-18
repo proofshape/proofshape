@@ -272,6 +272,86 @@ once inspection is designed, rather than requiring this frozen file to be reopen
 schema and requests the D-031 approval to add it — this decision does not pre-approve any
 particular shape for it.
 
+**D-033 · `AGENTS_START_HERE.md` is the entry point; actual-hours must be measured, never copied from the estimate.** (2026-09-14)
+Added `AGENTS_START_HERE.md` at the repo root as the literal first file to open, every session —
+a numbered order of operations that points at the file governing each step rather than
+restating any of them. `CLAUDE.md` (auto-loaded at the start of every Claude Code session in
+this repo) now sends the reader there before `AGENTS.md`; `README.md`'s front door does the
+same for a human or another assistant. Also closes a real gap `AGENTS.md`'s definition of done
+already covers in spirit but not in words: `stories/F-01.md`'s completion record has sat with
+its actual-hours field as the unfilled `<n>` placeholder since 2026-09-11, and nothing said
+in writing that copying the *estimate* into that slot would be worse than leaving it unfilled.
+`AGENTS.md` now says so explicitly, in both the definition of done and the refusal list.
+*Why:* a startup file only works if something forces it to be opened first — a good checklist
+nobody's pointed at is no better than no checklist. Wiring `CLAUDE.md`'s auto-loaded content to
+name it is what actually makes this session-start-time, not just a file that exists. On the
+hours question: the actual-hours field exists specifically so estimates get less wrong over
+time (`stories/README.md`'s own words); a completion record with the estimate silently
+duplicated into the actual slot is visually indistinguishable from one that was really measured,
+which quietly defeats that mechanism while looking complete.
+*Checked against D-028 at write time:* D-033 was free on every open branch as of 2026-09-14 —
+fourteen branches checked, highest claimed anywhere was D-032 (on the unmerged
+`foundations/F-03-interface-contract-v1`).
+*Restored 2026-09-17:* this entry merged to `main` via PR #14 on 2026-09-14, then was silently
+dropped — not reverted by any commit, just never carried forward — by a later two-parent merge
+(`493164b`, "Merge branch 'main' into foundations/F-03-interface-contract-v1") that combined
+this branch's tip with the F-03 branch's tip. Both sides had independently appended different
+new decisions (this one; D-031/D-032) at the same point in the file, immediately before the
+"Open" section — a textbook same-location conflict — and the merge resolved it by keeping only
+the F-03 side's addition instead of combining both, with no conflict markers left behind to
+flag it. `mergeable: MERGEABLE` on the resulting PR never meant the content was complete; see
+the new entry on this exact failure mode below, D-035.
+
+**D-034 · ChArUco golden-capture board: `DICT_5X5_250`, 8×6 squares at 20 mm, 15 mm markers.** (2026-09-17)
+Board generated with [calib.io's Camera Calibration Pattern Generator](https://calib.io/pages/camera-calibration-pattern-generator)
+(free for educational use; picked over generating directly via `cv2.aruco` for print precision —
+it targets exact physical dimensions and explicitly warns against printer-driver rescaling, the
+same risk this decision's margin reasoning is built around), exported to PDF and printed at 100%
+scale — never "fit to page." Physical pattern size 160 mm × 120 mm, comfortably inside both A4
+and Letter with wide margins (~25–28 mm sides, ~60–88 mm top/bottom), leaving room for the
+per-PO QR code and orientation arrow the proposal's design already reserves margin space for.
+35 interior corners ((8−1)×(6−1)) for a stable pose/intrinsics solve even with part of the board
+occluded by a part, per R-02's own acceptance criterion. Marker size is 0.75× the square size
+(15 mm in a 20 mm square), a standard detection margin. ~24 markers needed, well inside the
+250-ID dictionary.
+*Why:* R-02 (board detection) and R-03 (camera intrinsics from the board) both need to agree
+with F-06 on these exact parameters, and nothing had fixed them yet. `DICT_5X5_250` is the most
+widely documented ChArUco choice in OpenCV's own tutorials, which matters more than an
+optimality argument for a team building this detector from scratch. The margin sizing follows
+directly from this project's own scale-integrity design — the proposal already uses "the sheet
+outline" (the paper's physical edge) as one of three independent scale checks, which only works
+if there's a clean, measurable margin between the pattern and the paper edge in the first place.
+*Not yet decided:* whether/when the per-PO QR code and orientation arrow actually get added to
+the printed sheet — margin space is reserved for them, but F-06's golden capture set does not
+need them (there is no real PO to bind to yet).
+*Amended 2026-09-17:* generating the actual print file surfaced a parameter this entry originally
+missed — calib.io's "ChArUco Legacy" toggle, which selects OpenCV's older pre-4.6 marker-to-
+square layout versus the current default. **Left unchecked (non-legacy),** matching a fresh
+build against OpenCV ≥4.7 with no old boards to stay compatible with; R-02/R-03's code must
+construct its `cv2.aruco.CharucoBoard` the same way, since legacy and non-legacy boards can fail
+to detect against the wrong mode's detector even with dictionary and geometry both correct. The
+final print file is committed at `fixtures/charuco_board.pdf` (an exception to fixtures/ normally
+holding nothing but a download script — this is the calibration target itself, not captured
+data, and small enough to version directly) so the exact parameters, including this one, never
+have to be re-derived from a third-party tool's UI.
+
+**D-035 · A two-parent merge can silently keep only one side's independent addition, with no conflict markers.** (2026-09-17)
+Two branches each appended a different new decision at the same location in `docs/decisions.md`
+(immediately before the "Open" section) without editing any of the same lines each other had
+already written. Git's merge did not treat this as a conflict — nothing overlapped byte-for-byte
+— and silently kept only one side's addition. `mergeable: MERGEABLE` on the resulting pull
+request never reflected this; the loss surfaced only when a routine cross-branch decision-number
+check (`D-028`) computed the true maximum decision number on `main` and found it lower than a
+number known to have been merged already.
+*Why:* this is the same class of defect the F-02 corruption already demonstrated for a story
+file's `State:`/`Owner:` lines (see the 2026-09-14 progress-log entry) — a clean two-parent merge
+proves the absence of conflict *markers*, not the presence of all intended *content* — but this
+instance shows it is not limited to two sides editing the *same* lines. Two sides *appending
+different new content at the same insertion point* can trigger the identical silent-drop
+behavior. *Whenever a file is structured as an append-only log (a decisions file, a changelog),
+treat a merge that touches it as unverified until someone reads the result and confirms every
+independently-added entry from both sides survived — not just that the file merged cleanly.*
+
 ---
 
 ## Open — not yet decided

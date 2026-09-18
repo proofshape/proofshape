@@ -3,6 +3,7 @@ fixtures/**
 !fixtures/*.py
 !fixtures/*.sh
 !fixtures/*.json
+!fixtures/*.pdf
 !fixtures/README.md
 *.jpg
 *.jpeg
