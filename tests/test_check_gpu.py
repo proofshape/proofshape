@@ -6,7 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 GPU_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_gpu.py"
-gpu_report = runpy.run_path(str(GPU_SCRIPT))["gpu_report"]
+GPU_NAMESPACE = runpy.run_path(str(GPU_SCRIPT))
+gpu_report = GPU_NAMESPACE["gpu_report"]
+main = GPU_NAMESPACE["main"]
 
 
 class FakeCuda:
@@ -59,9 +61,70 @@ def test_gpu_report_has_clear_error_when_torch_missing(
 ) -> None:
     def missing_import(name: str):
         assert name == "torch"
-        raise ModuleNotFoundError(name)
+        raise ModuleNotFoundError("No module named 'torch'", name="torch")
 
     monkeypatch.setattr(importlib, "import_module", missing_import)
 
     with pytest.raises(RuntimeError, match="PyTorch is not installed"):
         gpu_report()
+
+
+def test_gpu_report_preserves_missing_transitive_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing_import(name: str):
+        assert name == "torch"
+        raise ModuleNotFoundError("No module named 'sympy'", name="sympy")
+
+    monkeypatch.setattr(importlib, "import_module", missing_import)
+
+    with pytest.raises(ModuleNotFoundError, match="sympy"):
+        gpu_report()
+
+
+def test_main_returns_zero_when_cuda_is_available(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setitem(
+        GPU_NAMESPACE,
+        "gpu_report",
+        lambda: {
+            "pytorch_version": "2.8.0",
+            "cuda_available": True,
+            "gpu_count": 1,
+            "gpu_name": "Tesla T4",
+        },
+    )
+
+    assert main() == 0
+    assert "GPU CHECK: PASS" in capsys.readouterr().out
+
+
+def test_main_returns_one_when_cuda_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setitem(
+        GPU_NAMESPACE,
+        "gpu_report",
+        lambda: {
+            "pytorch_version": "2.8.0",
+            "cuda_available": False,
+            "gpu_count": 0,
+            "gpu_name": None,
+        },
+    )
+
+    assert main() == 1
+    assert "PyTorch cannot see CUDA" in capsys.readouterr().out
+
+
+def test_main_returns_one_when_pytorch_is_missing(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def missing_torch():
+        raise RuntimeError("PyTorch is not installed")
+
+    monkeypatch.setitem(GPU_NAMESPACE, "gpu_report", missing_torch)
+
+    assert main() == 1
+    assert "PyTorch is not installed" in capsys.readouterr().out
