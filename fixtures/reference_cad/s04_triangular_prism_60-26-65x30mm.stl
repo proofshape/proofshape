@@ -1,0 +1,58 @@
+solid s04_triangular_prism_60-26-65x30mm
+  facet normal 0.000000e+00 0.000000e+00 -1.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 59.575000 25.996526 0.000000
+      vertex 60.000000 0.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 1.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 30.000000
+      vertex 60.000000 0.000000 30.000000
+      vertex 59.575000 25.996526 30.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 -1.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 60.000000 0.000000 0.000000
+      vertex 60.000000 0.000000 30.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 -1.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 60.000000 0.000000 30.000000
+      vertex 0.000000 0.000000 30.000000
+    endloop
+  endfacet
+  facet normal 9.998664e-01 1.634615e-02 0.000000e+00
+    outer loop
+      vertex 60.000000 0.000000 0.000000
+      vertex 59.575000 25.996526 0.000000
+      vertex 59.575000 25.996526 30.000000
+    endloop
+  endfacet
+  facet normal 9.998664e-01 1.634615e-02 -0.000000e+00
+    outer loop
+      vertex 60.000000 0.000000 0.000000
+      vertex 59.575000 25.996526 30.000000
+      vertex 60.000000 0.000000 30.000000
+    endloop
+  endfacet
+  facet normal -3.999466e-01 9.165385e-01 0.000000e+00
+    outer loop
+      vertex 59.575000 25.996526 0.000000
+      vertex 0.000000 0.000000 0.000000
+      vertex 0.000000 0.000000 30.000000
+    endloop
+  endfacet
+  facet normal -3.999466e-01 9.165385e-01 0.000000e+00
+    outer loop
+      vertex 59.575000 25.996526 0.000000
+      vertex 0.000000 0.000000 30.000000
+      vertex 59.575000 25.996526 30.000000
+    endloop
+  endfacet
+endsolid s04_triangular_prism_60-26-65x30mm
