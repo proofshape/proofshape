@@ -1,0 +1,65 @@
+{
+  "captures": [
+    {
+      "aggregate_bytes": 93112777,
+      "drive_folder_id": "1NB2E7HydD8KsD3tCRKA9j14fkdjCAJMH",
+      "frames": 26,
+      "lighting": "condition A",
+      "object": "metal padlock",
+      "reflective": true,
+      "sample_id": "s-01"
+    },
+    {
+      "aggregate_bytes": 149634987,
+      "drive_folder_id": "1FOPhzL2Bo-_Qfqvk-lVFiXg73WXi_8sU",
+      "frames": 30,
+      "lighting": "condition B",
+      "object": "metal padlock",
+      "reflective": true,
+      "same_object_as": "s-01",
+      "sample_id": "s-02"
+    },
+    {
+      "aggregate_bytes": 93191453,
+      "drive_folder_id": "10HQtYToX3ptszNI_HE24RZbtQDoJYxyj",
+      "frames": 27,
+      "lighting": "condition A",
+      "object": "rounded rigid object",
+      "reflective": false,
+      "sample_id": "s-03"
+    },
+    {
+      "aggregate_bytes": 111627804,
+      "drive_folder_id": "1a-KgtnW_FueYx0_zMZNlWfNaD-adf3xQ",
+      "frames": 30,
+      "lighting": "condition A",
+      "object": "yellow triangular prism",
+      "reflective": false,
+      "sample_id": "s-04"
+    },
+    {
+      "aggregate_bytes": 108896707,
+      "drive_folder_id": "1EkStcpwZ5eDg-3KUtdaSmuw7iTcAIs5y",
+      "frames": 29,
+      "lighting": "condition A",
+      "object": "red rectangular prism",
+      "reflective": false,
+      "sample_id": "s-05"
+    }
+  ],
+  "drive_root_folder_id": "1Y022tHljQOj2Fvr_kfDuseg7CaKdjWZp",
+  "notes": "s-01 and s-02 are the same reflective metal padlock captured under visibly different lighting/background conditions. Photos remain outside git.",
+  "reference_cad": [
+    {
+      "drive_file_id": "1c3_NAmUX4YjOv3AGeH9xbowPrF0uFTJW",
+      "filename": "s04_triangular_prism_60-26-65x30mm.stl",
+      "sample_id": "s-04"
+    },
+    {
+      "drive_file_id": "1GKtaw2t2-RJXPlrAbQyfpFWx7ULnW8yC",
+      "filename": "s05_rect_prism_30x30x60mm.stl",
+      "sample_id": "s-05"
+    }
+  ],
+  "version": 1
+}
