@@ -17,6 +17,7 @@ fixtures/**
 *.glb
 *.obj
 *.stl
+!fixtures/reference_cad/*.stl
 
 # model weights
 *.pt
