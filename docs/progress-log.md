@@ -191,49 +191,65 @@ whose state is `In review` or `Claimed` while its own linked PR shows `MERGED`, 
 relying on someone noticing by hand a second time.
 **Next:** none — F-03 has no dependents besides R-14, which also needs R-08.
 
-## 2026-09-17 — D-033 found silently dropped from main; restored; ChArUco board decided (built)
+## 2026-09-17 — progress-review deck built for the 18 Sept review (built)
 
 **Who:** @TabeenRaoof
-**What changed:** while running the routine D-028 cross-branch decision-number check before
-adding a new decision, the *numeric* maximum on `main` came back as D-032 — one lower than
-D-033, a decision known to have merged via PR #14 on 2026-09-14. Traced it commit by commit:
-D-033 was present in `17db023` (PR #14's own merge commit), then absent starting at `493164b`
-("Merge branch 'main' into foundations/F-03-interface-contract-v1"). That merge combined two
-branch tips that had each independently appended different content — D-033 on one side, D-031/
-D-032 on the other — at the identical insertion point in `docs/decisions.md` (immediately before
-the "Open" section). No line was edited by both sides, so git found no conflict to flag, and the
-merge silently kept only one side's addition. `mergeable: MERGEABLE` on PR #13 (which carried
-this merge forward) never reflected the loss.
-**Command / how to reproduce:** `git show <commit>:docs/decisions.md | grep -c D-033`, walked
-across every commit on `main`'s first-parent-plus-merges history in order, to find the exact
-commit where the count went from 1 to 0.
-**Result:** restored D-033 verbatim (recovered from `33bf3dc`, its last known-good state) back
-into `docs/decisions.md`, with a note on the entry itself explaining what happened and when it
-was restored. Also recorded the new finding as D-035: a two-parent merge can silently drop one
-side's entire independent addition to an append-only file, with zero conflict markers, when
-both sides insert different new content at the same location rather than editing the same
-lines — a variant of the F-02 corruption class (2026-09-14 entry above), not a duplicate of it.
-**Concluded:** D-033 was not merely hidden by file order — it was genuinely absent from every
-branch's actual content except the one already-merged source branch, so file-order `tail -1`
-would have reported the same (wrong) answer as a true numeric max here; this incident's cause
-was the merge, not the check command. But double-checking with the numeric max surfaced a real,
-separate latent bug in the check `AGENTS.md` documents: `tail -1` on `grep -oE '^\*\*D-[0-9]+'`
-takes the *last matching line in file order*, not the numeric maximum, and this file's entries
-are demonstrably not in strict numeric order already (D-027/D-030/D-025/D-028 sit out of
-sequence further up). A future branch could have a genuinely higher number sitting earlier in
-the file than its own last-in-order entry, and the documented check would silently miss it.
-**Next:** `AGENTS.md`'s documented D-028 check command should be corrected to sort numerically
-rather than rely on file order — filed as a real follow-up, not fixed in this PR since it's a
-distinct, separately-reviewable change to the instructions file itself.
+**What changed:** built `submissions/2026-09-18-progress-review-deck.pptx` — 15 slides covering
+how the project was planned (stories, the GitHub gate, the decisions log), what has shipped,
+and the change of plan from three per-person lanes to all three of us on foundations and then
+the reconstruction engine. Includes a re-planned Gantt reflecting that shape, and six
+screenshots taken during the work — a story file, the definition-of-done checklist on a live
+PR, a reviewer blocking a merge for missing tests, the approval gate, the GPU smoke test
+passing, and a golden-capture frame. Assets live in `submissions/assets/2026-09-18/`, with a
+narrowly scoped `.gitignore` exception so they can be committed without ever whitelisting
+capture photographs. The generator is
+committed at `scripts/build_review_deck.js` so the next six reviews are assembly rather than
+invention, which is the only way the 18-person-hour review budget in D-015 survives.
+**Command / how to reproduce:** `cd scripts && npm install && node build_review_deck.js
+../submissions/2026-09-18-progress-review-deck.pptx`
+**Result:** every figure in the deck was read from the repository rather than recalled — 4 of 7
+foundation stories Done, 19 pull requests (15 merged, 2 closed, 2 open), 32 decisions logged,
+13 tests green, 2 required CI checks, 79 golden-capture frames across 3 sessions. The deck
+states plainly that there is no runnable pipeline yet and that M1 (25 Sept) will slip to early
+October, because the critical-chain arithmetic in `stories/README.md` has said so since it was
+written.
+**Concluded:** the lane change is real and documentable, not a retrofit. The archived
+pre-proposal draft (`docs/archive/team-proposal-v2.md`) has a "Lanes (to argue about)" section
+with one owner per lane, and the submitted proposal still carries a Lane/Owner table with 97
+hours budgeted per person. D-019 and D-020 replaced that with backend-first and
+lanes-are-places on 4 September; what we have actually *done* since confirms it — all three of
+us have worked only in foundations, and nobody has touched `capture/` or `inspect/`.
+**Next:** see the marker below.
 
-## 2026-09-17 — ChArUco board parameters decided (D-034)
+---
 
-**Who:** @TabeenRaoof
-**What changed:** F-06 (claimed by @mbj1994) and R-02/R-03 all need to agree on the same board
-parameters, and nothing had fixed them yet. Decided: `DICT_5X5_250`, 8×6 squares at 20 mm,
-15 mm markers, generated via `cv2.aruco` and printed at 100% scale. Recorded as D-034, with the
-reasoning tied directly to this project's own scale-integrity design (the sheet outline as one
-of three scale checks) rather than picked from general best practice alone.
-**Next:** whoever builds F-06 (mbj1994, pending a check-in with @TabeenRaoof about possibly
-claiming it) prints against these exact numbers; R-02/R-03 implement against the same dictionary
-and geometry.
+## ► NEXT DECK: covers 18 Sept → next review (~2 Oct 2026)
+
+**Read this before building the next progress deck.** The 18 September deck covers everything up
+to and including 17 September. **The next one starts from 18 September** — do not re-present
+foundations, the GitHub process, or the lane change; the professor has seen all three. Those
+slides exist to be cut, not repeated.
+
+What the next deck needs to answer, using the standing four-slide template:
+
+1. **What we said we would do** — this is already on record, from slide 13 of the 18 Sept deck:
+   F-05, F-06, F-07, then R-02, R-01, R-04. The commitment made out loud was *"the golden capture
+   going into the reconstruction model and a metric point cloud coming out — a running pipeline,
+   not slides."* Hold the next deck to exactly that sentence.
+2. **What works now** — a demo or a recording. If R-01 runs, show it running. Per the sprint plan's
+   own rule, from R2 onward keep a screen recording of the working path in case the pod or the
+   network fails in the room.
+3. **What slipped** — M1 (25 Sept) was already flagged as slipping to early October *before* the
+   gate. Report what actually happened against that, honestly, including real actual-hours
+   numbers now that D-033 requires them.
+4. **What we will have by the review after** — the next chain stories, R-06 onward.
+
+Also carry forward, still open as of this entry:
+- **O-003 — the review cadence is still unconfirmed.** The plan assumed every second Friday from
+  11 September (R1 11 Sept, R2 25 Sept), but the real review is 18 September, which matches
+  neither. Re-anchor the review dates in `docs/sprint-plan.md` once the actual schedule is known,
+  rather than leaving the Gantt carrying dates nobody has verified.
+- **Actual hours are missing on F-01 and F-04.** If anyone can still remember them, fill them in;
+  if not, they stay blank, which is what D-033 requires.
+
+---

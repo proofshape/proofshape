@@ -1,0 +1,8 @@
+{
+  "name": "proofshape-scripts",
+  "private": true,
+  "description": "Node helpers. Deliberately NOT at the repository root — see build_review_deck.js.",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}
