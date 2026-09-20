@@ -3,11 +3,16 @@ fixtures/**
 !fixtures/*.py
 !fixtures/*.sh
 !fixtures/*.json
+!fixtures/*.pdf
 !fixtures/README.md
 *.jpg
 *.jpeg
 *.png
 *.heic
+# ...except deck assets for a dated submission. Scoped deliberately narrow so this cannot
+# whitelist capture photographs, which must never be committed (see fixtures/README.md).
+!submissions/assets/**/*.jpg
+!submissions/assets/**/*.png
 *.ply
 *.glb
 *.obj
