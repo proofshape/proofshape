@@ -1,0 +1,70 @@
+{
+  "captures": [
+    {
+      "aggregate_bytes": 93112777,
+      "drive_folder_id": "1NB2E7HydD8KsD3tCRKA9j14fkdjCAJMH",
+      "frames": 26,
+      "lighting": "condition A",
+      "object": "metal padlock",
+      "reflective": true,
+      "sample_id": "s-01",
+      "content_sha256": "76341961a4319e1189db34d057ec0cfcca5120bfe88a3c42dfc5318dbca274d2"
+    },
+    {
+      "aggregate_bytes": 149634987,
+      "drive_folder_id": "1FOPhzL2Bo-_Qfqvk-lVFiXg73WXi_8sU",
+      "frames": 30,
+      "lighting": "condition B",
+      "object": "metal padlock",
+      "reflective": true,
+      "same_object_as": "s-01",
+      "sample_id": "s-02",
+      "content_sha256": "4f00c33501f82a0ca77be38211443aff9f5fc2ddab686f6d4c6f9b5d3f73a622"
+    },
+    {
+      "aggregate_bytes": 93191453,
+      "drive_folder_id": "10HQtYToX3ptszNI_HE24RZbtQDoJYxyj",
+      "frames": 27,
+      "lighting": "condition A",
+      "object": "rounded rigid object",
+      "reflective": false,
+      "sample_id": "s-03",
+      "content_sha256": "f56a6027f135b970ffd173edc962bf80e0cca45ca6e7fb8304f57f90a105efb8"
+    },
+    {
+      "aggregate_bytes": 111627804,
+      "drive_folder_id": "1a-KgtnW_FueYx0_zMZNlWfNaD-adf3xQ",
+      "frames": 30,
+      "lighting": "condition A",
+      "object": "yellow triangular prism",
+      "reflective": false,
+      "sample_id": "s-04",
+      "content_sha256": "2729b717b88dd0dc13b5d33a3fe520102ecd2edef9a564365c8817304891ae5d"
+    },
+    {
+      "aggregate_bytes": 108896707,
+      "drive_folder_id": "1EkStcpwZ5eDg-3KUtdaSmuw7iTcAIs5y",
+      "frames": 29,
+      "lighting": "condition A",
+      "object": "red rectangular prism",
+      "reflective": false,
+      "sample_id": "s-05",
+      "content_sha256": "f9a873149646d233167abef22fa466224d1d2eccd45910142df19e5199d3af33"
+    }
+  ],
+  "drive_root_folder_id": "1Y022tHljQOj2Fvr_kfDuseg7CaKdjWZp",
+  "notes": "s-01 and s-02 are the same reflective metal padlock captured under visibly different lighting/background conditions. Photos remain outside git.",
+  "reference_cad": [
+    {
+      "drive_file_id": "1c3_NAmUX4YjOv3AGeH9xbowPrF0uFTJW",
+      "filename": "s04_triangular_prism_60-26-65x30mm.stl",
+      "sample_id": "s-04"
+    },
+    {
+      "drive_file_id": "1GKtaw2t2-RJXPlrAbQyfpFWx7ULnW8yC",
+      "filename": "s05_rect_prism_30x30x60mm.stl",
+      "sample_id": "s-05"
+    }
+  ],
+  "version": 1
+}
