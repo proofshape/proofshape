@@ -267,4 +267,4 @@ Studio; full local verification on the reviewed branch was `pytest`, `ruff check
 passing on the final reviewed head. F-07 is now Ready because F-02 and F-05 are both Done.
 **Concluded:** the remote GPU foundation is complete; Lightning is the primary shared GPU path,
 with RunPod retained as fallback per D-036.
-**Next:** claim F-07 and finish the reproducible development environment; F-06 remains in review.
+**Next:** claim F-07 and finish the reproducible development environment; F-06 is Ready and unclaimed (its own PR is separate and still under review).
