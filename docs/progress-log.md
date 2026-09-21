@@ -253,3 +253,18 @@ Also carry forward, still open as of this entry:
   if not, they stay blank, which is what D-033 requires.
 
 ---
+
+## 2026-09-21 — F-05 shared GPU workspace (merged)
+
+**Who:** @mbj1994
+**What changed:** PR #21 merged the shared Lightning AI GPU workspace, GPU smoke-test tooling,
+D-036, and downstream wording updates for F-07/R-15. Story close-out now records the measured
+4 h actual and marks F-05 Done.
+**Command / how to reproduce:** `bash scripts/start_gpu_workspace.sh` in the shared Lightning
+Studio; full local verification on the reviewed branch was `pytest`, `ruff check .`,
+`ruff format --check .`, and `python3 scripts/check_story_states.py`.
+**Result:** all three members verified the shared T4 workspace; reviewer reported 20 pytest tests
+passing on the final reviewed head. F-07 is now Ready because F-02 and F-05 are both Done.
+**Concluded:** the remote GPU foundation is complete; Lightning is the primary shared GPU path,
+with RunPod retained as fallback per D-036.
+**Next:** claim F-07 and finish the reproducible development environment; F-06 remains in review.
