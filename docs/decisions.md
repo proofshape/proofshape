@@ -352,6 +352,35 @@ behavior. *Whenever a file is structured as an append-only log (a decisions file
 treat a merge that touches it as unverified until someone reads the result and confirms every
 independently-added entry from both sides survived — not just that the file merged cleanly.*
 
+
+**D-036 · Lightning AI is the shared remote GPU platform; Teamspace Drive holds shared large artifacts.** (2026-09-17)
+F-05 moves the remote-GPU path from RunPod to Lightning AI. Day-to-day local development remains
+on Apple Silicon per D-010, while NVIDIA-only reconstruction work uses the shared Lightning
+Teamspace/Studio. Large assets that must survive Studio recreation — model weights, checkpoints
+and golden-capture data — live outside git in the Teamspace Drive (or an attached external object
+store later if capacity requires it), not only in one Studio's home directory. Studio-local files
+and installed packages may use Lightning's native Studio persistence, but they are not the sole
+copy of shared project data.
+
+F-07's "pod" therefore means the shared Lightning GPU Studio for reproducible remote environment
+setup. R-15 deploys the reconstruction service through Lightning's deployment/public-endpoint path
+and must still prove that the resulting service answers over HTTPS/TLS; this decision does not
+waive that acceptance criterion. RunPod remains an emergency paid fallback if Lightning capacity,
+quotas, or deployment behavior blocks the project.
+
+*Why:* the RunPod network-volume path required a payment method before the team could even finish
+F-05, while Lightning allowed all three members to access the same T4 workspace and complete the
+GPU smoke test without that upfront billing blocker. The platform choice must preserve the
+original engineering intent, not merely rename it: shared durable data, reproducible GPU access,
+and a secure deployable endpoint. Lightning documents a Teamspace Drive shared across Studios,
+persistent Studio environments/files across sleep, and deployment options with TLS-secured
+communication. Those capabilities cover the roles that the original RunPod volume/proxy design
+was meant to provide, while keeping RunPod available as fallback rather than deleting it.
+
+*Checked against D-028 at write time:* every open branch visible in the repository was checked
+before assigning this number. The highest claimed decision found was D-035, so D-036 was the
+first free number.
+
 ---
 
 ## Open — not yet decided
