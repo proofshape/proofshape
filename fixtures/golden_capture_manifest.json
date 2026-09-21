@@ -7,7 +7,8 @@
       "lighting": "condition A",
       "object": "metal padlock",
       "reflective": true,
-      "sample_id": "s-01"
+      "sample_id": "s-01",
+      "content_sha256": "76341961a4319e1189db34d057ec0cfcca5120bfe88a3c42dfc5318dbca274d2"
     },
     {
       "aggregate_bytes": 149634987,
@@ -17,7 +18,8 @@
       "object": "metal padlock",
       "reflective": true,
       "same_object_as": "s-01",
-      "sample_id": "s-02"
+      "sample_id": "s-02",
+      "content_sha256": "4f00c33501f82a0ca77be38211443aff9f5fc2ddab686f6d4c6f9b5d3f73a622"
     },
     {
       "aggregate_bytes": 93191453,
@@ -26,7 +28,8 @@
       "lighting": "condition A",
       "object": "rounded rigid object",
       "reflective": false,
-      "sample_id": "s-03"
+      "sample_id": "s-03",
+      "content_sha256": "f56a6027f135b970ffd173edc962bf80e0cca45ca6e7fb8304f57f90a105efb8"
     },
     {
       "aggregate_bytes": 111627804,
@@ -35,7 +38,8 @@
       "lighting": "condition A",
       "object": "yellow triangular prism",
       "reflective": false,
-      "sample_id": "s-04"
+      "sample_id": "s-04",
+      "content_sha256": "2729b717b88dd0dc13b5d33a3fe520102ecd2edef9a564365c8817304891ae5d"
     },
     {
       "aggregate_bytes": 108896707,
@@ -44,7 +48,8 @@
       "lighting": "condition A",
       "object": "red rectangular prism",
       "reflective": false,
-      "sample_id": "s-05"
+      "sample_id": "s-05",
+      "content_sha256": "f9a873149646d233167abef22fa466224d1d2eccd45910142df19e5199d3af33"
     }
   ],
   "drive_root_folder_id": "1Y022tHljQOj2Fvr_kfDuseg7CaKdjWZp",
