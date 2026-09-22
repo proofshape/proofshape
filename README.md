@@ -65,16 +65,16 @@ today:
 
 | Part | How to run it |
 |---|---|
-| Python project | `pip install -e .` from the repository root, one command. Installs `recon` in editable mode. |
+| Python project | `./scripts/bootstrap_dev_env.sh` from the repository root, one command. Creates `.venv` with Python 3.11+, installs `recon` in editable mode plus every pinned dependency in `requirements.txt` (F-07). |
 | `recon/` | Nothing runnable yet. First piece lands with R-01. |
 | `capture/` | No npm project yet. Lands with the capture stories, starting C-01. |
 | `inspect/` | No runnable code yet, and not registered as a Python package — see `inspect/README.md`. Lands with the I-0x stories. |
 | `contracts/` | `openapi.yaml`, frozen at v1 (F-03). Changing it needs `CONTRIBUTING.md`'s approval rule. |
 | `fixtures/` | Empty until F-06 adds the download script. |
-| `scripts/` | Empty until a story needs a one-command helper. |
+| `scripts/` | `bootstrap_dev_env.sh` (F-07). Otherwise empty until a story needs a one-command helper. |
 
-Each directory has its own `README.md` with more detail. A fully reproducible environment
-(pinned dependency versions, one command on both the laptop and the pod) is F-07, not this one.
+Each directory has its own `README.md` with more detail. The bootstrap script works the same way
+on Apple Silicon and on the shared GPU environment (F-05) — same command, same pinned versions.
 
 ## Working agreements, in brief
 
