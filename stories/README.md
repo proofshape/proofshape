@@ -98,7 +98,7 @@ Full detail in each story file.
 | [F-04](F-04.md) | CI skeleton | 3 h | F-02 | Done |
 | [F-05](F-05.md) | Shared GPU workspace provisioned, three-way access | 4 h | nothing | Done |
 | [F-06](F-06.md) | Golden capture set | 5 h | nothing | In review |
-| [F-07](F-07.md) | Reproducible dev environment | 3 h | F-02, F-05 | Ready |
+| [F-07](F-07.md) | Reproducible dev environment | 3 h | F-02, F-05 | In review |
 
 ---
 
