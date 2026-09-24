@@ -97,8 +97,8 @@ Full detail in each story file.
 | [F-03](F-03.md) | Interface contract v1, frozen | 3 h | F-01 | Done |
 | [F-04](F-04.md) | CI skeleton | 3 h | F-02 | Done |
 | [F-05](F-05.md) | Shared GPU workspace provisioned, three-way access | 4 h | nothing | Done |
-| [F-06](F-06.md) | Golden capture set | 5 h | nothing | In review |
-| [F-07](F-07.md) | Reproducible dev environment | 3 h | F-02, F-05 | In review |
+| [F-06](F-06.md) | Golden capture set | 5 h | nothing | Done |
+| [F-07](F-07.md) | Reproducible dev environment | 3 h | F-02, F-05 | Done |
 
 ---
 
@@ -112,8 +112,8 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State |
 |---|---|---|---|---|
-| [R-01](R-01.md) | Run the reconstruction model on the golden capture | 5 h | F-05, F-06, F-07 | Blocked |
-| [R-02](R-02.md) | Board detection and per-frame camera pose | 5 h | F-06, F-07 | Blocked |
+| [R-01](R-01.md) | Run the reconstruction model on the golden capture | 5 h | F-05, F-06, F-07 | Ready |
+| [R-02](R-02.md) | Board detection and per-frame camera pose | 5 h | F-06, F-07 | Ready |
 | [R-03](R-03.md) | Camera intrinsics from the board | 4 h | R-02 | Blocked |
 | [R-04](R-04.md) | Metric alignment | 6 h | R-01, R-02 | Blocked |
 | [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Blocked |

@@ -268,3 +268,43 @@ passing on the final reviewed head. F-07 is now Ready because F-02 and F-05 are 
 **Concluded:** the remote GPU foundation is complete; Lightning is the primary shared GPU path,
 with RunPod retained as fallback per D-036.
 **Next:** claim F-07 and finish the reproducible development environment; F-06 is Ready and unclaimed (its own PR is separate and still under review).
+
+---
+
+## 2026-09-21 — F-06 golden capture set (merged)
+
+**Who:** @mbj1994
+**What changed:** PR #22 merged the golden capture set: five capture sets over four rigid shapes
+(one reflective metal padlock shot under two lighting conditions), all JPEGs kept outside git behind
+`fixtures/download_golden_capture.sh`, a Drive-backed `golden_capture_manifest.json` with per-sample
+content checksums, and the s-04 triangular-prism reference CAD committed in-repo under
+`fixtures/reference_cad/`.
+**Command / how to reproduce:** `bash fixtures/download_golden_capture.sh` (needs `gdown`); the
+mocked-Drive tests run offline via `python -m pytest tests/test_download_golden_capture.py`.
+**Result:** review over two rounds tightened the real gaps — the gitignore reference-CAD exception,
+Drive link sharing (401 for non-owners), per-sample content hashing (a same-count byte swap had
+passed silently), macOS `shasum` fallback, and offline downloader tests. Reshooting two objects for
+sample quality pushed actual to 6 h against a 5 h estimate.
+**Concluded:** the only source of real photographs for the entire backend push is locked and
+verifiable; captured bytes never enter git.
+**Next:** F-06 satisfied for R-01/R-02; reconstruction can consume the golden capture.
+
+---
+
+## 2026-09-24 — F-07 reproducible dev environment (merged)
+
+**Who:** @dalwalyk (PR #24), @mbj1994 (PR #25)
+**What changed:** `scripts/bootstrap_dev_env.sh` is the one command for the dev environment, with
+`requirements.txt` pinning every dependency. PR #24 delivered the bootstrap plus the Apple Silicon
+clean-checkout verification; PR #25 added detection of Lightning's managed `cloudspace` Conda
+environment so the same command works on the shared Studio (which refuses a second `.venv`), and
+removed a duplicate editable install.
+**Command / how to reproduce:** `bash scripts/bootstrap_dev_env.sh`, then `python -m pytest -q`.
+**Result:** verified both halves of the acceptance criterion — Apple Silicon from a clean checkout
+(reviewer, @TabeenRaoof) and the shared Lightning Tesla T4 (31 pytest passed, `ruff` clean,
+`bash scripts/start_gpu_workspace.sh` → GPU CHECK: PASS, PyTorch 2.8.0+cu128, one Tesla T4).
+Actual 3 h against a 3 h estimate.
+**Concluded:** one command reproduces the environment on both the laptop and the shared GPU Studio;
+Phase 1 foundations (F-01 through F-07) are all Done.
+**Next:** R-01 (run the reconstruction model on the golden capture) is now unblocked — F-05, F-06,
+and F-07 are all Done.
