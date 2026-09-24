@@ -29,5 +29,5 @@ def test_bootstrap_uses_existing_python_for_managed_environment() -> None:
 def test_bootstrap_does_not_install_editable_project_twice() -> None:
     content = SCRIPT.read_text(encoding="utf-8")
 
-    assert 'python -m pip install -e .' not in content
+    assert "python -m pip install -e ." not in content
     assert '"$ENV_PYTHON" -m pip install -e .' not in content
