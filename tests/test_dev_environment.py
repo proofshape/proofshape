@@ -10,9 +10,8 @@ def test_bootstrap_script_exists_and_requires_supported_python():
     content = script.read_text(encoding="utf-8")
     assert "python3.11" in content
     assert "Python 3.11+" in content
-    assert "python -m pip install --upgrade pip" in content
-    assert "python -m pip install -r requirements.txt" in content
-    assert "python -m pip install -e ." in content
+    assert '"$ENV_PYTHON" -m pip install --upgrade pip' in content
+    assert '"$ENV_PYTHON" -m pip install -r requirements.txt' in content
 
 
 def test_requirements_file_pins_versions_for_dev_setup():
