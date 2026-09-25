@@ -268,3 +268,20 @@ passing on the final reviewed head. F-07 is now Ready because F-02 and F-05 are 
 **Concluded:** the remote GPU foundation is complete; Lightning is the primary shared GPU path,
 with RunPod retained as fallback per D-036.
 **Next:** claim F-07 and finish the reproducible development environment; F-06 is Ready and unclaimed (its own PR is separate and still under review).
+
+## 2026-09-24 — F-07 reproducible development environment (merged)
+
+**Who:** @yashidalwala
+**What changed:** PR #24 introduced the one-command development bootstrap and pinned Python
+dependencies; PR #25 fixed the real Lightning Studio case by reusing its managed `cloudspace`
+Conda environment instead of trying to create a forbidden second `.venv`.
+**Command / how to reproduce:** `bash scripts/bootstrap_dev_env.sh`, followed by
+`python -m pytest -q`, `ruff check .`, `ruff format --check .`, and on Lightning
+`bash scripts/start_gpu_workspace.sh`.
+**Result:** second-member clean-checkout verification passed on Apple Silicon; the real Lightning
+Tesla T4 run passed with 31 tests, Ruff clean, formatting clean, and `GPU CHECK: PASS`. Actual
+time confirmed by the team: 3 h against a 3 h estimate.
+**Concluded:** ProofShape now has one reproducible bootstrap command for normal Apple Silicon/Linux
+development and the Lightning managed GPU environment.
+**Next:** F-07 is Done. R-01/R-02 still depend on F-06 as well, so their readiness is determined
+once F-06 closes.
