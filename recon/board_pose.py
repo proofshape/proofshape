@@ -265,14 +265,17 @@ def solve_board_pose(
     # an EXIF-only K, and it's what the reprojection error below is measured against.
     distortion = np.zeros(5, dtype=np.float64)
 
-    # IPPE is OpenCV's solver built for planar targets: it returns the right answer from a closed
-    # form without the iterative solver's sensitivity to its starting guess. LM refinement then
-    # minimises reprojection error over all the corners.
+    # SQPnP finds the global minimum without a starting guess, so it can't get stuck the way the
+    # default iterative solver can on a few corners. It replaced IPPE, OpenCV's planar-specific
+    # solver, after IPPE refused 3 of 22 real s-03 frames whose visible corners formed an "L"
+    # (one column plus one neighbour). SQPnP solved those, and on every frame both solved, the
+    # two gave the same pose after refinement. LM refinement then minimises reprojection error
+    # over all the corners.
     solved, rotation_vector, translation = cv2.solvePnP(
-        board_points_mm, corner_px, intrinsic, distortion, flags=cv2.SOLVEPNP_IPPE
+        board_points_mm, corner_px, intrinsic, distortion, flags=cv2.SOLVEPNP_SQPNP
     )
     if not solved:
-        raise PoseFailure(REASON_POSE_FAILED, "solvePnP (IPPE) did not converge")
+        raise PoseFailure(REASON_POSE_FAILED, "solvePnP (SQPnP) did not converge")
     rotation_vector, translation = cv2.solvePnPRefineLM(
         board_points_mm, corner_px, intrinsic, distortion, rotation_vector, translation
     )

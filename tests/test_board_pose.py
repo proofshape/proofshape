@@ -314,6 +314,33 @@ def test_pose_rejected_when_visible_corners_are_all_on_one_row() -> None:
     assert "one line" in failure.value.message
 
 
+def test_pose_solved_from_real_l_shaped_corners() -> None:
+    """Regression, from real data: s-03/IMG_3946, where only board column 0 plus corner 1 was
+    visible. That's not collinear, so the pose is determined, but OpenCV's IPPE solver refused
+    it (and 2 other s-03 frames). IPPE accepts a *noise-free* projection of the same pose, so
+    only the real detected pixel positions reproduce the failure; they're copied here verbatim
+    (12 numbers, not a photograph). Intrinsics are the EXIF-derived K for that 5712x4284 frame.
+    """
+    corner_id = np.array([0, 1, 7, 14, 21, 28], dtype=np.int32)
+    corner_px = np.array(
+        [
+            [2000.93, 2669.41],
+            [2031.55, 2356.03],
+            [2333.57, 2667.86],
+            [2665.14, 2667.01],
+            [2999.10, 2667.17],
+            [3334.92, 2669.14],
+        ]
+    )
+    intrinsic = intrinsics_from_focal_35mm(FOCAL_35MM, 5712, 4284)
+
+    solution = solve_board_pose(corner_px, corner_id, make_board(), intrinsic)
+
+    # No ground truth for a real frame, so check it's a sound fit rather than a specific pose.
+    assert solution.reprojection_rms_px < 2.0
+    assert solution.extrinsic[2, 3] > 0
+
+
 def test_pose_rejected_with_too_few_corners() -> None:
     board = make_board()
     intrinsic = intrinsics_from_focal_35mm(FOCAL_35MM, IMAGE_WIDTH, IMAGE_HEIGHT)
