@@ -7,8 +7,9 @@ reference calibration assets, never the captured photographs themselves (see `.g
 
 **`charuco_board.pdf`** is the calibration target itself, not captured data — small,
 deterministic, and exactly what R-02/R-03 need to match. Print at 100% scale, never "fit to
-page." Parameters (`DICT_5X5_250`, 8×6 squares, 20 mm/15 mm, non-legacy pattern) are recorded
-in `docs/decisions.md` D-034.
+page." Parameters (`DICT_5X5_250`, 8×6 squares, 20 mm/15 mm; generated with calib.io's Legacy
+box unchecked, which is OpenCV's `setLegacyPattern(True)` layout) are recorded in
+`docs/decisions.md` D-034.
 
 ## F-06 golden capture
 

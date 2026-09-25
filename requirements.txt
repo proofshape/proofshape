@@ -1,6 +1,16 @@
 -e .
 pytest==8.3.3
 PyYAML==6.0.2
+numpy==1.26.4
 jsonschema==4.23.0
 openapi-spec-validator==0.7.1
 ruff==0.16.8
+# R-02 board detection and pose. Headless OpenCV: no GUI is needed, and the non-headless wheel
+# drags in Qt/X11 libraries the Lightning Studio doesn't have. ArUco/ChArUco is in the main
+# package since OpenCV 4.7, so no -contrib build. Pillow reads the EXIF focal length and
+# orientation, which OpenCV doesn't expose.
+opencv-python-headless==4.11.0.86
+Pillow==12.3.0
+# Test-only: rasterises fixtures/charuco_board.pdf so tests can check the board in code against
+# the board that was actually printed (R-02, D-034 correction).
+pypdfium2==5.13.0
