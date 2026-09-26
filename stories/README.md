@@ -114,7 +114,7 @@ Full detail in each story file.
 |---|---|---|---|---|
 | [R-01](R-01.md) | Run the reconstruction model on the golden capture | 5 h | F-05, F-06, F-07 | Claimed |
 | [R-02](R-02.md) | Board detection and per-frame camera pose | 5 h | F-06, F-07 | Done |
-| [R-03](R-03.md) | Camera intrinsics from the board | 4 h | R-02 | Ready |
+| [R-03](R-03.md) | Camera intrinsics from the board | 4 h | R-02 | Claimed |
 | [R-04](R-04.md) | Metric alignment | 6 h | R-01, R-02 | Blocked |
 | [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Blocked |
 | [R-06](R-06.md) | Segment the part from the board | 4 h | R-04 | Blocked |
