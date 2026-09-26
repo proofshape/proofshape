@@ -308,3 +308,27 @@ Actual 3 h against a 3 h estimate.
 Phase 1 foundations (F-01 through F-07) are all Done.
 **Next:** R-01 (run the reconstruction model on the golden capture) is now unblocked — F-05, F-06,
 and F-07 are all Done.
+
+---
+
+## 2026-09-26 — R-01 first real VGGT runs on the shared T4 (in review)
+
+**Who:** @dalwalyk
+**What changed:** `recon/vggt_runner.py` loads a golden-capture folder, runs VGGT-1B and writes
+`poses.npz`, `depth.npz`, `points.ply` and `run.json` (per-stage wall-clock timings) per run.
+`requirements-gpu.txt` pins VGGT to an upstream commit and leaves the Studio's PyTorch alone.
+**Command / how to reproduce:** on the Lightning Studio, `pip install -r requirements-gpu.txt`,
+`bash fixtures/download_golden_capture.sh`, then
+`python -m recon.vggt_runner fixtures/data/golden_capture/s-04`.
+**Result:** PASS on s-04 (yellow prism, 30 frames, 6,091,680 points), s-01 (padlock, 26 frames)
+and s-03 (rounded object, 27 frames) on the Tesla T4 in fp16. Single measurements on s-04:
+model load 22.14 s, preprocess 14.70 s, inference 16.11 s, total 60.92 s. The s-01 and s-03
+figures are in `stories/R-01.md`. The s-04 cloud shows the prism on a single, flat board plane.
+Poses and depth are in VGGT's arbitrary scale, not metric. Findings: the `facebook/VGGT-1B`
+weights are CC-BY-NC-4.0 (non-commercial); VGGT ignores EXIF orientation, and feeding the raw
+sensor buffers gave coherent clouds; Google Drive rate-limited the fixture download once.
+**Concluded:** the reconstruction backbone runs end to end on the shared GPU and emits the
+output layout that R-11/R-12 should match (D-009).
+**Next:** review, plus a clean-checkout run by a second member. After merge, R-04 still waits on
+R-02, and R-11/R-12 unblock. The weights are not yet on Teamspace Drive (D-036), because no Drive
+mount was visible from the Studio.
