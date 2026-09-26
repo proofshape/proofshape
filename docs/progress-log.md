@@ -337,3 +337,21 @@ code is now tested against the committed print file.
 `check_story_states.py --fix` flipped R-03 `Blocked` → `Ready`. Both were missed at merge time,
 the same slip D-025's PR-template checkbox exists to catch, so they're done here in a separate PR.
 **Next:** R-03 claimed by @TabeenRaoof. R-04 still waits on R-01.
+
+---
+
+## 2026-09-26 — Claim ownership shown in the backlog index (D-037)
+
+**Who:** @TabeenRaoof
+**What changed:** `stories/README.md` gains an **Owner** column. A claim now writes the claimer's
+`@github-handle` in both the story file and the index. If an AI assistant claims, it writes the
+person's handle, never its own name. The instructions are in `stories/README.md`, `AGENTS.md`,
+`AGENTS_START_HERE.md`, `README.md`, the story template, the PR template and the sprint plan.
+`check_story_states.py` now reports owner mismatches, missing or stray owners, non-handle and
+AI-assistant owners, and any index row it can't parse (such rows used to be skipped silently).
+**Command / how to reproduce:** `python3 scripts/check_story_states.py`, and
+`python -m pytest tests/test_check_story_states.py`.
+**Result:** all 22 current rows filled from their story files and consistent; 15 checker tests
+pass, and the owner-match and unparsed-row tests each fail if their check is removed.
+**Next:** open branches that edit index rows (#31 for R-01, the R-03 claim) need the Owner cell
+when they resolve against this. R-01's owner handle needs confirming by its owner.

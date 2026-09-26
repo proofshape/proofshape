@@ -79,7 +79,9 @@ on Apple Silicon and on the shared GPU environment (F-05) — same command, same
 ## Working agreements, in brief
 
 - Every change reaches `main` through a pull request approved by one other member.
-- One person per story, claimed visibly before work starts.
+- One person per story, claimed visibly before work starts: the claimer's GitHub handle goes
+  on the story file and on its row in the [backlog index](stories/README.md), even when an AI
+  assistant makes the claim for them.
 - Tests alongside the code, not batched before or after it.
 - Never commit fixtures, model weights, or secrets. This repository is public.
 
