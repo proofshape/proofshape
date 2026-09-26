@@ -9,7 +9,7 @@ description = "Phone-based 3D capture and inspection for manufactured parts."
 requires-python = ">=3.11"
 
 [project.optional-dependencies]
-dev = ["numpy>=1.26,<2", "pytest>=8", "pyyaml>=6", "jsonschema>=4", "openapi-spec-validator>=0.7", "ruff>=0.16"]
+dev = ["numpy>=1.26,<2", "pytest>=8", "pyyaml>=6", "jsonschema>=4", "openapi-spec-validator>=0.7", "ruff>=0.16", "pypdfium2>=5"]
 
 # Only `recon` is registered as an installed package for now. `inspect` is
 # deliberately left out — see docs/decisions.md D-030: its directory name

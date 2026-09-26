@@ -334,6 +334,21 @@ final print file is committed at `fixtures/charuco_board.pdf` (an exception to f
 holding nothing but a download script — this is the calibration target itself, not captured
 data, and small enough to version directly) so the exact parameters, including this one, never
 have to be re-derived from a third-party tool's UI.
+*Corrected 2026-09-25 (R-02):* the print choice above stands — the board was generated with
+calib.io's Legacy box unchecked, and the golden capture was shot on that print. **What was wrong
+is the inference about OpenCV:** that print is the layout OpenCV builds with
+`setLegacyPattern(True)`, not `False`. Evidence: rasterising the committed
+`fixtures/charuco_board.pdf` and detecting it gives 35/35 corners with `True` and 0/35 with
+`False` (all 24 markers found either way — the wrong flag only breaks corner interpolation); on
+the real `s-01` golden frames the same check gave 26/26 frames posed with `True` and 0/26 with
+`False`. The failure mode this amendment warned about — the right dictionary and geometry, the
+wrong layout, nothing detected — is exactly what happened; only the mapping between calib.io's
+checkbox and OpenCV's flag was backwards. R-02/R-03 code therefore uses `setLegacyPattern(True)`
+(`recon/board_pose.py::make_board`), and `tests/test_board_pose.py` now checks the code's board
+against the committed PDF itself (all 35 corners, and a 20 mm pitch measured from the PDF's
+point units), so the code can't drift from the paper again unnoticed. Marked as a correction
+rather than a new decision because nothing about the board or the print changes. Agreed by
+@TabeenRaoof while working R-02.
 
 **D-035 · A two-parent merge can silently keep only one side's independent addition, with no conflict markers.** (2026-09-17)
 Two branches each appended a different new decision at the same location in `docs/decisions.md`

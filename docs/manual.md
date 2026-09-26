@@ -86,13 +86,16 @@ these:
 | Square (checker) size | 20 mm |
 | Marker size | 15 mm |
 | Pattern size | 160 mm × 120 mm |
-| ChArUco Legacy mode | **Off** (non-legacy) |
+| calib.io "ChArUco Legacy" checkbox | **Off** (unchecked) |
 
 Recorded as D-034. If it is ever lost, it regenerates from those parameters at
 [calib.io's pattern generator](https://calib.io/pages/camera-calibration-pattern-generator) (free
-for educational use). The "ChArUco Legacy" toggle selects OpenCV's older pre-4.6 marker layout —
-leaving it on produces a board that can fail to detect against non-legacy detector code even
-though the dictionary and geometry look right.
+for educational use). Leave calib.io's "ChArUco Legacy" box unchecked, as it was for the golden
+capture print. Watch out: the board that setting produces is the one OpenCV constructs with
+`setLegacyPattern(True)`, the opposite of what the names suggest (D-034's 2026-09-25
+correction). With the wrong OpenCV flag, the markers are found but no corners are, so every frame
+fails even though the dictionary and geometry look right. `recon/board_pose.py` sets the flag
+correctly, and a test checks it against `fixtures/charuco_board.pdf`.
 
 ### 3.2 Printing it
 

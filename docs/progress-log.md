@@ -311,6 +311,35 @@ and F-07 are all Done.
 
 ---
 
+## 2026-09-25 — R-02 board detection and per-frame pose (PR open)
+
+**Who:** @TabeenRaoof (PR #29)
+**What changed:** `recon/board_pose.py` detects the D-034 ChArUco board in each frame and solves
+a camera-from-board pose in millimetres (SQPnP + LM), reporting every failed frame with a reason.
+Intrinsics come from the EXIF 35 mm-equivalent focal until R-03. Corrected D-034: the calib.io
+print is OpenCV's `setLegacyPattern(True)` layout, not `False`; with `False` no frame got a pose.
+**Command / how to reproduce:** `python -m recon.board_pose <capture folder>`, on each golden
+sample after verifying it against the manifest's count and `content_sha256`.
+**Result:** 138/142 frames posed across s-01…s-05 (26/26, 29/30, 25/27, 29/30, 29/29), every one
+with the part partly hiding the board. Median reprojection RMS was 1.39–2.86 px per sample with
+EXIF-only K; that's a self-consistency figure, not an accuracy claim. The 4 failures were checked
+by eye (1 blurred, 3 near-table-level grazing views). 3.5 h actual against a 5 h estimate.
+**Concluded:** metric board poses exist for the whole golden capture; the board definition in
+code is now tested against the committed print file.
+**Next:** on merge, R-03 (intrinsics from the board) unblocks, and R-04 needs only R-01.
+
+---
+
+## 2026-09-26 — R-02 merged; close-out
+
+**Who:** @mbj1994 (review, approval and merge of PR #29); @TabeenRaoof (close-out)
+**What changed:** R-02 set to `Done` in its story file and the index, and
+`check_story_states.py --fix` flipped R-03 `Blocked` → `Ready`. Both were missed at merge time,
+the same slip D-025's PR-template checkbox exists to catch, so they're done here in a separate PR.
+**Next:** R-03 claimed by @TabeenRaoof. R-04 still waits on R-01.
+
+---
+
 ## 2026-09-26 — R-01 first real VGGT runs on the shared T4 (in review)
 
 **Who:** @dalwalyk
@@ -329,6 +358,6 @@ weights are CC-BY-NC-4.0 (non-commercial); VGGT ignores EXIF orientation, and fe
 sensor buffers gave coherent clouds; Google Drive rate-limited the fixture download once.
 **Concluded:** the reconstruction backbone runs end to end on the shared GPU and emits the
 output layout that R-11/R-12 should match (D-009).
-**Next:** review, plus a clean-checkout run by a second member. After merge, R-04 still waits on
-R-02, and R-11/R-12 unblock. The weights are not yet on Teamspace Drive (D-036), because no Drive
-mount was visible from the Studio.
+**Next:** review, plus a clean-checkout run by a second member. After merge, R-04 has both its
+dependencies (R-01, R-02) Done, and R-11/R-12 unblock. The weights are not yet on Teamspace
+Drive (D-036), because no Drive mount was visible from the Studio.
