@@ -397,7 +397,7 @@ The work is broken into stories in **`proofshape_stories.md`**, sized so one sto
 
 **Lanes become places, not people.** `/recon`, `/capture` and `/inspect` are directories. Any member picks up any story in any of them, which is what lets all three push on the engine at once.
 
-**One person per story**, claimed visibly before work starts. If you are stuck, ask; a second person joining to unblock you is expected. Two people quietly working the same story is not. Either of the other two reviews and approves.
+**One person per story**, claimed visibly before work starts, with the claimer's GitHub handle on the story file and in the backlog index (D-037). If you are stuck, ask; a second person joining to unblock you is expected. Two people quietly working the same story is not. Either of the other two reviews and approves.
 
 **Completion is recorded on the story**: who, the date, the pull request, and actual hours against the estimate. Actuals are how the estimates stop being wrong.
 

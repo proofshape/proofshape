@@ -16,25 +16,27 @@ here is exactly the drift this project keeps getting burned by (see D-025); poin
 
 ## Before starting a specific story
 
-6–9. Follow **"Before starting any story"** in `AGENTS.md`: read the story and its dependencies,
+6–10. Follow **"Before starting any story"** in `AGENTS.md`: read the story and its dependencies,
 check `docs/decisions.md` for this area, check for conflicts, resolve any ambiguity, plan before
-building anything non-trivial.
+building anything non-trivial, and **claim it before writing any code** (its step 5, with the
+mechanics in step 2 of `stories/README.md`). **Claiming means the person's `@github-handle` goes
+on the story file *and* its row in the backlog index, not the assistant's name** (D-037). Check
+it with `python3 scripts/check_story_states.py`.
 
 ## While working
 
-10–11. Follow **"While building"** in `AGENTS.md` and the claim step in `stories/README.md`:
-claim before writing code, tests alongside the logic as you write it — never batched, never
-deferred.
+11–12. Follow **"While building"** in `AGENTS.md`: tests alongside the logic as you write it —
+never batched, never deferred.
 
 ## Before opening the pull request
 
-12. Run the test suite, `ruff check .`, `ruff format --check .`, and
+13. Run the test suite, `ruff check .`, `ruff format --check .`, and
     `python3 scripts/check_story_states.py`. All clean.
-13. Tick every box in `.github/PULL_REQUEST_TEMPLATE.md`.
+14. Tick every box in `.github/PULL_REQUEST_TEMPLATE.md`.
 
 ## On merge — whoever merges it, same action as the merge
 
-14–17. Follow the **Definition of Done**'s merge-time steps in `AGENTS.md`: `State: Done` in the
+15–18. Follow the **Definition of Done**'s merge-time steps in `AGENTS.md`: `State: Done` in the
 story file and the index, `check_story_states.py --fix` committed, an entry in
 `docs/progress-log.md` — **and the completion record's hours must be real and measured, never
 the estimate copied in** (this exact gap is why this file exists).

@@ -8,6 +8,8 @@
 
 ## Definition of done
 
+- [ ] Story's `Owner:` names the person(s) who did the work, as `@github-handle`s, identically in
+      the story file and its `stories/README.md` row (D-037)
 - [ ] Reviewed and approved by one other team member
 - [ ] Runs on a second member's machine from a clean checkout
 - [ ] Has one automated test or one written manual check

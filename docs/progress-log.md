@@ -361,3 +361,22 @@ output layout that R-11/R-12 should match (D-009).
 **Next:** review, plus a clean-checkout run by a second member. After merge, R-04 has both its
 dependencies (R-01, R-02) Done, and R-11/R-12 unblock. The weights are not yet on Teamspace
 Drive (D-036), because no Drive mount was visible from the Studio.
+
+---
+
+## 2026-09-26 — Claim ownership shown in the backlog index (D-037)
+
+**Who:** @TabeenRaoof
+**What changed:** `stories/README.md` gains an **Owner** column. A claim now writes the claimer's
+`@github-handle` in both the story file and the index. If an AI assistant claims, it writes the
+person's handle, never its own name. The instructions are in `stories/README.md`, `AGENTS.md`,
+`AGENTS_START_HERE.md`, `README.md`, the story template, the PR template and the sprint plan.
+`check_story_states.py` now reports owner mismatches, missing or stray owners, non-handle and
+AI-assistant owners, and any index row it can't parse (such rows used to be skipped silently).
+**Command / how to reproduce:** `python3 scripts/check_story_states.py`, and
+`python -m pytest tests/test_check_story_states.py`.
+**Result:** all 22 current rows filled from their story files and consistent; 15 checker tests
+pass, and the owner-match and unparsed-row tests each fail if their check is removed.
+**Next:** #31 (R-01) merged first; its index row was carried into the new layout while
+resolving #32. The R-03 claim branch already uses the Owner cell. R-01's owner handle
+(`@yashidalwala`; the GitHub account is `@dalwalyk`) needs confirming by its owner.

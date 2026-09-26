@@ -396,6 +396,35 @@ was meant to provide, while keeping RunPod available as fallback rather than del
 before assigning this number. The highest claimed decision found was D-035, so D-036 was the
 first free number.
 
+
+**D-037 · A claim puts the person's GitHub handle on the story file *and* the backlog index, and the checker enforces it.** (2026-09-26)
+The backlog index (`stories/README.md`) gains an **Owner** column next to **State**. Claiming a
+story means setting `State: Claimed` and the owner in **both** the story file and its index row,
+written identically, in one commit, before any code. The owner is always the person who answers
+for the work, as an `@github-handle` (several: `@a; @b`). **When an AI assistant makes the
+claim, it writes the handle of the person it is working for, never its own or its tool's
+name**; it asks if it can't tell whose handle that is. `scripts/check_story_states.py` now
+reports: an index owner that differs from the story file's; a Claimed, In review or Done story
+with no owner; a Blocked or Ready story that has one; an owner that isn't an `@github-handle`;
+an AI assistant as owner; and any index row it can't parse. Before this, such a row was silently
+skipped, so it dropped out of every check. Like the Blocked → Ready cascade (D-027), it only
+reports owner problems and never writes an owner itself.
+*Why:* until now a claim lived only in the story file, while the index everyone scans to pick
+work showed just a state. "Claimed" said *that* someone had a story, not *who*, so finding out
+meant opening every file. Agents made this worse: an assistant told to "claim R-03" had no
+written rule about whose name to use, so a claim under the assistant's name, or under no name,
+was one ambiguous instruction away. Following D-027's reasoning, a rule that lives only in prose
+is kept by memory, and memory is what has failed here repeatedly (F-01's state twice, R-02's
+state at merge). So the rule is written into `stories/README.md` step 2, `AGENTS.md` step 5, the
+refusal list, `AGENTS_START_HERE.md`, `README.md`, the story template and the PR template, and
+the script checks it on every run.
+*Not decided here:* whether the checker should confirm that a handle is a real member of the
+`proofshape` organisation. That needs network access and a token, and the script deliberately
+runs offline. R-01's owner, `@yashidalwala`, passes the format check, but the matching GitHub
+account appears to be `@dalwalyk`. Left for its owner to confirm rather than edited here.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-036, so D-037 was the first free number.
+
 ---
 
 ## Open — not yet decided
