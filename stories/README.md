@@ -113,6 +113,7 @@ Full detail in each story file.
 | [F-05](F-05.md) | Shared GPU workspace provisioned, three-way access | 4 h | nothing | Done | @mbj1994 |
 | [F-06](F-06.md) | Golden capture set | 5 h | nothing | Done | @mbj1994; @TabeenRaoof |
 | [F-07](F-07.md) | Reproducible dev environment | 3 h | F-02, F-05 | Done | @dalwalyk |
+
 ---
 
 ## Phase 2 · The reconstruction engine
@@ -140,6 +141,7 @@ Full detail in each story file.
 | [R-13](R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Blocked | _unclaimed_ |
 | [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Blocked | _unclaimed_ |
 | [R-15](R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Blocked | _unclaimed_ |
+
 ---
 
 ## The chain that sets the date
