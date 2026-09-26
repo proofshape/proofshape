@@ -340,6 +340,30 @@ the same slip D-025's PR-template checkbox exists to catch, so they're done here
 
 ---
 
+## 2026-09-26 — R-01 first real VGGT runs on the shared T4 (in review)
+
+**Who:** @dalwalyk
+**What changed:** `recon/vggt_runner.py` loads a golden-capture folder, runs VGGT-1B and writes
+`poses.npz`, `depth.npz`, `points.ply` and `run.json` (per-stage wall-clock timings) per run.
+`requirements-gpu.txt` pins VGGT to an upstream commit and leaves the Studio's PyTorch alone.
+**Command / how to reproduce:** on the Lightning Studio, `pip install -r requirements-gpu.txt`,
+`bash fixtures/download_golden_capture.sh`, then
+`python -m recon.vggt_runner fixtures/data/golden_capture/s-04`.
+**Result:** PASS on s-04 (yellow prism, 30 frames, 6,091,680 points), s-01 (padlock, 26 frames)
+and s-03 (rounded object, 27 frames) on the Tesla T4 in fp16. Single measurements on s-04:
+model load 22.14 s, preprocess 14.70 s, inference 16.11 s, total 60.92 s. The s-01 and s-03
+figures are in `stories/R-01.md`. The s-04 cloud shows the prism on a single, flat board plane.
+Poses and depth are in VGGT's arbitrary scale, not metric. Findings: the `facebook/VGGT-1B`
+weights are CC-BY-NC-4.0 (non-commercial); VGGT ignores EXIF orientation, and feeding the raw
+sensor buffers gave coherent clouds; Google Drive rate-limited the fixture download once.
+**Concluded:** the reconstruction backbone runs end to end on the shared GPU and emits the
+output layout that R-11/R-12 should match (D-009).
+**Next:** review, plus a clean-checkout run by a second member. After merge, R-04 has both its
+dependencies (R-01, R-02) Done, and R-11/R-12 unblock. The weights are not yet on Teamspace
+Drive (D-036), because no Drive mount was visible from the Studio.
+
+---
+
 ## 2026-09-26 — Claim ownership shown in the backlog index (D-037)
 
 **Who:** @TabeenRaoof
@@ -353,5 +377,6 @@ AI-assistant owners, and any index row it can't parse (such rows used to be skip
 `python -m pytest tests/test_check_story_states.py`.
 **Result:** all 22 current rows filled from their story files and consistent; 15 checker tests
 pass, and the owner-match and unparsed-row tests each fail if their check is removed.
-**Next:** open branches that edit index rows (#31 for R-01, the R-03 claim) need the Owner cell
-when they resolve against this. R-01's owner handle needs confirming by its owner.
+**Next:** #31 (R-01) merged first; its index row was carried into the new layout while
+resolving #32. The R-03 claim branch already uses the Owner cell. R-01's owner handle
+(`@yashidalwala`; the GitHub account is `@dalwalyk`) needs confirming by its owner.
