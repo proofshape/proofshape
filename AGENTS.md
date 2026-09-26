@@ -70,6 +70,18 @@ build past it in either direction.
 4. **Plan before building** for anything non-trivial. Explore the real code first, surface any
    genuine design fork to the team, agree the approach, then implement. Do not go straight to
    code on a story you have not read the surrounding context for.
+5. **Claim it before writing any code, in the story file *and* in the backlog index** (D-037;
+   the mechanics are step 2 of *Working a story* in `stories/README.md`). Set `State: Claimed`
+   and the `Owner`, the same in both places, in one commit, pushed straight away.
+   - **The owner is the person, never the assistant.** When you, the assistant, make the claim,
+     write the `@github-handle` of the team member you're working for. If you don't know it,
+     ask; `gh api user --jq .login` shows the account the GitHub CLI is logged in as, which
+     is usually that person, but confirm it rather than assume. Never write your own name or
+     your tool's name.
+   - Only claim a story whose owner is `_unclaimed_`. If it already has an owner, stop and say
+     so (see *One person per story* below).
+   - Then run `python3 scripts/check_story_states.py`. It fails if the file and index disagree,
+     if a claimed story has no owner, or if the owner isn't a person's handle.
 
 If the story's acceptance criteria are ambiguous, resolve that first. An ambiguous story is not
 Ready, whatever the index says.
@@ -137,9 +149,9 @@ Every story, without exception:
   whatever it changes.** This is not the approver's job specifically, and it does not need to
   be — it is mechanical: it reads the dependency graph and flips any story from `Blocked` to
   `Ready` once every one of its dependencies is verifiably `Done`, and it flags (but never
-  silently resolves) any story whose file and index disagree. Anyone finishing a merge runs it.
-  It never marks anything `Done` or `Claimed` — only a human does that, by actually finishing
-  the work.
+  silently resolves) any story whose file and index disagree on state or owner. Anyone
+  finishing a merge runs it. It never marks anything `Done` or `Claimed`, and never writes an
+  owner — only a human does that, by actually taking or finishing the work.
 
 Acceptance criteria are per story. The definition of done is not — it is the same every time.
 
@@ -182,7 +194,8 @@ picks up any story in any of them.
 ## Working with the team
 
 - **One person per story.** If you are asked to work on a story someone else has claimed, say
-  so rather than proceeding.
+  so rather than proceeding. "Claimed" means an owner in the backlog index or the story file;
+  check both, since before D-037 only the story file carried the name.
 - **Record decisions as they are made.** If a conversation settles something that will govern
   later work, add it to `docs/decisions.md` with a number and the reasoning. A decision without
   its reasoning gets reversed by whoever forgets it.
@@ -223,3 +236,5 @@ picks up any story in any of them.
 - Opening a pull request whose code has no tests, or agreeing to "add tests in a follow-up."
 - Reversing a decision in `docs/decisions.md` without the team agreeing first.
 - Expanding scope beyond the current tier because it "would be easy to add."
+- Starting work on a story that isn't claimed yet, claiming it in only one of the story file and
+  the backlog index, or claiming it under an AI assistant's name instead of the person's.

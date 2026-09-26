@@ -3,7 +3,11 @@
 **Area:** recon | capture | inspect · **Tier:** 1 | 2 | 3 · **Estimate:** <n> h
 **Depends on:** <IDs, or "nothing">
 **State:** Blocked | Ready | Claimed | In review | Done
-**Owner:** <@member, once claimed>
+**Owner:** _unclaimed_
+
+<!-- On claiming, replace _unclaimed_ above with the @github-handle of the person doing the work
+(never an AI assistant's name), and write the same handle in this story's Owner cell in
+stories/README.md, in the same commit. D-037. -->
 
 ---
 

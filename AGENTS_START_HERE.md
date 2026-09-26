@@ -24,7 +24,9 @@ building anything non-trivial.
 
 10–11. Follow **"While building"** in `AGENTS.md` and the claim step in `stories/README.md`:
 claim before writing code, tests alongside the logic as you write it — never batched, never
-deferred.
+deferred. **Claiming means the person's `@github-handle` goes on the story file *and* its row in
+the backlog index, not the assistant's name** (`AGENTS.md` step 5; D-037). Check it with
+`python3 scripts/check_story_states.py`.
 
 ## Before opening the pull request
 
