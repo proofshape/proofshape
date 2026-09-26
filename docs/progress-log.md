@@ -327,3 +327,13 @@ by eye (1 blurred, 3 near-table-level grazing views). 3.5 h actual against a 5 h
 **Concluded:** metric board poses exist for the whole golden capture; the board definition in
 code is now tested against the committed print file.
 **Next:** on merge, R-03 (intrinsics from the board) unblocks, and R-04 needs only R-01.
+
+---
+
+## 2026-09-26 — R-02 merged; close-out
+
+**Who:** @mbj1994 (review, approval and merge of PR #29); @TabeenRaoof (close-out)
+**What changed:** R-02 set to `Done` in its story file and the index, and
+`check_story_states.py --fix` flipped R-03 `Blocked` → `Ready`. Both were missed at merge time,
+the same slip D-025's PR-template checkbox exists to catch, so they're done here in a separate PR.
+**Next:** R-03 claimed by @TabeenRaoof. R-04 still waits on R-01.
