@@ -308,3 +308,22 @@ Actual 3 h against a 3 h estimate.
 Phase 1 foundations (F-01 through F-07) are all Done.
 **Next:** R-01 (run the reconstruction model on the golden capture) is now unblocked — F-05, F-06,
 and F-07 are all Done.
+
+---
+
+## 2026-09-25 — R-02 board detection and per-frame pose (PR open)
+
+**Who:** @TabeenRaoof (PR #29)
+**What changed:** `recon/board_pose.py` detects the D-034 ChArUco board in each frame and solves
+a camera-from-board pose in millimetres (SQPnP + LM), reporting every failed frame with a reason.
+Intrinsics come from the EXIF 35 mm-equivalent focal until R-03. Corrected D-034: the calib.io
+print is OpenCV's `setLegacyPattern(True)` layout, not `False`; with `False` no frame got a pose.
+**Command / how to reproduce:** `python -m recon.board_pose <capture folder>`, on each golden
+sample after verifying it against the manifest's count and `content_sha256`.
+**Result:** 138/142 frames posed across s-01…s-05 (26/26, 29/30, 25/27, 29/30, 29/29), every one
+with the part partly hiding the board. Median reprojection RMS was 1.39–2.86 px per sample with
+EXIF-only K; that's a self-consistency figure, not an accuracy claim. The 4 failures were checked
+by eye (1 blurred, 3 near-table-level grazing views). 3.5 h actual against a 5 h estimate.
+**Concluded:** metric board poses exist for the whole golden capture; the board definition in
+code is now tested against the committed print file.
+**Next:** on merge, R-03 (intrinsics from the board) unblocks, and R-04 needs only R-01.
