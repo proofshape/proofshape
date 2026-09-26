@@ -20,7 +20,9 @@ python -m recon.vggt_runner fixtures/data/golden_capture/s-04
 ```
 
 Writes `poses.npz`, `depth.npz`, `points.ply` and `run.json` (per-stage timings) to
-`fixtures/data/recon_runs/s-04/`. Poses are in VGGT's own arbitrary scale, not metric.
+`fixtures/data/recon_runs/s-04/`. Poses are in VGGT's own arbitrary scale, not metric, and the
+intrinsics are in VGGT's resized-image pixels (`processed_image_size_hw` in `run.json`), not the
+full-resolution photo pixels R-02 uses.
 
 ## R-02 · board detection and per-frame camera pose
 

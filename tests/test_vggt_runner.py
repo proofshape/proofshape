@@ -147,6 +147,25 @@ def test_unproject_rejects_mismatched_shapes():
         )
 
 
+# --- frames_chw_to_hwc ---------------------------------------------------------------------
+
+
+def test_frames_chw_to_hwc_keeps_the_frame_axis_for_a_single_frame():
+    # The #31 review case: a one-frame capture must stay (1,H,W,3), not lose its frame axis.
+    images = np.zeros((1, 3, 4, 6), dtype=np.float32)
+    images[0, 0, 1, 2] = 0.25  # red channel of pixel (row 1, column 2)
+
+    frames = vggt_runner.frames_chw_to_hwc(images)
+
+    assert frames.shape == (1, 4, 6, 3)
+    assert frames[0, 1, 2, 0] == pytest.approx(0.25)
+
+
+def test_frames_chw_to_hwc_rejects_a_missing_frame_axis():
+    with pytest.raises(ValueError, match=r"\(S,3,H,W\)"):
+        vggt_runner.frames_chw_to_hwc(np.zeros((3, 4, 6)))
+
+
 # --- select_point_cloud --------------------------------------------------------------------
 
 

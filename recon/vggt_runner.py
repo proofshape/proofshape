@@ -8,7 +8,8 @@ package; it imports them lazily so importing this module never requires a GPU en
 Output layout (one directory per run) is the shape R-11 (MASt3R) and R-12 (COLMAP) must also
 emit, so R-04 can consume any backend the config flag selects (D-009):
 
-    poses.npz   frame_names (S,), extrinsic (S,3,4) camera-from-world, intrinsic (S,3,3)
+    poses.npz   frame_names (S,), extrinsic (S,3,4) camera-from-world, intrinsic (S,3,3) in
+                processed-image pixels (see run.json processed_image_size_hw)
     depth.npz   depth (S,H,W), depth_conf (S,H,W)
     points.ply  binary little-endian point cloud with per-point RGB, in the world frame
     run.json    timings, device, dtype, versions and the frame list
@@ -16,6 +17,12 @@ emit, so R-04 can consume any backend the config flag selects (D-009):
 Poses are in VGGT's own arbitrary, unit-less frame. They are NOT metric — R-04 (metric
 alignment against the ChArUco board) is what fixes scale, so nothing here may be reported as a
 measurement.
+
+The intrinsics are NOT in full-resolution photo pixels. VGGT sees each frame resized (e.g.
+5712x4284 -> 518x392), so its focal length is roughly 400 px where R-02's board-derived K is
+roughly 4,300 px. The two axes are also scaled slightly differently (518/5712 in x, 392/4284 in
+y), because VGGT rounds the height to a multiple of 14. Anything comparing this K with R-02/R-03's
+must rescale each axis separately using processed_image_size_hw, or it gets a silent unit bug.
 """
 
 from __future__ import annotations
@@ -82,6 +89,19 @@ def choose_dtype_name(
     raise ValueError(
         f"Unsupported device type {device_type!r}: R-01 targets cuda (and mps)."
     )
+
+
+def frames_chw_to_hwc(images: np.ndarray) -> np.ndarray:
+    """Turn VGGT's preprocessed frames, (S,3,H,W), into (S,H,W,3) for colouring the cloud.
+
+    This is deliberately separate from the batch-squeezing used for the model outputs. The
+    predictions carry a leading batch axis of 1, but the preprocessed frames do not, so the same
+    squeeze(0) would silently drop the frame axis of a one-frame capture and the transpose would
+    then fail.
+    """
+    if images.ndim != 4 or images.shape[1] != 3:
+        raise ValueError(f"images must be (S,3,H,W), got {images.shape}")
+    return images.transpose(0, 2, 3, 1)
 
 
 def unproject_depth_to_world(
@@ -312,7 +332,9 @@ def run_vggt_model(
         "intrinsic": to_numpy(intrinsic),
         "depth": depth,
         "depth_conf": to_numpy(predictions["depth_conf"]),
-        "images": to_numpy(images).transpose(0, 2, 3, 1),
+        # Not to_numpy: `images` has no batch axis, so squeeze(0) would drop the frame axis of
+        # a single-frame capture.
+        "images": frames_chw_to_hwc(images.float().cpu().numpy()),
         "timings": timings,
         "device": device_name,
         "dtype": dtype_name,
