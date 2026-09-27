@@ -24,9 +24,7 @@ def _write_board_session(
     corner_px_parts: list[np.ndarray] = []
 
     for frame_index, (corner_ids, corner_px) in enumerate(corners_by_frame):
-        frame_index_parts.append(
-            np.full(len(corner_ids), frame_index, dtype=np.int32)
-        )
+        frame_index_parts.append(np.full(len(corner_ids), frame_index, dtype=np.int32))
         corner_id_parts.append(corner_ids.astype(np.int32))
         corner_px_parts.append(corner_px.astype(np.float64))
 
@@ -93,9 +91,7 @@ def _synthetic_board_session(
             true_k,
             distortion,
         )
-        corners_by_frame.append(
-            (ids, projected.reshape(-1, 2))
-        )
+        corners_by_frame.append((ids, projected.reshape(-1, 2)))
         names.append(f"frame_{index:02d}.jpg")
 
     provisional = true_k.copy()
@@ -133,13 +129,7 @@ def _write_vggt_run(
         ),
     )
     (model_dir / "run.json").write_text(
-        json.dumps(
-            {
-                "processed_image_size_hw": list(
-                    processed_size_hw
-                )
-            }
-        ),
+        json.dumps({"processed_image_size_hw": list(processed_size_hw)}),
         encoding="utf-8",
     )
 
@@ -152,17 +142,10 @@ def test_calibrates_intrinsics_from_r02_corners_across_session(
         view_count=6,
     )
 
-    session = camera_intrinsics.load_board_session(
-        board_dir
-    )
-    result = camera_intrinsics.calibrate_from_board(
-        session
-    )
+    session = camera_intrinsics.load_board_session(board_dir)
+    result = camera_intrinsics.calibrate_from_board(session)
 
-    assert (
-        result.source
-        == camera_intrinsics.SOURCE_CHARUCO
-    )
+    assert result.source == camera_intrinsics.SOURCE_CHARUCO
     assert result.reprojection_rms_px is not None
     assert result.reprojection_rms_px < 0.01
     assert result.intrinsic[0, 0] == pytest.approx(
@@ -206,33 +189,18 @@ def test_falls_back_to_rescaled_vggt_intrinsics_when_views_insufficient(
         processed_size_hw=(450, 600),
     )
 
-    session, result = (
-        camera_intrinsics.estimate_session_intrinsics(
-            board_dir,
-            model_dir,
-        )
+    session, result = camera_intrinsics.estimate_session_intrinsics(
+        board_dir,
+        model_dir,
     )
 
-    assert (
-        result.source
-        == camera_intrinsics.SOURCE_VGGT_FALLBACK
-    )
+    assert result.source == camera_intrinsics.SOURCE_VGGT_FALLBACK
     assert result.fallback_reason is not None
-    assert "at least 3 usable board views" in (
-        result.fallback_reason
-    )
-    assert result.intrinsic[0, 0] == pytest.approx(
-        800.0
-    )
-    assert result.intrinsic[1, 1] == pytest.approx(
-        820.0
-    )
-    assert result.intrinsic[0, 2] == pytest.approx(
-        520.0
-    )
-    assert result.intrinsic[1, 2] == pytest.approx(
-        392.0
-    )
+    assert "at least 3 usable board views" in (result.fallback_reason)
+    assert result.intrinsic[0, 0] == pytest.approx(800.0)
+    assert result.intrinsic[1, 1] == pytest.approx(820.0)
+    assert result.intrinsic[0, 2] == pytest.approx(520.0)
+    assert result.intrinsic[1, 2] == pytest.approx(392.0)
     assert session.image_size_hw == (900, 1200)
 
 
@@ -274,9 +242,7 @@ def test_board_session_rejects_mixed_image_sizes(
         camera_intrinsics.CalibrationFailure,
         match="one stored-sensor image size",
     ):
-        camera_intrinsics.load_board_session(
-            board_dir
-        )
+        camera_intrinsics.load_board_session(board_dir)
 
 
 def test_run_writes_intrinsics_and_reprojection_report(
@@ -286,9 +252,7 @@ def test_run_writes_intrinsics_and_reprojection_report(
         tmp_path,
         view_count=5,
     )
-    out_dir = (
-        tmp_path / "camera_intrinsics" / "s-test"
-    )
+    out_dir = tmp_path / "camera_intrinsics" / "s-test"
 
     info = camera_intrinsics.run_intrinsics(
         board_dir,
@@ -296,20 +260,13 @@ def test_run_writes_intrinsics_and_reprojection_report(
         out_dir,
     )
 
-    assert (
-        info["source"]
-        == camera_intrinsics.SOURCE_CHARUCO
-    )
+    assert info["source"] == camera_intrinsics.SOURCE_CHARUCO
     assert info["reprojection_rms_px"] is not None
-    assert "not a metric-accuracy" in (
-        info["reprojection_note"]
-    )
+    assert "not a metric-accuracy" in (info["reprojection_note"])
 
     with np.load(out_dir / "intrinsics.npz") as saved:
         assert saved["intrinsic"].shape == (3, 3)
-        assert str(saved["source"]) == (
-            camera_intrinsics.SOURCE_CHARUCO
-        )
+        assert str(saved["source"]) == (camera_intrinsics.SOURCE_CHARUCO)
 
     assert (out_dir / "intrinsics.json").is_file()
 
