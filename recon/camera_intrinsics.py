@@ -64,9 +64,7 @@ def _require_keys(data: Any, path: Path, keys: tuple[str, ...]) -> None:
         if key not in data:
             missing.append(key)
     if missing:
-        raise ValueError(
-            f"{path} is missing required arrays: {', '.join(missing)}"
-        )
+        raise ValueError(f"{path} is missing required arrays: {', '.join(missing)}")
 
 
 def _median_initial_intrinsic(intrinsics: np.ndarray) -> np.ndarray | None:
@@ -145,9 +143,7 @@ def load_board_session(board_pose_dir: Path) -> BoardSession:
             f"R-02 recorded {sorted(unique_sizes)}."
         )
 
-    board_corners = np.asarray(
-        make_board().getChessboardCorners(), dtype=np.float64
-    )
+    board_corners = np.asarray(make_board().getChessboardCorners(), dtype=np.float64)
     views: list[BoardView] = []
     for frame_index, frame_name in enumerate(frame_names):
         selection = corner_frame_index == frame_index
@@ -160,9 +156,7 @@ def load_board_session(board_pose_dir: Path) -> BoardSession:
                 f"{path}: frame {frame_name} has an invalid ChArUco corner id"
             )
         object_points = board_corners[ids]
-        centred = object_points[:, :2] - np.mean(
-            object_points[:, :2], axis=0
-        )
+        centred = object_points[:, :2] - np.mean(object_points[:, :2], axis=0)
         if np.linalg.matrix_rank(centred) < 2:
             continue
         views.append(
@@ -244,16 +238,12 @@ def calibrate_from_board(session: BoardSession) -> IntrinsicsResult:
             flags=flags,
         )
     except cv2.error as exc:
-        raise CalibrationFailure(
-            f"OpenCV board calibration failed: {exc}"
-        ) from exc
+        raise CalibrationFailure(f"OpenCV board calibration failed: {exc}") from exc
 
     intrinsic = _valid_intrinsic(intrinsic, "OpenCV calibration")
     distortion = np.asarray(distortion, dtype=np.float64).reshape(-1)
     if not np.all(np.isfinite(distortion)):
-        raise CalibrationFailure(
-            "OpenCV calibration returned non-finite distortion."
-        )
+        raise CalibrationFailure("OpenCV calibration returned non-finite distortion.")
     if not math.isfinite(float(rms)):
         raise CalibrationFailure(
             "OpenCV calibration returned non-finite reprojection RMS."
@@ -311,9 +301,7 @@ def load_vggt_fallback(model_run_dir: Path, session: BoardSession) -> np.ndarray
         run_info = json.load(handle)
     processed = run_info.get("processed_image_size_hw")
     if not isinstance(processed, list) or len(processed) != 2:
-        raise ValueError(
-            f"{run_path}: processed_image_size_hw is missing or invalid"
-        )
+        raise ValueError(f"{run_path}: processed_image_size_hw is missing or invalid")
     processed_size = (int(processed[0]), int(processed[1]))
 
     with np.load(poses_path) as data:
@@ -322,20 +310,14 @@ def load_vggt_fallback(model_run_dir: Path, session: BoardSession) -> np.ndarray
         model_intrinsics = np.asarray(data["intrinsic"], dtype=np.float64)
 
     if model_intrinsics.shape != (len(model_names), 3, 3):
-        raise ValueError(
-            f"{poses_path}: intrinsic shape is {model_intrinsics.shape}"
-        )
+        raise ValueError(f"{poses_path}: intrinsic shape is {model_intrinsics.shape}")
 
     wanted = set(session.frame_names)
     predictions: list[np.ndarray] = []
-    for frame_name, intrinsic in zip(
-        model_names, model_intrinsics, strict=True
-    ):
+    for frame_name, intrinsic in zip(model_names, model_intrinsics, strict=True):
         if frame_name in wanted:
             predictions.append(
-                rescale_vggt_intrinsic(
-                    intrinsic, processed_size, session.image_size_hw
-                )
+                rescale_vggt_intrinsic(intrinsic, processed_size, session.image_size_hw)
             )
     if not predictions:
         raise CalibrationFailure(
@@ -434,9 +416,7 @@ def write_outputs(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     rms_value = (
-        np.nan
-        if result.reprojection_rms_px is None
-        else result.reprojection_rms_px
+        np.nan if result.reprojection_rms_px is None else result.reprojection_rms_px
     )
     np.savez_compressed(
         out_dir / "intrinsics.npz",
@@ -485,12 +465,8 @@ def write_outputs(
 def run_intrinsics(
     board_pose_dir: Path, model_run_dir: Path, out_dir: Path
 ) -> dict[str, Any]:
-    session, result = estimate_session_intrinsics(
-        board_pose_dir, model_run_dir
-    )
-    return write_outputs(
-        out_dir, session, result, board_pose_dir, model_run_dir
-    )
+    session, result = estimate_session_intrinsics(board_pose_dir, model_run_dir)
+    return write_outputs(out_dir, session, result, board_pose_dir, model_run_dir)
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -520,16 +496,10 @@ def build_argument_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
     sample = args.board_pose_dir.name
-    model_run_dir = (
-        args.model_run_dir or Path("fixtures/data/recon_runs") / sample
-    )
-    out_dir = (
-        args.out_dir or Path("fixtures/data/camera_intrinsics") / sample
-    )
+    model_run_dir = args.model_run_dir or Path("fixtures/data/recon_runs") / sample
+    out_dir = args.out_dir or Path("fixtures/data/camera_intrinsics") / sample
     try:
-        info = run_intrinsics(
-            args.board_pose_dir, model_run_dir, out_dir
-        )
+        info = run_intrinsics(args.board_pose_dir, model_run_dir, out_dir)
     except (
         CalibrationFailure,
         FileNotFoundError,
@@ -542,8 +512,7 @@ def main(argv: list[str] | None = None) -> int:
     rms = info["reprojection_rms_px"]
     rms_text = "unavailable" if rms is None else f"{rms:.3f} px"
     print(
-        f"R-03 INTRINSICS: PASS - source={info['source']}, "
-        f"reprojection RMS={rms_text}"
+        f"R-03 INTRINSICS: PASS - source={info['source']}, reprojection RMS={rms_text}"
     )
     if info["fallback_reason"]:
         print(f"  fallback reason: {info['fallback_reason']}")
