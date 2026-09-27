@@ -1,10 +1,11 @@
 """R-03: session camera intrinsics from R-02 ChArUco observations.
 
-R-02 already stores every detected board corner, so R-03 reuses those observations instead of
-detecting the board again. The primary result is one session-level K and distortion vector in
-the original stored-sensor pixel frame. If calibration cannot be solved, the fallback is VGGT's
-R-01 intrinsics, explicitly rescaled from VGGT's processed-image pixels to full-resolution
-pixels. Reprojection RMS is a pixel self-consistency measure, not a metric-accuracy claim.
+R-02 already stores every detected board corner, so R-03 reuses those observations
+instead of detecting the board again. The primary result is one session-level K and
+distortion vector in the original stored-sensor pixel frame. If calibration cannot be
+solved, the fallback is VGGT's R-01 intrinsics, explicitly rescaled from VGGT's
+processed-image pixels to full-resolution pixels. Reprojection RMS is a pixel
+self-consistency measure, not a metric-accuracy claim.
 """
 
 from __future__ import annotations
@@ -427,7 +428,8 @@ def write_outputs(
     out_dir = Path(out_dir)
     if out_dir.exists() and any(out_dir.iterdir()):
         raise FileExistsError(
-            f"{out_dir} already has files. Use a new output folder or delete it deliberately."
+            f"{out_dir} already has files. Use a new output folder or "
+            "delete it deliberately."
         )
     out_dir.mkdir(parents=True, exist_ok=True)
 
