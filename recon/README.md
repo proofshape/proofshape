@@ -40,3 +40,24 @@ status, failure reason and reprojection error) to `fixtures/data/board_poses/s-0
 read in their stored sensor orientation, ignoring EXIF rotation, to match R-01's VGGT loader.
 Until R-03 lands, intrinsics come from the EXIF 35 mm-equivalent focal length; that's
 approximate, and the source is recorded on every frame.
+
+## R-03 · camera intrinsics from the board
+
+R-03 consumes R-02's saved ChArUco corner observations; it does not detect the board again:
+
+~~~bash
+python -m recon.camera_intrinsics fixtures/data/board_poses/s-04
+~~~
+
+By default it writes `intrinsics.npz` and `intrinsics.json` under
+`fixtures/data/camera_intrinsics/s-04/`. The primary path calibrates one session-level camera
+matrix and distortion vector from the board views and reports overall plus per-view reprojection
+RMS in pixels.
+
+If board calibration cannot be solved, the command explicitly falls back to R-01's VGGT
+intrinsics from `fixtures/data/recon_runs/<sample>/`. VGGT's K is in resized-image pixels, so
+R-03 rescales x and y independently to R-02's original stored-sensor pixel frame before taking
+the session median. The output always records `source` and, for fallback, `fallback_reason`;
+there is no silent substitution. Reprojection error is a calibration self-consistency measure,
+not a metric-accuracy claim.
+
