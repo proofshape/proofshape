@@ -425,6 +425,32 @@ account appears to be `@dalwalyk`. Left for its owner to confirm rather than edi
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-036, so D-037 was the first free number.
 
+**D-038 · The `State: Done` commit ships inside the story's own pull request, before it merges — never as a follow-up.** (2026-09-28)
+`AGENTS.md`'s definition of done previously said the state change happens "the moment a pull
+request merges... in the same action" as the merge. That wording is retired: it describes
+merging and updating state as one click, but GitHub's merge button cannot add a commit, so in
+practice the state change either rode along in the PR (correct) or became a separate mental step
+for whoever clicked merge (what kept failing). The rule now is sequential and mechanical: once a
+pull request is approved, push one more commit to it — `State: Done` in the story file, the
+matching index row, `check_story_states.py --fix` committed, the completion record filled in —
+and only then merge. Merging a pull request while its story still shows `In review` is not
+allowed; an AI assistant finishing a PR pushes this commit itself rather than leaving it for
+whoever clicks merge. Instructions updated in `AGENTS.md` (definition of done and the refusal
+list), `AGENTS_START_HERE.md`, `stories/README.md` step 6, `README.md`, and the PR template.
+*Why:* this exact step — set `State: Done` at merge — has now been missed on three consecutive
+merges: R-02 (PR #29, closed out separately in #30), R-01 (PR #31, closed out in #34), and R-03
+(PR #33, closed out in the same #34). Each time the fix was a whole extra pull request, and R-04
+— the single bottleneck story the sprint plan calls out by name — sat `Blocked` between R-01's
+merge and its close-out even though its real dependency was already satisfied. D-025 already put
+this checklist item in front of every PR and D-027 made the cascade itself mechanical; neither
+fixed the failure, because both still described the state change as something that happens *at*
+or *after* merge, which is exactly the moment attention has moved on to the next thing. Moving it
+to *before* merge — a required commit on the PR, not a separate action after it — is the same
+fix D-037 applied to claiming: don't rely on someone remembering a step at the moment they're
+least likely to remember it, make the artifact incomplete without it.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-037, so D-038 was the first free number.
+
 ---
 
 ## Open — not yet decided

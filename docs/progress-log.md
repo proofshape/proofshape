@@ -394,3 +394,25 @@ R-04 (needs R-01, R-02), R-11 and R-12 (need R-01) from `Blocked` to `Ready`.
 bottleneck story, `Blocked`. The actual hours in both completion records are left as
 `<n> h actual` for their owners to fill in; they weren't measured by the person closing out.
 **Next:** R-04 is the chain story and is `Ready`. R-11 and R-12 are available in parallel.
+
+---
+
+## 2026-09-28 — Set `Done` before merge, not after (D-038)
+
+**Who:** @TabeenRaoof
+**What changed:** the merge-time state change is now required as a commit pushed to a story's
+own pull request before it merges, not as a follow-up action taken at or after the merge click.
+`AGENTS.md`'s definition of done, its refusal list, `AGENTS_START_HERE.md`, `stories/README.md`
+step 6, `README.md`, and the PR template all restate the rule this way. Recorded as D-038.
+Also tightened D-037's claim instructions: a claim must reach `main` as its own small pull
+request right away, not sit on an unmerged branch, closing the gap that lost a claim earlier
+this session.
+**Command / how to reproduce:** `python3 scripts/check_story_states.py` and
+`python -m pytest tests/test_check_story_states.py`.
+**Result:** no code behaviour changes; instructions and one decision entry only. Existing 93
+tests pass, `ruff` clean, story states consistent.
+**Concluded:** the same failure — a story merged without its state flipped — had already
+happened three times in a row (R-02, R-01, R-03), each needing its own separate close-out pull
+request. The fix follows D-037's pattern: make the artifact (the PR) incomplete without the
+step, rather than relying on someone remembering it at the moment they're about to merge.
+**Next:** watch whether this actually holds on R-04's PR, the next one to close.

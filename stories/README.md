@@ -37,16 +37,23 @@ it is not "step 4"** — read the **Depends on** line to know what actually has 
    The owner is always the **person** who will answer for the work, as an `@github-handle`
    (two people: `@a; @b`). **If an AI assistant makes the claim for you, it writes your handle,
    never its own name.** It asks you if it can't tell whose handle to use; `gh api user --jq
-   .login` gives the account the GitHub CLI is logged in as. Push the claim right away, on your
-   story branch or as a small PR, so the rest of the team can see it. Then run
+   .login` gives the account the GitHub CLI is logged in as. **Get the claim onto `main` right
+   away**, as its own small pull request (see `chore/claim-r-01` for the pattern) — a claim that
+   only exists on an unmerged branch is invisible to everyone else, which is exactly what "so
+   nobody duplicates your work" is supposed to prevent. Then run
    `python3 scripts/check_story_states.py`: it fails if the two places disagree, if a Claimed
    story has no owner, or if the owner isn't a person's handle.
 3. Branch as `<area>/<id>-short-name`, for example `recon/R-04-metric-alignment`.
 4. Build it. Write notes in the story file as you go — what surprised you, what you chose and
    why. That section is for the next person, including future you.
 5. Open a pull request. Either of the other two reviews it.
-6. On merge, fill in the **Completion record**: who, date, PR number, and **actual hours against
-   the estimate**. The actuals are how our estimates stop being wrong.
+6. **Once it's approved, push one more commit to the PR — before merging, not after (D-038):**
+   set **State: Done** in the story file and its index row here, fill in the **Completion
+   record** (who, date, PR number, and **actual hours against the estimate**, never the estimate
+   copied in), and run `python3 scripts/check_story_states.py --fix`, committing whatever it
+   changes. Only merge once that commit is in. The actuals are how our estimates stop being
+   wrong; the state change is how the index stays trustworthy for the next person picking work.
+7. After merging, append an entry to `docs/progress-log.md`.
 
 **If you get stuck, say so.** Someone joining to unblock you is expected and gets noted. Two
 people quietly working the same story is the thing to avoid.
