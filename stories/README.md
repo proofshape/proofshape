@@ -47,12 +47,15 @@ it is not "step 4"** — read the **Depends on** line to know what actually has 
 4. Build it. Write notes in the story file as you go — what surprised you, what you chose and
    why. That section is for the next person, including future you.
 5. Open a pull request. Either of the other two reviews it.
-6. **Once it's approved, push one more commit to the PR — before merging, not after (D-038):**
-   set **State: Done** in the story file and its index row here, fill in the **Completion
-   record** (who, date, PR number, and **actual hours against the estimate**, never the estimate
-   copied in), and run `python3 scripts/check_story_states.py --fix`, committing whatever it
-   changes. Only merge once that commit is in. The actuals are how our estimates stop being
-   wrong; the state change is how the index stays trustworthy for the next person picking work.
+6. **Push one more commit to the PR — before merging, not after (D-038):** set **State: Done**
+   in the story file and its index row here, fill in the **Completion record** (who, date, PR
+   number, and **actual hours against the estimate**, never the estimate copied in), and run
+   `python3 scripts/check_story_states.py --fix`, committing whatever it changes. **Push it
+   before the approval you intend to merge on, not after** — `main` dismisses a stale approval
+   on every new commit (D-013), so this commit needs to be part of what gets reviewed, not
+   tacked on afterward. Only merge once it's in and approved, with nothing pushed after it. The
+   actuals are how our estimates stop being wrong; the state change is how the index stays
+   trustworthy for the next person picking work.
 7. After merging, append an entry to `docs/progress-log.md`.
 
 **If you get stuck, say so.** Someone joining to unblock you is expected and gets noted. Two

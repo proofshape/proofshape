@@ -37,14 +37,16 @@ never batched, never deferred.
 
 ## Before merging — not after (D-038)
 
-15–17. Once the pull request is approved, push one more commit to it — **before merging, not
-as a follow-up** — following the **Definition of Done**'s merge-time steps in `AGENTS.md`:
-`State: Done` in the story file and the index, `check_story_states.py --fix` committed, the
-completion record filled in — **and its hours must be real and measured, never the estimate
-copied in** (this exact gap is why this file exists). Only then merge. **This step has been
-missed on three consecutive merges already** (R-02, R-01, R-03), each needing its own separate
-close-out pull request afterward — if you are the assistant preparing the PR, push this commit
-yourself rather than leaving it for whoever clicks merge.
+15–17. Push one more commit to the pull request — following the **Definition of Done**'s
+merge-time steps in `AGENTS.md`: `State: Done` in the story file and the index,
+`check_story_states.py --fix` committed, the completion record filled in — **and its hours must
+be real and measured, never the estimate copied in** (this exact gap is why this file exists).
+**Push it before the approval you intend to merge on, not after** — `main` dismisses stale
+approvals on every new commit (D-013), so anything pushed after approval needs a fresh one.
+Only merge once that commit is in and approved, with nothing pushed after it. **This step has
+been missed on three consecutive merges already** (R-02, R-01, R-03), each needing its own
+separate close-out pull request afterward — if you are the assistant preparing the PR, push this
+commit yourself, before review, rather than leaving it for whoever clicks merge.
 18. After merging, append an entry to `docs/progress-log.md`.
 
 If a step doesn't apply, say so explicitly. Silence reads as "done," not "didn't apply." Missing

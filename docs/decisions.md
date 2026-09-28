@@ -430,13 +430,16 @@ highest decision anywhere was D-036, so D-037 was the first free number.
 request merges... in the same action" as the merge. That wording is retired: it describes
 merging and updating state as one click, but GitHub's merge button cannot add a commit, so in
 practice the state change either rode along in the PR (correct) or became a separate mental step
-for whoever clicked merge (what kept failing). The rule now is sequential and mechanical: once a
-pull request is approved, push one more commit to it — `State: Done` in the story file, the
-matching index row, `check_story_states.py --fix` committed, the completion record filled in —
-and only then merge. Merging a pull request while its story still shows `In review` is not
-allowed; an AI assistant finishing a PR pushes this commit itself rather than leaving it for
-whoever clicks merge. Instructions updated in `AGENTS.md` (definition of done and the refusal
-list), `AGENTS_START_HERE.md`, `stories/README.md` step 6, `README.md`, and the PR template.
+for whoever clicked merge (what kept failing). The rule is now sequential and mechanical: push a
+commit to the pull request that sets `State: Done` in the story file, updates the matching index
+row, and runs `check_story_states.py --fix`, with the completion record filled in — **pushed
+*before* the approval the PR will merge on, not after**, so it is part of what gets reviewed, not
+an addendum once review is finished. Only merge once that commit is in and approved, with
+nothing pushed after it. Merging a pull request while its story still shows `In review` is not
+allowed; an AI assistant finishing a PR pushes this commit itself, before asking for review,
+rather than leaving it for whoever clicks merge. Instructions updated in `AGENTS.md` (definition
+of done and the refusal list), `AGENTS_START_HERE.md`, `stories/README.md` step 6, `README.md`,
+and the PR template.
 *Why:* this exact step — set `State: Done` at merge — has now been missed on three consecutive
 merges: R-02 (PR #29, closed out separately in #30), R-01 (PR #31, closed out in #34), and R-03
 (PR #33, closed out in the same #34). Each time the fix was a whole extra pull request, and R-04
@@ -448,6 +451,13 @@ or *after* merge, which is exactly the moment attention has moved on to the next
 to *before* merge — a required commit on the PR, not a separate action after it — is the same
 fix D-037 applied to claiming: don't rely on someone remembering a step at the moment they're
 least likely to remember it, make the artifact incomplete without it.
+*Amended before this ever reached `main`:* the first draft of this entry said to push the state
+commit "once it's approved... then merge." @dalwalyk caught in review that this cannot work —
+`main`'s branch protection dismisses a stale approval on every new commit (D-013), so a commit
+pushed after approval always needs a second approval round, which is exactly the two-event
+problem this decision exists to remove. Fixed by reordering: the state commit is pushed *before*
+the approval that will actually be used to merge, as part of the PR's normal content, not after
+it. Left as an amendment rather than a silent rewrite so the reasoning that caught it isn't lost.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-037, so D-038 was the first free number.
 

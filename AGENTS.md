@@ -140,27 +140,33 @@ Every story, without exception:
   with a guess. A completion record with the estimate quietly duplicated into the actual slot is
   indistinguishable from one that was actually measured, which defeats the entire reason this
   field exists — see D-033.
-- **Before the pull request merges — not after (D-038):** once it's approved, push one more
-  commit to it that sets `State: Done` on the story file, updates the matching row in
-  `stories/README.md` to `Done`, and runs `python3 scripts/check_story_states.py --fix`,
-  committing whatever it changes. Then merge. The state change ships *inside* the pull request
-  that finishes the story, so merging it and landing `Done` on `main` are one event, not two —
-  never a follow-up, never the next person's problem. A pull request that is approved and about
-  to merge but still shows `In review` is not ready; a story left `In review` after merging is
-  exactly what makes the index untrustworthy, which is what then leads someone to work a story
-  that is actually already blocked or already done. **This has been missed on three consecutive
-  merges** (R-02 #29, R-01 #31, R-03 #33), each needing a separate close-out pull request
-  afterward — see D-038.
+- **Before the pull request merges — not after (D-038):** the state change ships *inside* the
+  pull request that finishes the story, so merging it and landing `Done` on `main` happen
+  together, not as two separate events. Push a commit to the PR that sets `State: Done` on the
+  story file, updates the matching row in `stories/README.md` to `Done`, and runs
+  `python3 scripts/check_story_states.py --fix`, committing whatever it changes.
+  **Push it *before* the approval you intend to merge on, not after** — `main`'s branch
+  protection dismisses stale approvals on every new commit (D-013), so a commit pushed after
+  approval un-approves the PR and forces a second review round for a housekeeping change. Fold
+  it into the PR's normal content: it's the last commit before you ask for review, not an
+  addendum after review finishes. Once that commit is in and approved, merge — nothing should
+  follow it. A pull request that is about to merge but still shows `In review` is not ready; a
+  story left `In review` after merging is exactly what makes the index untrustworthy, which is
+  what then leads someone to work a story that is actually already blocked or already done.
+  **This has been missed on three consecutive merges** (R-02 #29, R-01 #31, R-03 #33), each
+  needing a separate close-out pull request afterward — see D-038.
   - The `check_story_states.py --fix` half of this is mechanical, not the approver's job
     specifically: it reads the dependency graph and flips any story from `Blocked` to `Ready`
     once every one of its dependencies is verifiably `Done`, and it flags (but never silently
     resolves) any story whose file and index disagree on state or owner. It never marks anything
     `Done` or `Claimed`, and never writes an owner — only a human does that, by actually taking
-    or finishing the work. Whoever pushes the last commit before merging runs it.
+    or finishing the work.
   - **If you are an AI assistant preparing a story's pull request:** push this state-change
-    commit yourself as the PR's last commit before telling the person the PR is ready to merge,
-    or before merging it. Don't leave it as a step for whoever clicks merge — that is precisely
-    how it has kept slipping.
+    commit yourself, as the PR's last commit before review, rather than leaving it for whoever
+    clicks merge — that is precisely how it has kept slipping. If the PR is already under review
+    when the story is actually finished, push it anyway and say plainly that it will dismiss the
+    existing approval and a fresh one is needed on this final commit — don't merge on a stale
+    approval that predates it.
 
 Acceptance criteria are per story. The definition of done is not — it is the same every time.
 
