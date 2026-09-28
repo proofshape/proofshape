@@ -61,3 +61,17 @@ the session median. The output always records `source` and, for fallback, `fallb
 there is no silent substitution. Reprojection error is a calibration self-consistency measure,
 not a metric-accuracy claim.
 
+## R-04 · metric alignment
+
+Align R-01's arbitrary-scale camera centres to R-02's metric board-frame camera centres:
+
+```bash
+python -m recon.metric_alignment \
+  fixtures/data/recon_runs/s-04 fixtures/data/board_poses/s-04
+```
+
+The command pairs poses by frame name, solves a 3D similarity transform, and writes
+`metric_alignment.json` beside the reconstruction output. The report includes the scale,
+rotation, translation in millimetres, and per-frame camera-centre residuals. Residuals are not
+an object-accuracy or tolerance result; known-size validation requires an independent measured
+reference.
