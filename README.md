@@ -82,6 +82,8 @@ on Apple Silicon and on the shared GPU environment (F-05) — same command, same
 - One person per story, claimed visibly before work starts: the claimer's GitHub handle goes
   on the story file and on its row in the [backlog index](stories/README.md), even when an AI
   assistant makes the claim for them.
+- A story's `State:` is set to `Done` by a commit pushed to its own pull request, before that
+  pull request merges — not fixed up afterward.
 - Tests alongside the code, not batched before or after it.
 - Never commit fixtures, model weights, or secrets. This repository is public.
 
