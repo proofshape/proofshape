@@ -394,3 +394,31 @@ R-04 (needs R-01, R-02), R-11 and R-12 (need R-01) from `Blocked` to `Ready`.
 bottleneck story, `Blocked`. The actual hours in both completion records are left as
 `<n> h actual` for their owners to fill in; they weren't measured by the person closing out.
 **Next:** R-04 is the chain story and is `Ready`. R-11 and R-12 are available in parallel.
+
+---
+
+## 2026-09-28 — Set `Done` before merge, not after (D-038)
+
+**Who:** @TabeenRaoof, with the ordering fix from @dalwalyk's review
+**What changed:** the merge-time state change is now required as a commit pushed to a story's
+own pull request before it merges, not as a follow-up action taken at or after the merge click.
+`AGENTS.md`'s definition of done, its refusal list, `AGENTS_START_HERE.md`, `stories/README.md`
+step 6, `README.md`, and the PR template all restate the rule this way. Recorded as D-038.
+Also tightened D-037's claim instructions: a claim must reach `main` as its own small pull
+request right away, not sit on an unmerged branch, closing the gap that lost a claim earlier
+this session.
+**Command / how to reproduce:** `python3 scripts/check_story_states.py` and
+`python -m pytest tests/test_check_story_states.py`.
+**Result:** no code behaviour changes; instructions and one decision entry only. Existing 93
+tests pass, `ruff` clean, story states consistent. The PR's first draft said to push the state
+commit "once approved, then merge" — @dalwalyk caught in review that `main` dismisses a stale
+approval on every new commit (D-013), so a commit pushed after approval always forces a second
+approval round. Fixed before merge: the state commit now has to be pushed *before* the approval
+the PR merges on, not after.
+**Concluded:** the same failure — a story merged without its state flipped — had already
+happened three times in a row (R-02, R-01, R-03), each needing its own separate close-out pull
+request. The fix follows D-037's pattern: make the artifact (the PR) incomplete without the
+step, rather than relying on someone remembering it at the moment they're about to merge. That
+this rule's own first draft conflicted with an existing decision (D-013) before anyone had even
+approved it is itself a small instance of the same lesson.
+**Next:** watch whether this actually holds on R-04's PR, the next one to close.

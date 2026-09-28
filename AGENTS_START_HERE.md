@@ -20,8 +20,9 @@ here is exactly the drift this project keeps getting burned by (see D-025); poin
 check `docs/decisions.md` for this area, check for conflicts, resolve any ambiguity, plan before
 building anything non-trivial, and **claim it before writing any code** (its step 5, with the
 mechanics in step 2 of `stories/README.md`). **Claiming means the person's `@github-handle` goes
-on the story file *and* its row in the backlog index, not the assistant's name** (D-037). Check
-it with `python3 scripts/check_story_states.py`.
+on the story file *and* its row in the backlog index, not the assistant's name, and that claim
+gets onto `main` right away** — a claim sitting only on an unmerged branch is invisible to
+everyone else (D-037). Check it with `python3 scripts/check_story_states.py`.
 
 ## While working
 
@@ -34,12 +35,19 @@ never batched, never deferred.
     `python3 scripts/check_story_states.py`. All clean.
 14. Tick every box in `.github/PULL_REQUEST_TEMPLATE.md`.
 
-## On merge — whoever merges it, same action as the merge
+## Before merging — not after (D-038)
 
-15–18. Follow the **Definition of Done**'s merge-time steps in `AGENTS.md`: `State: Done` in the
-story file and the index, `check_story_states.py --fix` committed, an entry in
-`docs/progress-log.md` — **and the completion record's hours must be real and measured, never
-the estimate copied in** (this exact gap is why this file exists).
+15–17. Push one more commit to the pull request — following the **Definition of Done**'s
+merge-time steps in `AGENTS.md`: `State: Done` in the story file and the index,
+`check_story_states.py --fix` committed, the completion record filled in — **and its hours must
+be real and measured, never the estimate copied in** (this exact gap is why this file exists).
+**Push it before the approval you intend to merge on, not after** — `main` dismisses stale
+approvals on every new commit (D-013), so anything pushed after approval needs a fresh one.
+Only merge once that commit is in and approved, with nothing pushed after it. **This step has
+been missed on three consecutive merges already** (R-02, R-01, R-03), each needing its own
+separate close-out pull request afterward — if you are the assistant preparing the PR, push this
+commit yourself, before review, rather than leaving it for whoever clicks merge.
+18. After merging, append an entry to `docs/progress-log.md`.
 
 If a step doesn't apply, say so explicitly. Silence reads as "done," not "didn't apply." Missing
 something this file should have caught? Flag it and add it — this file is expected to grow.
