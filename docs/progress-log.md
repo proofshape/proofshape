@@ -380,3 +380,17 @@ pass, and the owner-match and unparsed-row tests each fail if their check is rem
 **Next:** #31 (R-01) merged first; its index row was carried into the new layout while
 resolving #32. The R-03 claim branch already uses the Owner cell. R-01's owner handle
 (`@yashidalwala`; the GitHub account is `@dalwalyk`) needs confirming by its owner.
+
+---
+
+## 2026-09-28 — R-01 and R-03 closed out; R-04, R-11, R-12 unblocked
+
+**Who:** @TabeenRaoof (close-out). R-01 was merged by @dalwalyk (#31), R-03 by @mbj1994 (#33).
+**What changed:** R-01 and R-03 set to `Done` in their story files and the index, with
+completion records naming the owner, date and PR. `check_story_states.py --fix` then flipped
+R-04 (needs R-01, R-02), R-11 and R-12 (need R-01) from `Blocked` to `Ready`.
+**Result:** both merges had skipped the merge-time state step, three merges in a row now
+(R-02, R-01, R-03), so the index showed finished work as `In review` and kept R-04, the
+bottleneck story, `Blocked`. The actual hours in both completion records are left as
+`<n> h actual` for their owners to fill in; they weren't measured by the person closing out.
+**Next:** R-04 is the chain story and is `Ready`. R-11 and R-12 are available in parallel.
