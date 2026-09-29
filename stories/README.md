@@ -165,9 +165,9 @@ so this is behind schedule, not early.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [C-01](C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Claimed | @TabeenRaoof |
-| [C-02](C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Blocked | _unclaimed_ |
-| [C-03](C-03.md) | Gyro permission flow | 2 h | C-01 | Blocked | _unclaimed_ |
+| [C-01](C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Done | @TabeenRaoof |
+| [C-02](C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Ready | _unclaimed_ |
+| [C-03](C-03.md) | Gyro permission flow | 2 h | C-01 | Ready | _unclaimed_ |
 
 ---
 

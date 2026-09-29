@@ -451,3 +451,28 @@ has no D-039 entry — it was reverted in the same PR that proposed it, before a
 **Next:** R-05 and R-06 are `Ready` and unclaimed. R-16 stays `Blocked` until `G-01`–`G-05` exist
 and produce a real tolerance; those aren't written up yet — `stories/README.md` deliberately
 keeps Phase 3 titles-only until the sprint boundary, same reasoning as D-032.
+
+## 2026-09-29 — C-01 minimal upload page (PR #52)
+
+**Who:** @TabeenRaoof (PR #52).
+**What changed:** the thin capture thread's first story — a plain-HTML page in `capture/` that
+calls `createSession`, `uploadFrame` and `finishSession` against the frozen contract
+(`contracts/openapi.yaml`, F-03), proving the wire format end to end before anything builds the
+real app shell (C-04) around an assumption about it. Backed by a three-route local stub
+(`capture/stub/contract-stub.ts`) that loads its canned bodies from `contracts/examples/*.json`
+at startup so it can't drift from the contract — explicitly not the fuller S1 "mock service"
+`docs/sprint-plan.md` describes.
+**Also in this PR:** the first npm project outside `scripts/`, so it settles `capture/`'s tooling
+— Vite + vanilla TypeScript + Vitest, local to `capture/`, Node 24 (**D-040**) — and moves
+`.github/workflows/typescript-ci.yml` from a Node-20 root-`package.json` placeholder (which never
+actually ran a test) to `capture/package.json` with `npm test` wired in, since Vitest 5 requires
+Node ≥22.12. Also records how `gyro` actually travels inside the multipart `uploadFrame` request
+(**D-041**), since the contract's own JSON example can't represent a multipart body's parts.
+**Result:** 29 capture tests pass, `tsc`/`eslint`/`prettier` clean; repo-wide `pytest` (115),
+`ruff` and `check_story_states.py` unaffected. Verified by mutation (sent `gyro` as `{x, y, z}`,
+confirmed both `api.test.ts` and `page.test.ts` failed loudly, reverted) and by hand against the
+real `npm run dev` server with `curl`, not just the test suite. C-01 is now `Done` (3 h actual,
+est 3 h); `C-02` and `C-03` cascaded from `Blocked` to `Ready`.
+**Next:** C-02 and C-03 are `Ready` and unclaimed. The thin capture thread is still behind
+schedule (three sprints' allocated hours passed before this story started) — worth someone
+picking up C-02 or C-03 soon rather than letting it slip further.
