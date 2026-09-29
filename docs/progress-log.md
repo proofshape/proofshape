@@ -451,3 +451,31 @@ has no D-039 entry — it was reverted in the same PR that proposed it, before a
 **Next:** R-05 and R-06 are `Ready` and unclaimed. R-16 stays `Blocked` until `G-01`–`G-05` exist
 and produce a real tolerance; those aren't written up yet — `stories/README.md` deliberately
 keeps Phase 3 titles-only until the sprint boundary, same reasoning as D-032.
+
+**2026-09-29 — R-05 (scale agreement check) closed out.** PR #48 (`@dalwalyk`, reviewed by
+`@TabeenRaoof`) implements `recon.scale_agreement.check_scale_agreement`, comparing the three
+independent scale sources from D-007 (printed board pitch, an optional caliper reading, an
+optional CAD registration residual). The three arrive as different kinds of quantities — two
+lengths and a fractional error — so all three are converted to a scale ratio relative to the
+nominal board pitch before comparing; that unit-conversion design choice is recorded as **D-039**.
+The 2% D-007 threshold itself is not redefined, only passed through as a configurable default.
+Board pitch alone is rejected as a check on itself; at least one of the other two sources must
+also be supplied, matching `minItems: 2` on `ScaleAgreement.sources_compared` in
+`contracts/openapi.yaml`. The CAD registration residual is accepted as a plain optional float —
+CAD registration itself (`inspect/`) is Tier 2 and not built yet, so R-05 only defines the shape
+that input takes once it exists.
+**Review took three rounds** because of a D-013/D-038 interaction worth noting for future PRs: a
+first review was a GitHub `Comment` (not a formal `Approve`) submitted against the claim-only
+commit, before any real code existed. A second, genuine `Approve` then landed moments after the
+`State: Done` + actual-hours commit was pushed (per D-038, that commit goes in before the approval
+used to merge, not after) — the timing crossed anyway and branch protection auto-dismissed it
+(D-013). Updating the branch against `main` (to pick up an unrelated C-01 claim commit) dismissed
+it a third time. Each time required only a quick re-confirmation, not a re-review from scratch,
+since nothing in the actual diff changed after the second round — but it is a reminder that any
+push after an approval, including a routine "update branch," restarts the review-freshness clock.
+R-05 is now `Done` (2 h actual, est 4 h). `check_story_states.py` confirms nothing currently
+depends on R-05, so no cascade to `Ready` was expected or needed.
+**Result:** 115 tests pass, `ruff` clean, `check_story_states.py` consistent.
+**Next:** R-06 (segment the part from the board) is still `Ready` and unclaimed — depends only on
+`R-04`, same as R-05 did, but needs the golden capture fixtures for its "visually verified on
+every golden object" acceptance criterion, unlike R-05 which needed no physical data at all.
