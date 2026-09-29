@@ -24,6 +24,37 @@ Writes `poses.npz`, `depth.npz`, `points.ply` and `run.json` (per-stage timings)
 intrinsics are in VGGT's resized-image pixels (`processed_image_size_hw` in `run.json`), not the
 full-resolution photo pixels R-02 uses.
 
+
+## R-11 · MASt3R behind the config flag
+
+R-11 keeps VGGT as the D-009 default and adds MASt3R as an alternative selected by one
+configuration value. Both backends take the same capture folder and write the same four files:
+`poses.npz`, `depth.npz`, `points.ply` and `run.json`.
+
+On the shared Lightning T4:
+
+```bash
+bash scripts/bootstrap_mast3r.sh
+export PROOFSHAPE_RECON_BACKEND=mast3r
+python -m recon.reconstruction_runner \
+  fixtures/data/golden_capture/s-04 \
+  --out-dir fixtures/data/recon_runs/s-04-mast3r
+```
+
+Or select it explicitly with `--backend mast3r`. With no flag or environment variable,
+`recon.reconstruction_runner` still chooses VGGT.
+
+MASt3R is pinned to upstream commit
+`f5209afc300cec36239a7ac992263f36847bbba0`. The adapter intentionally reads stored JPEG
+pixels without applying EXIF orientation, matching R-01/R-02. MASt3R's camera-to-world poses
+are inverted into R-01's camera-from-world convention, and the PLY is rebuilt from the saved
+depth, intrinsics and poses so all four artifacts describe the same geometry.
+
+The MASt3R code is CC BY-NC-SA 4.0 and its checkpoint documentation also asks users to review
+the training-data licences. Treat this as an academic backend unless those restrictions are
+cleared for another use. Its output is not accepted as metric inspection evidence by itself;
+R-04 still establishes board-frame scale.
+
 ## R-02 · board detection and per-frame camera pose
 
 Runs anywhere — laptop, Studio or CI; no GPU or PyTorch needed:
