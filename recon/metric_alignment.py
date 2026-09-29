@@ -123,10 +123,24 @@ def align_camera_centres(
     board_pose_found: np.ndarray | None = None,
 ) -> AlignmentResult:
     """Pair poses by frame name and solve their board-frame similarity transform."""
+    # Both sides must have unique frame names, checked here rather than left to be caught (or
+    # not) downstream: a name->index dict silently keeps whichever occurrence it saw last, so a
+    # duplicate on either side would otherwise mean pairing against an arbitrary one of the
+    # duplicates with no indication anything was ambiguous (issue #44 — this used to be checked
+    # only on the reconstruction side, via a side effect of how paired names happened to be
+    # counted downstream, which could not see a duplicate that never occurred more than once in
+    # frame_names).
+    reconstruction_names_str = [str(name) for name in frame_names]
+    if len(set(reconstruction_names_str)) != len(reconstruction_names_str):
+        raise ValueError("Frame names must be unique in the reconstruction output.")
+    board_names_str = [str(name) for name in board_frame_names]
+    if len(set(board_names_str)) != len(board_names_str):
+        raise ValueError("Frame names must be unique in the board pose output.")
+
     reconstruction_by_name = {
-        str(name): index for index, name in enumerate(frame_names)
+        name: index for index, name in enumerate(reconstruction_names_str)
     }
-    board_by_name = {str(name): index for index, name in enumerate(board_frame_names)}
+    board_by_name = {name: index for index, name in enumerate(board_names_str)}
     found = (
         np.ones(len(board_frame_names), dtype=bool)
         if board_pose_found is None
@@ -138,14 +152,12 @@ def align_camera_centres(
     paired_names: list[str] = []
     reconstruction_indices: list[int] = []
     board_indices: list[int] = []
-    for name in frame_names:
-        board_index = board_by_name.get(str(name))
+    for name in reconstruction_names_str:
+        board_index = board_by_name.get(name)
         if board_index is not None and found[board_index]:
-            paired_names.append(str(name))
-            reconstruction_indices.append(reconstruction_by_name[str(name)])
+            paired_names.append(name)
+            reconstruction_indices.append(reconstruction_by_name[name])
             board_indices.append(board_index)
-    if len(set(paired_names)) != len(paired_names):
-        raise ValueError("Frame names must be unique in the reconstruction output.")
     reconstruction_centres = camera_centres(reconstruction_extrinsic)[
         reconstruction_indices
     ]

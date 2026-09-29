@@ -14,7 +14,7 @@ import pypdfium2 as pdfium
 import pytest
 from PIL import Image
 
-from recon import board_pose
+from recon import board_pose, frames
 from recon.board_pose import (
     BOARD_INTERIOR_CORNERS,
     INTRINSICS_SOURCE_EXIF,
@@ -437,6 +437,12 @@ def test_unreadable_frame_is_reported_not_raised(tmp_path: Path) -> None:
 
 
 # --- a whole capture -------------------------------------------------------------------------
+# find_capture_frames itself lives in recon/frames.py and is tested there (issue #43); this just
+# confirms the re-export `board_pose.find_capture_frames` still resolves to that same function.
+
+
+def test_find_capture_frames_is_the_shared_recon_frames_function():
+    assert board_pose.find_capture_frames is frames.find_capture_frames
 
 
 @pytest.fixture

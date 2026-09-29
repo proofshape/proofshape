@@ -55,6 +55,43 @@ def test_align_pairs_frames_and_reports_residuals() -> None:
     )
 
 
+def test_align_rejects_duplicate_reconstruction_frame_names() -> None:
+    names = ["a.jpg", "a.jpg", "b.jpg"]
+    source = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
+    target = 2.5 * source + np.array([5.0, 6.0, 7.0])
+
+    with pytest.raises(ValueError, match="unique in the reconstruction output"):
+        align_camera_centres(
+            names,
+            _extrinsics_from_centres(source),
+            ["a.jpg", "b.jpg", "c.jpg"],
+            _extrinsics_from_centres(target),
+        )
+
+
+def test_align_rejects_duplicate_board_frame_names() -> None:
+    """Regression for issue #44: a duplicate board name used to silently pair against
+    whichever occurrence a name->index dict happened to keep, with no error and no
+    indication the pairing was ambiguous. Reproduced here with the second "c.jpg" holding a
+    deliberately wrong centre, far enough off that a silent mispairing would be obvious in the
+    residual if this raised nothing.
+    """
+    names = ["a.jpg", "b.jpg", "c.jpg"]
+    source = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
+    good_target = 2.5 * source + np.array([5.0, 6.0, 7.0])
+    # Board side lists "c.jpg" twice: once with the correct centre, once with a wrong one.
+    board_names = ["a.jpg", "b.jpg", "c.jpg", "c.jpg"]
+    board_target = np.vstack([good_target, [[999.0, 999.0, 999.0]]])
+
+    with pytest.raises(ValueError, match="unique in the board pose output"):
+        align_camera_centres(
+            names,
+            _extrinsics_from_centres(source),
+            board_names,
+            _extrinsics_from_centres(board_target),
+        )
+
+
 def test_camera_centres_rejects_bad_shape() -> None:
     with pytest.raises(ValueError, match="shape"):
         camera_centres(np.zeros((3, 4)))
