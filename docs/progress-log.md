@@ -442,3 +442,21 @@ stored-pixel convention. Camera-to-world poses are inverted to the R-01 camera-f
 convention, and MASt3R uses the same four output filenames as VGGT.
 **Next:** run the repository tests/Ruff on Lightning, then run the completed MASt3R path on all
 30 s-04 frames and record its real wall-clock result before moving the story to review.
+
+
+---
+
+## 2026-09-28 — R-11 full s-04 MASt3R run and downstream compatibility check
+
+**Who:** @mbj1994
+**Command / how to reproduce:** run `recon.reconstruction_runner` on the 30-frame s-04 golden
+capture with the MASt3R backend, writing to `fixtures/data/recon_runs/s-04-mast3r`, then pass
+that output unchanged into `recon.metric_alignment` with the existing s-04 board poses.
+**Measured result:** MASt3R PASS, 30 frames, 5,898,240 points, **249.89 s total wall-clock** on
+the shared Lightning GPU. R-04 then consumed the MASt3R output without downstream code changes,
+paired 29 frames, and PASSed with **12.167 mm RMS camera-centre alignment residual**.
+The residual is a reconstruction/board-pose alignment diagnostic, not an object-accuracy or
+tolerance result.
+**Concluded:** R-11 has now demonstrated its required same-golden-capture wall-clock and the
+R-01 output contract is usable by an existing downstream stage. Repository tests/Ruff and the
+normal Definition-of-Done checks still need to be clean before R-11 moves to review.
