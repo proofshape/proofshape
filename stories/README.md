@@ -140,7 +140,7 @@ Full detail in each story file.
 | [R-02](R-02.md) | Board detection and per-frame camera pose | 5 h | F-06, F-07 | Done | @TabeenRaoof |
 | [R-03](R-03.md) | Camera intrinsics from the board | 4 h | R-02 | Done | @mbj1994 |
 | [R-04](R-04.md) | Metric alignment | 6 h | R-01, R-02 | Done | @dalwalyk |
-| [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Ready | _unclaimed_ |
+| [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Claimed | @dalwalyk |
 | [R-06](R-06.md) | Segment the part from the board | 4 h | R-04 | Ready | _unclaimed_ |
 | [R-07](R-07.md) | TSDF fusion to a mesh | 6 h | R-04, R-06 | Blocked | _unclaimed_ |
 | [R-08](R-08.md) | Mesh cleanup and GLB export | 4 h | R-07 | Blocked | _unclaimed_ |
