@@ -422,3 +422,32 @@ step, rather than relying on someone remembering it at the moment they're about 
 this rule's own first draft conflicted with an existing decision (D-013) before anyone had even
 approved it is itself a small instance of the same lesson.
 **Next:** watch whether this actually holds on R-04's PR, the next one to close.
+
+---
+
+## 2026-09-29 — R-04 closed by splitting its known-size tolerance judgment into R-16
+
+**Who:** @yashidalwala (PR #39), reviewed by @TabeenRaoof.
+**What changed:** R-04's known-size acceptance criterion originally asked for a measurement
+*and* a stated tolerance. The measurement is now recorded — the s-04 specimen's B-C edge
+reconstructs at 60.27 mm against @TabeenRaoof's caliper mean of 60.011 mm (PR #35), a 0.26 mm
+(~0.4%) difference — but no tolerance exists anywhere in the project to judge that difference
+against; it can only come from the ground-truth calibration study (`G-01` through `G-05`), which
+hasn't run yet. A first attempt to close the gap anyway with a derived, provisional tolerance
+(D-039, 3x the alignment RMS) was proposed, reviewed, and reverted in the same PR before merge —
+@TabeenRaoof caught that it violated the "no promised numbers" rule for the same reason D-032
+already declined to set I-01's tolerance-table fields early. Rather than leave R-04 open
+indefinitely on a criterion it cannot control, its acceptance criteria were reworded to match
+what it actually delivers (transform, board-frame mm output, per-frame residuals, and the raw
+known-size comparison), and the tolerance judgment was split into a new story, **R-16**, which
+carries the full measurement inline and stays `Blocked` on `R-04, G-03, G-04` until the real
+study produces a number to apply. R-04 is now `Done` (9 h actual, est 6 h); `R-05` and `R-06`
+cascaded from `Blocked` to `Ready`.
+**Also in this PR:** removed an unverifiable "0.50 degrees" orientation-difference claim from
+R-04's notes (flagged by @TabeenRaoof on PR #35 — no code in the repo computes that figure).
+**Result:** 98 tests pass, `ruff` clean, `check_story_states.py` consistent. `docs/decisions.md`
+has no D-039 entry — it was reverted in the same PR that proposed it, before any merge, so the
+"a decision number doesn't carry its caveats forward" risk never materialized on `main`.
+**Next:** R-05 and R-06 are `Ready` and unclaimed. R-16 stays `Blocked` until `G-01`–`G-05` exist
+and produce a real tolerance; those aren't written up yet — `stories/README.md` deliberately
+keeps Phase 3 titles-only until the sprint boundary, same reasoning as D-032.
