@@ -155,6 +155,22 @@ Full detail in each story file.
 
 ---
 
+## Thin capture thread
+
+The one slice of Phase 3 written up early, on purpose — the sprint plan calls it out separately
+from the rest of the capture app because it's meant to run **alongside Phases 1–2, in spare
+time**, not wait for them. It doesn't touch the chain (`R-01` → `R-15`) at all. Three sprints'
+worth of allocated capture hours (S0, S1, S2) have already passed with nothing built here yet,
+so this is behind schedule, not early.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [C-01](C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Ready | _unclaimed_ |
+| [C-02](C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Blocked | _unclaimed_ |
+| [C-03](C-03.md) | Gyro permission flow | 2 h | C-01 | Blocked | _unclaimed_ |
+
+---
+
 ## The chain that sets the date
 
 Total work is 93 hours, and at 27 hours a week across three people that looks like three and a half weeks. It is not, because much of this work cannot be done in parallel.
@@ -179,8 +195,8 @@ The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16 �
 
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
-**Thin capture thread** (runs alongside Phases 1–2, in spare time)
-C-01 minimal upload page · C-02 camera permissions on a real iPhone · C-03 gyro permission flow
+The thin capture thread (C-01–C-03) is the one exception — it's written up above, not here, since
+it's meant to run early rather than wait for a sprint boundary.
 
 **Capture app**
 C-04 app shell · C-05 live camera · C-06 frame gate · C-07 gyro overlay and arrow · C-08 next-view scoring · C-09 model viewer · C-10 provenance colouring · C-11 heatmap rendering · C-12 report page · C-13 buyer setup · C-14 board PDF with order code · C-15 device testing
