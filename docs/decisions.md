@@ -461,35 +461,6 @@ it. Left as an amendment rather than a silent rewrite so the reasoning that caug
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-037, so D-038 was the first free number.
 
-**D-039 · R-04's known-size tolerance is 3x the measured alignment RMS (30 mm), and is
-explicitly provisional pending more measured parts.** (2026-09-28)
-R-04's own alignment diagnostics recorded a camera-centre alignment RMS of 10.015 mm on s-04
-(`stories/R-04.md`, 2026-09-27 entry). The story's known-size acceptance criterion needs a stated
-tolerance to compare the reconstruction-side measurement of the s-04 triangular face's long leg
-(60.27 mm, recorded 2026-09-28) against @TabeenRaoof's caliper reading (60.011 mm mean). The
-tolerance is set at 3x that RMS, i.e. **30 mm**, rather than a tighter multiple or an
-independently invented figure.
-*Why 3x and not something tighter:* the only other evidence available is a single observed
-known-size error (0.26 mm, on one part, from manual point-cloud corner-picking) and the alignment
-RMS itself, which the story notes already label a self-consistency diagnostic, not an accuracy
-measurement — using it as an accuracy proxy at all is already a stretch. `AGENTS.md`'s
-accuracy-honesty rule says never to state a tolerance the calibration study has not measured; with
-only one data point, the greater risk right now is a tolerance that looks more precise than the
-evidence supports, not one that is slightly too generous. 3x was chosen over 2x for that reason:
-it is explicitly conservative given how little data grounds it, not a claim that +-30 mm is
-somehow the system's real accuracy.
-*What this is not:* not a claim that ProofShape measures to +-30 mm in general, and not a
-substitute for the calibration study `docs/decisions.md` elsewhere defers tolerance-table work to
-(see D-031/D-032 area). This single number exists only to let R-04's existing acceptance criterion
-be evaluated on the one measurement recorded so far. It should be revisited — very likely
-tightened — once more parts have been measured this way; that revision does not need to relitigate
-this decision's reasoning, only its number.
-*Applied:* with this tolerance, the single recorded comparison (60.27 mm vs. 60.011 mm, 0.26 mm
-difference) is well inside 30 mm, so R-04's known-size acceptance criterion is met on that basis.
-*Checked against D-028 at write time:* every branch on `origin` was fetched and checked (including
-this story's own `recon/R-04-known-size-measurement` branch). The highest decision anywhere was
-D-038, so D-039 was the first free number.
-
 ---
 
 ## Open — not yet decided
