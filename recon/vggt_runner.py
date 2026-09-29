@@ -36,7 +36,8 @@ from typing import Any
 
 import numpy as np
 
-FRAME_SUFFIXES = (".jpg", ".jpeg")
+from recon.frames import find_capture_frames
+
 DEFAULT_MODEL_ID = "facebook/VGGT-1B"
 
 # Compute capability 8.0 is Ampere, the first NVIDIA generation with fast bf16. The Lightning
@@ -44,28 +45,8 @@ DEFAULT_MODEL_ID = "facebook/VGGT-1B"
 # the same lesson for Metal, where fp16 also wins).
 _MIN_BF16_COMPUTE_CAPABILITY = (8, 0)
 
-
-def find_capture_frames(capture_dir: Path) -> list[Path]:
-    """Return the capture's JPEG frames in a stable, sorted order.
-
-    Sorting matters for reproducibility: VGGT treats the first frame as the reference frame, so a
-    filesystem-dependent order would give a different world frame from run to run.
-    """
-    capture_dir = Path(capture_dir)
-    if not capture_dir.is_dir():
-        raise FileNotFoundError(
-            f"Capture folder not found: {capture_dir}. "
-            "Run `bash fixtures/download_golden_capture.sh` first."
-        )
-
-    frames: list[Path] = []
-    for path in sorted(capture_dir.iterdir()):
-        if path.is_file() and path.suffix.lower() in FRAME_SUFFIXES:
-            frames.append(path)
-
-    if not frames:
-        raise FileNotFoundError(f"No .jpg/.jpeg frames found in {capture_dir}.")
-    return frames
+# find_capture_frames now lives in recon/frames.py (issue #43); imported here so
+# `vggt_runner.find_capture_frames` keeps working for existing callers and tests.
 
 
 def choose_dtype_name(
