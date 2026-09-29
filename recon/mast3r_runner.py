@@ -28,8 +28,9 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -56,9 +57,7 @@ def camera_to_world_to_extrinsic(cams2world: np.ndarray) -> np.ndarray:
     """Convert MASt3R camera-to-world poses to R-01 camera-from-world extrinsics."""
     cams2world = np.asarray(cams2world, dtype=np.float64)
     if cams2world.ndim != 3 or cams2world.shape[1:] != (4, 4):
-        raise ValueError(
-            f"cams2world must have shape (S,4,4), got {cams2world.shape}"
-        )
+        raise ValueError(f"cams2world must have shape (S,4,4), got {cams2world.shape}")
     if not np.isfinite(cams2world).all():
         raise ValueError("cams2world contains non-finite values")
 
@@ -99,8 +98,7 @@ def reshape_dense_outputs(
 
         if confidence.ndim != 2:
             raise ValueError(
-                f"frame {frame_index}: confidence must be (H,W), "
-                f"got {confidence.shape}"
+                f"frame {frame_index}: confidence must be (H,W), got {confidence.shape}"
             )
         height, width = confidence.shape
         if expected_hw is None:
@@ -151,9 +149,7 @@ def _resize_long_edge(image: Any, long_edge_size: int) -> Any:
         resample = Image.Resampling.LANCZOS
     else:
         resample = Image.Resampling.BICUBIC
-    new_size = tuple(
-        int(round(side * long_edge_size / longest)) for side in image.size
-    )
+    new_size = tuple(round(side * long_edge_size / longest) for side in image.size)
     return image.resize(new_size, resample)
 
 
@@ -270,7 +266,9 @@ def run_mast3r_model(
     if device_type != "cuda":
         raise ValueError("R-11 has only been validated on CUDA; use --device cuda.")
     if len(frame_paths) < 2:
-        raise ValueError("MASt3R global alignment requires at least two capture frames.")
+        raise ValueError(
+            "MASt3R global alignment requires at least two capture frames."
+        )
     if image_size != DEFAULT_IMAGE_SIZE:
         raise ValueError(
             f"R-11 is pinned to MASt3R image size {DEFAULT_IMAGE_SIZE}; "
@@ -360,9 +358,7 @@ def run_mast3r_model(
         _, depthmaps, confidences = scene.get_dense_pts3d(clean_depth=False)
         depthmaps = [_to_numpy(value) for value in depthmaps]
         confidences = [_to_numpy(value) for value in confidences]
-        scene_images = [
-            np.asarray(value, dtype=np.float32) for value in scene.imgs
-        ]
+        scene_images = [np.asarray(value, dtype=np.float32) for value in scene.imgs]
         synchronise()
         timings["extract_dense_s"] = time.perf_counter() - started
 
@@ -390,9 +386,7 @@ def run_mast3r_model(
         "torch_version": str(torch.__version__),
         "mast3r_upstream_commit": upstream_commit,
         "pair_count": len(pairs),
-        "peak_gpu_memory_gib": float(
-            torch.cuda.max_memory_allocated() / 1024**3
-        ),
+        "peak_gpu_memory_gib": float(torch.cuda.max_memory_allocated() / 1024**3),
     }
 
 
@@ -453,8 +447,7 @@ def run_on_capture(
             "stored sensor orientation; EXIF rotation ignored to match R-01/R-02"
         ),
         "pose_convention": (
-            "camera-from-world 3x4 "
-            "(inverted from MASt3R camera-to-world)"
+            "camera-from-world 3x4 (inverted from MASt3R camera-to-world)"
         ),
         "device": result["device"],
         "dtype": result["dtype"],
@@ -503,10 +496,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--out-dir",
         type=Path,
         default=None,
-        help=(
-            "output folder "
-            "(default: fixtures/data/recon_runs/<capture folder name>)"
-        ),
+        help="output folder (default: fixtures/data/recon_runs/<capture folder name>)",
     )
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
     parser.add_argument("--device", choices=("cuda",), default="cuda")
@@ -533,10 +523,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
-    out_dir = (
-        args.out_dir
-        or Path("fixtures/data/recon_runs") / args.capture_dir.name
-    )
+    out_dir = args.out_dir or Path("fixtures/data/recon_runs") / args.capture_dir.name
     try:
         run_info = run_on_capture(
             args.capture_dir,
@@ -561,10 +548,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     for stage, seconds in run_info["timings"].items():
         print(f"  {stage}: {seconds:.2f}")
-    print(
-        f"  peak_gpu_memory_gib: "
-        f"{run_info['peak_gpu_memory_gib']:.2f}"
-    )
+    print(f"  peak_gpu_memory_gib: {run_info['peak_gpu_memory_gib']:.2f}")
     print(f"Outputs written to {out_dir}")
     return 0
 
