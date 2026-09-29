@@ -18,7 +18,7 @@ jobs:
       - name: Check for a TypeScript project
         id: detect
         run: |
-          if [ -f package.json ]; then
+          if [ -f capture/package.json ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -28,10 +28,13 @@ jobs:
         if: steps.detect.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+          cache: npm
+          cache-dependency-path: capture/package-lock.json
 
       - name: Install dependencies
         if: steps.detect.outputs.exists == 'true'
+        working-directory: capture
         run: |
           if [ -f package-lock.json ]; then
             npm ci
@@ -41,8 +44,20 @@ jobs:
 
       - name: TypeScript type check
         if: steps.detect.outputs.exists == 'true'
-        run: npx --no-install tsc --noEmit
+        working-directory: capture
+        run: npm run typecheck
 
       - name: ESLint
         if: steps.detect.outputs.exists == 'true'
-        run: npx --no-install eslint .
+        working-directory: capture
+        run: npm run lint
+
+      - name: Prettier
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: capture
+        run: npm run format:check
+
+      - name: Vitest
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: capture
+        run: npm test
