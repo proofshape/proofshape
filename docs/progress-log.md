@@ -422,3 +422,23 @@ step, rather than relying on someone remembering it at the moment they're about 
 this rule's own first draft conflicted with an existing decision (D-013) before anyone had even
 approved it is itself a small instance of the same lesson.
 **Next:** watch whether this actually holds on R-04's PR, the next one to close.
+
+
+---
+
+## 2026-09-28 — R-11 MASt3R GPU feasibility and adapter implementation started
+
+**Who:** @mbj1994
+**What changed:** claimed R-11 on main, pinned MASt3R upstream commit
+`f5209afc300cec36239a7ac992263f36847bbba0`, verified it on the shared Lightning T4, then
+added the MASt3R adapter and the single D-009 backend selector. VGGT remains the default.
+**Measured result:** two-frame s-04 MASt3R inference passed in 1.96 s with 3.12 GiB peak
+allocated GPU memory. Four-frame sparse global alignment passed in 13.72 s with 3.26 GiB peak,
+returning four poses, four intrinsics matrices and finite dense depth/confidence at 384×512.
+These are smoke tests only, not the story's required same-golden-capture wall-clock result.
+**Compatibility finding:** the tested s-04 frame had EXIF orientation 1. The R-11 loader now
+ignores EXIF orientation deliberately so other golden captures stay compatible with R-01/R-02's
+stored-pixel convention. Camera-to-world poses are inverted to the R-01 camera-from-world
+convention, and MASt3R uses the same four output filenames as VGGT.
+**Next:** run the repository tests/Ruff on Lightning, then run the completed MASt3R path on all
+30 s-04 frames and record its real wall-clock result before moving the story to review.
