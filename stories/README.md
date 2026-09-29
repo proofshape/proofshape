@@ -139,9 +139,9 @@ Full detail in each story file.
 | [R-01](R-01.md) | Run the reconstruction model on the golden capture | 5 h | F-05, F-06, F-07 | Done | @yashidalwala |
 | [R-02](R-02.md) | Board detection and per-frame camera pose | 5 h | F-06, F-07 | Done | @TabeenRaoof |
 | [R-03](R-03.md) | Camera intrinsics from the board | 4 h | R-02 | Done | @mbj1994 |
-| [R-04](R-04.md) | Metric alignment | 6 h | R-01, R-02 | In review | @yashidalwala |
-| [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Blocked | _unclaimed_ |
-| [R-06](R-06.md) | Segment the part from the board | 4 h | R-04 | Blocked | _unclaimed_ |
+| [R-04](R-04.md) | Metric alignment | 6 h | R-01, R-02 | Done | @yashidalwala |
+| [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Ready | _unclaimed_ |
+| [R-06](R-06.md) | Segment the part from the board | 4 h | R-04 | Ready | _unclaimed_ |
 | [R-07](R-07.md) | TSDF fusion to a mesh | 6 h | R-04, R-06 | Blocked | _unclaimed_ |
 | [R-08](R-08.md) | Mesh cleanup and GLB export | 4 h | R-07 | Blocked | _unclaimed_ |
 | [R-09](R-09.md) | Per-vertex provenance | 5 h | R-07 | Blocked | _unclaimed_ |
@@ -151,6 +151,7 @@ Full detail in each story file.
 | [R-13](R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Blocked | _unclaimed_ |
 | [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Blocked | _unclaimed_ |
 | [R-15](R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Blocked | _unclaimed_ |
+| [R-16](R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Blocked | _unclaimed_ |
 
 ---
 
@@ -170,7 +171,7 @@ Two consequences worth acting on:
 
 **The September 25 milestone is tight.** A working endpoint needs about 40 hours of that chain, which is roughly four and a half weeks from a September 3 start. That lands in early October, not late September. The milestone is reachable if the chain never stalls, and it is the first thing to slip if it does. We are leaving the date as it stands for now and will revisit at the second sprint boundary with real velocity numbers rather than estimates.
 
-The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13 — are where the other two people work while the chain advances. There is enough of that work to keep everyone busy, which is the point of laying the backlog out this way.
+The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16 — are where the other two people work while the chain advances. There is enough of that work to keep everyone busy, which is the point of laying the backlog out this way.
 
 ---
 
