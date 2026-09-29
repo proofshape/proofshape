@@ -461,6 +461,28 @@ it. Left as an amendment rather than a silent rewrite so the reasoning that caug
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-037, so D-038 was the first free number.
 
+**D-039 · R-05's three scale sources are compared as ratios to the nominal board pitch.** (2026-09-29)
+D-007 states the printed board pitch, the caliper reading, and the CAD registration residual must
+agree to within about 2%, but they start out as different kinds of quantities: the board pitch and
+the caliper reading are both lengths in millimetres, while the CAD registration residual is
+already a fractional scale error, not a length. R-05 (`recon/scale_agreement.py`) converts all
+three to a scale ratio relative to the nominal board pitch before comparing them: the board pitch
+is always the anchor at ratio 1.0 (it is the assumption the whole reconstruction is built on, not
+an independent measurement of itself), the caliper ratio is `caliper_reading_mm / board_pitch_mm`,
+and the CAD ratio is `1.0 + cad_registration_residual`. Any two of the ratios that are present and
+differ by more than the threshold (default ~2%, configurable) flag the session. Board pitch alone
+is rejected — at least one of the caliper reading or the CAD residual must also be supplied,
+matching `minItems: 2` on `sources_compared` in the `ScaleAgreement` schema.
+*Why:* without a shared unit, "any two disagreeing by more than 2%" is not well-defined between a
+length and a fractional error. Ratios relative to the same anchor make every pairwise comparison
+meaningful regardless of which two sources are actually present on a given session.
+*Note:* the CAD registration residual is accepted as a plain optional float parameter. CAD
+registration itself (`inspect/`) is Tier 2 and not built yet (`docs/manual.md` section 7 marks the
+check "Planned"); R-05 does not depend on it or stub it out, it only defines the shape the input
+takes once that residual exists.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-038, so D-039 was the first free number.
+
 ---
 
 ## Open — not yet decided
