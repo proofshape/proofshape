@@ -425,6 +425,41 @@ approved it is itself a small instance of the same lesson.
 
 ---
 
+## 2026-09-28 — R-11 MASt3R GPU feasibility and adapter implementation started
+
+**Who:** @mbj1994
+**What changed:** claimed R-11 on main, pinned MASt3R upstream commit
+`f5209afc300cec36239a7ac992263f36847bbba0`, verified it on the shared Lightning T4, then
+added the MASt3R adapter and the single D-009 backend selector. VGGT remains the default.
+**Measured result:** two-frame s-04 MASt3R inference passed in 1.96 s with 3.12 GiB peak
+allocated GPU memory. Four-frame sparse global alignment passed in 13.72 s with 3.26 GiB peak,
+returning four poses, four intrinsics matrices and finite dense depth/confidence at 384×512.
+These are smoke tests only, not the story's required same-golden-capture wall-clock result.
+**Compatibility finding:** the tested s-04 frame had EXIF orientation 1. The R-11 loader now
+ignores EXIF orientation deliberately so other golden captures stay compatible with R-01/R-02's
+stored-pixel convention. Camera-to-world poses are inverted to the R-01 camera-from-world
+convention, and MASt3R uses the same four output filenames as VGGT.
+**Next:** run the repository tests/Ruff on Lightning, then run the completed MASt3R path on all
+30 s-04 frames and record its real wall-clock result before moving the story to review.
+
+
+---
+
+## 2026-09-28 — R-11 full s-04 MASt3R run and downstream compatibility check
+
+**Who:** @mbj1994
+**Command / how to reproduce:** run `recon.reconstruction_runner` on the 30-frame s-04 golden
+capture with the MASt3R backend, writing to `fixtures/data/recon_runs/s-04-mast3r`, then pass
+that output unchanged into `recon.metric_alignment` with the existing s-04 board poses.
+**Measured result:** MASt3R PASS, 30 frames, 5,898,240 points, **249.89 s total wall-clock** on
+the shared Lightning GPU. R-04 then consumed the MASt3R output without downstream code changes,
+paired 29 frames, and PASSed with **12.167 mm RMS camera-centre alignment residual**.
+The residual is a reconstruction/board-pose alignment diagnostic, not an object-accuracy or
+tolerance result.
+**Concluded:** R-11 has now demonstrated its required same-golden-capture wall-clock and the
+R-01 output contract is usable by an existing downstream stage. Repository tests/Ruff and the
+normal Definition-of-Done checks still need to be clean before R-11 moves to review.
+
 ## 2026-09-29 — R-04 closed by splitting its known-size tolerance judgment into R-16
 
 **Who:** @yashidalwala (PR #39), reviewed by @TabeenRaoof.
