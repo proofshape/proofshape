@@ -6,10 +6,12 @@ import pytest
 from recon.metric_alignment import (
     align_camera_centres,
     apply_similarity_transform,
+    apply_similarity_transform_to_extrinsic,
     camera_centres,
     solve_similarity,
     validate_known_size,
 )
+from recon.vggt_runner import unproject_depth_to_world
 
 
 def _extrinsics_from_centres(centres: np.ndarray) -> np.ndarray:
@@ -120,6 +122,62 @@ def test_apply_similarity_transform_matches_transform_points() -> None:
 def test_apply_similarity_transform_rejects_bad_shape() -> None:
     with pytest.raises(ValueError, match="shape"):
         apply_similarity_transform(np.zeros((2, 2)), 1.0, np.eye(3), np.zeros(3))
+
+
+def test_apply_similarity_transform_to_extrinsic_identity_is_a_no_op() -> None:
+    extrinsic = np.array(
+        [[[0.0, -1.0, 0.0, 1.0], [1.0, 0.0, 0.0, -1.0], [0.0, 0.0, 1.0, 2.0]]]
+    )
+
+    board_extrinsic = apply_similarity_transform_to_extrinsic(
+        extrinsic, scale=1.0, rotation=np.eye(3), translation=np.zeros(3)
+    )
+
+    assert board_extrinsic == pytest.approx(extrinsic)
+
+
+def test_apply_similarity_transform_to_extrinsic_rejects_bad_shape() -> None:
+    with pytest.raises(ValueError, match="shape"):
+        apply_similarity_transform_to_extrinsic(
+            np.zeros((2, 3, 3)), 1.0, np.eye(3), np.zeros(3)
+        )
+
+
+def test_apply_similarity_transform_to_extrinsic_matches_unprojected_points() -> None:
+    """R-07's load-bearing test: a point unprojected from a frame's depth using this function's
+    board-frame extrinsic (with depth pre-scaled by `scale`) must land exactly where
+    apply_similarity_transform would put the same point unprojected in the original frame. If the
+    R_board/t_board derivation were wrong, this would silently warp or mis-scale every mesh R-07
+    produces, with no error anywhere -- so this is checked by composition, not just inspection.
+    """
+    original_rotation = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+    original_translation = np.array([1.0, -1.0, 2.0])
+    extrinsic = np.concatenate(
+        [original_rotation, original_translation[:, None]], axis=1
+    )[None]
+    intrinsic = np.array([[50.0, 0.0, 0.5], [0.0, 50.0, 0.5], [0.0, 0.0, 1.0]])[None]
+    depth = np.array([[10.0, 12.0], [8.0, 15.0]])
+
+    similarity_rotation = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
+    similarity_translation = np.array([5.0, -2.0, 7.0])
+    scale = 3.0
+
+    original_points = unproject_depth_to_world(depth[None], extrinsic, intrinsic)
+    expected_board_points = apply_similarity_transform(
+        original_points.reshape(-1, 3),
+        scale,
+        similarity_rotation,
+        similarity_translation,
+    )
+
+    board_extrinsic = apply_similarity_transform_to_extrinsic(
+        extrinsic, scale, similarity_rotation, similarity_translation
+    )
+    board_points = unproject_depth_to_world(
+        (scale * depth)[None], board_extrinsic, intrinsic
+    )
+
+    assert board_points.reshape(-1, 3) == pytest.approx(expected_board_points)
 
 
 def test_known_size_validation_uses_explicit_tolerance() -> None:

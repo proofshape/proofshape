@@ -536,3 +536,34 @@ tolerance judgment (split to R-16). R-06 is now `Done` (4 h actual, est 4 h); `R
 **Result:** 135 tests pass, `ruff` clean, `check_story_states.py` consistent.
 **Next:** R-07 (TSDF fusion, the next chain story) and R-17 (the split-out visual check, needs
 GPU Studio access) are both `Ready` and unclaimed.
+
+## 2026-09-30 — R-07 closed by splitting real-golden-object mesh production into R-18
+
+**Who:** @dalwalyk (PR #57), reviewed by @mbj1994.
+**What changed:** `recon/tsdf_fusion.py` fuses R-01's per-frame depth into a metric TSDF volume
+in the board frame (voxel-projection based: project every voxel into every frame's camera,
+compare against that frame's measured depth, truncate and accumulate a running weighted average)
+and extracts a mesh via marching cubes (`scikit-image`, primary) or Poisson reconstruction
+(Open3D, lazily imported fallback). The load-bearing piece, worked out before writing any fusion
+code: TSDF fusion needs each frame's camera pose *in the board frame*, which R-04 never produced
+(it only gives points there). `recon/metric_alignment.py` gained
+`apply_similarity_transform_to_extrinsic` to derive it — `R_board = R_o @ rotation.T`,
+`t_board = scale * t_o - R_board @ translation`, with depth pre-scaled by `scale` — checked not
+just by inspection but by composition: a cross-check test confirms unprojecting scaled depth
+through the derived board extrinsic lands on exactly the same points `apply_similarity_transform`
+gives directly. Masking reuses R-06's `segment_part` directly on each frame's unprojected
+board-frame points, so board/table/hand pixels never contribute, and `extract_mesh_marching_cubes`
+masks never-observed voxels out of `skimage.measure.marching_cubes` so unobserved space can never
+fabricate a surface — the hard rule's "unobserved geometry never asserts anything," applied at the
+meshing level. `scikit-image` was added to `requirements.txt`/CI (CPU-only, needed by every run);
+Open3D was deliberately kept out of it, lazy-imported only inside the Poisson path, the same
+pattern R-01 uses for torch/VGGT. Same gap as R-06→R-17: "produces a mesh for every golden object"
+needed real R-01/R-04 output this session's machine had no GPU access to produce, so it was split
+into a new story, **R-18** (checked for ID collisions across every branch first, same as R-17
+was). R-07 is now `Done` (3 h actual, est 6 h); `R-08`, `R-09` and `R-13` all cascaded from
+`Blocked` to `Ready`.
+**Result:** 165 tests pass (1 skipped — the Open3D Poisson success-path test, since Open3D isn't
+installed in CI; the not-installed error-message path is tested instead), `ruff` clean,
+`check_story_states.py` consistent.
+**Next:** R-08, R-09 and R-13 are all `Ready` and unclaimed — three chain/off-chain stories now
+open at once. R-18 (the split-out real-data mesh check, needs GPU Studio access) is also `Ready`.
