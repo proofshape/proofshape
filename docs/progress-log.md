@@ -511,3 +511,28 @@ est 3 h); `C-02` and `C-03` cascaded from `Blocked` to `Ready`.
 **Next:** C-02 and C-03 are `Ready` and unclaimed. The thin capture thread is still behind
 schedule (three sprints' allocated hours passed before this story started) — worth someone
 picking up C-02 or C-03 soon rather than letting it slip further.
+
+## 2026-09-30 — R-06 closed by splitting visual verification into R-17
+
+**Who:** @dalwalyk (PR #54), reviewed by @mbj1994.
+**What changed:** `recon/part_segmentation.py` keeps only geometry above the board plane and
+inside the printed ChArUco pattern's footprint. Two things in the acceptance criteria needed
+resolving against other files before any filtering logic could be written, both recorded in
+`stories/R-06.md`'s notes: "sheet footprint" reads as the printed pattern's rectangle (160x120 mm,
+`board_pose.py`'s `BOARD_SQUARES_X/Y * BOARD_SQUARE_MM`) rather than the physical, undetected
+A4/Letter paper edge — `docs/glossary.md` defines "reference sheet" as "the ChArUco board" for
+tier 1, and no code anywhere detects the actual paper outline; and "above the board plane" means
+negative z, per `board_pose.py`'s own z-into-the-table convention, pinned by an explicit unit test
+rather than left to a comment given this project's history with exactly this kind of sign mistake
+(D-034's legacy-pattern flag). `read_ply` was added to `vggt_runner.py` (symmetric to the existing
+`write_ply`; no PLY reader existed anywhere before this), and `apply_similarity_transform` was
+extracted out of `metric_alignment.py`'s `AlignmentResult.transform_points` for reuse, with no
+behaviour change. The story's third criterion — visual confirmation on all five golden
+objects — needed real R-01/R-04 output that the implementing session's machine had no GPU access
+to produce or check, so rather than leave R-06 open indefinitely on a criterion it couldn't
+control, it was split into a new story, **R-17**, the same move R-04 made for its known-size
+tolerance judgment (split to R-16). R-06 is now `Done` (4 h actual, est 4 h); `R-07` cascaded from
+`Blocked` to `Ready`.
+**Result:** 135 tests pass, `ruff` clean, `check_story_states.py` consistent.
+**Next:** R-07 (TSDF fusion, the next chain story) and R-17 (the split-out visual check, needs
+GPU Studio access) are both `Ready` and unclaimed.
