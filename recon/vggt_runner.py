@@ -160,6 +160,33 @@ def select_point_cloud(
     return flat_points[keep], flat_colors[keep]
 
 
+# The only PLY layout this codebase writes or reads: float32 xyz, uint8 rgb, binary
+# little-endian. Shared by write_ply and read_ply so the two can never drift apart.
+PLY_VERTEX_DTYPE = np.dtype(
+    [
+        ("x", "<f4"),
+        ("y", "<f4"),
+        ("z", "<f4"),
+        ("red", "u1"),
+        ("green", "u1"),
+        ("blue", "u1"),
+    ]
+)
+
+PLY_HEADER_TEMPLATE = (
+    "ply\n"
+    "format binary_little_endian 1.0\n"
+    "element vertex {vertex_count}\n"
+    "property float x\n"
+    "property float y\n"
+    "property float z\n"
+    "property uchar red\n"
+    "property uchar green\n"
+    "property uchar blue\n"
+    "end_header\n"
+)
+
+
 def write_ply(path: Path, points: np.ndarray, colors_uint8: np.ndarray) -> None:
     """Write a binary little-endian PLY with float32 xyz and uint8 rgb."""
     if points.ndim != 2 or points.shape[1] != 3:
@@ -167,17 +194,7 @@ def write_ply(path: Path, points: np.ndarray, colors_uint8: np.ndarray) -> None:
     if colors_uint8.shape != points.shape or colors_uint8.dtype != np.uint8:
         raise ValueError("colors must be a uint8 array with the same shape as points")
 
-    vertex_dtype = np.dtype(
-        [
-            ("x", "<f4"),
-            ("y", "<f4"),
-            ("z", "<f4"),
-            ("red", "u1"),
-            ("green", "u1"),
-            ("blue", "u1"),
-        ]
-    )
-    vertices = np.empty(points.shape[0], dtype=vertex_dtype)
+    vertices = np.empty(points.shape[0], dtype=PLY_VERTEX_DTYPE)
     vertices["x"] = points[:, 0]
     vertices["y"] = points[:, 1]
     vertices["z"] = points[:, 2]
@@ -185,21 +202,58 @@ def write_ply(path: Path, points: np.ndarray, colors_uint8: np.ndarray) -> None:
     vertices["green"] = colors_uint8[:, 1]
     vertices["blue"] = colors_uint8[:, 2]
 
-    header = (
-        "ply\n"
-        "format binary_little_endian 1.0\n"
-        f"element vertex {points.shape[0]}\n"
-        "property float x\n"
-        "property float y\n"
-        "property float z\n"
-        "property uchar red\n"
-        "property uchar green\n"
-        "property uchar blue\n"
-        "end_header\n"
-    )
+    header = PLY_HEADER_TEMPLATE.format(vertex_count=points.shape[0])
     with open(path, "wb") as handle:
         handle.write(header.encode("ascii"))
         handle.write(vertices.tobytes())
+
+
+def read_ply(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Read a PLY written by write_ply back into (points (N,3) float32, colors (N,3) uint8).
+
+    Only understands write_ply's own fixed layout (binary little-endian, float32 xyz, uint8
+    rgb) -- this is a reader for that one format, not a general PLY parser -- and raises rather
+    than guessing if a file doesn't match it.
+    """
+    path = Path(path)
+    raw = path.read_bytes()
+    header, separator, payload = raw.partition(b"end_header\n")
+    if not separator:
+        raise ValueError(
+            f"{path} has no 'end_header' line; not a PLY this reader understands"
+        )
+
+    header_text = header.decode("ascii", errors="replace")
+    if not header_text.startswith("ply\n"):
+        raise ValueError(f"{path} does not start with a 'ply' magic line")
+    if "format binary_little_endian 1.0" not in header_text:
+        raise ValueError(
+            f"{path} is not binary_little_endian 1.0, which is all this reader supports"
+        )
+
+    vertex_count = None
+    for line in header_text.splitlines():
+        if line.startswith("element vertex "):
+            vertex_count = int(line.removeprefix("element vertex "))
+            break
+    if vertex_count is None:
+        raise ValueError(f"{path} header has no 'element vertex' line")
+
+    expected_bytes = vertex_count * PLY_VERTEX_DTYPE.itemsize
+    if len(payload) != expected_bytes:
+        raise ValueError(
+            f"{path} payload is {len(payload)} bytes, expected {expected_bytes} for "
+            f"{vertex_count} vertices"
+        )
+
+    vertices = np.frombuffer(payload, dtype=PLY_VERTEX_DTYPE)
+    points = np.column_stack([vertices["x"], vertices["y"], vertices["z"]]).astype(
+        np.float32
+    )
+    colors = np.column_stack(
+        [vertices["red"], vertices["green"], vertices["blue"]]
+    ).astype(np.uint8)
+    return points, colors
 
 
 def write_run_outputs(
