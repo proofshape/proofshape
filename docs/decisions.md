@@ -483,6 +483,42 @@ takes once that residual exists.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-038, so D-039 was the first free number.
 
+**D-040 · `capture/`'s npm project is Vite + vanilla TypeScript + Vitest, local to `capture/`,
+on Node 24.** (2026-09-29)
+C-01 is the first real code under `capture/`; nothing before it had picked a build tool, a test
+runner, or even where the manifest should live. The npm project (`package.json`,
+`node_modules`, configs) lives inside `capture/`, not at the repository root — matching
+`capture/README.md`'s existing statement that "the npm project ... arrive[s] with the capture
+stories" — so `.github/workflows/typescript-ci.yml` now detects `capture/package.json` and runs
+with `working-directory: capture`, instead of the placeholder root-level detection it shipped
+with at F-04. No UI framework is chosen here; that choice is left to C-04 (the app shell), since
+C-01 only needs a file input and three number inputs. `docs/sprint-plan.md`'s CI table already
+named Vitest as the intended TypeScript test runner, so that part was already settled — this
+decision is about where the project lives and what else surrounds Vitest (Vite as the bundler,
+plain TypeScript, ESLint's `strictTypeChecked`, Prettier).
+*Why:* Vitest 5 requires Node `^22.12 || ^24 || >=26`; the CI workflow's Node 20 cannot run it,
+so `typescript-ci.yml` moves to Node 24 (current LTS) in the same pull request that first makes
+the `typescript` job actually execute something.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-039, so D-040 was the first free number.
+
+**D-041 · `uploadFrame`'s `gyro` field travels as a JSON-encoded multipart part.** (2026-09-29)
+`contracts/openapi.yaml`'s `UploadFrameRequest` schema has no `encoding:` block for the `gyro`
+property, so OpenAPI's default for an object-typed property inside `multipart/form-data` applies:
+it is serialized as its own part with `Content-Type: application/json`, not spread across
+multiple form fields and not embedded inside the `frame` part. C-01's client
+(`capture/src/api.ts`) builds it as `form.set("gyro", new Blob([JSON.stringify(gyro)], { type:
+"application/json" }))`; the `FormData` spec then gives that blob part a synthesized filename
+("blob"), which is what makes it arrive as a `File` on the receiving end rather than a plain
+string field.
+*Why:* recorded so R-14 (the real reconstruction endpoint, `Blocked`) parses `gyro` the same way
+the client actually sends it, rather than guessing from the JSON-only example in
+`contracts/examples/uploadFrame.request.json`, which — being JSON itself — cannot represent a
+multipart request's part boundaries.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-040 (this pull request's own D-040, above), so D-041 was the
+first free number.
+
 ---
 
 ## Open — not yet decided
