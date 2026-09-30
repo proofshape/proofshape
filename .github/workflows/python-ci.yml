@@ -28,3 +28,27 @@ jobs:
 
       - name: Ruff format check
         run: ruff format --check .
+
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # requirements.txt is the CPU/laptop-and-CI dependency set (D-036, recon/README.md):
+      # PyTorch/VGGT live in requirements-gpu.txt instead, so this install never pulls a GPU
+      # stack, and R-01/R-11/R-12's GPU-only code paths stay untested here by design (their own
+      # test files import torch/vggt lazily, inside the function that needs them, specifically
+      # so the rest of each module stays importable and testable without a GPU).
+      - name: Install dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q

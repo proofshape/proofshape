@@ -44,7 +44,10 @@ import cv2
 import numpy as np
 from PIL import ExifTags, Image, UnidentifiedImageError
 
-FRAME_SUFFIXES = (".jpg", ".jpeg")
+from recon.frames import find_capture_frames
+
+# find_capture_frames now lives in recon/frames.py (issue #43); imported here so
+# `board_pose.find_capture_frames` keeps working for existing callers.
 
 # The printed golden-capture board, fixed by D-034. If any of these change, the PDF in
 # fixtures/charuco_board.pdf has to be regenerated to match, and vice versa.
@@ -101,29 +104,6 @@ def make_board() -> cv2.aruco.CharucoBoard:
 
 def make_detector(board: cv2.aruco.CharucoBoard) -> cv2.aruco.CharucoDetector:
     return cv2.aruco.CharucoDetector(board)
-
-
-def find_capture_frames(capture_dir: Path) -> list[Path]:
-    """Return the capture's JPEG frames sorted by name.
-
-    Same rule as R-01's runner: R-04 pairs VGGT poses with board poses by frame name, and a stable
-    order keeps the two output files row-aligned as well.
-    """
-    capture_dir = Path(capture_dir)
-    if not capture_dir.is_dir():
-        raise FileNotFoundError(
-            f"Capture folder not found: {capture_dir}. "
-            "Run `bash fixtures/download_golden_capture.sh` first."
-        )
-
-    frames: list[Path] = []
-    for path in sorted(capture_dir.iterdir()):
-        if path.is_file() and path.suffix.lower() in FRAME_SUFFIXES:
-            frames.append(path)
-
-    if not frames:
-        raise FileNotFoundError(f"No .jpg/.jpeg frames found in {capture_dir}.")
-    return frames
 
 
 def read_exif_fields(image_path: Path) -> tuple[float | None, int | None]:

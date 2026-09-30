@@ -8,7 +8,7 @@ import sys
 import numpy as np
 import pytest
 
-from recon import vggt_runner
+from recon import frames, vggt_runner
 
 
 def _rotation_about_z(degrees: float) -> np.ndarray:
@@ -22,28 +22,13 @@ def _make_intrinsic(width: int, height: int) -> np.ndarray:
 
 
 # --- find_capture_frames -------------------------------------------------------------------
+# Full behavioural coverage moved to tests/test_frames.py (issue #43), where the function now
+# actually lives. This just confirms the re-export `vggt_runner.find_capture_frames` still
+# resolves to the same function, so existing callers of this module don't need to change.
 
 
-def test_find_capture_frames_sorts_and_filters(tmp_path):
-    for name in ["b.JPG", "a.jpg", "c.jpeg", "notes.txt", "d.png"]:
-        (tmp_path / name).write_bytes(b"x")
-    (
-        tmp_path / "subdir.jpg"
-    ).mkdir()  # a directory with a jpg-looking name is not a frame
-
-    names = [path.name for path in vggt_runner.find_capture_frames(tmp_path)]
-
-    assert names == ["a.jpg", "b.JPG", "c.jpeg"]
-
-
-def test_find_capture_frames_missing_folder_points_at_download_script(tmp_path):
-    with pytest.raises(FileNotFoundError, match="download_golden_capture"):
-        vggt_runner.find_capture_frames(tmp_path / "nope")
-
-
-def test_find_capture_frames_empty_folder_is_an_error(tmp_path):
-    with pytest.raises(FileNotFoundError, match="No .jpg"):
-        vggt_runner.find_capture_frames(tmp_path)
+def test_find_capture_frames_is_the_shared_recon_frames_function():
+    assert vggt_runner.find_capture_frames is frames.find_capture_frames
 
 
 # --- choose_dtype_name ---------------------------------------------------------------------

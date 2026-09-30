@@ -106,3 +106,13 @@ The command pairs poses by frame name, solves a 3D similarity transform, and wri
 rotation, translation in millimetres, and per-frame camera-centre residuals. Residuals are not
 an object-accuracy or tolerance result; known-size validation requires an independent measured
 reference.
+
+## R-05 · scale agreement check
+
+`recon.scale_agreement.check_scale_agreement` compares the three independent scale sources from
+D-007 -- the nominal printed board pitch, an optional caliper reading, and an optional CAD
+registration residual (`inspect/`, not built yet) -- and flags the session if any two disagree
+by more than about 2%. All three are converted to a scale ratio relative to the board pitch
+before comparing, since they start out as different kinds of quantities; see D-039 for the full
+reasoning. Board pitch alone is never accepted -- at least one of the other two sources must also
+be supplied.
