@@ -14,3 +14,10 @@ Pillow==12.3.0
 # Test-only: rasterises fixtures/charuco_board.pdf so tests can check the board in code against
 # the board that was actually printed (R-02, D-034 correction).
 pypdfium2==5.13.0
+# R-07 TSDF fusion's primary meshing path (skimage.measure.marching_cubes). CPU-only, no GUI
+# deps, so it belongs here like numpy/opencv rather than in requirements-gpu.txt. The Poisson
+# fallback path uses Open3D instead, imported lazily inside that one function (same pattern as
+# R-01's torch/VGGT) and deliberately NOT listed here -- it is a much heavier, GUI-adjacent
+# dependency for a fallback path that isn't exercised by default; install it locally if you need
+# to run/test that path.
+scikit-image==0.24.0

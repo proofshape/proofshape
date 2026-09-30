@@ -74,6 +74,41 @@ def apply_similarity_transform(
     return scale * (points @ rotation.T) + translation
 
 
+def apply_similarity_transform_to_extrinsic(
+    extrinsic: np.ndarray, scale: float, rotation: np.ndarray, translation: np.ndarray
+) -> np.ndarray:
+    """Map (S,3,4) camera-from-world extrinsics to camera-from-board-mm extrinsics.
+
+    R-07 (TSDF fusion) needs each frame's camera pose *in the board frame* to project voxels
+    into that frame's depth image -- R-04 only gives points in the board frame, not camera
+    poses. Derivation: R-01's extrinsic is ``x_cam = R_o @ x_world + t_o`` (arbitrary units);
+    R-04's transform is ``x_board_mm = scale * (rotation @ x_world) + translation``. Substituting
+    one into the other and multiplying through by ``scale`` -- so camera-space coordinates come
+    out in the same millimetres as ``x_board_mm``, not R-01's arbitrary units -- gives
+    ``R_board = R_o @ rotation.T`` (a proper rotation: two orthonormal matrices compose cleanly)
+    and ``t_board = scale * t_o - R_board @ translation``.
+
+    Depth values used together with the returned extrinsic must be pre-scaled by ``scale``:
+    multiplying camera-space coordinates by ``scale`` is exactly what turns R-01's arbitrary-unit
+    depth into board-frame millimetres, since a pixel-to-ray direction (the intrinsics) is itself
+    scale-invariant.
+    """
+    extrinsic = np.asarray(extrinsic, dtype=np.float64)
+    if extrinsic.ndim != 3 or extrinsic.shape[1:] != (3, 4):
+        raise ValueError(f"extrinsic must have shape (S,3,4), got {extrinsic.shape}")
+    rotation = np.asarray(rotation, dtype=np.float64)
+    translation = np.asarray(translation, dtype=np.float64)
+
+    original_rotation = extrinsic[:, :, :3]
+    original_translation = extrinsic[:, :, 3]
+
+    board_rotation = np.einsum("sij,kj->sik", original_rotation, rotation)
+    board_translation = scale * original_translation - np.einsum(
+        "sij,j->si", board_rotation, translation
+    )
+    return np.concatenate([board_rotation, board_translation[:, :, None]], axis=2)
+
+
 def camera_centres(extrinsic: np.ndarray) -> np.ndarray:
     """Convert camera-from-world [R|t] matrices to world-frame camera centres."""
     extrinsic = np.asarray(extrinsic, dtype=np.float64)
