@@ -5,6 +5,7 @@ import pytest
 
 from recon.metric_alignment import (
     align_camera_centres,
+    apply_similarity_transform,
     camera_centres,
     solve_similarity,
     validate_known_size,
@@ -101,6 +102,24 @@ def test_alignment_requires_non_collinear_poses() -> None:
     centres = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
     with pytest.raises(ValueError, match="collinear"):
         solve_similarity(centres, centres)
+
+
+def test_apply_similarity_transform_matches_transform_points() -> None:
+    """apply_similarity_transform is the formula AlignmentResult.transform_points delegates to
+    (R-06 needs it directly, from a loaded metric_alignment.json, without a full AlignmentResult).
+    """
+    rotation = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+    translation = np.array([5.0, 6.0, 7.0])
+    points = np.array([[1.0, 2.0, 3.0], [0.0, 0.0, 0.0]])
+
+    result = apply_similarity_transform(points, 2.5, rotation, translation)
+
+    assert result == pytest.approx(2.5 * (points @ rotation.T) + translation)
+
+
+def test_apply_similarity_transform_rejects_bad_shape() -> None:
+    with pytest.raises(ValueError, match="shape"):
+        apply_similarity_transform(np.zeros((2, 2)), 1.0, np.eye(3), np.zeros(3))
 
 
 def test_known_size_validation_uses_explicit_tolerance() -> None:

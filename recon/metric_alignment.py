@@ -52,10 +52,26 @@ class AlignmentResult:
 
     def transform_points(self, points: np.ndarray) -> np.ndarray:
         """Map (N, 3) reconstruction-frame points into board-frame millimetres."""
-        points = np.asarray(points, dtype=np.float64)
-        if points.ndim != 2 or points.shape[1] != 3:
-            raise ValueError(f"points must have shape (N,3), got {points.shape}")
-        return self.scale * (points @ self.rotation.T) + self.translation
+        return apply_similarity_transform(
+            points, self.scale, self.rotation, self.translation
+        )
+
+
+def apply_similarity_transform(
+    points: np.ndarray, scale: float, rotation: np.ndarray, translation: np.ndarray
+) -> np.ndarray:
+    """Map (N, 3) points through a similarity transform: scale * (points @ rotation.T) + translation.
+
+    Pulled out of ``AlignmentResult.transform_points`` so a caller that only has the written
+    ``metric_alignment.json`` (scale/rotation/translation_mm) -- not a rebuilt ``AlignmentResult``
+    with its per-frame residuals -- can apply the same transform without duplicating the formula.
+    """
+    points = np.asarray(points, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError(f"points must have shape (N,3), got {points.shape}")
+    rotation = np.asarray(rotation, dtype=np.float64)
+    translation = np.asarray(translation, dtype=np.float64)
+    return scale * (points @ rotation.T) + translation
 
 
 def camera_centres(extrinsic: np.ndarray) -> np.ndarray:

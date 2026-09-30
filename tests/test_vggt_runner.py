@@ -218,6 +218,44 @@ def test_write_ply_rejects_bad_colours(tmp_path):
         vggt_runner.write_ply(tmp_path / "x.ply", np.zeros((2, 3)), np.zeros((2, 3)))
 
 
+# --- read_ply --------------------------------------------------------------------------------
+
+
+def test_read_ply_round_trips_write_ply(tmp_path):
+    points = np.array(
+        [[0.0, 1.0, 2.0], [3.5, -4.0, 5.25], [-1.0, -1.0, -1.0]], dtype=np.float32
+    )
+    colors = np.array([[255, 0, 10], [1, 2, 3], [9, 8, 7]], dtype=np.uint8)
+    path = tmp_path / "cloud.ply"
+    vggt_runner.write_ply(path, points, colors)
+
+    read_points, read_colors = vggt_runner.read_ply(path)
+
+    np.testing.assert_allclose(read_points, points)
+    np.testing.assert_array_equal(read_colors, colors)
+
+
+def test_read_ply_rejects_missing_end_header(tmp_path):
+    path = tmp_path / "bad.ply"
+    path.write_bytes(b"not a ply file at all")
+    with pytest.raises(ValueError, match="end_header"):
+        vggt_runner.read_ply(path)
+
+
+def test_read_ply_rejects_truncated_payload(tmp_path):
+    points = np.zeros((2, 3), dtype=np.float32)
+    colors = np.zeros((2, 3), dtype=np.uint8)
+    path = tmp_path / "truncated.ply"
+    vggt_runner.write_ply(path, points, colors)
+    # Chop off the last vertex's worth of bytes so the payload no longer matches the header's
+    # declared vertex count.
+    truncated = path.read_bytes()[: -vggt_runner.PLY_VERTEX_DTYPE.itemsize]
+    path.write_bytes(truncated)
+
+    with pytest.raises(ValueError, match="payload is"):
+        vggt_runner.read_ply(path)
+
+
 def _write_fake_run(out_dir):
     frame_count, height, width = 2, 3, 4
     vggt_runner.write_run_outputs(
