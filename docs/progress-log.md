@@ -423,7 +423,6 @@ this rule's own first draft conflicted with an existing decision (D-013) before 
 approved it is itself a small instance of the same lesson.
 **Next:** watch whether this actually holds on R-04's PR, the next one to close.
 
-
 ---
 
 ## 2026-09-28 — R-11 MASt3R GPU feasibility and adapter implementation started
@@ -460,3 +459,55 @@ tolerance result.
 **Concluded:** R-11 has now demonstrated its required same-golden-capture wall-clock and the
 R-01 output contract is usable by an existing downstream stage. Repository tests/Ruff and the
 normal Definition-of-Done checks still need to be clean before R-11 moves to review.
+
+## 2026-09-29 — R-04 closed by splitting its known-size tolerance judgment into R-16
+
+**Who:** @yashidalwala (PR #39), reviewed by @TabeenRaoof.
+**What changed:** R-04's known-size acceptance criterion originally asked for a measurement
+*and* a stated tolerance. The measurement is now recorded — the s-04 specimen's B-C edge
+reconstructs at 60.27 mm against @TabeenRaoof's caliper mean of 60.011 mm (PR #35), a 0.26 mm
+(~0.4%) difference — but no tolerance exists anywhere in the project to judge that difference
+against; it can only come from the ground-truth calibration study (`G-01` through `G-05`), which
+hasn't run yet. A first attempt to close the gap anyway with a derived, provisional tolerance
+(D-039, 3x the alignment RMS) was proposed, reviewed, and reverted in the same PR before merge —
+@TabeenRaoof caught that it violated the "no promised numbers" rule for the same reason D-032
+already declined to set I-01's tolerance-table fields early. Rather than leave R-04 open
+indefinitely on a criterion it cannot control, its acceptance criteria were reworded to match
+what it actually delivers (transform, board-frame mm output, per-frame residuals, and the raw
+known-size comparison), and the tolerance judgment was split into a new story, **R-16**, which
+carries the full measurement inline and stays `Blocked` on `R-04, G-03, G-04` until the real
+study produces a number to apply. R-04 is now `Done` (9 h actual, est 6 h); `R-05` and `R-06`
+cascaded from `Blocked` to `Ready`.
+**Also in this PR:** removed an unverifiable "0.50 degrees" orientation-difference claim from
+R-04's notes (flagged by @TabeenRaoof on PR #35 — no code in the repo computes that figure).
+**Result:** 98 tests pass, `ruff` clean, `check_story_states.py` consistent. `docs/decisions.md`
+has no D-039 entry — it was reverted in the same PR that proposed it, before any merge, so the
+"a decision number doesn't carry its caveats forward" risk never materialized on `main`.
+**Next:** R-05 and R-06 are `Ready` and unclaimed. R-16 stays `Blocked` until `G-01`–`G-05` exist
+and produce a real tolerance; those aren't written up yet — `stories/README.md` deliberately
+keeps Phase 3 titles-only until the sprint boundary, same reasoning as D-032.
+
+## 2026-09-29 — C-01 minimal upload page (PR #52)
+
+**Who:** @TabeenRaoof (PR #52).
+**What changed:** the thin capture thread's first story — a plain-HTML page in `capture/` that
+calls `createSession`, `uploadFrame` and `finishSession` against the frozen contract
+(`contracts/openapi.yaml`, F-03), proving the wire format end to end before anything builds the
+real app shell (C-04) around an assumption about it. Backed by a three-route local stub
+(`capture/stub/contract-stub.ts`) that loads its canned bodies from `contracts/examples/*.json`
+at startup so it can't drift from the contract — explicitly not the fuller S1 "mock service"
+`docs/sprint-plan.md` describes.
+**Also in this PR:** the first npm project outside `scripts/`, so it settles `capture/`'s tooling
+— Vite + vanilla TypeScript + Vitest, local to `capture/`, Node 24 (**D-040**) — and moves
+`.github/workflows/typescript-ci.yml` from a Node-20 root-`package.json` placeholder (which never
+actually ran a test) to `capture/package.json` with `npm test` wired in, since Vitest 5 requires
+Node ≥22.12. Also records how `gyro` actually travels inside the multipart `uploadFrame` request
+(**D-041**), since the contract's own JSON example can't represent a multipart body's parts.
+**Result:** 29 capture tests pass, `tsc`/`eslint`/`prettier` clean; repo-wide `pytest` (115),
+`ruff` and `check_story_states.py` unaffected. Verified by mutation (sent `gyro` as `{x, y, z}`,
+confirmed both `api.test.ts` and `page.test.ts` failed loudly, reverted) and by hand against the
+real `npm run dev` server with `curl`, not just the test suite. C-01 is now `Done` (3 h actual,
+est 3 h); `C-02` and `C-03` cascaded from `Blocked` to `Ready`.
+**Next:** C-02 and C-03 are `Ready` and unclaimed. The thin capture thread is still behind
+schedule (three sprints' allocated hours passed before this story started) — worth someone
+picking up C-02 or C-03 soon rather than letting it slip further.
