@@ -142,7 +142,7 @@ Full detail in each story file.
 | [R-04](R-04.md) | Metric alignment | 6 h | R-01, R-02 | Done | @dalwalyk |
 | [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Done | @dalwalyk |
 | [R-06](R-06.md) | Segment the part from the board | 4 h | R-04 | Done | @dalwalyk |
-| [R-07](R-07.md) | TSDF fusion to a mesh | 6 h | R-04, R-06 | Ready | _unclaimed_ |
+| [R-07](R-07.md) | TSDF fusion to a mesh | 6 h | R-04, R-06 | Claimed | @dalwalyk |
 | [R-08](R-08.md) | Mesh cleanup and GLB export | 4 h | R-07 | Blocked | _unclaimed_ |
 | [R-09](R-09.md) | Per-vertex provenance | 5 h | R-07 | Blocked | _unclaimed_ |
 | [R-10](R-10.md) | Per-vertex uncertainty | 5 h | R-09 | Blocked | _unclaimed_ |
