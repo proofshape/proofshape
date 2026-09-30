@@ -4,11 +4,9 @@
 //   node build_review_deck.js ../submissions/YYYY-MM-DD-progress-review-deck.pptx
 //
 // The manifest lives in scripts/, NOT at the repository root, and that is deliberate:
-// .github/workflows/typescript-ci.yml runs `[ -f package.json ]` from the workspace root,
-// so a root manifest would switch on its tsc/eslint job — which would then fail, because
-// there is no tsconfig and no eslint config. Whoever starts C-01 must add tsconfig.json
-// and an eslint config in the SAME pull request as the root package.json, or CI breaks
-// for everyone.
+// .github/workflows/typescript-ci.yml (since C-01, D-040) keys off `capture/package.json`, not
+// a root one, so this manifest never switches that job on. Keep it that way — a root manifest
+// would need its own tsconfig and eslint config to avoid breaking that job for everyone.
 //
 // Deliberately kept as a script rather than hand-built slides: the sprint plan budgets
 // 18 person-hours for seven reviews, and that only holds if a review is assembly rather

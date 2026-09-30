@@ -147,7 +147,7 @@ Full detail in each story file.
 | [R-09](R-09.md) | Per-vertex provenance | 5 h | R-07 | Blocked | _unclaimed_ |
 | [R-10](R-10.md) | Per-vertex uncertainty | 5 h | R-09 | Blocked | _unclaimed_ |
 | [R-11](R-11.md) | MASt3R behind the config flag | 5 h | R-01 | Claimed | @mbj1994 |
-| [R-12](R-12.md) | COLMAP behind the config flag | 5 h | R-01 | Ready | _unclaimed_ |
+| [R-12](R-12.md) | COLMAP behind the config flag | 5 h | R-01 | Claimed | @mbj1994 |
 | [R-13](R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Blocked | _unclaimed_ |
 | [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Blocked | _unclaimed_ |
 | [R-15](R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Blocked | _unclaimed_ |
@@ -165,9 +165,9 @@ so this is behind schedule, not early.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [C-01](C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Claimed | @TabeenRaoof |
-| [C-02](C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Blocked | _unclaimed_ |
-| [C-03](C-03.md) | Gyro permission flow | 2 h | C-01 | Blocked | _unclaimed_ |
+| [C-01](C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Done | @TabeenRaoof |
+| [C-02](C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Ready | _unclaimed_ |
+| [C-03](C-03.md) | Gyro permission flow | 2 h | C-01 | Ready | _unclaimed_ |
 
 ---
 
