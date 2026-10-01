@@ -166,6 +166,25 @@ def test_labels_to_colors_maps_per_convention():
     )
 
 
+def test_colors_to_labels_round_trips_labels_to_colors():
+    labels = np.array(
+        [
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_UNOBSERVED,
+            provenance.LABEL_OBSERVED,
+        ]
+    )
+
+    round_tripped = provenance.colors_to_labels(provenance.labels_to_colors(labels))
+
+    np.testing.assert_array_equal(round_tripped, labels)
+
+
+def test_colors_to_labels_rejects_unrecognised_colors():
+    with pytest.raises(ValueError, match="match neither"):
+        provenance.colors_to_labels(np.array([[1, 2, 3]], dtype=np.uint8))
+
+
 # --- observations.npz round trip ----------------------------------------------------------------
 
 
