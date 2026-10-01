@@ -97,3 +97,65 @@ def test_run_selected_backend_keeps_vggt_default(tmp_path, monkeypatch):
 
     assert result["backend"] == "vggt"
     assert len(seen) == 1
+
+
+def test_resolve_backend_can_select_colmap(monkeypatch):
+    monkeypatch.setenv(
+        reconstruction_runner.BACKEND_ENV,
+        "colmap",
+    )
+
+    assert reconstruction_runner.resolve_backend() == "colmap"
+
+
+def test_run_selected_backend_calls_only_colmap(
+    tmp_path,
+    monkeypatch,
+):
+    seen = []
+
+    def fake_colmap(*args, **kwargs):
+        seen.append((args, kwargs))
+
+        return {
+            "backend": "colmap",
+            "frame_count": 3,
+            "point_count": 5,
+            "timings": {
+                "total_s": 2.0,
+            },
+        }
+
+    def fail_vggt(*args, **kwargs):
+        raise AssertionError("VGGT should not run")
+
+    def fail_mast3r(*args, **kwargs):
+        raise AssertionError("MASt3R should not run")
+
+    monkeypatch.setattr(
+        reconstruction_runner.colmap_runner,
+        "run_on_capture",
+        fake_colmap,
+    )
+
+    monkeypatch.setattr(
+        reconstruction_runner.vggt_runner,
+        "run_on_capture",
+        fail_vggt,
+    )
+
+    monkeypatch.setattr(
+        reconstruction_runner.mast3r_runner,
+        "run_on_capture",
+        fail_mast3r,
+    )
+
+    result = reconstruction_runner.run_on_capture(
+        Path("capture"),
+        tmp_path / "out",
+        backend="colmap",
+        device_type="cuda",
+    )
+
+    assert result["backend"] == "colmap"
+    assert len(seen) == 1

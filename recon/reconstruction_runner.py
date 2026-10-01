@@ -8,9 +8,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from recon import mast3r_runner, vggt_runner
+from recon import colmap_runner, mast3r_runner, vggt_runner
 
-BACKENDS = ("vggt", "mast3r")
+BACKENDS = ("vggt", "mast3r", "colmap")
 DEFAULT_BACKEND = "vggt"
 BACKEND_ENV = "PROOFSHAPE_RECON_BACKEND"
 
@@ -42,7 +42,16 @@ def run_on_capture(
             device_type=device_type,
             min_confidence=min_confidence,
         )
-    return mast3r_runner.run_on_capture(
+
+    if selected == "mast3r":
+        return mast3r_runner.run_on_capture(
+            capture_dir,
+            out_dir,
+            device_type=device_type,
+            min_confidence=min_confidence,
+        )
+
+    return colmap_runner.run_on_capture(
         capture_dir,
         out_dir,
         device_type=device_type,
@@ -52,7 +61,7 @@ def run_on_capture(
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run ProofShape reconstruction with VGGT or MASt3R behind one backend flag."
+        description="Run ProofShape reconstruction with VGGT, MASt3R or COLMAP behind one backend flag."
     )
     parser.add_argument("capture_dir", type=Path)
     parser.add_argument(
