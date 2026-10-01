@@ -658,3 +658,49 @@ of this exact class of error).
 consistent.
 **Next:** R-10 (per-vertex uncertainty, builds directly on `observations.npz`) is `Ready` and
 unclaimed, alongside R-13/R-14/R-17/R-18 from earlier entries.
+
+## 2026-09-30 — C-02 camera permissions: mechanism and tests done, device check still open
+
+**Who:** @TabeenRaoof.
+**What changed:** `capture/src/camera.ts` (`mountCameraCheck`, `describeCameraError`,
+`isGetUserMediaSupported`) adds the camera-permission check to C-01's existing page, as its own
+`#camera-app` section rather than touching `page.ts`. Added `@vitejs/plugin-basic-ssl` and a new
+`npm run dev:device` script (`HTTPS=true vite --host`) since Vite has had no `--https` CLI flag
+since v3 — gated on an env var so C-01's existing plain-HTTP `npm run dev` is untouched. Verified
+both modes actually serve (`curl -k` against `localhost` and the printed LAN IP for `dev:device`).
+**Not marking C-02 `Done`:** two of its three acceptance criteria are checkable only by a human
+tapping the button on a real iPhone over real HTTPS — no device, no network path to one, in this
+session. `State` stays `Claimed`; `stories/C-02.md`'s Tests section has a manual-check template
+ready to fill in once that happens.
+**Verified by mutation, not just written:** the synchronous-`getUserMedia`-call requirement (the
+hardest of the three criteria to get right, and the one most prone to silently regressing) has an
+automated regression test — temporarily made the click handler `async` with a leading `await
+Promise.resolve()`, confirmed it broke two tests for exactly that reason, reverted.
+**Result:** 38 capture tests pass (29 from C-01, 9 new); `tsc`/`eslint`/`prettier` clean;
+repo-wide `pytest` (225), `ruff` and `check_story_states.py` unaffected.
+**Next:** hand-off to run `npm run dev:device` on a real iPhone and record the manual check —
+once that's in, C-02 can close and C-03 (already `Ready`, depends on C-01 not C-02) can proceed
+independently in the meantime.
+
+## 2026-10-01 — C-02 closed: manual check caught two real bugs no automated test could
+
+**Who:** @TabeenRaoof, manual check performed on a real iPhone 16 (iOS 26.6, Safari 26.6).
+**What changed:** the hand-off above led directly to two real fixes, both invisible to the full,
+green 38-test suite because happy-dom doesn't render video at all:
+- **Grant path:** the permission-granted indicator appeared and `getUserMedia` resolved, but the
+  preview stayed blank — `<video>.srcObject` doesn't start playback on its own. Added `autoplay`
+  and an explicit `.play()` call, plus a test (a spy on `.play()`) verified by mutation to
+  actually fail if the call is removed.
+- **Deny path:** the message had the right text but rendered in plain body-text color — present,
+  but not actually noticeable, which doesn't meet this story's own "visible" wording. Fixed with
+  bold/red error styling (a targeted fix for this one criterion, not the general UI polish still
+  deferred to C-04), with tests locking in that error states are styled and the success state
+  isn't.
+**Result:** both the grant and deny paths re-verified working on the real device after each fix.
+38 capture tests still pass (extended with new assertions, not new test cases), `ruff`/
+`check_story_states.py` unaffected. C-02 is now `Done` (2 h actual, est 2 h).
+**Concluded:** this is exactly the case `AGENTS.md`'s manual-check exception exists for — the
+automated suite correctly covered everything it was capable of covering (including a real
+regression guard for the hardest criterion, the synchronous `getUserMedia` call), and the manual
+check caught the two things that genuinely needed a real device and a real browser.
+**Next:** C-03 (gyro permission flow) is `Ready` and unclaimed, independent of C-02.
