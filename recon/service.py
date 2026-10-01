@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -108,6 +108,10 @@ class ReconstructionFailure(Exception):
 PipelineRunner = Callable[[Path, Path], dict[str, Any]]
 
 
+class SessionAlreadyFinishedError(RuntimeError):
+    """Raised when a store mutation loses a race with finishSession."""
+
+
 class SessionStore:
     """Persist sessions and frames beneath one service data directory."""
 
@@ -155,7 +159,7 @@ class SessionStore:
             if record is None:
                 raise KeyError(session_id)
             if record["status"] != "capturing":
-                raise RuntimeError("session_already_finished")
+                raise SessionAlreadyFinishedError("session_already_finished")
 
             frame_index = int(record["frame_count"])
             frame_dir = self.session_dir(session_id) / "frames"
@@ -449,8 +453,27 @@ def create_app(
         try:
             gyro_value = _parse_gyro(await gyro.read())
         except (TypeError, ValueError) as exc:
-            return error(422, ErrorDetail(code="vlm_veto", message=str(exc)))
-        frame_index = store.add_frame(session_id, frame_bytes, gyro_value)
+            # F-03 froze the upload 422 envelope before defining a request-validation
+            # ErrorCode. Keep the response contract-valid for v1 and make the semantic
+            # debt explicit; D-031 requires a sprint-boundary contract change to add a
+            # dedicated malformed_request code.
+            return error(
+                422,
+                ErrorDetail(
+                    code="vlm_veto",
+                    message=f"Malformed frame upload (not a VLM decision): {exc}",
+                ),
+            )
+        try:
+            frame_index = store.add_frame(session_id, frame_bytes, gyro_value)
+        except SessionAlreadyFinishedError:
+            return error(
+                422,
+                ErrorDetail(
+                    code="session_already_finished",
+                    message="The session is already finished.",
+                ),
+            )
         return UploadFrameResult(accepted=True, frame_index=frame_index)
 
     def run_session(session_id: str) -> None:
@@ -477,16 +500,10 @@ def create_app(
             }
         except ReconstructionFailure as exc:
             record["reconstruction"] = {"status": "failed", "failure": exc.as_dict()}
-        except (
-            FileNotFoundError,
-            FileExistsError,
-            ImportError,
-            KeyError,
-            OSError,
-            RuntimeError,
-            TypeError,
-            ValueError,
-        ) as exc:
+        except Exception as exc:  # noqa: BLE001 - terminal job boundary
+            # Background reconstruction must never leave a persisted session at
+            # status=pending. Unexpected numpy/cv2/model exceptions are converted
+            # into a terminal failure here; the original exception text is preserved.
             record["reconstruction"] = {
                 "status": "failed",
                 "failure": {
@@ -531,7 +548,16 @@ def create_app(
                     ),
                 ),
             )
-        record = store.mark_finished(session_id)
+        try:
+            record = store.mark_finished(session_id)
+        except SessionAlreadyFinishedError:
+            return error(
+                409,
+                ErrorDetail(
+                    code="session_already_finished",
+                    message="The session is already finished.",
+                ),
+            )
         background_tasks.add_task(run_session, session_id)
         return SessionResponse(**record)
 
@@ -615,13 +641,28 @@ def create_app(
     def get_model(session_id: str):
         record = store.load(session_id)
         if record is None:
-            raise HTTPException(status_code=404)
+            return error(
+                404,
+                ErrorDetail(code="session_not_found", message="No session with that id."),
+            )
         reconstruction = record.get("reconstruction", {})
         if reconstruction.get("status") != "complete":
-            raise HTTPException(status_code=404)
+            return error(
+                404,
+                ErrorDetail(
+                    code="session_not_found",
+                    message="No completed reconstruction exists for this session.",
+                ),
+            )
         path = Path(reconstruction["glb_path"])
         if not path.exists():
-            raise HTTPException(status_code=404)
+            return error(
+                404,
+                ErrorDetail(
+                    code="session_not_found",
+                    message="The reconstruction artifact is unavailable.",
+                ),
+            )
         return FileResponse(path, media_type="model/gltf-binary", filename="model.glb")
 
     return app

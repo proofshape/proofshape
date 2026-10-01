@@ -320,3 +320,121 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
     assert result["observed_fraction"] == 0.75
     assert "provenance" in result["stage_timings_s"]
     assert "uncertainty" in result["stage_timings_s"]
+
+
+def test_malformed_gyro_is_contract_valid_and_explicitly_not_a_vlm_decision(tmp_path):
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        created = client.post("/v1/sessions", json={"order_code": "PO-1"})
+        session_id = created.json()["session_id"]
+        response = client.post(
+            f"/v1/sessions/{session_id}/frames",
+            files={
+                "frame": ("frame.jpg", b"jpeg-data", "image/jpeg"),
+                "gyro": ("blob", "{not-json", "application/json"),
+            },
+        )
+
+        assert response.status_code == 422
+        _validate_contract_response("uploadFrame", "422", response.json())
+        assert response.json()["code"] == "vlm_veto"
+        assert "Malformed frame upload (not a VLM decision)" in response.json()["message"]
+
+
+def test_empty_frame_is_rejected_with_contract_error(tmp_path):
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        created = client.post("/v1/sessions", json={"order_code": "PO-1"})
+        session_id = created.json()["session_id"]
+        response = client.post(
+            f"/v1/sessions/{session_id}/frames",
+            files={
+                "frame": ("frame.jpg", b"", "image/jpeg"),
+                "gyro": (
+                    "blob",
+                    json.dumps({"alpha": 0, "beta": 0, "gamma": 0}),
+                    "application/json",
+                ),
+            },
+        )
+
+        assert response.status_code == 422
+        _validate_contract_response("uploadFrame", "422", response.json())
+        assert response.json()["code"] == "frame_rejected_exposure"
+
+
+def test_upload_race_after_finish_returns_422_not_500(tmp_path, monkeypatch):
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    original_add_frame = app.state.store.add_frame
+
+    def lost_race(*args, **kwargs):
+        raise service.SessionAlreadyFinishedError("session_already_finished")
+
+    monkeypatch.setattr(app.state.store, "add_frame", lost_race)
+    with TestClient(app) as client:
+        created = client.post("/v1/sessions", json={"order_code": "PO-1"})
+        session_id = created.json()["session_id"]
+        response = client.post(
+            f"/v1/sessions/{session_id}/frames",
+            files={
+                "frame": ("frame.jpg", b"jpeg-data", "image/jpeg"),
+                "gyro": (
+                    "blob",
+                    json.dumps({"alpha": 0, "beta": 0, "gamma": 0}),
+                    "application/json",
+                ),
+            },
+        )
+
+    monkeypatch.setattr(app.state.store, "add_frame", original_add_frame)
+    assert response.status_code == 422
+    assert response.json()["code"] == "session_already_finished"
+
+
+def test_finish_race_returns_409_not_500(tmp_path, monkeypatch):
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    record = app.state.store.create("PO-1")
+    record["frame_count"] = service.MIN_FINISH_FRAMES
+    app.state.store.save(record)
+
+    def lost_race(*args, **kwargs):
+        raise service.SessionAlreadyFinishedError("session_already_finished")
+
+    monkeypatch.setattr(app.state.store, "mark_finished", lost_race)
+    with TestClient(app) as client:
+        response = client.post(f"/v1/sessions/{record['session_id']}/finish")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "session_already_finished"
+
+
+def test_unexpected_pipeline_exception_becomes_terminal_failure(tmp_path):
+    class UnexpectedPipelineError(Exception):
+        pass
+
+    def failing_pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
+        raise UnexpectedPipelineError("synthetic unexpected model failure")
+
+    app = service.create_app(tmp_path, pipeline_runner=failing_pipeline)
+    with TestClient(app) as client:
+        created = client.post("/v1/sessions", json={"order_code": "PO-1"})
+        session_id = created.json()["session_id"]
+        _upload_three_frames(client, session_id)
+        assert client.post(f"/v1/sessions/{session_id}/finish").status_code == 202
+
+        result = client.get(f"/v1/sessions/{session_id}/reconstruction")
+        assert result.status_code == 200
+        assert result.json()["status"] == "failed"
+        assert "synthetic unexpected model failure" in result.json()["warnings"][0]
+
+
+def test_model_404_uses_error_detail_envelope(tmp_path):
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        response = client.get("/v1/sessions/does-not-exist/model.glb")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "code": "session_not_found",
+        "message": "No session with that id.",
+    }
