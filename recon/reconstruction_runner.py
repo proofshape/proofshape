@@ -33,6 +33,7 @@ def run_on_capture(
     backend: str | None = None,
     device_type: str = "cuda",
     min_confidence: float = 0.0,
+    board_pose_path: Path | None = None,
 ) -> dict[str, Any]:
     """Run one backend without changing the R-01 four-file output contract."""
     selected = resolve_backend(backend)
@@ -55,6 +56,7 @@ def run_on_capture(
     return colmap_runner.run_on_capture(
         capture_dir,
         out_dir,
+        board_pose_path=board_pose_path,
         device_type=device_type,
         min_confidence=min_confidence,
     )

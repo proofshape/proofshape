@@ -732,3 +732,37 @@ automated suite correctly covered everything it was capable of covering (includi
 regression guard for the hardest criterion, the synchronous `getUserMedia` call), and the manual
 check caught the two things that genuinely needed a real device and a real browser.
 **Next:** C-03 (gyro permission flow) is `Ready` and unclaimed, independent of C-02.
+
+## 2026-10-01 — C-03 closed: manual check found nothing to fix, by design not luck
+
+**Who:** @dalwalyk, manual check performed on a real iPhone 18 Pro Max (iOS 27.0, Safari).
+**What changed:** `capture/src/gyro.ts` gained `isOrientationPermissionRequestNeeded`,
+`describeOrientationError`, and `mountGyroCheck`, extending C-01's existing `parseGyroInput`
+rather than replacing it. Built the same way @TabeenRaoof built C-02 (PR #72): everything that
+doesn't need a real device was built and tested first, with the on-device grant/deny check left
+as a written manual-check template; `State` stayed `Claimed`, not `Done`, until the real check
+ran. Built directly on review lessons from PR #72, not just read about them — that review
+surfaced two real bugs and a reuse problem in C-02, and all three had a direct analog here,
+closed from the start rather than repeated: the missing-`autoplay`/`.play()` bug's analog
+(requesting permission but never attaching the `deviceorientation` listener) is closed by a test
+that dispatches a synthetic orientation event and asserts the DOM actually updates, not just that
+status says "granted"; the double-click stream-leak analog is closed by disabling the button
+synchronously for the duration of a pending `requestPermission()` call and guarding the listener
+against being attached more than once; the `requireElement`/`requireButton` triplication finding
+is closed by a new shared `capture/src/dom.ts` instead of a third copy.
+**Manual check result:** both grant and deny worked on the first attempt — no fixes needed. Unlike
+C-02's own device check, which caught two real bugs invisible to automated tests, this one found
+nothing, and that's attributed to the two bug classes C-02's check caught having already been
+identified and closed during this story's own build (see above), not to luck. One real platform
+behaviour recorded for whoever does the next manual check on this app: once granted, iOS Safari
+remembers the permission per site and won't re-prompt on reload — getting back to the deny prompt
+required clearing that site's data in Settings → Safari → Advanced → Website Data first, not just
+reloading.
+**Review note:** the completion record initially shipped with a placeholder PR number (`PR #nn`)
+even though `State: Done` was already set — @mbj1994 caught it, requesting the real PR number per
+AGENTS.md's carve-out, and it was fixed in a follow-up commit before approval.
+**Result:** 58 capture tests pass, `typecheck`/`lint`/`format:check` clean, repo-wide `pytest`/
+`ruff`/`check_story_states.py` unaffected (a `capture/`-only change). C-03 is now `Done` (5 h
+actual, est 2 h).
+**Next:** R-17, R-18 and R-19 (the split-out golden-set/real-data criteria from R-06, R-07 and
+R-10) are `Ready` and unclaimed.
