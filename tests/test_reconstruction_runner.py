@@ -159,3 +159,44 @@ def test_run_selected_backend_calls_only_colmap(
 
     assert result["backend"] == "colmap"
     assert len(seen) == 1
+
+
+def test_main_reports_colmap_refusal_without_calling_it_pass(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    def fake_run_on_capture(*args, **kwargs):
+        return {
+            "backend": "colmap",
+            "status": "refused",
+            "reason": "colmap_did_not_register_all_input_frames",
+            "frame_count": 30,
+            "registered_frame_count": 28,
+            "point_count": 0,
+            "timings": {"total_s": 73.787},
+        }
+
+    monkeypatch.setattr(
+        reconstruction_runner,
+        "run_on_capture",
+        fake_run_on_capture,
+    )
+
+    exit_code = reconstruction_runner.main(
+        [
+            "capture",
+            "--backend",
+            "colmap",
+            "--out-dir",
+            str(tmp_path / "out"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "RECON RUN: REFUSED" in captured.out
+    assert "registered=28/30" in captured.out
+    assert "colmap_did_not_register_all_input_frames" in captured.out
+    assert "RECON RUN: PASS" not in captured.out
