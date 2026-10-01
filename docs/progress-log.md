@@ -766,3 +766,29 @@ AGENTS.md's carve-out, and it was fixed in a follow-up commit before approval.
 actual, est 2 h).
 **Next:** R-17, R-18 and R-19 (the split-out golden-set/real-data criteria from R-06, R-07 and
 R-10) are `Ready` and unclaimed.
+
+
+## 2026-10-01 — R-14 reconstruction endpoint merged (PR #77)
+
+**Who:** @mbj1994, reviewed and approved by @dalwalyk.
+**What changed:** added the real FastAPI reconstruction service for the frozen F-03 `/v1`
+contract: session creation, multipart frame + D-041 gyro upload, finish handoff, reconstruction
+polling, structured contract errors, and GLB download. The service runs the existing R-02 board
+pose → selected reconstruction backend → R-04 metric alignment → R-07 fusion → R-08 cleanup
+chain, then applies R-09 provenance and R-10 uncertainty before serving the final labelled GLB.
+Session state is file-backed under `PROOFSHAPE_DATA_DIR`; orphaned pending jobs are failed
+explicitly after a service restart rather than leaving clients polling forever. Upload/finish race
+conditions now return the documented `session_already_finished` envelopes instead of 500s, and
+unexpected pipeline exceptions are converted into a terminal failed reconstruction.
+**Contract note:** F-03's frozen `ErrorCode` enum has no dedicated malformed-request code. R-14
+keeps malformed gyro uploads contract-valid for v1 using an allowed code with a message that
+explicitly says it is not a VLM decision; a dedicated request-validation code requires the D-031
+sprint-boundary contract process.
+**Verification:** final CI passed Python pytest, Ruff lint/format and TypeScript checks. A real
+Lightning smoke run on `fixtures/data/golden_capture/s-04` with VGGT returned
+`status: complete`, `metric: true`, `reference_tier_used: charuco_board`, and a downloadable
+996,488-byte GLB through `getReconstruction`. The measured stage timings for that run were
+14.657 s board detection, 68.094 s reconstruction, 0.014 s metric alignment, 3.488 s fusion and
+0.860 s export.
+**Result:** R-14 is `Done` at 4 h actual (est 5 h); R-15 is now `Ready`.
+**Next:** R-15 can be claimed for the Lightning container/deployment story.
