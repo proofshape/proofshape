@@ -15,6 +15,19 @@ npm install
 npm run dev          # serves the page at http://localhost:5173, plus a contract stub (see below)
 ```
 
+## Testing on a real device (C-02)
+
+Safari refuses `getUserMedia` outside a secure context, and `localhost` doesn't count once a
+second device (an iPhone) is involved — it needs real HTTPS. `npm run dev` stays plain HTTP by
+default (no self-signed-cert warning for ordinary desktop work); for on-device testing, use:
+
+```
+npm run dev:device   # HTTPS, bound to your LAN — e.g. https://10.0.0.5:5173
+```
+
+Open the printed `https://<LAN-IP>:PORT` URL on a phone on the same WiFi. The browser will warn
+about the self-signed certificate (from `@vitejs/plugin-basic-ssl`) — accept it once per device.
+
 ## Testing it
 
 ```
