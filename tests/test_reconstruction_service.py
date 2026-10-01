@@ -338,7 +338,9 @@ def test_malformed_gyro_is_contract_valid_and_explicitly_not_a_vlm_decision(tmp_
         assert response.status_code == 422
         _validate_contract_response("uploadFrame", "422", response.json())
         assert response.json()["code"] == "vlm_veto"
-        assert "Malformed frame upload (not a VLM decision)" in response.json()["message"]
+        assert (
+            "Malformed frame upload (not a VLM decision)" in response.json()["message"]
+        )
 
 
 def test_empty_frame_is_rejected_with_contract_error(tmp_path):

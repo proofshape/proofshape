@@ -643,7 +643,9 @@ def create_app(
         if record is None:
             return error(
                 404,
-                ErrorDetail(code="session_not_found", message="No session with that id."),
+                ErrorDetail(
+                    code="session_not_found", message="No session with that id."
+                ),
             )
         reconstruction = record.get("reconstruction", {})
         if reconstruction.get("status") != "complete":
