@@ -314,8 +314,7 @@ def create_app(
     known_order_codes: set[str] | None = None,
 ) -> FastAPI:
     root = Path(
-        data_dir
-        or os.environ.get("PROOFSHAPE_DATA_DIR", "proofshape-data/sessions")
+        data_dir or os.environ.get("PROOFSHAPE_DATA_DIR", "proofshape-data/sessions")
     )
     store = SessionStore(root)
     app = FastAPI(title="ProofShape reconstruction service", version="1.0.0")

@@ -91,9 +91,7 @@ def test_session_frames_finish_and_reconstruction_match_contract(tmp_path):
         assert body["stage_timings_s"]["reconstruction"] == 0.2
         assert body["warnings"] == []
         assert "observed_fraction" not in body
-        assert body["glb_url"].endswith(
-            f"/v1/sessions/{session_id}/model.glb"
-        )
+        assert body["glb_url"].endswith(f"/v1/sessions/{session_id}/model.glb")
 
         model = client.get(f"/v1/sessions/{session_id}/model.glb")
         assert model.status_code == 200
@@ -116,13 +114,9 @@ def test_contract_error_paths_are_structured(tmp_path):
         created = client.post("/v1/sessions", json={"order_code": "PO-1"})
         session_id = created.json()["session_id"]
 
-        before_finish = client.get(
-            f"/v1/sessions/{session_id}/reconstruction"
-        )
+        before_finish = client.get(f"/v1/sessions/{session_id}/reconstruction")
         assert before_finish.status_code == 404
-        _validate_contract_response(
-            "getReconstruction", "404", before_finish.json()
-        )
+        _validate_contract_response("getReconstruction", "404", before_finish.json())
         assert before_finish.json()["code"] == "session_not_found"
 
         too_few = client.post(f"/v1/sessions/{session_id}/finish")
@@ -175,9 +169,7 @@ def test_r02_and_r04_failure_mapping_is_explicit():
     assert failure is not None
     assert failure.code == "board_partially_occluded"
 
-    failure = service._classify_board_failure(
-        {"posed_count": 2, "failure_counts": {}}
-    )
+    failure = service._classify_board_failure({"posed_count": 2, "failure_counts": {}})
     assert failure is not None
     assert failure.code == "insufficient_baseline"
 
@@ -185,12 +177,16 @@ def test_r02_and_r04_failure_mapping_is_explicit():
         service._classify_board_failure({"posed_count": 3, "failure_counts": {}})
         is None
     )
-    assert service._map_alignment_error(
-        ValueError("Need at least 3 paired camera poses")
-    ).code == "insufficient_baseline"
-    assert service._map_alignment_error(
-        ValueError("singular transform")
-    ).code == "metric_alignment_failed"
+    assert (
+        service._map_alignment_error(
+            ValueError("Need at least 3 paired camera poses")
+        ).code
+        == "insufficient_baseline"
+    )
+    assert (
+        service._map_alignment_error(ValueError("singular transform")).code
+        == "metric_alignment_failed"
+    )
 
 
 def test_no_cad_verdict_path_uses_frozen_error_envelope(tmp_path):
