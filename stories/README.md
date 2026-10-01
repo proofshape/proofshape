@@ -149,7 +149,7 @@ Full detail in each story file.
 | [R-11](R-11.md) | MASt3R behind the config flag | 5 h | R-01 | Done | @mbj1994 |
 | [R-12](R-12.md) | COLMAP behind the config flag | 5 h | R-01 | Done | @mbj1994 |
 | [R-13](R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Claimed | @TabeenRaoof |
-| [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Ready | _unclaimed_ |
+| [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Claimed | @mbj1994 |
 | [R-15](R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Blocked | _unclaimed_ |
 | [R-16](R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Blocked | _unclaimed_ |
 | [R-17](R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Ready | _unclaimed_ |
@@ -169,7 +169,7 @@ so this is behind schedule, not early.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [C-01](C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Done | @TabeenRaoof |
-| [C-02](C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Claimed | @TabeenRaoof |
+| [C-02](C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Done | @TabeenRaoof |
 | [C-03](C-03.md) | Gyro permission flow | 2 h | C-01 | Claimed | @dalwalyk |
 
 ---
