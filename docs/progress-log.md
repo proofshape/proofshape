@@ -682,7 +682,7 @@ repo-wide `pytest` (225), `ruff` and `check_story_states.py` unaffected.
 once that's in, C-02 can close and C-03 (already `Ready`, depends on C-01 not C-02) can proceed
 independently in the meantime.
 
-## 2026-10-01 — R-10 per-vertex uncertainty (PR #71)
+## 2026-09-30 — R-10 per-vertex uncertainty (PR #71)
 
 **Who:** @dalwalyk (PR #71), reviewed by @TabeenRaoof.
 **What changed:** `recon/uncertainty.py` computes σ per vertex — standard deviation of depth
