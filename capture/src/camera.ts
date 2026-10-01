@@ -45,6 +45,19 @@ export const CAMERA_PAGE_HTML = `
   </section>
 `;
 
+// A denial is "visible" per this story's own acceptance criteria only if a tester would actually
+// notice it, not just technically find a non-empty string somewhere in the DOM -- confirmed by
+// real on-device testing that plain body-text color blended in enough to almost be missed. Not
+// styling choices for their own sake (that's C-04's UI-polish job); this is the minimum needed so
+// an error reads as an error.
+type StatusKind = "info" | "error";
+
+function setStatus(status: HTMLElement, message: string, kind: StatusKind): void {
+  status.textContent = message;
+  status.style.color = kind === "error" ? "#b00020" : "";
+  status.style.fontWeight = kind === "error" ? "bold" : "";
+}
+
 export function mountCameraCheck(root: HTMLElement): void {
   root.innerHTML = CAMERA_PAGE_HTML;
 
@@ -54,8 +67,11 @@ export function mountCameraCheck(root: HTMLElement): void {
 
   startButton.addEventListener("click", () => {
     if (!isGetUserMediaSupported()) {
-      status.textContent =
-        "Camera not available — this needs HTTPS (or localhost) and a supported browser.";
+      setStatus(
+        status,
+        "Camera not available — this needs HTTPS (or localhost) and a supported browser.",
+        "error",
+      );
       return;
     }
     // The synchronous call itself: no `await` before this line, and the result is handled with
@@ -68,15 +84,19 @@ export function mountCameraCheck(root: HTMLElement): void {
         // the camera permission granted but nothing visible) fails loudly instead.
         preview.play().then(
           () => {
-            status.textContent = "Camera started.";
+            setStatus(status, "Camera started.", "info");
           },
           (playError: unknown) => {
-            status.textContent = `Camera permission granted, but the preview failed to play: ${describeCameraError(playError)}`;
+            setStatus(
+              status,
+              `Camera permission granted, but the preview failed to play: ${describeCameraError(playError)}`,
+              "error",
+            );
           },
         );
       },
       (error: unknown) => {
-        status.textContent = describeCameraError(error);
+        setStatus(status, describeCameraError(error), "error");
       },
     );
   });

@@ -115,6 +115,8 @@ describe("mountCameraCheck", () => {
     expect(status.textContent).toBe("Camera started.");
     expect(preview.srcObject).toBe(fakeStream);
     expect(playCalls).toHaveLength(1);
+    // A successful grant isn't an error -- shouldn't be styled like one.
+    expect(status.style.fontWeight).not.toBe("bold");
   });
 
   it("shows the specific deny message, not a blank screen, on rejection", async () => {
@@ -130,6 +132,11 @@ describe("mountCameraCheck", () => {
     });
 
     expect(status.textContent).toContain("permission denied");
+    // "Visible" per this story's own acceptance criteria turned out to mean more than
+    // non-empty text -- caught by manual testing, where plain body-colored text was easy to
+    // miss. A real error now has to actually look like one.
+    expect(status.style.color).not.toBe("");
+    expect(status.style.fontWeight).toBe("bold");
   });
 
   it("shows the unsupported message instead of throwing when mediaDevices is absent", () => {
@@ -139,5 +146,7 @@ describe("mountCameraCheck", () => {
       button.click();
     }).not.toThrow();
     expect(status.textContent).toContain("needs HTTPS");
+    expect(status.style.color).not.toBe("");
+    expect(status.style.fontWeight).toBe("bold");
   });
 });
