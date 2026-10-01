@@ -286,7 +286,9 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
         "load_and_align",
         lambda *args, **kwargs: {"scale": 1.0},
     )
-    monkeypatch.setattr(metric_alignment, "write_alignment", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        metric_alignment, "write_alignment", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(tsdf_fusion, "fuse_run", lambda *args, **kwargs: {})
     monkeypatch.setattr(mesh_cleanup, "cleanup_run", lambda *args, **kwargs: {})
 
