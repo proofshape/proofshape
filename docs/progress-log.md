@@ -567,3 +567,31 @@ installed in CI; the not-installed error-message path is tested instead), `ruff`
 `check_story_states.py` consistent.
 **Next:** R-08, R-09 and R-13 are all `Ready` and unclaimed — three chain/off-chain stories now
 open at once. R-18 (the split-out real-data mesh check, needs GPU Studio access) is also `Ready`.
+
+## 2026-10-01 — R-08 mesh cleanup and GLB export (PR #60)
+
+**Who:** @dalwalyk (PR #60), reviewed by @mbj1994.
+**What changed:** `recon/mesh_cleanup.py` takes R-07's raw fused mesh through: keep the largest
+connected component (`scipy.sparse.csgraph` on a face-adjacency graph, dropping disconnected TSDF
+noise), fill small boundary holes, decimate to a target triangle count, export a GLB. Hole-filling
+is hand-rolled: boundary loops are found by walking edges used by exactly one face in the direction
+induced by that face's own winding, so a 3-edge loop closes with one triangle directly and a longer
+loop gets a correctly-wound centroid fan — loops longer than a configurable threshold are left open
+on purpose, on the same "don't assert unobserved geometry" principle as the hard rule, even though
+this story runs before R-09's per-vertex provenance exists to label anything. Unlike R-06/R-07, none
+of this story's criteria need real captured photos, so it closed end-to-end with synthetic-mesh
+tests in one session — no follow-up story.
+**Dependency decision:** `fast-simplification` (real quadric decimation) and `pygltflib` (real GLB
+read/write) are both core to this story's primary criteria — not a fallback like R-07's Open3D — so
+both are real `requirements.txt`/CI dependencies. `scipy` pinned explicitly now that it's imported
+directly. "Loads in a browser" is checked by `pygltflib` round-trip (a genuinely malformed GLB won't
+parse back either), noted honestly as not a literal browser session rather than claimed as fully
+verified — cheap enough to spot-check yourself that it didn't need its own story. No measured
+numbers exist for target triangle count, "small holes," or a file-size limit; the defaults
+(50,000 triangles, 15 MiB, 8-edge holes) are documented, configurable assumptions, same as
+R-06/R-07's precedent. R-08 is now `Done` (3 h actual, est 4 h); `R-14` cascaded from `Blocked` to
+`Ready`.
+**Result:** 182 tests pass (1 skipped, unrelated — R-07's Open3D Poisson path), `ruff` clean,
+`check_story_states.py` consistent.
+**Next:** R-14 (Reconstruction endpoint, the last chain story before container deploy) is `Ready`
+and unclaimed, alongside R-09, R-13, R-17 and R-18 from earlier entries.
