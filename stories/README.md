@@ -143,13 +143,13 @@ Full detail in each story file.
 | [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Done | @dalwalyk |
 | [R-06](R-06.md) | Segment the part from the board | 4 h | R-04 | Done | @dalwalyk |
 | [R-07](R-07.md) | TSDF fusion to a mesh | 6 h | R-04, R-06 | Done | @dalwalyk |
-| [R-08](R-08.md) | Mesh cleanup and GLB export | 4 h | R-07 | Claimed | @dalwalyk |
+| [R-08](R-08.md) | Mesh cleanup and GLB export | 4 h | R-07 | Done | @dalwalyk |
 | [R-09](R-09.md) | Per-vertex provenance | 5 h | R-07 | Ready | _unclaimed_ |
 | [R-10](R-10.md) | Per-vertex uncertainty | 5 h | R-09 | Blocked | _unclaimed_ |
 | [R-11](R-11.md) | MASt3R behind the config flag | 5 h | R-01 | Done | @mbj1994 |
 | [R-12](R-12.md) | COLMAP behind the config flag | 5 h | R-01 | Claimed | @mbj1994 |
 | [R-13](R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Ready | _unclaimed_ |
-| [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Blocked | _unclaimed_ |
+| [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Ready | _unclaimed_ |
 | [R-15](R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Blocked | _unclaimed_ |
 | [R-16](R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Blocked | _unclaimed_ |
 | [R-17](R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Ready | _unclaimed_ |

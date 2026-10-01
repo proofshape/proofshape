@@ -21,3 +21,10 @@ pypdfium2==5.13.0
 # dependency for a fallback path that isn't exercised by default; install it locally if you need
 # to run/test that path.
 scikit-image==0.24.0
+# R-08 mesh cleanup and GLB export. Both are core to R-08's primary acceptance criteria (real
+# decimation, a real GLB writer), not a fallback path, so unlike R-07's Open3D both are real,
+# CI-tested dependencies rather than lazily imported. scipy is a scikit-image dependency already
+# present transitively; pinned here too now that recon/mesh_cleanup.py imports it directly.
+fast-simplification==0.2.0
+pygltflib==1.16.5
+scipy==1.17.1
