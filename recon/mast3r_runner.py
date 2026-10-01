@@ -34,6 +34,7 @@ from typing import Any
 
 import numpy as np
 
+from recon.timing import format_timing_table
 from recon.vggt_runner import (
     find_capture_frames,
     select_point_cloud,
@@ -404,7 +405,9 @@ def run_on_capture(
 ) -> dict[str, Any]:
     """Run R-11 and write the same four-file output contract as R-01."""
     total_started = time.perf_counter()
+    find_frames_started = time.perf_counter()
     frame_paths = find_capture_frames(capture_dir)
+    find_frames_s = time.perf_counter() - find_frames_started
 
     result = run_mast3r_model(
         frame_paths,
@@ -416,6 +419,9 @@ def run_on_capture(
         fine_iters,
         image_size,
     )
+    # Prepended, not appended -- find_capture_frames runs before run_mast3r_model's own internal
+    # stages, and the table should read in the order stages actually happened.
+    result["timings"] = {"find_frames_s": find_frames_s, **result["timings"]}
 
     started = time.perf_counter()
     world_points = unproject_depth_to_world(
@@ -546,8 +552,7 @@ def main(argv: list[str] | None = None) -> int:
         f"{run_info['point_count']} points, "
         f"{run_info['pair_count']} directed pairs"
     )
-    for stage, seconds in run_info["timings"].items():
-        print(f"  {stage}: {seconds:.2f}")
+    print(format_timing_table(run_info["timings"]))
     print(f"  peak_gpu_memory_gib: {run_info['peak_gpu_memory_gib']:.2f}")
     print(f"Outputs written to {out_dir}")
     return 0

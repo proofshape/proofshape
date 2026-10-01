@@ -116,3 +116,18 @@ by more than about 2%. All three are converted to a scale ratio relative to the 
 before comparing, since they start out as different kinds of quantities; see D-039 for the full
 reasoning. Board pitch alone is never accepted -- at least one of the other two sources must also
 be supplied.
+
+## R-13 · per-stage latency table
+
+Every backend's `run_on_capture` (`vggt_runner`, `mast3r_runner`, and `colmap_runner` once R-12
+lands) returns a `timings` dict already embedded in `run.json`; `recon.timing.format_timing_table`
+renders it as one table -- stage, seconds, share of total -- shared by every runner's own CLI
+and by the unified `recon.reconstruction_runner` entry point, so none of them has to format it
+separately. Frame discovery (`find_capture_frames`) is its own timed stage now, listed first.
+This feeds the M2 gate in `docs/sprint-plan.md` ("the latency table decides interactive vs
+batch") -- there's no numeric target anywhere for that gate, so this table is what a human reads
+to judge "nearly free," not a pass/fail check this code makes itself.
+
+Still open: COLMAP isn't on `main` yet (R-12), so the table above has only been produced for
+VGGT and MASt3R so far; recording all three on the same capture needs R-12 merged and one real
+run on the shared Lightning GPU.

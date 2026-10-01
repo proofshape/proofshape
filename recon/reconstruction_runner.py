@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from recon import mast3r_runner, vggt_runner
+from recon.timing import format_timing_table
 
 BACKENDS = ("vggt", "mast3r")
 DEFAULT_BACKEND = "vggt"
@@ -92,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
         f"RECON RUN: PASS - backend={run_info['backend']}, "
         f"{run_info['frame_count']} frames, {run_info['point_count']} points"
     )
-    print(f"  total_s: {run_info['timings']['total_s']:.2f}")
+    print(format_timing_table(run_info["timings"]))
     print(f"Outputs written to {out_dir}")
     return 0
 

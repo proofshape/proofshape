@@ -37,6 +37,7 @@ from typing import Any
 import numpy as np
 
 from recon.frames import find_capture_frames
+from recon.timing import format_timing_table
 
 DEFAULT_MODEL_ID = "facebook/VGGT-1B"
 
@@ -386,9 +387,14 @@ def run_on_capture(
 ) -> dict[str, Any]:
     """Run the whole R-01 pipeline on one capture folder and return the run.json contents."""
     total_started = time.perf_counter()
+    find_frames_started = time.perf_counter()
     frame_paths = find_capture_frames(capture_dir)
+    find_frames_s = time.perf_counter() - find_frames_started
 
     result = run_vggt_model(frame_paths, model_id, device_type)
+    # Prepended, not appended -- find_capture_frames runs before run_vggt_model's own internal
+    # stages, and the table should read in the order stages actually happened.
+    result["timings"] = {"find_frames_s": find_frames_s, **result["timings"]}
 
     started = time.perf_counter()
     world_points = unproject_depth_to_world(
@@ -478,8 +484,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"R-01 RUN: PASS - {run_info['frame_count']} frames, {run_info['point_count']} points"
     )
-    for stage, seconds in run_info["timings"].items():
-        print(f"  {stage}: {seconds:.2f}")
+    print(format_timing_table(run_info["timings"]))
     print(f"Outputs written to {out_dir}")
     return 0
 

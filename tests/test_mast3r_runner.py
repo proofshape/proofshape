@@ -145,4 +145,35 @@ def test_run_on_capture_writes_r01_compatible_contract(tmp_path, monkeypatch):
     assert "not metric" in on_disk["scale"]
     assert on_disk["pair_count"] == 6
     assert on_disk["timings"]["total_s"] >= 0
+    # R-13: frame discovery is now its own timed stage, and runs first in the table. Checked on
+    # the in-memory dict, not `on_disk` -- run.json is written with sort_keys=True, so its key
+    # order is always alphabetical and says nothing about insertion order.
+    assert on_disk["timings"]["find_frames_s"] >= 0
+    assert next(iter(info["timings"])) == "find_frames_s"
     assert info == on_disk
+
+
+def test_main_prints_the_full_per_stage_table_not_just_the_total(
+    tmp_path, monkeypatch, capsys
+):
+    capture = tmp_path / "s-99"
+    capture.mkdir()
+    (capture / "a.jpg").write_bytes(b"x")
+
+    monkeypatch.setattr(
+        mast3r_runner,
+        "run_mast3r_model",
+        lambda frame_paths, model_id, device_type, mast3r_root, scene_graph, coarse_iters, fine_iters, image_size: (
+            _fake_result(len(frame_paths))
+        ),
+    )
+
+    exit_code = mast3r_runner.main(
+        [str(capture), "--out-dir", str(tmp_path / "out"), "--device", "cuda"]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    for stage in ["find_frames_s", "model_load_s", "alignment_s", "total_s"]:
+        assert stage in out
+    assert "share" in out
