@@ -1,0 +1,9 @@
+# R-12 COLMAP stack for the shared Lightning CUDA 12.8 environment.
+# Kept separate from normal CI and requirements-gpu.txt because PyCOLMAP pulls
+# CUDA runtime packages that should not be installed on CPU/macOS environments.
+#
+# This exact combination was validated on the Lightning T4 environment used for
+# R-12. Pinning cuda-toolkit to 12.8 avoids silently upgrading the environment to
+# CUDA 12.9 while the managed PyTorch build is 2.8.0+cu128.
+pycolmap-cuda12==4.2.0
+cuda-toolkit[cudart,curand]==12.8.2.0
