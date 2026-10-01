@@ -568,7 +568,7 @@ installed in CI; the not-installed error-message path is tested instead), `ruff`
 **Next:** R-08, R-09 and R-13 are all `Ready` and unclaimed — three chain/off-chain stories now
 open at once. R-18 (the split-out real-data mesh check, needs GPU Studio access) is also `Ready`.
 
-## 2026-10-01 — R-08 mesh cleanup and GLB export (PR #60)
+## 2026-09-30 — R-08 mesh cleanup and GLB export (PR #60)
 
 **Who:** @dalwalyk (PR #60), reviewed by @mbj1994.
 **What changed:** `recon/mesh_cleanup.py` takes R-07's raw fused mesh through: keep the largest
