@@ -232,6 +232,27 @@ def labels_to_colors(labels: np.ndarray) -> np.ndarray:
     return colors
 
 
+def colors_to_labels(colors: np.ndarray) -> np.ndarray:
+    """(N,3) uint8 RGB -> per-vertex label strings, the inverse of labels_to_colors.
+
+    Lets R-10 recover R-09's labels from `mesh_provenance.glb` directly -- R-09 only persists
+    labels as GLB vertex colors, not separately, so this is how a downstream consumer reads them
+    back without needing camera centres or any of R-09's own projection machinery.
+    """
+    colors = np.asarray(colors)
+    is_observed = np.all(colors == np.asarray(OBSERVED_COLOR), axis=1)
+    is_unobserved = np.all(colors == np.asarray(UNOBSERVED_COLOR), axis=1)
+    unrecognised = ~(is_observed | is_unobserved)
+    if np.any(unrecognised):
+        raise ValueError(
+            f"{int(np.count_nonzero(unrecognised))} color(s) match neither OBSERVED_COLOR "
+            f"{OBSERVED_COLOR} nor UNOBSERVED_COLOR {UNOBSERVED_COLOR}"
+        )
+    labels = np.full(len(colors), LABEL_UNOBSERVED, dtype=object)
+    labels[is_observed] = LABEL_OBSERVED
+    return labels
+
+
 def write_observations_npz(path: Path, observations: dict[str, np.ndarray]) -> None:
     """Persist the observations table for R-10 to reuse without recomputing projections."""
     np.savez_compressed(
