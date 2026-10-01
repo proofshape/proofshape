@@ -341,9 +341,45 @@ def test_run_on_capture_end_to_end_with_stubbed_model(tmp_path, monkeypatch):
     assert run_info["processed_image_size_hw"] == [4, 6]
     # Per-run wall-clock timings are an R-01 acceptance criterion and must be on disk.
     on_disk = json.loads((tmp_path / "out" / "run.json").read_text())
-    for stage in ["model_load_s", "inference_s", "unproject_s", "write_s", "total_s"]:
+    for stage in [
+        "find_frames_s",
+        "model_load_s",
+        "inference_s",
+        "unproject_s",
+        "write_s",
+        "total_s",
+    ]:
         assert on_disk["timings"][stage] >= 0.0
     assert "not metric" in on_disk["scale"]
+    # R-13: find_frames_s runs before the model-internal stages, so the table reads in the order
+    # stages actually happened, not with the frame-discovery step tacked on at the end. Checked
+    # on the in-memory dict, not `on_disk` -- run.json is written with sort_keys=True, so its
+    # key order is always alphabetical and says nothing about insertion order.
+    assert next(iter(run_info["timings"])) == "find_frames_s"
+
+
+def test_main_prints_the_full_per_stage_table_not_just_the_total(
+    tmp_path, monkeypatch, capsys
+):
+    capture_dir = tmp_path / "s-99"
+    capture_dir.mkdir()
+    (capture_dir / "1.jpg").write_bytes(b"x")
+
+    monkeypatch.setattr(
+        vggt_runner,
+        "run_vggt_model",
+        lambda frame_paths, model_id, device_type: _fake_model_result(1),
+    )
+
+    exit_code = vggt_runner.main(
+        [str(capture_dir), "--out-dir", str(tmp_path / "out"), "--device", "cuda"]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    for stage in ["find_frames_s", "model_load_s", "inference_s", "total_s"]:
+        assert stage in out
+    assert "share" in out
 
 
 def test_main_reports_a_missing_capture_folder_and_exits_nonzero(tmp_path, capsys):

@@ -595,3 +595,29 @@ R-06/R-07's precedent. R-08 is now `Done` (3 h actual, est 4 h); `R-14` cascaded
 `check_story_states.py` consistent.
 **Next:** R-14 (Reconstruction endpoint, the last chain story before container deploy) is `Ready`
 and unclaimed, alongside R-09, R-13, R-17 and R-18 from earlier entries.
+
+## 2026-09-30 — R-13 per-stage latency table: mechanism done, not yet closed
+
+**Who:** @TabeenRaoof.
+**What changed:** `recon/timing.py` (new) renders any runner's `timings` dict as one table —
+stage, seconds, share of total — and is now the single thing `vggt_runner.main`,
+`mast3r_runner.main` and the unified `reconstruction_runner.main` all call, replacing three
+separate copies of the same print loop. The unified CLI was actually the one place dropping the
+per-stage detail down to just `total_s`, even though each backend's own entry point already had
+it. `find_capture_frames` is now its own timed stage (`find_frames_s`) in both `vggt_runner` and
+`mast3r_runner` — the one stage that was running untimed in the gap before `total_s`.
+**Not marking R-13 `Done`:** its third acceptance criterion needs all three backbones recorded
+on the same capture, and `colmap_runner.py` doesn't exist on `main` yet (R-12 is still open);
+even once it lands, that measurement needs the shared Lightning GPU, not available this
+session. `State` stays `Claimed`. See `stories/R-13.md`'s Notes for the full reasoning,
+including why "backbones" is read as scoped to the three reconstruction methods and not R-07's
+fusion stage, and a caught mistake: an early test asserted stage order on the *on-disk* `run.json`,
+which is always written with `sort_keys=True` and therefore always alphabetical regardless of
+when each stage ran — fixed to check the in-memory dict instead, which is what the table-printing
+code path actually reads.
+**Result:** 191 tests pass (1 skipped, unrelated), `ruff` clean, `check_story_states.py`
+consistent.
+**Next:** whoever picks up R-12 should expect a small, normal merge collision in
+`reconstruction_runner.py` (both touch the same dispatcher). Once R-12 merges and someone with
+GPU access runs VGGT, MASt3R and COLMAP on `s-04` with this code, record the real table in
+`stories/R-13.md` and close it out.

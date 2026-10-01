@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from recon import colmap_runner, mast3r_runner, vggt_runner
+from recon.timing import format_timing_table
 
 BACKENDS = ("vggt", "mast3r", "colmap")
 DEFAULT_BACKEND = "vggt"
@@ -103,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
             f"registered={run_info['registered_frame_count']}/"
             f"{run_info['frame_count']}, reason={run_info['reason']}"
         )
-        print(f"  total_s: {run_info['timings']['total_s']:.2f}")
+        print(format_timing_table(run_info["timings"]))
         print(f"Refusal record written to {out_dir}")
         return 0
 
@@ -111,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         f"RECON RUN: PASS - backend={run_info['backend']}, "
         f"{run_info['frame_count']} frames, {run_info['point_count']} points"
     )
-    print(f"  total_s: {run_info['timings']['total_s']:.2f}")
+    print(format_timing_table(run_info["timings"]))
     print(f"Outputs written to {out_dir}")
     return 0
 
