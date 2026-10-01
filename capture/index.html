@@ -8,10 +8,13 @@
   <body>
     <h1>ProofShape capture — minimal upload page</h1>
     <p>
-      Proves the frozen contract end to end (C-01): no live camera, no real gyro, no UI polish —
-      those come with C-02, C-03 and C-04.
+      Proves the frozen contract end to end (C-01): no live camera, no UI polish — those come with
+      C-02 and C-04. The gyro check below (C-03) proves the real device-orientation permission flow
+      in isolation; the main form above still uses C-01's typed-number stand-in until C-04 wires the
+      live reading through.
     </p>
     <main id="app"></main>
+    <main id="gyro-app"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
