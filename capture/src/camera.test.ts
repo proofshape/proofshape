@@ -90,11 +90,22 @@ describe("mountCameraCheck", () => {
     expect(calledSynchronously).toBe(true);
   });
 
-  it("shows a specific message and sets the preview on grant", async () => {
+  it("shows a specific message, sets the preview, and actually starts playback on grant", async () => {
     const { button, status, root } = mount();
     const fakeStream = new MediaStream();
     // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
     navigator.mediaDevices = { getUserMedia: () => Promise.resolve(fakeStream) };
+    const preview = root.querySelector("#camera-preview") as HTMLVideoElement;
+    // On a real device, `autoplay` alone wasn't enough for a stream attached after the element
+    // already existed -- the preview stayed blank despite a granted permission (caught by manual
+    // testing on a real iPhone, not by this suite, since happy-dom doesn't render video at all).
+    // This spy is what actually guards the fix: it fails if `.play()` stops being called.
+    const playCalls: number[] = [];
+    const originalPlay = preview.play.bind(preview);
+    preview.play = () => {
+      playCalls.push(1);
+      return originalPlay();
+    };
 
     button.click();
     await vi.waitFor(() => {
@@ -102,9 +113,8 @@ describe("mountCameraCheck", () => {
     });
 
     expect(status.textContent).toBe("Camera started.");
-    const preview = root.querySelector("#camera-preview");
-    expect(preview).toBeInstanceOf(HTMLVideoElement);
-    expect((preview as HTMLVideoElement).srcObject).toBe(fakeStream);
+    expect(preview.srcObject).toBe(fakeStream);
+    expect(playCalls).toHaveLength(1);
   });
 
   it("shows the specific deny message, not a blank screen, on rejection", async () => {

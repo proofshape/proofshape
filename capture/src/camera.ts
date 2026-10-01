@@ -40,7 +40,7 @@ export const CAMERA_PAGE_HTML = `
   <section>
     <h2>Camera permission check (C-02)</h2>
     <button id="camera-start-button" type="button">Start camera</button>
-    <video id="camera-preview" muted playsinline></video>
+    <video id="camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
     <p id="camera-status"></p>
   </section>
 `;
@@ -63,7 +63,17 @@ export function mountCameraCheck(root: HTMLElement): void {
     navigator.mediaDevices.getUserMedia(REAR_CAMERA_CONSTRAINTS).then(
       (stream) => {
         preview.srcObject = stream;
-        status.textContent = "Camera started.";
+        // `autoplay` alone isn't reliably honored for a stream attached after the element
+        // already exists -- call play() explicitly too, so a silently-stalled preview (frozen on
+        // the camera permission granted but nothing visible) fails loudly instead.
+        preview.play().then(
+          () => {
+            status.textContent = "Camera started.";
+          },
+          (playError: unknown) => {
+            status.textContent = `Camera permission granted, but the preview failed to play: ${describeCameraError(playError)}`;
+          },
+        );
       },
       (error: unknown) => {
         status.textContent = describeCameraError(error);
