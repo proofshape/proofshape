@@ -97,6 +97,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"RECON RUN: FAIL - {exc}", file=sys.stderr)
         return 1
 
+    if run_info.get("status") == "refused":
+        print(
+            f"RECON RUN: REFUSED - backend={run_info['backend']}, "
+            f"registered={run_info['registered_frame_count']}/"
+            f"{run_info['frame_count']}, reason={run_info['reason']}"
+        )
+        print(f"  total_s: {run_info['timings']['total_s']:.2f}")
+        print(f"Refusal record written to {out_dir}")
+        return 0
+
     print(
         f"RECON RUN: PASS - backend={run_info['backend']}, "
         f"{run_info['frame_count']} frames, {run_info['point_count']} points"
