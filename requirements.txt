@@ -28,3 +28,11 @@ scikit-image==0.24.0
 fast-simplification==0.2.0
 pygltflib==1.16.5
 scipy==1.17.1
+
+# R-14 reconstruction HTTP service. FastAPI owns the frozen /v1 contract; multipart is needed
+# for frame+gyro uploads (D-041), uvicorn is the ASGI server R-15 will containerize, and httpx
+# is required by FastAPI/Starlette's TestClient in CI.
+fastapi==0.142.2
+uvicorn==0.54.0
+python-multipart==0.0.32
+httpx==0.28.1

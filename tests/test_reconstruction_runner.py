@@ -228,3 +228,35 @@ def test_main_reports_colmap_refusal_without_calling_it_pass(
     assert "registered=28/30" in captured.out
     assert "colmap_did_not_register_all_input_frames" in captured.out
     assert "RECON RUN: PASS" not in captured.out
+
+
+def test_run_selected_colmap_forwards_explicit_board_pose_path(
+    tmp_path,
+    monkeypatch,
+):
+    seen = {}
+
+    def fake_colmap(*args, **kwargs):
+        seen.update(kwargs)
+        return {
+            "backend": "colmap",
+            "frame_count": 3,
+            "point_count": 5,
+            "timings": {"total_s": 2.0},
+        }
+
+    monkeypatch.setattr(
+        reconstruction_runner.colmap_runner,
+        "run_on_capture",
+        fake_colmap,
+    )
+
+    board_pose_path = tmp_path / "board_poses.npz"
+    reconstruction_runner.run_on_capture(
+        Path("capture"),
+        tmp_path / "out",
+        backend="colmap",
+        board_pose_path=board_pose_path,
+    )
+
+    assert seen["board_pose_path"] == board_pose_path
