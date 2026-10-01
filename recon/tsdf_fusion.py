@@ -30,6 +30,7 @@ import numpy as np
 from recon.metric_alignment import (
     apply_similarity_transform,
     apply_similarity_transform_to_extrinsic,
+    project_points_to_camera,
 )
 from recon.part_segmentation import (
     DEFAULT_FOOTPRINT_MM,
@@ -149,16 +150,11 @@ def fuse_tsdf(
     for frame_index in range(frame_count):
         rotation = extrinsic_board[frame_index, :, :3]
         translation = extrinsic_board[frame_index, :, 3]
-        camera_points = voxel_centers @ rotation.T + translation
-        z_cam = camera_points[:, 2]
+        u, v, z_cam = project_points_to_camera(
+            voxel_centers, rotation, translation, intrinsic[frame_index]
+        )
 
         in_front = z_cam > 1e-9
-        pixel_homogeneous = camera_points @ intrinsic[frame_index].T
-        # Avoid a divide-by-zero warning for behind-camera voxels; their result is discarded by
-        # `in_front` below regardless of what this division produces.
-        safe_z = np.where(in_front, pixel_homogeneous[:, 2], 1.0)
-        u = pixel_homogeneous[:, 0] / safe_z
-        v = pixel_homogeneous[:, 1] / safe_z
         u_index = np.round(u).astype(np.int64)
         v_index = np.round(v).astype(np.int64)
 

@@ -183,17 +183,90 @@ def decimate_mesh(
     return new_vertices.astype(np.float32), new_faces.astype(np.int32)
 
 
-def write_glb(path: Path, vertices: np.ndarray, faces: np.ndarray) -> None:
-    """Write a minimal, valid GLB: one mesh, POSITION + triangle indices, no materials."""
+def write_glb(
+    path: Path,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    colors: np.ndarray | None = None,
+) -> None:
+    """Write a minimal, valid GLB: one mesh, POSITION + triangle indices, no materials.
+
+    `colors`, if given, is (N,3) uint8 RGB -- written as a COLOR_0 vertex attribute (R-09's
+    per-vertex provenance labels, as `contracts/openapi.yaml` specifies: labels travel as vertex
+    colors inside the GLB, not as separate JSON fields). Omitting it keeps R-08's original
+    colorless output unchanged.
+    """
     vertices = np.asarray(vertices, dtype=np.float32)
     faces = np.asarray(faces, dtype=np.uint32)
     if vertices.ndim != 2 or vertices.shape[1] != 3:
         raise ValueError(f"vertices must have shape (N,3), got {vertices.shape}")
     if faces.ndim != 2 or faces.shape[1] != 3:
         raise ValueError(f"faces must have shape (F,3), got {faces.shape}")
+    if colors is not None:
+        colors = np.asarray(colors, dtype=np.uint8)
+        if colors.shape != vertices.shape:
+            raise ValueError(
+                f"colors must have the same shape as vertices {vertices.shape}, got {colors.shape}"
+            )
 
     indices_blob = faces.tobytes()
     positions_blob = vertices.tobytes()
+    colors_blob = colors.tobytes() if colors is not None else b""
+
+    attributes = pygltflib.Attributes(POSITION=1)
+    buffer_views = [
+        pygltflib.BufferView(
+            buffer=0,
+            byteOffset=0,
+            byteLength=len(indices_blob),
+            target=pygltflib.ELEMENT_ARRAY_BUFFER,
+        ),
+        pygltflib.BufferView(
+            buffer=0,
+            byteOffset=len(indices_blob),
+            byteLength=len(positions_blob),
+            target=pygltflib.ARRAY_BUFFER,
+        ),
+    ]
+    accessors = [
+        pygltflib.Accessor(
+            bufferView=0,
+            componentType=pygltflib.UNSIGNED_INT,
+            count=int(faces.size),
+            type=pygltflib.SCALAR,
+            min=[int(faces.min())] if faces.size else [0],
+            max=[int(faces.max())] if faces.size else [0],
+        ),
+        pygltflib.Accessor(
+            bufferView=1,
+            componentType=pygltflib.FLOAT,
+            count=len(vertices),
+            type=pygltflib.VEC3,
+            min=vertices.min(axis=0).tolist() if len(vertices) else [0.0, 0.0, 0.0],
+            max=vertices.max(axis=0).tolist() if len(vertices) else [0.0, 0.0, 0.0],
+        ),
+    ]
+    if colors is not None:
+        attributes.COLOR_0 = 2
+        buffer_views.append(
+            pygltflib.BufferView(
+                buffer=0,
+                byteOffset=len(indices_blob) + len(positions_blob),
+                byteLength=len(colors_blob),
+                target=pygltflib.ARRAY_BUFFER,
+            )
+        )
+        accessors.append(
+            pygltflib.Accessor(
+                bufferView=2,
+                componentType=pygltflib.UNSIGNED_BYTE,
+                count=len(colors),
+                type=pygltflib.VEC3,
+                normalized=True,
+                min=colors.min(axis=0).tolist() if len(colors) else [0, 0, 0],
+                max=colors.max(axis=0).tolist() if len(colors) else [0, 0, 0],
+            )
+        )
 
     document = pygltflib.GLTF2(
         scene=0,
@@ -201,55 +274,27 @@ def write_glb(path: Path, vertices: np.ndarray, faces: np.ndarray) -> None:
         nodes=[pygltflib.Node(mesh=0)],
         meshes=[
             pygltflib.Mesh(
-                primitives=[
-                    pygltflib.Primitive(
-                        attributes=pygltflib.Attributes(POSITION=1), indices=0
-                    )
-                ]
+                primitives=[pygltflib.Primitive(attributes=attributes, indices=0)]
             )
         ],
-        buffers=[pygltflib.Buffer(byteLength=len(indices_blob) + len(positions_blob))],
-        bufferViews=[
-            pygltflib.BufferView(
-                buffer=0,
-                byteOffset=0,
-                byteLength=len(indices_blob),
-                target=pygltflib.ELEMENT_ARRAY_BUFFER,
-            ),
-            pygltflib.BufferView(
-                buffer=0,
-                byteOffset=len(indices_blob),
-                byteLength=len(positions_blob),
-                target=pygltflib.ARRAY_BUFFER,
-            ),
+        buffers=[
+            pygltflib.Buffer(
+                byteLength=len(indices_blob) + len(positions_blob) + len(colors_blob)
+            )
         ],
-        accessors=[
-            pygltflib.Accessor(
-                bufferView=0,
-                componentType=pygltflib.UNSIGNED_INT,
-                count=int(faces.size),
-                type=pygltflib.SCALAR,
-                min=[int(faces.min())] if faces.size else [0],
-                max=[int(faces.max())] if faces.size else [0],
-            ),
-            pygltflib.Accessor(
-                bufferView=1,
-                componentType=pygltflib.FLOAT,
-                count=len(vertices),
-                type=pygltflib.VEC3,
-                min=vertices.min(axis=0).tolist() if len(vertices) else [0.0, 0.0, 0.0],
-                max=vertices.max(axis=0).tolist() if len(vertices) else [0.0, 0.0, 0.0],
-            ),
-        ],
+        bufferViews=buffer_views,
+        accessors=accessors,
     )
-    document.set_binary_blob(indices_blob + positions_blob)
+    document.set_binary_blob(indices_blob + positions_blob + colors_blob)
     document.save_binary(str(path))
 
 
-def read_glb(path: Path) -> tuple[np.ndarray, np.ndarray]:
+def read_glb(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Read back a GLB written by write_glb. The automated proxy for "loads in a browser": a
     genuinely malformed GLB won't parse here either. Only understands this module's own minimal
-    single-mesh, POSITION-plus-indices layout, not general glTF content.
+    single-mesh, POSITION-plus-indices(-plus-optional-COLOR_0) layout, not general glTF content.
+
+    Returns (vertices, faces, colors) -- `colors` is None when the file has no COLOR_0 attribute.
     """
     document = pygltflib.GLTF2().load_binary(str(path))
     blob = document.binary_blob()
@@ -268,7 +313,20 @@ def read_glb(path: Path) -> tuple[np.ndarray, np.ndarray]:
         count=position_accessor.count * 3,
         offset=position_view.byteOffset,
     ).reshape(-1, 3)
-    return vertices, faces.astype(np.int32)
+
+    colors = None
+    color_accessor_index = document.meshes[0].primitives[0].attributes.COLOR_0
+    if color_accessor_index is not None:
+        color_accessor = document.accessors[color_accessor_index]
+        color_view = document.bufferViews[color_accessor.bufferView]
+        colors = np.frombuffer(
+            blob,
+            dtype=np.uint8,
+            count=color_accessor.count * 3,
+            offset=color_view.byteOffset,
+        ).reshape(-1, 3)
+
+    return vertices, faces.astype(np.int32), colors
 
 
 def check_file_size(path: Path, max_bytes: int = DEFAULT_MAX_FILE_SIZE_BYTES) -> bool:

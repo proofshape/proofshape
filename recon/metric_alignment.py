@@ -109,6 +109,47 @@ def apply_similarity_transform_to_extrinsic(
     return np.concatenate([board_rotation, board_translation[:, :, None]], axis=2)
 
 
+def project_points_to_camera(
+    points_board_frame_mm: np.ndarray,
+    rotation: np.ndarray,
+    translation: np.ndarray,
+    intrinsic: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Project (N,3) board-frame-mm points through one frame's camera: (u, v, z_cam).
+
+    `rotation`/`translation` are one frame's (3,3)/(3,) slice of a camera-from-board-mm
+    extrinsic (`apply_similarity_transform_to_extrinsic`'s output); `intrinsic` is that frame's
+    (3,3) K. `z_cam` is camera-space depth along the optical axis -- positive means in front of
+    the camera; a non-positive `z_cam` is a behind-the-camera point and `u`/`v` for it should be
+    treated as meaningless by the caller, not divided-by-zero trusted.
+
+    Shared by R-07's TSDF fusion (`tsdf_fusion.fuse_tsdf`) and R-09's per-vertex provenance
+    (`provenance.compute_observations`), which both need the identical perspective-projection
+    math applied to different point sets -- pulled into one place rather than duplicated a
+    second time.
+    """
+    points_board_frame_mm = np.asarray(points_board_frame_mm, dtype=np.float64)
+    if points_board_frame_mm.ndim != 2 or points_board_frame_mm.shape[1] != 3:
+        raise ValueError(
+            f"points_board_frame_mm must have shape (N,3), got {points_board_frame_mm.shape}"
+        )
+    rotation = np.asarray(rotation, dtype=np.float64)
+    translation = np.asarray(translation, dtype=np.float64)
+    intrinsic = np.asarray(intrinsic, dtype=np.float64)
+
+    camera_points = points_board_frame_mm @ rotation.T + translation
+    z_cam = camera_points[:, 2]
+
+    in_front = z_cam > 1e-9
+    pixel_homogeneous = camera_points @ intrinsic.T
+    # Avoid a divide-by-zero warning for behind-camera points; their result is discarded by
+    # `in_front` for callers that check it, regardless of what this division produces.
+    safe_z = np.where(in_front, pixel_homogeneous[:, 2], 1.0)
+    u = pixel_homogeneous[:, 0] / safe_z
+    v = pixel_homogeneous[:, 1] / safe_z
+    return u, v, z_cam
+
+
 def camera_centres(extrinsic: np.ndarray) -> np.ndarray:
     """Convert camera-from-world [R|t] matrices to world-frame camera centres."""
     extrinsic = np.asarray(extrinsic, dtype=np.float64)
