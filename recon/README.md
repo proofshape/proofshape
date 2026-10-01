@@ -55,6 +55,44 @@ the training-data licences. Treat this as an academic backend unless those restr
 cleared for another use. Its output is not accepted as metric inspection evidence by itself;
 R-04 still establishes board-frame scale.
 
+## R-12 · COLMAP behind the config flag
+
+R-12 adds COLMAP as a third reconstruction backend while keeping VGGT as the D-009 default.
+It takes the same capture folder and writes the same four-file contract:
+`poses.npz`, `depth.npz`, `points.ply` and `run.json`.
+
+On the shared Lightning T4 / CUDA 12.8 environment:
+
+```bash
+python -m pip install -r requirements-colmap.txt
+
+python -m recon.reconstruction_runner \
+  fixtures/data/golden_capture/s-04 \
+  --backend colmap \
+  --device cuda \
+  --out-dir fixtures/data/recon_runs/s-04-colmap
+```
+
+R-02 must already have produced the board-pose file for the capture. For `s-04` that is
+`fixtures/data/board_poses/s-04/board_poses.npz`.
+
+COLMAP may import phone GPS metadata during feature extraction. R-12 deliberately clears those
+priors and replaces them with R-02 board-derived Cartesian camera-position priors, so GPS and
+board coordinate systems are never mixed.
+
+The dense path uses COLMAP image undistortion, PatchMatch stereo and geometric stereo fusion.
+If COLMAP cannot register every input frame needed by the common ProofShape output contract,
+R-12 records an explicit refusal instead of fabricating missing geometry.
+
+COLMAP geometric depth does not provide VGGT-style learned confidence. For the shared file
+contract, `depth_conf` is therefore a binary validity mask: `1.0` means finite positive
+geometric depth and `0.0` means invalid or missing depth. It is not a probability, learned
+confidence score, or measured uncertainty; that meaning is also recorded in `run.json`.
+
+The board positions are reconstruction priors, not an object-accuracy measurement. COLMAP
+output is not accepted as metric inspection evidence by itself; R-04 remains the authoritative
+metric-alignment stage.
+
 ## R-02 · board detection and per-frame camera pose
 
 Runs anywhere — laptop, Studio or CI; no GPU or PyTorch needed:
