@@ -621,3 +621,40 @@ consistent.
 `reconstruction_runner.py` (both touch the same dispatcher). Once R-12 merges and someone with
 GPU access runs VGGT, MASt3R and COLMAP on `s-04` with this code, record the real table in
 `stories/R-13.md` and close it out.
+
+## 2026-09-30 — R-09 per-vertex provenance (PR #65)
+
+**Who:** @dalwalyk (PR #65), reviewed by @TabeenRaoof.
+**What changed:** `recon/provenance.py` labels every mesh vertex Observed or Unobserved — the
+mechanism behind the hard rule ("unobserved geometry can never pass or fail a part"). A frame only
+counts as observing a vertex if the vertex also projects within a depth-consistency tolerance of
+that frame's *measured* depth at the landed pixel (the occlusion check, reusing R-07's `fuse_tsdf`
+logic via a newly-shared helper, `metric_alignment.project_points_to_camera`) — otherwise the back
+face of any non-convex part would be miscounted as seen by a frame that's actually looking through
+the object at its front. Observed requires two or more such observing frames whose widest pair's
+triangulation angle clears a threshold; a vertex seen twice by nearly-coincident cameras stays
+Unobserved, pinned by its own test. Two things needed resolving against existing docs before
+writing any labelling logic: `docs/glossary.md`'s "Observed" definition matches this story's own
+acceptance criteria exactly (view count + triangulation angle only) and deliberately excludes the
+older course proposal's "σ below the tier's floor" clause — that's R-10's job, which depends on
+R-09, not the reverse, so the story file's own criteria won over the older proposal doc. Vertex-
+color GLB encoding (white = Observed, no color asserted yet; grey = Unobserved) follows
+`contracts/openapi.yaml`'s "labels travel as vertex colors" spec and the proposal's own "drawn
+gray" convention. `mesh_cleanup.write_glb`/`read_glb` gained an optional vertex-colors parameter;
+`write_glb` stayed fully backward compatible, though `read_glb`'s return arity did change (2-tuple
+to unconditional 3-tuple) — both existing call sites were updated, and the PR description was
+corrected after review to state that precisely rather than call it a no-op. `provenance_run`
+accepts either R-07's raw `mesh.ply` or R-08's cleaned `mesh_clean.glb` (R-09 depends only on R-07;
+R-08 is a sibling, not a prerequisite), and persists the raw per-observation table to
+`observations.npz` specifically for R-10 to reuse without recomputing projections. Nothing in this
+story's criteria needs real captured photos, so it closed end-to-end with synthetic-mesh tests in
+one session — no follow-up story, same as R-08. R-09 is now `Done` (3 h actual, est 5 h); `R-10`
+cascaded from `Blocked` to `Ready`.
+**Review notes:** two real fixes requested and made — the completion record's PR number was still
+a placeholder, and both dated entries used the UTC calendar day instead of the local (Pacific) day
+the work was actually done (the same mistake as PR #62's R-08 close-out, now the second occurrence
+of this exact class of error).
+**Result:** 225 tests pass (1 skipped, unrelated), `ruff` clean, `check_story_states.py`
+consistent.
+**Next:** R-10 (per-vertex uncertainty, builds directly on `observations.npz`) is `Ready` and
+unclaimed, alongside R-13/R-14/R-17/R-18 from earlier entries.
