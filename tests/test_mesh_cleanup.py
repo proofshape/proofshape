@@ -192,10 +192,38 @@ def test_glb_round_trips(tmp_path):
     path = tmp_path / "mesh.glb"
 
     mesh_cleanup.write_glb(path, _TETRAHEDRON_VERTICES, _TETRAHEDRON_FACES_CLOSED)
-    read_vertices, read_faces = mesh_cleanup.read_glb(path)
+    read_vertices, read_faces, read_colors = mesh_cleanup.read_glb(path)
 
     np.testing.assert_allclose(read_vertices, _TETRAHEDRON_VERTICES)
     np.testing.assert_array_equal(read_faces, _TETRAHEDRON_FACES_CLOSED)
+    assert read_colors is None
+
+
+def test_glb_round_trips_with_colors(tmp_path):
+    path = tmp_path / "mesh.glb"
+    colors = np.array(
+        [[255, 255, 255], [128, 128, 128], [255, 255, 255], [128, 128, 128]],
+        dtype=np.uint8,
+    )
+
+    mesh_cleanup.write_glb(
+        path, _TETRAHEDRON_VERTICES, _TETRAHEDRON_FACES_CLOSED, colors=colors
+    )
+    read_vertices, read_faces, read_colors = mesh_cleanup.read_glb(path)
+
+    np.testing.assert_allclose(read_vertices, _TETRAHEDRON_VERTICES)
+    np.testing.assert_array_equal(read_faces, _TETRAHEDRON_FACES_CLOSED)
+    np.testing.assert_array_equal(read_colors, colors)
+
+
+def test_write_glb_rejects_mismatched_colors_shape():
+    with pytest.raises(ValueError, match="colors"):
+        mesh_cleanup.write_glb(
+            "unused.glb",
+            _TETRAHEDRON_VERTICES,
+            _TETRAHEDRON_FACES_CLOSED,
+            colors=np.zeros((2, 3)),
+        )
 
 
 def test_write_glb_rejects_bad_shape():
@@ -247,7 +275,7 @@ def test_cleanup_run_writes_glb_and_report(tmp_path):
     assert report["triangle_count_after_decimation"] <= 100
     assert out_path.exists()
     assert report["file_size_bytes"] == out_path.stat().st_size
-    read_vertices, read_faces = mesh_cleanup.read_glb(out_path)
+    read_vertices, read_faces, _read_colors = mesh_cleanup.read_glb(out_path)
     assert len(read_faces) == report["face_count"]
     assert len(read_vertices) == report["vertex_count"]
     on_disk_report = json.loads(out_path.with_suffix(".json").read_text())

@@ -8,6 +8,7 @@ from recon.metric_alignment import (
     apply_similarity_transform,
     apply_similarity_transform_to_extrinsic,
     camera_centres,
+    project_points_to_camera,
     solve_similarity,
     validate_known_size,
 )
@@ -178,6 +179,34 @@ def test_apply_similarity_transform_to_extrinsic_matches_unprojected_points() ->
     )
 
     assert board_points.reshape(-1, 3) == pytest.approx(expected_board_points)
+
+
+def test_project_points_to_camera_matches_hand_computed_pinhole_projection() -> None:
+    """Shared by R-07's TSDF fusion and R-09's provenance (both need the identical perspective-
+    projection math applied to different point sets) -- hand-verified independently rather than
+    just trusted from its callers' own tests.
+    """
+    points = np.array(
+        [[2.0, 3.0, 5.0], [0.0, 0.0, -1.0]]
+    )  # second point is behind the camera
+    rotation = np.eye(3)
+    translation = np.zeros(3)
+    intrinsic = np.array([[10.0, 0.0, 1.0], [0.0, 10.0, 1.0], [0.0, 0.0, 1.0]])
+
+    u, v, z_cam = project_points_to_camera(points, rotation, translation, intrinsic)
+
+    # u = fx*x/z + cx = 10*2/5 + 1 = 5; v = fy*y/z + cy = 10*3/5 + 1 = 7.
+    assert u[0] == pytest.approx(5.0)
+    assert v[0] == pytest.approx(7.0)
+    assert z_cam[0] == pytest.approx(5.0)
+    assert z_cam[1] == pytest.approx(
+        -1.0
+    )  # behind the camera -- callers must check this sign
+
+
+def test_project_points_to_camera_rejects_bad_shape() -> None:
+    with pytest.raises(ValueError, match="shape"):
+        project_points_to_camera(np.zeros((2, 2)), np.eye(3), np.zeros(3), np.eye(3))
 
 
 def test_known_size_validation_uses_explicit_tolerance() -> None:
