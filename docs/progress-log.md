@@ -658,3 +658,31 @@ of this exact class of error).
 consistent.
 **Next:** R-10 (per-vertex uncertainty, builds directly on `observations.npz`) is `Ready` and
 unclaimed, alongside R-13/R-14/R-17/R-18 from earlier entries.
+
+## 2026-10-01 — R-10 per-vertex uncertainty (PR #71)
+
+**Who:** @dalwalyk (PR #71), reviewed by @TabeenRaoof.
+**What changed:** `recon/uncertainty.py` computes σ per vertex — standard deviation of depth
+residuals (`measured_depth_mm - z_cam_mm`) across the frames that observe it, the conventional
+meaning of σ per `docs/glossary.md` and D-006, neither of which pins down the exact statistic
+beyond "spread." Observed vertices whose σ exceeds a threshold are downgraded to Unobserved (the
+pipeline's only other state); a vertex with fewer than two observations gets `NaN`, not a
+fabricated zero, and is left untouched by the downgrade step. The threshold is deliberately not
+σ_floor — σ_floor needs the October calibration study and doesn't exist yet, the same situation
+D-032 already settled for I-01's tolerance-table fields — so `DEFAULT_SIGMA_DOWNGRADE_THRESHOLD_MM`
+(3.0 mm) is this story's own configurable, unmeasured assumption, same pattern as every prior
+story's defaults. This story turned out unusually self-contained: it depends only on R-09's
+*persisted output* (`mesh_provenance.glb`, `observations.npz`), not on camera poses or depth maps,
+so the end-to-end test needed no fake capture run at all. `recon/provenance.py` gained
+`colors_to_labels` (the inverse of `labels_to_colors`) so this story could recover R-09's labels
+from the GLB's vertex colors directly. "σ distribution reported per golden object" is split out
+to a new story, **R-19**, same resolution as R-06→R-17 and R-07→R-18. R-10 is now `Done` (2 h
+actual, est 5 h).
+**Review note:** the completion record initially shipped with a placeholder PR number
+(`PR #nn`) even though `State: Done` was already set — @TabeenRaoof caught it (requesting the
+real PR number, not just actual hours, per AGENTS.md's carve-out) and it was fixed in a follow-up
+commit before approval.
+**Result:** 238 tests pass (1 skipped, unrelated), `ruff` clean, `check_story_states.py`
+consistent.
+**Next:** R-19 (the split-out real-data σ distribution, needs GPU Studio access) is `Ready` and
+unclaimed, alongside R-13/R-14/R-17/R-18 from earlier entries.
