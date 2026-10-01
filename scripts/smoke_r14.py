@@ -83,10 +83,6 @@ def run_smoke(
             result_body["downloaded_glb_bytes"] = len(model.content)
             result_body["saved_glb"] = str(saved_glb)
             return result_body
-    except Exception:
-        # Keep the failed session directory for diagnosis; only a successful run is
-        # eligible for --cleanup below.
-        raise
     finally:
         if previous_backend is None:
             os.environ.pop("PROOFSHAPE_RECON_BACKEND", None)
