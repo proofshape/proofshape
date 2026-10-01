@@ -8,10 +8,12 @@
   <body>
     <h1>ProofShape capture — minimal upload page</h1>
     <p>
-      Proves the frozen contract end to end (C-01): no live camera, no real gyro, no UI polish —
-      those come with C-02, C-03 and C-04.
+      Proves the frozen contract end to end (C-01): no real gyro, no UI polish — those come with
+      C-03 and C-04. C-02 below adds the camera-permission check only, not the real capture flow
+      (continuous frames, frame gate, next-view guidance) — that's C-05 onward.
     </p>
     <main id="app"></main>
+    <main id="camera-app"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
