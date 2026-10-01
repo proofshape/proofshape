@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -168,6 +169,31 @@ class SessionStore:
             self._write_record(record)
             return frame_index
 
+    def fail_orphaned_pending(self) -> int:
+        """Fail jobs left pending by a previous process so clients do not poll forever."""
+        failed = 0
+        with self._lock:
+            for record_path in self.root.glob("*/session.json"):
+                record = json.loads(record_path.read_text(encoding="utf-8"))
+                reconstruction = record.get("reconstruction", {})
+                if (
+                    record.get("status") == "finished"
+                    and reconstruction.get("status") == "pending"
+                ):
+                    record["reconstruction"] = {
+                        "status": "failed",
+                        "failure": {
+                            "code": "metric_alignment_failed",
+                            "message": (
+                                "Reconstruction was interrupted by a service restart; "
+                                "start a new capture session."
+                            ),
+                        },
+                    }
+                    self._write_record(record)
+                    failed += 1
+        return failed
+
     def mark_finished(self, session_id: str) -> dict[str, Any]:
         with self._lock:
             record = self.load(session_id)
@@ -248,8 +274,10 @@ def run_reconstruction_pipeline(
         board_pose,
         mesh_cleanup,
         metric_alignment,
+        provenance,
         reconstruction_runner,
         tsdf_fusion,
+        uncertainty,
     )
 
     capture_dir = Path(capture_dir)
@@ -258,6 +286,8 @@ def run_reconstruction_pipeline(
     reconstruction_dir = artifact_dir / "reconstruction"
     fusion_dir = artifact_dir / "fusion"
     model_path = artifact_dir / "model.glb"
+    provenance_dir = artifact_dir / "provenance"
+    uncertainty_dir = artifact_dir / "uncertainty"
 
     stage_timings_s: dict[str, float] = {}
 
@@ -299,10 +329,25 @@ def run_reconstruction_pipeline(
     mesh_cleanup.cleanup_run(fusion_dir / "mesh.ply", model_path)
     stage_timings_s["export"] = time.perf_counter() - started
 
+    started = time.perf_counter()
+    provenance_report = provenance.provenance_run(
+        model_path,
+        reconstruction_dir,
+        alignment_path,
+        provenance_dir,
+    )
+    stage_timings_s["provenance"] = time.perf_counter() - started
+
+    started = time.perf_counter()
+    uncertainty.uncertainty_run(provenance_dir, uncertainty_dir)
+    stage_timings_s["uncertainty"] = time.perf_counter() - started
+    final_model_path = uncertainty_dir / "mesh_uncertainty.glb"
+
     return {
-        "glb_path": str(model_path),
+        "glb_path": str(final_model_path),
         "reference_tier_used": "charuco_board",
         "metric": True,
+        "observed_fraction": provenance_report.get("observed_fraction"),
         "stage_timings_s": stage_timings_s,
         "warnings": [],
     }
@@ -319,11 +364,29 @@ def create_app(
     store = SessionStore(root)
     app = FastAPI(title="ProofShape reconstruction service", version="1.0.0")
     app.state.store = store
+    app.state.orphaned_pending_failed = store.fail_orphaned_pending()
 
     def error(status_code: int, detail: ErrorDetail) -> JSONResponse:
         return JSONResponse(
             status_code=status_code, content=detail.model_dump(exclude_none=True)
         )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_error(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        if request.method == "POST" and request.url.path.endswith("/frames"):
+            return error(
+                422,
+                ErrorDetail(
+                    code="vlm_veto",
+                    message=(
+                        "Invalid frame upload. Both frame and gyro multipart file "
+                        "parts are required."
+                    ),
+                ),
+            )
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.post(
         "/v1/sessions",

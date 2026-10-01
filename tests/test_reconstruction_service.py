@@ -215,3 +215,106 @@ def test_public_operation_ids_match_the_frozen_contract(tmp_path):
         "getReconstruction",
         "getVerdict",
     }
+
+
+def test_missing_multipart_part_uses_error_detail_contract(tmp_path):
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        created = client.post("/v1/sessions", json={"order_code": "PO-1"})
+        session_id = created.json()["session_id"]
+
+        response = client.post(
+            f"/v1/sessions/{session_id}/frames",
+            files={"frame": ("frame.jpg", b"jpeg-data", "image/jpeg")},
+        )
+
+        assert response.status_code == 422
+        _validate_contract_response("uploadFrame", "422", response.json())
+        assert response.json()["code"] == "vlm_veto"
+        assert "frame and gyro" in response.json()["message"]
+
+
+def test_pending_reconstruction_is_failed_after_service_restart(tmp_path):
+    first_app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    record = first_app.state.store.create("PO-1")
+    record["status"] = "finished"
+    record["reconstruction"] = {"status": "pending"}
+    first_app.state.store.save(record)
+
+    restarted_app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    recovered = restarted_app.state.store.load(record["session_id"])
+
+    assert restarted_app.state.orphaned_pending_failed == 1
+    assert recovered["reconstruction"]["status"] == "failed"
+    assert recovered["reconstruction"]["failure"]["code"] == "metric_alignment_failed"
+    assert "service restart" in recovered["reconstruction"]["failure"]["message"]
+
+
+def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
+    tmp_path,
+    monkeypatch,
+):
+    from recon import (
+        board_pose,
+        mesh_cleanup,
+        metric_alignment,
+        provenance,
+        reconstruction_runner,
+        tsdf_fusion,
+        uncertainty,
+    )
+
+    capture_dir = tmp_path / "capture"
+    artifact_dir = tmp_path / "artifacts"
+    capture_dir.mkdir()
+
+    monkeypatch.setattr(
+        board_pose,
+        "estimate_board_poses",
+        lambda capture, out: {
+            "posed_count": 3,
+            "failure_counts": {},
+        },
+    )
+    monkeypatch.setattr(
+        reconstruction_runner,
+        "run_on_capture",
+        lambda *args, **kwargs: {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        metric_alignment,
+        "load_and_align",
+        lambda *args, **kwargs: {"scale": 1.0},
+    )
+    monkeypatch.setattr(metric_alignment, "write_alignment", lambda *args, **kwargs: None)
+    monkeypatch.setattr(tsdf_fusion, "fuse_run", lambda *args, **kwargs: {})
+    monkeypatch.setattr(mesh_cleanup, "cleanup_run", lambda *args, **kwargs: {})
+
+    seen = {}
+
+    def fake_provenance(mesh_path, reconstruction_dir, alignment_path, out_dir):
+        seen["provenance_mesh"] = mesh_path
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "mesh_provenance.glb").write_bytes(b"provenance")
+        (out_dir / "observations.npz").write_bytes(b"observations")
+        return {"observed_fraction": 0.75}
+
+    def fake_uncertainty(provenance_dir, out_dir):
+        seen["uncertainty_input"] = provenance_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "mesh_uncertainty.glb").write_bytes(b"uncertainty")
+        return {}
+
+    monkeypatch.setattr(provenance, "provenance_run", fake_provenance)
+    monkeypatch.setattr(uncertainty, "uncertainty_run", fake_uncertainty)
+
+    result = service.run_reconstruction_pipeline(capture_dir, artifact_dir)
+
+    assert seen["provenance_mesh"] == artifact_dir / "model.glb"
+    assert seen["uncertainty_input"] == artifact_dir / "provenance"
+    assert result["glb_path"] == str(
+        artifact_dir / "uncertainty" / "mesh_uncertainty.glb"
+    )
+    assert result["observed_fraction"] == 0.75
+    assert "provenance" in result["stage_timings_s"]
+    assert "uncertainty" in result["stage_timings_s"]
