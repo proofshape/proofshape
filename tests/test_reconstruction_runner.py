@@ -99,6 +99,34 @@ def test_run_selected_backend_keeps_vggt_default(tmp_path, monkeypatch):
     assert len(seen) == 1
 
 
+def test_main_prints_the_full_per_stage_table_not_just_the_total(
+    tmp_path, monkeypatch, capsys
+):
+    # R-13: before this story, main() printed only `total_s`, discarding the per-stage
+    # breakdown each backend's own run_on_capture already returns.
+    def fake_run_on_capture(
+        capture_dir, out_dir, backend=None, device_type="cuda", min_confidence=0.0
+    ):
+        return {
+            "backend": "vggt",
+            "frame_count": 2,
+            "point_count": 4,
+            "timings": {"find_frames_s": 0.1, "model_load_s": 0.2, "total_s": 0.3},
+        }
+
+    monkeypatch.setattr(reconstruction_runner, "run_on_capture", fake_run_on_capture)
+
+    exit_code = reconstruction_runner.main(
+        [str(tmp_path / "capture"), "--out-dir", str(tmp_path / "out")]
+    )
+
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    for stage in ["find_frames_s", "model_load_s", "total_s"]:
+        assert stage in out
+    assert "share" in out
+
+
 def test_resolve_backend_can_select_colmap(monkeypatch):
     monkeypatch.setenv(
         reconstruction_runner.BACKEND_ENV,
