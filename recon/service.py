@@ -7,9 +7,10 @@ import os
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -195,13 +196,13 @@ def _parse_gyro(payload: bytes) -> dict[str, float]:
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("gyro must be a JSON object") from exc
     if not isinstance(parsed, dict):
-        raise ValueError("gyro must be a JSON object")
+        raise TypeError("gyro must be a JSON object")
 
     result: dict[str, float] = {}
     for key in ("alpha", "beta", "gamma"):
         value = parsed.get(key)
         if not isinstance(value, (int, float)) or isinstance(value, bool):
-            raise ValueError(f"gyro.{key} must be a number")
+            raise TypeError(f"gyro.{key} must be a number")
         result[key] = float(value)
     return result
 
@@ -355,8 +356,8 @@ def create_app(
     )
     async def upload_frame(
         session_id: str,
-        frame: UploadFile = File(...),
-        gyro: UploadFile = File(...),
+        frame: Annotated[UploadFile, File()],
+        gyro: Annotated[UploadFile, File()],
     ):
         record = store.load(session_id)
         if record is None:
@@ -385,7 +386,7 @@ def create_app(
             )
         try:
             gyro_value = _parse_gyro(await gyro.read())
-        except ValueError as exc:
+        except (TypeError, ValueError) as exc:
             return error(422, ErrorDetail(code="vlm_veto", message=str(exc)))
         frame_index = store.add_frame(session_id, frame_bytes, gyro_value)
         return UploadFrameResult(accepted=True, frame_index=frame_index)
@@ -414,7 +415,16 @@ def create_app(
             }
         except ReconstructionFailure as exc:
             record["reconstruction"] = {"status": "failed", "failure": exc.as_dict()}
-        except Exception as exc:
+        except (
+            FileNotFoundError,
+            FileExistsError,
+            ImportError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:
             record["reconstruction"] = {
                 "status": "failed",
                 "failure": {
