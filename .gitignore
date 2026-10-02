@@ -58,3 +58,6 @@ dist/
 # personal / local-only — never committed
 project-playbook.md
 **/project-playbook.md
+
+# R-14 local service state — may contain uploaded frames, gyro sidecars and generated artifacts.
+proofshape-data/

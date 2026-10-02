@@ -682,6 +682,34 @@ repo-wide `pytest` (225), `ruff` and `check_story_states.py` unaffected.
 once that's in, C-02 can close and C-03 (already `Ready`, depends on C-01 not C-02) can proceed
 independently in the meantime.
 
+## 2026-09-30 — R-10 per-vertex uncertainty (PR #71)
+
+**Who:** @dalwalyk (PR #71), reviewed by @TabeenRaoof.
+**What changed:** `recon/uncertainty.py` computes σ per vertex — standard deviation of depth
+residuals (`measured_depth_mm - z_cam_mm`) across the frames that observe it, the conventional
+meaning of σ per `docs/glossary.md` and D-006, neither of which pins down the exact statistic
+beyond "spread." Observed vertices whose σ exceeds a threshold are downgraded to Unobserved (the
+pipeline's only other state); a vertex with fewer than two observations gets `NaN`, not a
+fabricated zero, and is left untouched by the downgrade step. The threshold is deliberately not
+σ_floor — σ_floor needs the October calibration study and doesn't exist yet, the same situation
+D-032 already settled for I-01's tolerance-table fields — so `DEFAULT_SIGMA_DOWNGRADE_THRESHOLD_MM`
+(3.0 mm) is this story's own configurable, unmeasured assumption, same pattern as every prior
+story's defaults. This story turned out unusually self-contained: it depends only on R-09's
+*persisted output* (`mesh_provenance.glb`, `observations.npz`), not on camera poses or depth maps,
+so the end-to-end test needed no fake capture run at all. `recon/provenance.py` gained
+`colors_to_labels` (the inverse of `labels_to_colors`) so this story could recover R-09's labels
+from the GLB's vertex colors directly. "σ distribution reported per golden object" is split out
+to a new story, **R-19**, same resolution as R-06→R-17 and R-07→R-18. R-10 is now `Done` (2 h
+actual, est 5 h).
+**Review note:** the completion record initially shipped with a placeholder PR number
+(`PR #nn`) even though `State: Done` was already set — @TabeenRaoof caught it (requesting the
+real PR number, not just actual hours, per AGENTS.md's carve-out) and it was fixed in a follow-up
+commit before approval.
+**Result:** 238 tests pass (1 skipped, unrelated), `ruff` clean, `check_story_states.py`
+consistent.
+**Next:** R-19 (the split-out real-data σ distribution, needs GPU Studio access) is `Ready` and
+unclaimed, alongside R-13/R-14/R-17/R-18 from earlier entries.
+
 ## 2026-10-01 — C-02 closed: manual check caught two real bugs no automated test could
 
 **Who:** @TabeenRaoof, manual check performed on a real iPhone 16 (iOS 26.6, Safari 26.6).
@@ -704,3 +732,63 @@ automated suite correctly covered everything it was capable of covering (includi
 regression guard for the hardest criterion, the synchronous `getUserMedia` call), and the manual
 check caught the two things that genuinely needed a real device and a real browser.
 **Next:** C-03 (gyro permission flow) is `Ready` and unclaimed, independent of C-02.
+
+## 2026-10-01 — C-03 closed: manual check found nothing to fix, by design not luck
+
+**Who:** @dalwalyk, manual check performed on a real iPhone 18 Pro Max (iOS 27.0, Safari).
+**What changed:** `capture/src/gyro.ts` gained `isOrientationPermissionRequestNeeded`,
+`describeOrientationError`, and `mountGyroCheck`, extending C-01's existing `parseGyroInput`
+rather than replacing it. Built the same way @TabeenRaoof built C-02 (PR #72): everything that
+doesn't need a real device was built and tested first, with the on-device grant/deny check left
+as a written manual-check template; `State` stayed `Claimed`, not `Done`, until the real check
+ran. Built directly on review lessons from PR #72, not just read about them — that review
+surfaced two real bugs and a reuse problem in C-02, and all three had a direct analog here,
+closed from the start rather than repeated: the missing-`autoplay`/`.play()` bug's analog
+(requesting permission but never attaching the `deviceorientation` listener) is closed by a test
+that dispatches a synthetic orientation event and asserts the DOM actually updates, not just that
+status says "granted"; the double-click stream-leak analog is closed by disabling the button
+synchronously for the duration of a pending `requestPermission()` call and guarding the listener
+against being attached more than once; the `requireElement`/`requireButton` triplication finding
+is closed by a new shared `capture/src/dom.ts` instead of a third copy.
+**Manual check result:** both grant and deny worked on the first attempt — no fixes needed. Unlike
+C-02's own device check, which caught two real bugs invisible to automated tests, this one found
+nothing, and that's attributed to the two bug classes C-02's check caught having already been
+identified and closed during this story's own build (see above), not to luck. One real platform
+behaviour recorded for whoever does the next manual check on this app: once granted, iOS Safari
+remembers the permission per site and won't re-prompt on reload — getting back to the deny prompt
+required clearing that site's data in Settings → Safari → Advanced → Website Data first, not just
+reloading.
+**Review note:** the completion record initially shipped with a placeholder PR number (`PR #nn`)
+even though `State: Done` was already set — @mbj1994 caught it, requesting the real PR number per
+AGENTS.md's carve-out, and it was fixed in a follow-up commit before approval.
+**Result:** 58 capture tests pass, `typecheck`/`lint`/`format:check` clean, repo-wide `pytest`/
+`ruff`/`check_story_states.py` unaffected (a `capture/`-only change). C-03 is now `Done` (5 h
+actual, est 2 h).
+**Next:** R-17, R-18 and R-19 (the split-out golden-set/real-data criteria from R-06, R-07 and
+R-10) are `Ready` and unclaimed.
+
+
+## 2026-10-01 — R-14 reconstruction endpoint merged (PR #77)
+
+**Who:** @mbj1994, reviewed and approved by @dalwalyk.
+**What changed:** added the real FastAPI reconstruction service for the frozen F-03 `/v1`
+contract: session creation, multipart frame + D-041 gyro upload, finish handoff, reconstruction
+polling, structured contract errors, and GLB download. The service runs the existing R-02 board
+pose → selected reconstruction backend → R-04 metric alignment → R-07 fusion → R-08 cleanup
+chain, then applies R-09 provenance and R-10 uncertainty before serving the final labelled GLB.
+Session state is file-backed under `PROOFSHAPE_DATA_DIR`; orphaned pending jobs are failed
+explicitly after a service restart rather than leaving clients polling forever. Upload/finish race
+conditions now return the documented `session_already_finished` envelopes instead of 500s, and
+unexpected pipeline exceptions are converted into a terminal failed reconstruction.
+**Contract note:** F-03's frozen `ErrorCode` enum has no dedicated malformed-request code. R-14
+keeps malformed gyro uploads contract-valid for v1 using an allowed code with a message that
+explicitly says it is not a VLM decision; a dedicated request-validation code requires the D-031
+sprint-boundary contract process.
+**Verification:** final CI passed Python pytest, Ruff lint/format and TypeScript checks. A real
+Lightning smoke run on `fixtures/data/golden_capture/s-04` with VGGT returned
+`status: complete`, `metric: true`, `reference_tier_used: charuco_board`, and a downloadable
+996,488-byte GLB through `getReconstruction`. The measured stage timings for that run were
+14.657 s board detection, 68.094 s reconstruction, 0.014 s metric alignment, 3.488 s fusion and
+0.860 s export.
+**Result:** R-14 is `Done` at 4 h actual (est 5 h); R-15 is now `Ready`.
+**Next:** R-15 can be claimed for the Lightning container/deployment story.
