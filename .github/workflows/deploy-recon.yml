@@ -1,0 +1,64 @@
+name: Deploy recon
+
+# R-15: start or stop the reconstruction service on Lightning (D-036). Manual and main-only:
+#   gh workflow run deploy-recon.yml --ref main -f action=start
+#   gh workflow run deploy-recon.yml --ref main -f action=stop
+# Runbook: recon/README.md, "R-15 · container and deploy".
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: start or stop the deployment
+        required: true
+        type: choice
+        options: [start, stop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-recon
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/proofshape/proofshape-recon
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the Lightning CLI
+        run: python -m pip install --disable-pip-version-check "lightning-sdk==2026.10.1"
+
+      # Deploy the digest :main points at right now, never the moving tag, so the running service
+      # is traceable to exactly one build and commit.
+      - name: Resolve the published image digest
+        if: inputs.action == 'start'
+        run: |
+          digest=$(docker buildx imagetools inspect "${IMAGE}:main" --format '{{json .Manifest}}' \
+            | python -c "import json, sys; print(json.load(sys.stdin)['digest'])")
+          revision=$(docker buildx imagetools inspect "${IMAGE}:main" --format '{{json .Image}}' \
+            | python -c "import json, sys; i = json.load(sys.stdin); i = i.get('linux/amd64', i); print(i['config']['Labels']['org.opencontainers.image.revision'])")
+          echo "PROOFSHAPE_IMAGE=${IMAGE}@${digest}" >> "$GITHUB_ENV"
+          echo "Deploying ${IMAGE}@${digest} built from commit ${revision}" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: ${{ inputs.action }} the deployment
+        env:
+          LIGHTNING_USER_ID: ${{ secrets.LIGHTNING_USER_ID }}
+          LIGHTNING_API_KEY: ${{ secrets.LIGHTNING_API_KEY }}
+          LIGHTNING_TEAMSPACE: ${{ vars.LIGHTNING_TEAMSPACE }}
+          PROOFSHAPE_ENDPOINT_TOKEN: ${{ secrets.PROOFSHAPE_ENDPOINT_TOKEN }}
+          ACTION: ${{ inputs.action }}
+        run: python scripts/deploy_recon.py "$ACTION"

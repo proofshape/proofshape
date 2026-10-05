@@ -1,0 +1,33 @@
+# Build context for the R-15 image: only pyproject.toml, requirements*.txt, recon/ and the
+# entrypoint are copied. Everything below is excluded so secrets, captures and local state can
+# never reach a public image, even if a COPY line is widened later.
+.git
+.github
+.venv*
+venv/
+**/node_modules
+capture/
+fixtures/data
+proofshape-data/
+submissions/
+tests/
+docs/
+stories/
+.env
+.env.*
+*.pem
+*.key
+**/__pycache__
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.DS_Store
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.ply
+*.glb
+*.pt
+*.pth
+*.safetensors

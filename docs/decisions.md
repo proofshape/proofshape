@@ -519,6 +519,28 @@ multipart request's part boundaries.
 highest decision anywhere was D-040 (this pull request's own D-040, above), so D-041 was the
 first free number.
 
+**D-042 · The deployed reconstruction service is published on every merge, started by hand,
+token-gated, on demand, and never more than one replica.** (2026-10-05)
+R-15 splits D-014's "deployment runs only from `main`, on push" into two steps. Every push to
+`main` that can change the image builds it, smoke-tests the container, and publishes it to GHCR
+(`.github/workflows/recon-image.yml`). That step costs no GPU. Starting the service is a separate
+manual workflow (`deploy-recon.yml`), which runs only on `main`. It deploys the image by digest,
+never by a moving tag, to one Lightning T4 with bearer-token auth and a four-hour
+`--max-runtime` cap. The service is started for testing, demos and sprint boundaries, then stopped.
+Callers present the token; the phone app cannot hold a secret, so browser-facing access is
+decided by whichever story first connects capture to the deployed service, not here.
+*Why:* deploying on every push would start a paid T4 on every merge to `recon/`. It would also
+restart the service mid-session, losing work in progress. Without auth, R-14's default accepts
+any non-empty order code, so anyone holding the URL could spend our GPU credits. Gating by
+construction is unchanged: `main` is still unreachable except through an approved pull request,
+and the deploy job refuses to run against any other ref. **One replica, one uvicorn worker, is a
+correctness constraint, not a cost choice:** R-14's `SessionStore` keeps sessions on one
+container's local disk behind an in-process lock. A second replica or worker would answer
+`session_not_found` for sessions the other created. Lifting that needs shared session storage,
+which is a separate story.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-041, so D-042 was the first free number.
+
 ---
 
 ## Open — not yet decided

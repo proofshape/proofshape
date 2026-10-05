@@ -33,6 +33,104 @@ wire schema would require the D-031 contract-change process. Optional metadata s
 `observed_fraction` and `scale_agreement` is omitted when the pipeline has no measured value
 rather than fabricated.
 
+## R-15 · container and deploy (runbook)
+
+The repository-root `Dockerfile` packages the R-14 service on the CUDA PyTorch build the Lightning
+Studio was validated on. It contains the VGGT backend only (D-009's default): MASt3R and COLMAP are
+not installed in the image, so setting `PROOFSHAPE_RECON_BACKEND` to either fails the session.
+`scripts/container_entrypoint.sh` downloads the VGGT-1B weights into `HF_HOME` at start-up, so the
+weights are never baked into the public image. It then serves on port 8000 with exactly one uvicorn
+worker. The reasons for one worker and one replica, plus the rest of the deploy policy, are in
+D-042.
+
+Every merge to `main` that touches the image publishes `ghcr.io/proofshape/proofshape-recon:main`
+(`.github/workflows/recon-image.yml`). That starts no GPU. Starting the service is a separate
+manual step.
+
+### One-time setup (a repository admin, once)
+
+1. **Lightning credentials.** From the Lightning account that owns the team's teamspace, get the
+   user id and an API key, then:
+   ```bash
+   gh secret set LIGHTNING_USER_ID
+   gh secret set LIGHTNING_API_KEY
+   gh variable set LIGHTNING_TEAMSPACE --body "<owner>/<teamspace>"
+   ```
+2. **Endpoint token.** Generate it, store it as a secret, and put the same value in the team's
+   password manager. GitHub never shows a secret again, so the password manager is how members
+   get it for testing.
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+   gh secret set PROOFSHAPE_ENDPOINT_TOKEN
+   ```
+3. **Make the image public**, once, after the first `recon-image` run on `main`. Go to GitHub →
+   `proofshape` organisation → Packages → `proofshape-recon` → Package settings → Change
+   visibility → Public. Lightning pulls it without registry credentials. Check that it worked
+   while logged out:
+   ```bash
+   docker logout ghcr.io && docker buildx imagetools inspect ghcr.io/proofshape/proofshape-recon:main
+   ```
+
+### Each time you need the service
+
+```bash
+gh workflow run deploy-recon.yml --ref main -f action=start
+gh run watch "$(gh run list --workflow deploy-recon.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+```
+
+The run ends with `R-15 DEPLOY: READY at https://…`, also shown in the run's summary, along with
+the image digest and commit it deployed. The first start of a fresh replica downloads the model
+weights before it reports ready, so it takes several minutes. Then check it, with the token from
+the password manager:
+
+```bash
+export URL=https://…                         # from the run summary
+export PROOFSHAPE_ENDPOINT_TOKEN=…            # from the password manager, never typed on a command line you share
+
+# TLS and auth: -v shows the TLS handshake; without the token this must be refused (401/403) ...
+curl -v -o /dev/null -w '%{http_code}\n' -X POST "$URL/v1/sessions" \
+  -H 'Content-Type: application/json' -d '{"order_code": "R15-CHECK"}'
+# ... and with it, 201 Created.
+curl -s -w '\n%{http_code}\n' -X POST "$URL/v1/sessions" \
+  -H "Authorization: Bearer $PROOFSHAPE_ENDPOINT_TOKEN" \
+  -H 'Content-Type: application/json' -d '{"order_code": "R15-CHECK"}'
+
+# End to end: real golden frames in, GLB out, over HTTPS.
+bash fixtures/download_golden_capture.sh
+python scripts/smoke_r14.py fixtures/data/golden_capture/s-04 --base-url "$URL"
+```
+
+The smoke check passes only if the GLB link the service returns is also `https://`. That catches
+the TLS-terminating proxy downgrading it.
+
+**Stop it when you're done.** It is billed while it runs. It is created with a four-hour
+`--max-runtime` as a backstop, but don't rely on that:
+
+```bash
+gh workflow run deploy-recon.yml --ref main -f action=stop
+```
+
+If a start fails, read the replica's logs with `lightning deployment logs proofshape-recon
+--teamspace <owner>/<teamspace>` (needs `pip install lightning-sdk` and `lightning login`).
+
+### Build and run it locally
+
+```bash
+docker build --platform linux/amd64 -t proofshape-recon:local .
+docker run --rm -p 8000:8000 -e PROOFSHAPE_PREFETCH_MODEL=0 proofshape-recon:local
+```
+
+Without an NVIDIA GPU this proves only that the service answers (`POST /v1/sessions` → 201):
+reconstruction itself fails with an explicit "cannot see a GPU" message. Day-to-day development
+stays native, per D-012.
+
+### Known limits
+
+- Sessions live on the container's disk. Stopping or restarting the deployment loses them.
+- One replica, one worker (D-042). Two sessions finishing at once would reconstruct concurrently
+  on the one T4. That case is untested, so run one session at a time.
+- VGGT only, as above.
+
 ## R-01 · run VGGT on a golden capture
 
 On the shared Lightning GPU Studio (D-036):
