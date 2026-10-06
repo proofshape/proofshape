@@ -134,16 +134,33 @@ def ready_url(info: Mapping[str, Any]) -> str | None:
     return url
 
 
+# The exact text `resolve_deployment` in lightning_sdk's CLI raises as a click.ClickException
+# when the named deployment doesn't exist; every other failure (auth, network, rate limit) also
+# exits 1, so matching on the specific message is the only way to tell "absent" from "broken".
+# Confirmed live: `lightning deployment inspect` against an unknown name with no credentials set
+# also exits 1, with an unrelated "No Lightning credentials are available" message.
+NOT_FOUND_MARKER = "was not found"
+
+
 def inspect_deployment(
     teamspace: str, run: Runner = subprocess.run
 ) -> dict[str, Any] | None:
-    """The deployment as JSON, or None if it doesn't exist."""
+    """The deployment as JSON, None if it genuinely doesn't exist yet.
+
+    Raises DeployError for any other CLI failure, so a transient error never gets silently read
+    as "nothing to stop" (see stop(), and D-042: this deployment bills a GPU by the hour).
+    """
     completed = run(
         inspect_command(teamspace=teamspace), capture_output=True, text=True
     )
-    if completed.returncode != 0:
+    if completed.returncode == 0:
+        return json.loads(completed.stdout)
+    if NOT_FOUND_MARKER in completed.stderr:
         return None
-    return json.loads(completed.stdout)
+    raise DeployError(
+        f"`lightning deployment inspect` failed (exit {completed.returncode}): "
+        f"{completed.stderr.strip() or 'no error output'}"
+    )
 
 
 def wait_until_ready(

@@ -29,20 +29,41 @@ def _env(**overrides):
     return env
 
 
+# The exact message lightning_sdk's CLI raises for an unknown deployment name (confirmed live
+# against the real CLI, see stories/R-15.md). Any other non-zero inspect exit is a different kind
+# of failure and must not be read the same way.
+LIGHTNING_NOT_FOUND_STDERR = "Error: Deployment 'proofshape-recon' was not found."
+
+
 class FakeLightning:
     """Stands in for the `lightning` CLI; records every call."""
 
-    def __init__(self, exists: bool, inspect_results=None, exit_code: int = 0):
+    def __init__(
+        self,
+        exists: bool,
+        inspect_results=None,
+        exit_code: int = 0,
+        inspect_failure_stderr: str | None = None,
+    ):
         self.exists = exists
         self.inspect_results = list(inspect_results or [READY])
         self.exit_code = exit_code
+        # None here means "simulate genuine absence"; any other string means "inspect itself is
+        # broken" (auth, network, rate limit) -- the distinction the fix is about.
+        self.inspect_failure_stderr = inspect_failure_stderr
         self.calls: list[list[str]] = []
 
     def __call__(self, command, **kwargs):
         self.calls.append(list(command))
         if command[2] == "inspect":
+            if self.inspect_failure_stderr is not None:
+                return subprocess.CompletedProcess(
+                    command, 1, "", self.inspect_failure_stderr
+                )
             if not self.exists:
-                return subprocess.CompletedProcess(command, 1, "", "not found")
+                return subprocess.CompletedProcess(
+                    command, 1, "", LIGHTNING_NOT_FOUND_STDERR
+                )
             result = (
                 self.inspect_results.pop(0)
                 if len(self.inspect_results) > 1
@@ -154,6 +175,27 @@ def test_start_reports_which_setting_is_missing():
 def test_start_fails_loudly_when_the_cli_fails():
     with pytest.raises(DeployError, match="exited with 2"):
         NS["start"](_env(), run=FakeLightning(exists=False, exit_code=2))
+
+
+def test_inspect_does_not_mistake_a_broken_cli_call_for_absence():
+    """dalwalyk's PR #83 review: a transient inspect failure must not read as 'doesn't exist'."""
+    broken = FakeLightning(
+        exists=False, inspect_failure_stderr="No Lightning credentials are available."
+    )
+    with pytest.raises(DeployError, match="No Lightning credentials"):
+        NS["inspect_deployment"]("o/t", run=broken)
+
+
+def test_stop_refuses_to_report_success_when_inspect_itself_fails():
+    """The exact bug the review caught: stop() must not silently no-op on a broken inspect,
+    leaving a billed GPU running while reporting 'nothing to stop'."""
+    broken = FakeLightning(
+        exists=True, inspect_failure_stderr="rate limited, try again later"
+    )
+    with pytest.raises(DeployError, match="rate limited"):
+        NS["stop"](_env(), run=broken)
+    # And it never reached `delete`, which would have been the wrong recovery too.
+    assert [call[2] for call in broken.calls] == ["inspect"]
 
 
 def test_stop_deletes_only_a_running_deployment():

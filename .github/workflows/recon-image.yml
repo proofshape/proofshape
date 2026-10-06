@@ -80,14 +80,17 @@ jobs:
             fi
             sleep 2
           done
+          # The `|| status=curl-failed` guard matters: Actions runs this under `set -eo pipefail`,
+          # so without it a connection failure (e.g. the container never came up) would abort the
+          # script here, before the diagnostic `docker logs` below ever runs.
           status=$(curl --silent --output /tmp/session.json --write-out '%{http_code}' \
             --header 'Content-Type: application/json' \
             --data '{"order_code": "R15-CI"}' \
-            http://localhost:8000/v1/sessions)
-          cat /tmp/session.json; echo
+            http://localhost:8000/v1/sessions) || status="curl-failed"
+          cat /tmp/session.json 2>/dev/null; echo
           if [ "$status" != "201" ]; then
             docker logs recon-smoke
-            echo "createSession returned HTTP $status, expected 201" >&2
+            echo "createSession returned '$status', expected 201" >&2
             exit 1
           fi
 
