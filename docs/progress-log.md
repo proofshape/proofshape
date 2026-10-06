@@ -806,4 +806,4 @@ Lightning smoke run on `fixtures/data/golden_capture/s-04` with VGGT returned
 **Finding:** the current 3.0 mm sigma downgrade threshold removed about 2% to 17% of defined Observed vertices depending on sample. That is neither nearly everything nor nothing across the five runs, so R-19 deliberately does not retune the threshold. The 3.0 mm value remains an unmeasured assumption pending the calibration study.
 **Verification:** real Lightning GPU runs produced the required provenance and uncertainty outputs for all five golden objects; final Python CI and TypeScript CI passed on the D-038 close-out commit, and story-state consistency was clean in review.
 **Result:** R-19 is `Done` at 1.33 h actual (est 1 h).
-**Next:** keep the threshold unchanged until calibration; use these measured distributions as the real-data baseline for later uncertainty/tolerance work.
+**Next:** keep the threshold unchanged until calibration. These measured distributions are a real-data baseline only for vertices retained as Observed after the 3.0 mm downgrade; they are not an uncensored pre-threshold uncertainty distribution and should not be used to calibrate the threshold itself.
