@@ -792,3 +792,18 @@ Lightning smoke run on `fixtures/data/golden_capture/s-04` with VGGT returned
 0.860 s export.
 **Result:** R-14 is `Done` at 4 h actual (est 5 h); R-15 is now `Ready`.
 **Next:** R-15 can be claimed for the Lightning container/deployment story.
+
+
+## 2026-10-05 — R-19 golden-set sigma distributions completed (PR #87)
+
+**Who:** @mbj1994, reviewed and approved by @dalwalyk.
+**What changed:** completed the real-data R-19 check across all five golden captures and recorded per-object sigma distributions from the existing uncertainty pipeline.
+- s-01: count 6,811; mean 1.588 mm; median 1.620 mm; p90 2.190 mm; 136 vertices downgraded.
+- s-02: count 7,000; mean 1.504 mm; median 1.486 mm; p90 2.225 mm; 162 downgraded.
+- s-03: count 5,623; mean 1.936 mm; median 2.077 mm; p90 2.743 mm; 593 downgraded.
+- s-04: count 1,294; mean 1.834 mm; median 1.853 mm; p90 2.696 mm; 264 downgraded.
+- s-05: count 2,151; mean 1.867 mm; median 1.927 mm; p90 2.647 mm; 193 downgraded.
+**Finding:** the current 3.0 mm sigma downgrade threshold removed about 2% to 17% of defined Observed vertices depending on sample. That is neither nearly everything nor nothing across the five runs, so R-19 deliberately does not retune the threshold. The 3.0 mm value remains an unmeasured assumption pending the calibration study.
+**Verification:** real Lightning GPU runs produced the required provenance and uncertainty outputs for all five golden objects; final Python CI and TypeScript CI passed on the D-038 close-out commit, and story-state consistency was clean in review.
+**Result:** R-19 is `Done` at 1.33 h actual (est 1 h).
+**Next:** keep the threshold unchanged until calibration; use these measured distributions as the real-data baseline for later uncertainty/tolerance work.
