@@ -383,7 +383,7 @@ resolving #32. The R-03 claim branch already uses the Owner cell. R-01's owner h
 
 ---
 
-## 2026-09-28 — R-01 and R-03 closed out; R-04, R-11, R-12 unblocked
+## 2026-09-27 — R-01 and R-03 closed out; R-04, R-11, R-12 unblocked
 
 **Who:** @TabeenRaoof (close-out). R-01 was merged by @dalwalyk (#31), R-03 by @mbj1994 (#33).
 **What changed:** R-01 and R-03 set to `Done` in their story files and the index, with
@@ -460,7 +460,7 @@ tolerance result.
 R-01 output contract is usable by an existing downstream stage. Repository tests/Ruff and the
 normal Definition-of-Done checks still need to be clean before R-11 moves to review.
 
-## 2026-09-29 — R-04 closed by splitting its known-size tolerance judgment into R-16
+## 2026-09-28 — R-04 closed by splitting its known-size tolerance judgment into R-16
 
 **Who:** @yashidalwala (PR #39), reviewed by @TabeenRaoof.
 **What changed:** R-04's known-size acceptance criterion originally asked for a measurement
@@ -512,7 +512,7 @@ est 3 h); `C-02` and `C-03` cascaded from `Blocked` to `Ready`.
 schedule (three sprints' allocated hours passed before this story started) — worth someone
 picking up C-02 or C-03 soon rather than letting it slip further.
 
-## 2026-09-30 — R-06 closed by splitting visual verification into R-17
+## 2026-09-29 — R-06 closed by splitting visual verification into R-17
 
 **Who:** @dalwalyk (PR #54), reviewed by @mbj1994.
 **What changed:** `recon/part_segmentation.py` keeps only geometry above the board plane and
@@ -537,7 +537,7 @@ tolerance judgment (split to R-16). R-06 is now `Done` (4 h actual, est 4 h); `R
 **Next:** R-07 (TSDF fusion, the next chain story) and R-17 (the split-out visual check, needs
 GPU Studio access) are both `Ready` and unclaimed.
 
-## 2026-09-30 — R-07 closed by splitting real-golden-object mesh production into R-18
+## 2026-09-29 — R-07 closed by splitting real-golden-object mesh production into R-18
 
 **Who:** @dalwalyk (PR #57), reviewed by @mbj1994.
 **What changed:** `recon/tsdf_fusion.py` fuses R-01's per-frame depth into a metric TSDF volume
