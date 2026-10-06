@@ -807,3 +807,29 @@ Lightning smoke run on `fixtures/data/golden_capture/s-04` with VGGT returned
 **Verification:** real Lightning GPU runs produced the required provenance and uncertainty outputs for all five golden objects; final Python CI and TypeScript CI passed on the D-038 close-out commit, and story-state consistency was clean in review.
 **Result:** R-19 is `Done` at 1.33 h actual (est 1 h).
 **Next:** keep the threshold unchanged until calibration. These measured distributions are a real-data baseline only for vertices retained as Observed after the 3.0 mm downgrade; they are not an uncensored pre-threshold uncertainty distribution and should not be used to calibrate the threshold itself.
+
+## 2026-10-06 — R-18 golden-set TSDF mesh check: 2/5 pass, 3/5 flagged (PR #89)
+
+**Who:** @dalwalyk, reviewed and approved.
+**What changed:** ran `fuse_run` (R-07's TSDF fusion) on all five golden objects, real data, on the
+shared Lightning pod. R-01/R-02/R-04 outputs already existed for all five from R-19's earlier
+chain run, so this needed no fresh GPU reconstruction. Each resulting mesh was visually checked,
+with the `--method poisson` fallback tried wherever the default marching-cubes output looked
+degenerate.
+**Result:** 2 of 5 pass cleanly — s-01 and s-02, which are the *same physical padlock* under two
+lighting conditions, both via the Poisson fallback (no PoissonRecon warning, face/vertex ratio
+≈2.0, smooth and continuous). 3 of 5 — s-03 (rounded object), s-04 (triangular prism), s-05
+(rectangular prism) — show real reconstruction noise with both the default and Poisson methods;
+PoissonRecon itself emitted `bad average roots` warnings for s-03 and s-05 specifically.
+**Finding:** the pass/fail split exactly follows object identity, not chance — the only two
+passing runs are the same physical object, and all three failing runs are three different
+objects. That points at `segment_part`'s default height/footprint parameters suiting the
+padlock's size and not the other three objects' geometry, per this story's own acceptance
+criteria, which already names that class of cause as not automatically a fusion-logic defect.
+Deliberately not chased further within this 1 h story — recorded precisely (per-object result,
+exact warning text, the shared-object pattern) in `stories/R-18.md` rather than silently passed
+or endlessly tuned, so the parameter-tuning work can be scoped properly as its own task later.
+**Result:** R-18 is `Done` at 3 h actual (est 1 h).
+**Next:** a future story to tune `segment_part`'s height/footprint parameters for s-03/s-04/s-05
+would close this gap; not yet filed, since it needs someone to actually do the tuning work, not
+GPU access someone currently lacks (the usual reason this project splits a story).
