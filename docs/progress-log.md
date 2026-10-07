@@ -833,3 +833,35 @@ or endlessly tuned, so the parameter-tuning work can be scoped properly as its o
 **Next:** a future story to tune `segment_part`'s height/footprint parameters for s-03/s-04/s-05
 would close this gap; not yet filed, since it needs someone to actually do the tuning work, not
 GPU access someone currently lacks (the usual reason this project splits a story).
+
+## 2026-10-06 — Audit of all closed R-stories: PR numbers and dates verified, 4 date errors found
+
+**Who:** @dalwalyk, with Claude.
+**What changed:** reviewed all 15 R-stories currently `State: Done` (R-01 through R-12, R-14,
+R-18, R-19) for close-out honesty — not a fresh code-level re-review of each implementation, but
+a systematic check that each one's completion record is real rather than drifted or fabricated:
+- Every referenced PR number confirmed real and actually merged (`gh pr view`), not a stale or
+  invented reference.
+- Every completion-record date checked against the actual local (Pacific) timestamp of that
+  story's specific close-out commit — not the PR's merge timestamp, which can be a day or more
+  later than the close-out commit once a branch needs re-syncing with a moving `main` before it
+  can land (confirmed this distinction matters directly: R-11's record looked suspicious against
+  its PR's merge time but was actually correct against its own `mark story Done` commit).
+- R-01 and R-03's `<n>` actual-hours placeholder checked against D-033 and confirmed as the
+  explicitly sanctioned "stays blank" state (same as F-01 and F-04), not a violation.
+- The "split to follow-up" references (R-06→R-17, R-07→R-18, R-10→R-19, R-04→R-16) confirmed to
+  resolve to real, existing stories with consistent dependency chains.
+**Finding:** 4 of 15 — R-03, R-04, R-06, R-07 — had a completion-record date one day later than
+the true local date of their close-out commit, the same recurring UTC-vs-local mistake previously
+caught by @TabeenRaoof on R-08 (PR #62), R-09 (PR #65) and R-10 (PR #73), but these 4 had slipped
+through uncaught until now. All four carried the identical wrong date in *both* the story file's
+completion record and the matching `docs/progress-log.md` entry header, confirming one shared
+mistake at the time of writing rather than two independent ones. Fixed in a separate PR (#91),
+each correction verified directly against that story's own close-out commit's local timestamp
+before changing anything, not inferred from the pattern alone.
+**Result:** 11 of 15 Done R-stories had no issues at all. 4 had a dating error now corrected.
+Zero fabricated or stale PR references found.
+**Next:** nothing blocking — this was a verification pass, not new work. Worth keeping in mind for
+future close-outs: date by the close-out commit's own local timestamp
+(`git log --format='%ad' --date=format-local:'%Y-%m-%d %Z' -1 <commit>`), not by session "today"
+or by a PR's eventual merge time if the branch needed resyncing first.
