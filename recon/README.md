@@ -91,9 +91,11 @@ gh run watch "$(gh run list --workflow deploy-recon.yml --limit 1 --json databas
 ```
 
 The run ends with `R-15 DEPLOY: READY at https://…`, also shown in the run's summary, along with
-the image digest and commit it deployed. The first start of a fresh replica downloads the model
-weights before it reports ready, so it takes several minutes. Then check it, with the token from
-the password manager:
+the image digest and commit it deployed. Expect this to take a while: a fresh replica downloads
+the model weights before it first reports ready, and `start` then makes one more
+`lightning deployment update` telling the service its own real public URL (Lightning's proxy
+doesn't forward a usable `Host`, see Notes in `stories/R-15.md`) and waits for that restart too.
+Then check it, with the token from the password manager:
 
 ```bash
 export URL=https://…                         # from the run summary
