@@ -440,3 +440,70 @@ def test_model_404_uses_error_detail_envelope(tmp_path):
         "code": "session_not_found",
         "message": "No session with that id.",
     }
+
+
+def _finished_session(client: TestClient) -> str:
+    created = client.post("/v1/sessions", json={"order_code": "PO-1"})
+    session_id = created.json()["session_id"]
+    _upload_three_frames(client, session_id)
+    client.post(f"/v1/sessions/{session_id}/finish")
+    return session_id
+
+
+def test_glb_url_defaults_to_request_url_for_unchanged(tmp_path):
+    """R-15 regression guard: an ordinary direct caller (local dev, CI, every existing test)
+    must see byte-identical behavior to before the Lightning-proxy fix."""
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        session_id = _finished_session(client)
+        body = client.get(f"/v1/sessions/{session_id}/reconstruction").json()
+
+    assert body["glb_url"] == f"http://testserver/v1/sessions/{session_id}/model.glb"
+
+
+def test_glb_url_uses_x_forwarded_host_when_present(tmp_path):
+    """R-15: Lightning's own deployment proxy was confirmed (2026-10-07) to present the
+    container with Host: localhost -- X-Forwarded-Host, when a proxy sends it, is the fix."""
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        session_id = _finished_session(client)
+        body = client.get(
+            f"/v1/sessions/{session_id}/reconstruction",
+            headers={
+                "x-forwarded-host": "8000-dep-example.cloudspaces.litng.ai",
+                "x-forwarded-proto": "https",
+            },
+        ).json()
+
+    assert body["glb_url"] == (
+        f"https://8000-dep-example.cloudspaces.litng.ai/v1/sessions/{session_id}/model.glb"
+    )
+
+
+def test_glb_url_forwarded_proto_defaults_to_the_request_scheme(tmp_path):
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        session_id = _finished_session(client)
+        body = client.get(
+            f"/v1/sessions/{session_id}/reconstruction",
+            headers={"x-forwarded-host": "example.cloudspaces.litng.ai"},
+        ).json()
+
+    assert body["glb_url"].startswith("http://example.cloudspaces.litng.ai/")
+
+
+def test_glb_url_env_override_wins_over_everything(tmp_path, monkeypatch):
+    """The operator-set override (R-15's deploy workflow) takes priority even over a forwarded
+    host, so a known-good public URL is never second-guessed by a proxy header."""
+    monkeypatch.setenv(service.PUBLIC_BASE_URL_ENV, "https://recon.proofshape.example/")
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        session_id = _finished_session(client)
+        body = client.get(
+            f"/v1/sessions/{session_id}/reconstruction",
+            headers={"x-forwarded-host": "should-be-ignored.example"},
+        ).json()
+
+    assert body["glb_url"] == (
+        f"https://recon.proofshape.example/v1/sessions/{session_id}/model.glb"
+    )

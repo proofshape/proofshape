@@ -70,6 +70,18 @@ manual step.
    ```bash
    docker logout ghcr.io && docker buildx imagetools inspect ghcr.io/proofshape/proofshape-recon:main
    ```
+   If "Change visibility" shows **"Setting is disabled by organization administrators"**, that's
+   a separate org-level policy, not the package's own settings — an organisation **owner** needs
+   to go to `https://github.com/organizations/proofshape/settings/packages` first and allow
+   `Public` under "Package creation," then return to the package page and change its visibility.
+4. **Lightning teamspace credits.** A Lightning account can hold credits without any being
+   usable: if the org's total credits are sitting **unallocated** rather than assigned to the
+   teamspace the deployment runs in, the T4 itself still starts and runs, but the public endpoint
+   never answers — TCP connects, every TLS handshake resets instantly, and this can persist for
+   an extended period with no error anywhere in the deployment's own logs (confirmed on the first
+   real deploy, 2026-10-06/07). Check `Settings → Activity` in the Lightning web UI: if
+   "Credits across teamspaces" is 0 while "Unallocated credits" is nonzero, allocate some to the
+   teamspace (`Settings → Teamspaces → <name>`) before assuming anything is broken.
 
 ### Each time you need the service
 
