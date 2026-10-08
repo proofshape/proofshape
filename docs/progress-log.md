@@ -865,3 +865,30 @@ Zero fabricated or stale PR references found.
 future close-outs: date by the close-out commit's own local timestamp
 (`git log --format='%ad' --date=format-local:'%Y-%m-%d %Z' -1 <commit>`), not by session "today"
 or by a PR's eventual merge time if the branch needed resyncing first.
+
+## 2026-10-07 — C-06 frame gate closed (PR #97)
+
+**Who:** @dalwalyk, with Claude, reviewed and approved.
+**What changed:** `capture/src/frame_gate.ts` adds the three on-device frame checks the proposal
+calls for — `checkBlur` (Laplacian variance), `checkExposure` (histogram clipping at the sensor
+extremes), `checkDuplicate` (gyro delta plus image difference) — returning the three frozen error
+codes (`frame_rejected_blur`/`frame_rejected_exposure`/`frame_rejected_duplicate`) that R-14 has
+reserved since F-03 but, until now, only ever produced server-side, after a frame already
+uploaded. `FrameGateResult` mirrors `api.ts`'s existing `ApiResult` discriminated-union style
+rather than inventing a new one. All three are pure functions over a minimal structural
+`FramePixels` type — not the DOM `ImageData` class, so no browser/jsdom/happy-dom dependency —
+making this the one story in the capture thread so far with no manual-check exception at all.
+**Two real design calls recorded in the story's notes:** the duplicate check requires *both* the
+gyro delta and the image difference to be below threshold before flagging a duplicate (AND, not
+OR) — a single signal is a weaker, noisier proxy, and discarding a real captured frame on a false
+positive matters more for a one-shot physical capture than being slightly less aggressive about
+trimming genuine duplicates; and the gyro delta is the max of the three per-axis absolute deltas
+rather than a combined Euclidean distance, since alpha/beta/gamma are different physical rotation
+axes and combining them into one number would need a rotation-geometry justification this story
+didn't need.
+**Result:** 70 capture tests pass (12 new), `typecheck`/`lint`/`format:check` clean, repo-wide
+`pytest`/`ruff`/`check_story_states.py` unaffected (a `capture/`-only change). C-06 is `Done`
+(3 h actual, est 3 h).
+**Next:** C-04 (app shell) is still `Ready` and unclaimed — C-06 doesn't depend on it or get
+depended on by it, so either can proceed independently. C-05 (live camera) remains `Blocked` on
+C-04.
