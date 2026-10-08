@@ -180,7 +180,10 @@ def test_start_creates_waits_and_never_prints_the_token(capsys):
 
 def test_configure_public_url_command_sets_the_env_var_on_the_right_deployment():
     command = NS["configure_public_url_command"](
-        teamspace="o/t", url="https://recon.example.lightning.ai"
+        teamspace="o/t",
+        image=PINNED,
+        token=TOKEN,
+        url="https://recon.example.lightning.ai",
     )
 
     assert command[:4] == ["lightning", "deployment", "update", "proofshape-recon"]
@@ -188,6 +191,28 @@ def test_configure_public_url_command_sets_the_env_var_on_the_right_deployment()
     assert command[command.index("--env") + 1] == (
         f"{NS['PUBLIC_URL_ENV_NAME']}=https://recon.example.lightning.ai"
     )
+
+
+def test_configure_public_url_command_resends_the_full_deploy_config():
+    """dalwalyk's PR #94 review: this call must not depend on whether `lightning deployment
+    update` patches or replaces config -- resending every flag makes that question irrelevant,
+    so it can't silently drop --token-auth or move off the pinned image digest (D-042)."""
+    command = NS["configure_public_url_command"](
+        teamspace="o/t",
+        image=PINNED,
+        token=TOKEN,
+        url="https://recon.example.lightning.ai",
+    )
+
+    def value(flag):
+        return command[command.index(flag) + 1]
+
+    assert value("--image") == PINNED
+    assert value("--machine") == "T4"
+    assert value("--port") == "8000"
+    assert value("--replicas") == "1"
+    assert value("--token-auth") == TOKEN
+    assert int(value("--max-runtime")) > 0
 
 
 def test_start_configures_the_service_with_its_own_real_public_url():
@@ -203,6 +228,19 @@ def test_start_configures_the_service_with_its_own_real_public_url():
     assert (
         env_value == f"{NS['PUBLIC_URL_ENV_NAME']}=https://recon.example.lightning.ai"
     )
+    # dalwalyk's PR #94 review: the configure call must also carry the full deploy config, not
+    # just --env, so it can't silently drop auth or the pinned image on a real deployment.
+    assert configure_call[configure_call.index("--token-auth") + 1] == TOKEN
+    assert configure_call[configure_call.index("--image") + 1] == PINNED
+
+
+def test_start_never_prints_the_token_in_the_configure_call(capsys):
+    """The configure call now carries --token-auth too (see above), so it needs the same
+    redaction the first deploy call already gets."""
+    fake = FakeLightning(exists=False)
+    NS["start"](_env(), run=fake)
+
+    assert TOKEN not in capsys.readouterr().out
 
 
 def test_start_fails_loudly_if_configuring_the_public_url_fails():
