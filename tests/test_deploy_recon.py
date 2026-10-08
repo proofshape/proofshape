@@ -44,6 +44,7 @@ class FakeLightning:
         inspect_results=None,
         exit_code: int = 0,
         inspect_failure_stderr: str | None = None,
+        configure_exit_code: int = 0,
     ):
         self.exists = exists
         self.inspect_results = list(inspect_results or [READY])
@@ -51,6 +52,10 @@ class FakeLightning:
         # None here means "simulate genuine absence"; any other string means "inspect itself is
         # broken" (auth, network, rate limit) -- the distinction the fix is about.
         self.inspect_failure_stderr = inspect_failure_stderr
+        # The configure-public-URL step is a second, distinct `update` call (the first deploy
+        # call never has --env); kept separate so a failure there can be tested without also
+        # failing the initial create/update.
+        self.configure_exit_code = configure_exit_code
         self.calls: list[list[str]] = []
 
     def __call__(self, command, **kwargs):
@@ -70,6 +75,10 @@ class FakeLightning:
                 else self.inspect_results[0]
             )
             return subprocess.CompletedProcess(command, 0, json.dumps(result), "")
+        if command[2] == "update" and "--env" in command:
+            return subprocess.CompletedProcess(
+                command, self.configure_exit_code, "", ""
+            )
         if command[2] == "create":
             self.exists = True
         return subprocess.CompletedProcess(command, self.exit_code, "", "")
@@ -158,8 +167,95 @@ def test_start_creates_waits_and_never_prints_the_token(capsys):
     url = NS["start"](_env(), run=fake)
 
     assert url == "https://recon.example.lightning.ai"
-    assert [call[2] for call in fake.calls] == ["inspect", "create", "inspect"]
+    # inspect (absent) -> create -> inspect (ready) -> configure the public URL -> inspect (ready)
+    assert [call[2] for call in fake.calls] == [
+        "inspect",
+        "create",
+        "inspect",
+        "update",
+        "inspect",
+    ]
     assert TOKEN not in capsys.readouterr().out
+
+
+def test_configure_public_url_command_sets_the_env_var_on_the_right_deployment():
+    command = NS["configure_public_url_command"](
+        teamspace="o/t",
+        image=PINNED,
+        token=TOKEN,
+        url="https://recon.example.lightning.ai",
+    )
+
+    assert command[:4] == ["lightning", "deployment", "update", "proofshape-recon"]
+    assert command[command.index("--teamspace") + 1] == "o/t"
+    assert command[command.index("--env") + 1] == (
+        f"{NS['PUBLIC_URL_ENV_NAME']}=https://recon.example.lightning.ai"
+    )
+
+
+def test_configure_public_url_command_resends_the_full_deploy_config():
+    """dalwalyk's PR #94 review: this call must not depend on whether `lightning deployment
+    update` patches or replaces config -- resending every flag makes that question irrelevant,
+    so it can't silently drop --token-auth or move off the pinned image digest (D-042)."""
+    command = NS["configure_public_url_command"](
+        teamspace="o/t",
+        image=PINNED,
+        token=TOKEN,
+        url="https://recon.example.lightning.ai",
+    )
+
+    def value(flag):
+        return command[command.index(flag) + 1]
+
+    assert value("--image") == PINNED
+    assert value("--machine") == "T4"
+    assert value("--port") == "8000"
+    assert value("--replicas") == "1"
+    assert value("--token-auth") == TOKEN
+    assert int(value("--max-runtime")) > 0
+
+
+def test_start_configures_the_service_with_its_own_real_public_url():
+    """The actual fix for mbj1994's PR #94 review: don't depend on unverified proxy forwarding
+    (X-Forwarded-Host) -- tell the service its real URL explicitly, once it's known."""
+    fake = FakeLightning(exists=False)
+    NS["start"](_env(), run=fake)
+
+    configure_call = fake.calls[3]
+    assert configure_call[2] == "update"
+    assert "--env" in configure_call
+    env_value = configure_call[configure_call.index("--env") + 1]
+    assert (
+        env_value == f"{NS['PUBLIC_URL_ENV_NAME']}=https://recon.example.lightning.ai"
+    )
+    # dalwalyk's PR #94 review: the configure call must also carry the full deploy config, not
+    # just --env, so it can't silently drop auth or the pinned image on a real deployment.
+    assert configure_call[configure_call.index("--token-auth") + 1] == TOKEN
+    assert configure_call[configure_call.index("--image") + 1] == PINNED
+
+
+def test_start_never_prints_the_token_in_the_configure_call(capsys):
+    """The configure call now carries --token-auth too (see above), so it needs the same
+    redaction the first deploy call already gets."""
+    fake = FakeLightning(exists=False)
+    NS["start"](_env(), run=fake)
+
+    assert TOKEN not in capsys.readouterr().out
+
+
+def test_start_fails_loudly_if_configuring_the_public_url_fails():
+    fake = FakeLightning(exists=False, configure_exit_code=3)
+    with pytest.raises(DeployError, match="PROOFSHAPE_PUBLIC_BASE_URL"):
+        NS["start"](_env(), run=fake)
+
+
+def test_deploy_script_and_service_agree_on_the_public_url_env_var_name():
+    """Not imported directly (the deploy job's environment has no FastAPI/pydantic installed),
+    so this is the drift guard: both files must spell the same literal the same way."""
+    service_source = (
+        Path(__file__).resolve().parents[1] / "recon" / "service.py"
+    ).read_text(encoding="utf-8")
+    assert f'PUBLIC_BASE_URL_ENV = "{NS["PUBLIC_URL_ENV_NAME"]}"' in service_source
 
 
 def test_start_reports_which_setting_is_missing():

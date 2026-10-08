@@ -19,6 +19,13 @@ from pydantic import BaseModel
 
 MIN_FINISH_FRAMES = 3
 
+# R-15: on Lightning's deployment proxy, the connection the container actually sees has
+# Host: localhost (confirmed on a real deployment, 2026-10-07) -- uvicorn's --forwarded-allow-ips
+# trusts X-Forwarded-Proto but has no equivalent for the host, so request.url_for alone builds a
+# glb_url nobody outside the container can reach. Layered, most-specific-first, so an unmodified
+# local/CI/in-process caller (none of these three ever apply) keeps today's exact behavior.
+PUBLIC_BASE_URL_ENV = "PROOFSHAPE_PUBLIC_BASE_URL"
+
 ErrorCode = Literal[
     "board_not_detected",
     "board_partially_occluded",
@@ -357,6 +364,25 @@ def run_reconstruction_pipeline(
     }
 
 
+def public_model_url(request: Request, session_id: str) -> str:
+    """The absolute, externally-reachable URL for a session's finished GLB.
+
+    Most specific first: an operator-set override, then a proxy-forwarded original host, then
+    falling back to request.url_for's own scheme+host (correct for a direct local/CI caller,
+    wrong behind Lightning's proxy -- see PUBLIC_BASE_URL_ENV above).
+    """
+    override = os.environ.get(PUBLIC_BASE_URL_ENV, "").strip()
+    if override:
+        return f"{override.rstrip('/')}/v1/sessions/{session_id}/model.glb"
+
+    forwarded_host = request.headers.get("x-forwarded-host", "").strip()
+    if forwarded_host:
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        return f"{scheme}://{forwarded_host}/v1/sessions/{session_id}/model.glb"
+
+    return str(request.url_for("get_model", session_id=session_id))
+
+
 def create_app(
     data_dir: Path | None = None,
     pipeline_runner: PipelineRunner = run_reconstruction_pipeline,
@@ -607,7 +633,7 @@ def create_app(
             }
             and value is not None
         }
-        response["glb_url"] = str(request.url_for("get_model", session_id=session_id))
+        response["glb_url"] = public_model_url(request, session_id)
         return ReconstructionResult(**response)
 
     @app.get(

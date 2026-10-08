@@ -70,6 +70,18 @@ manual step.
    ```bash
    docker logout ghcr.io && docker buildx imagetools inspect ghcr.io/proofshape/proofshape-recon:main
    ```
+   If "Change visibility" shows **"Setting is disabled by organization administrators"**, that's
+   a separate org-level policy, not the package's own settings — an organisation **owner** needs
+   to go to `https://github.com/organizations/proofshape/settings/packages` first and allow
+   `Public` under "Package creation," then return to the package page and change its visibility.
+4. **Lightning teamspace credits.** A Lightning account can hold credits without any being
+   usable: if the org's total credits are sitting **unallocated** rather than assigned to the
+   teamspace the deployment runs in, the T4 itself still starts and runs, but the public endpoint
+   never answers — TCP connects, every TLS handshake resets instantly, and this can persist for
+   an extended period with no error anywhere in the deployment's own logs (confirmed on the first
+   real deploy, 2026-10-06/07). Check `Settings → Activity` in the Lightning web UI: if
+   "Credits across teamspaces" is 0 while "Unallocated credits" is nonzero, allocate some to the
+   teamspace (`Settings → Teamspaces → <name>`) before assuming anything is broken.
 
 ### Each time you need the service
 
@@ -79,9 +91,11 @@ gh run watch "$(gh run list --workflow deploy-recon.yml --limit 1 --json databas
 ```
 
 The run ends with `R-15 DEPLOY: READY at https://…`, also shown in the run's summary, along with
-the image digest and commit it deployed. The first start of a fresh replica downloads the model
-weights before it reports ready, so it takes several minutes. Then check it, with the token from
-the password manager:
+the image digest and commit it deployed. Expect this to take a while: a fresh replica downloads
+the model weights before it first reports ready, and `start` then makes one more
+`lightning deployment update` telling the service its own real public URL (Lightning's proxy
+doesn't forward a usable `Host`, see Notes in `stories/R-15.md`) and waits for that restart too.
+Then check it, with the token from the password manager:
 
 ```bash
 export URL=https://…                         # from the run summary

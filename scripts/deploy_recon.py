@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """R-15: start or stop the reconstruction service on Lightning (D-036).
 
+`start` deploys, waits for a ready replica, then re-sends the same deploy configuration with
+PROOFSHAPE_PUBLIC_BASE_URL set to the now-known real URL added (recon/service.py's
+public_model_url reads it), and waits again -- Lightning's proxy does not reliably forward a
+usable Host/X-Forwarded-Host to the container, confirmed on a real deploy. The second call
+resends every flag the first one used, not just --env, since it's unverified whether `lightning
+deployment update` patches or replaces the deployment's config.
+
 Run by .github/workflows/deploy-recon.yml on `main` only (D-013/D-014). Needs the Lightning CLI
 (`lightning-sdk`) and these environment variables:
 
@@ -34,6 +41,10 @@ MAX_RUNTIME_S = 4 * 60 * 60
 MAIN_REF = "refs/heads/main"
 READY_TIMEOUT_S = 30 * 60
 POLL_INTERVAL_S = 20.0
+# Must match recon/service.py's PUBLIC_BASE_URL_ENV exactly -- not imported directly, since this
+# script runs in the deploy job's minimal environment (just lightning-sdk, not the full
+# requirements.txt recon.service needs). tests/test_deploy_recon.py asserts the two stay in sync.
+PUBLIC_URL_ENV_NAME = "PROOFSHAPE_PUBLIC_BASE_URL"
 
 Runner = Callable[..., subprocess.CompletedProcess]
 
@@ -90,6 +101,30 @@ def start_command(*, exists: bool, teamspace: str, image: str, token: str) -> li
         str(MAX_RUNTIME_S),
         "--token-auth",
         token,
+    ]
+
+
+def configure_public_url_command(
+    *, teamspace: str, image: str, token: str, url: str
+) -> list[str]:
+    """Tell the running service its own real public URL.
+
+    Lightning's deployment proxy does not reliably forward a Host/X-Forwarded-Host the container
+    can build correct absolute URLs from -- confirmed on a real deploy, the container saw
+    Host: localhost. Rather than depend on unverified proxy behavior, set it explicitly once the
+    real URL is known (which it only is after the first start), via `recon/service.py`'s
+    PROOFSHAPE_PUBLIC_BASE_URL override.
+
+    Built from the exact same full flag set as `start_command`'s update branch, plus --env --
+    not just --teamspace and --env alone. Whether `lightning deployment update` patches or
+    replaces the deployment's config is unverified (dalwalyk's PR #94 review); resending every
+    flag makes that distinction irrelevant, so this can never silently drop --token-auth or move
+    the deployment off its pinned image digest (which would break D-042's guarantees).
+    """
+    return [
+        *start_command(exists=True, teamspace=teamspace, image=image, token=token),
+        "--env",
+        f"{PUBLIC_URL_ENV_NAME}={url}",
     ]
 
 
@@ -201,6 +236,19 @@ def start(env: Mapping[str, str], run: Runner = subprocess.run) -> str:
     completed = run(command)
     if completed.returncode != 0:
         raise DeployError(f"`lightning deployment` exited with {completed.returncode}.")
+    url = wait_until_ready(lambda: inspect_deployment(teamspace, run))
+
+    # Now that the real public URL is known, configure the service to use it explicitly (see
+    # configure_public_url_command) and wait for the resulting restart to come back ready.
+    configure = configure_public_url_command(
+        teamspace=teamspace, image=image, token=token, url=url
+    )
+    print("Running:", redact(configure, token), flush=True)
+    completed = run(configure)
+    if completed.returncode != 0:
+        raise DeployError(
+            f"Setting {PUBLIC_URL_ENV_NAME} failed (exit {completed.returncode})."
+        )
     return wait_until_ready(lambda: inspect_deployment(teamspace, run))
 
 
