@@ -148,7 +148,7 @@ Full detail in each story file.
 | [R-10](R-10.md) | Per-vertex uncertainty | 5 h | R-09 | Done | @dalwalyk |
 | [R-11](R-11.md) | MASt3R behind the config flag | 5 h | R-01 | Done | @mbj1994 |
 | [R-12](R-12.md) | COLMAP behind the config flag | 5 h | R-01 | Done | @mbj1994 |
-| [R-13](R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Claimed | @TabeenRaoof |
+| [R-13](R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Done | @TabeenRaoof |
 | [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Done | @mbj1994 |
 | [R-15](R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Claimed | @TabeenRaoof |
 | [R-16](R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Blocked | _unclaimed_ |
