@@ -173,7 +173,7 @@ so this is behind schedule, not early.
 | [C-03](C-03.md) | Gyro permission flow | 2 h | C-01 | Done | @dalwalyk |
 | [C-04](C-04.md) | App shell | 3 h | C-01, C-02, C-03 | Ready | _unclaimed_ |
 | [C-05](C-05.md) | Live camera | 3 h | C-04 | Blocked | _unclaimed_ |
-| [C-06](C-06.md) | Frame gate | 3 h | nothing | Ready | _unclaimed_ |
+| [C-06](C-06.md) | Frame gate | 3 h | nothing | Claimed | @dalwalyk |
 
 ---
 
