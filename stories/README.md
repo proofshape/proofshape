@@ -176,6 +176,11 @@ so this is behind schedule, not early.
 | [C-06](C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
 | [C-07](C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Ready | _unclaimed_ |
 | [C-08](C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Ready | _unclaimed_ |
+| [C-09](C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Blocked | _unclaimed_ |
+| [C-10](C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Ready | _unclaimed_ |
+| [C-11](C-11.md) | Model viewer | 3 h | C-10 | Blocked | _unclaimed_ |
+| [C-12](C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Blocked | _unclaimed_ |
+| [C-13](C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Blocked | _unclaimed_ |
 
 ---
 
@@ -203,11 +208,11 @@ The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16, 
 
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
-The thin capture thread (C-01–C-08) is the one exception — it's written up above, not here, since
+The thin capture thread (C-01–C-13) is the one exception — it's written up above, not here, since
 it's meant to run early rather than wait for a sprint boundary.
 
 **Capture app**
-C-09 model viewer · C-10 provenance colouring · C-11 heatmap rendering · C-12 report page · C-13 buyer setup · C-14 board PDF with order code · C-15 device testing
+C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF with order code · C-18 device testing
 
 **Inspection**
 I-01 synthetic mesh generator · I-02 CAD loading · I-03 global registration · I-04 robust ICP · I-05 symmetry ambiguity check · I-06 deviation computation · I-07 verdict logic · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
