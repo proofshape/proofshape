@@ -3,19 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ProofShape capture — minimal upload page (C-01)</title>
+    <title>ProofShape capture — app shell (C-04)</title>
   </head>
   <body>
-    <h1>ProofShape capture — minimal upload page</h1>
+    <h1>ProofShape capture</h1>
     <p>
-      Proves the frozen contract end to end (C-01), with the camera (C-02) and gyro (C-03)
-      permission checks proven in isolation below — neither is the real capture flow (continuous
-      frames, frame gate, next-view guidance), that's C-05 onward. The main form above still uses
-      C-01's typed-number gyro stand-in until C-04 wires the live reading through.
+      One real flow (C-04): start a session, then request camera and gyro permission together,
+      reusing the mechanics C-02 and C-03 proved on a real device in isolation. Not yet the real
+      capture flow (continuous frames, frame gate, next-view guidance) — that's C-05 onward.
     </p>
-    <main id="app"></main>
-    <main id="camera-app"></main>
-    <main id="gyro-app"></main>
+    <main id="shell-app"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

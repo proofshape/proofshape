@@ -16,12 +16,17 @@ function contractStubPlugin(): Plugin {
   };
 }
 
-// Default environment is plain Node — most of this suite is HTTP/fetch tests with no DOM. Only
-// src/page.test.ts opts into happy-dom (via a `// @vitest-environment happy-dom` docblock).
-// happy-dom enforces the same-origin policy like a real browser, so that file's stub is started
-// on PAGE_TEST_STUB_PORT instead of an ephemeral one, matching the window's origin below —
-// otherwise every fetch from the mounted page is blocked as cross-origin before it reaches
-// the stub.
+// Default environment is plain Node — most of this suite is HTTP/fetch tests with no DOM.
+// src/page.test.ts and src/shell.test.ts (C-04) opt into happy-dom (via a
+// `// @vitest-environment happy-dom` docblock) and need to fetch a real session; happy-dom
+// enforces the same-origin policy like a real browser, so both start their own contract stub on
+// the one shared PAGE_TEST_STUB_PORT, matching the window's origin below — an ephemeral port
+// would make every fetch cross-origin and silently blocked before it reaches the stub.
+// fileParallelism is off for the same reason: Vitest runs test files in parallel worker
+// processes by default, and two files both trying to bind that one fixed port at the same time
+// collides (EADDRINUSE) rather than queuing — confirmed directly when C-04's shell.test.ts was
+// added alongside page.test.ts. camera.test.ts/gyro.test.ts/dom.test.ts also use happy-dom but
+// never fetch, so they were never affected by this until a second fetching file existed.
 // C-02 needs a real iPhone to reach this dev server over HTTPS (Safari refuses getUserMedia
 // outside a secure context, and "localhost" doesn't help once a second device is involved) —
 // but C-01's own desktop-only workflow doesn't need the self-signed-cert browser warning that
@@ -39,5 +44,6 @@ export default defineConfig({
       },
     },
     globals: true,
+    fileParallelism: false,
   },
 });
