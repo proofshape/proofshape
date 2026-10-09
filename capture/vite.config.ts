@@ -4,8 +4,9 @@ import { defineConfig } from "vitest/config";
 import { createContractStub } from "./stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "./stub/page-test-port.js";
 
-// Serves the C-01 contract stub as dev middleware, so `npm run dev` needs no second process and
-// no CORS setup. This is not the S1 mock service (docs/sprint-plan.md) — see stub/contract-stub.ts.
+// Serves the capture mock service as dev middleware, so `npm run dev` needs no second process
+// and no CORS setup. C-10 extends C-01's original contract stub with reconstruction polling and a
+// canned GLB; see stub/contract-stub.ts.
 function contractStubPlugin(): Plugin {
   return {
     name: "proofshape-contract-stub",
