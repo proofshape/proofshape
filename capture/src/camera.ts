@@ -36,6 +36,37 @@ export function describeCameraError(error: unknown): string {
   }
 }
 
+export type CameraPermissionResult = { granted: true } | { granted: false; message: string };
+
+// C-04: requests permission and reports granted/denied, reusing the exact same logic
+// mountCameraCheck's own click handler already proves out -- not a new implementation. The
+// `getUserMedia` call is the first statement in this function's body (no `await` before it), so
+// calling this with no leading `await` from a click handler preserves the gesture the same way
+// mountCameraCheck's `.then()`-based handler does; capture/src/shell.test.ts proves this in CI
+// rather than relying on the reasoning alone.
+export async function requestCameraPermission(): Promise<CameraPermissionResult> {
+  if (!isGetUserMediaSupported()) {
+    return {
+      granted: false,
+      message: "Camera not available — this needs HTTPS (or localhost) and a supported browser.",
+    };
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(REAR_CAMERA_CONSTRAINTS);
+    // This story only needs to prove/record that permission was granted -- C-05 ("Live camera")
+    // is the story that keeps a stream running for actual continuous capture. Stopping it
+    // immediately avoids holding an unused camera open, the same "camera stays on" bug class
+    // C-05's own story calls out, just arriving one story early. Re-requesting in C-05 costs
+    // nothing extra: once granted, the browser doesn't re-prompt.
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+    return { granted: true };
+  } catch (error) {
+    return { granted: false, message: describeCameraError(error) };
+  }
+}
+
 export const CAMERA_PAGE_HTML = `
   <section>
     <h2>Camera permission check (C-02)</h2>
