@@ -1,4 +1,4 @@
-import type { ErrorDetail, Gyro, Session, UploadFrameResult } from "./types.js";
+import type { ErrorDetail, Gyro, ReconstructionResult, Session, UploadFrameResult } from "./types.js";
 
 export type ApiResult<TBody> =
   { ok: true; status: number; body: TBody } | { ok: false; status: number; error: ErrorDetail };
@@ -81,4 +81,22 @@ export async function finishSession(
     return { ok: false, status: response.status, error: body as ErrorDetail };
   }
   unexpectedStatus("finishSession", response, body);
+}
+
+
+export async function getReconstruction(
+  baseUrl: string,
+  sessionId: string,
+): Promise<ApiResult<ReconstructionResult>> {
+  const response = await fetch(
+    `${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/reconstruction`,
+  );
+  const body = await readJsonBody(response, "getReconstruction");
+  if (response.status === 200) {
+    return { ok: true, status: response.status, body: body as ReconstructionResult };
+  }
+  if (response.status === 404) {
+    return { ok: false, status: response.status, error: body as ErrorDetail };
+  }
+  unexpectedStatus("getReconstruction", response, body);
 }

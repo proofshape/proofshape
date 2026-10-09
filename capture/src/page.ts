@@ -1,6 +1,7 @@
-import { createSession, finishSession, uploadFrame } from "./api.js";
+import { createSession, finishSession, getReconstruction, uploadFrame } from "./api.js";
 import { parseGyroInput } from "./gyro.js";
 import { describeCreateSession, describeFinishSession, describeUploadFrame } from "./messages.js";
+import type { ReconstructionResult } from "./types.js";
 
 // The single source of truth for the page's markup — index.html mounts it at runtime, and
 // page.test.ts mounts the same string, so the two can never drift apart the way a hand-copied
@@ -28,11 +29,21 @@ export const PAGE_HTML = `
     <button id="finish-button" type="button" disabled>Finish</button>
     <p id="finish-result"></p>
   </section>
+
+  <section>
+    <h2>4. Reconstruction result</h2>
+    <p id="reconstruction-result"></p>
+  </section>
 `;
 
 export interface UploadPageOptions {
   baseUrl: string;
+  reconstructionPollIntervalMs?: number;
+  reconstructionMaxAttempts?: number;
 }
+
+const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 250;
+const DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS = 20;
 
 // Deliberately not a live camera, not a real gyro reading, no UI polish — proving the wire
 // format (C-01) is the whole job; C-02/C-03/C-04 replace these inputs with the real thing.
@@ -52,6 +63,7 @@ export function mountUploadPage(root: HTMLElement, options: UploadPageOptions): 
 
   const finishButton = requireButton(root, "#finish-button");
   const finishResult = requireElement(root, "#finish-result");
+  const reconstructionResult = requireElement(root, "#reconstruction-result");
 
   let sessionId: string | null = null;
 
@@ -102,6 +114,17 @@ export function mountUploadPage(root: HTMLElement, options: UploadPageOptions): 
       }
       const result = await finishSession(options.baseUrl, sessionId);
       finishResult.textContent = describeFinishSession(result);
+      if (!result.ok) {
+        return;
+      }
+      finishButton.disabled = true;
+      await pollReconstruction(
+        options.baseUrl,
+        sessionId,
+        reconstructionResult,
+        options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
+        options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
+      );
     })();
   });
 }
@@ -128,4 +151,70 @@ function requireButton(root: HTMLElement, selector: string): HTMLButtonElement {
     throw new Error(`mountUploadPage: expected a <button> at "${selector}"`);
   }
   return element;
+}
+
+
+async function pollReconstruction(
+  baseUrl: string,
+  sessionId: string,
+  target: HTMLElement,
+  maxAttempts: number,
+  intervalMs: number,
+): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let result;
+    try {
+      result = await getReconstruction(baseUrl, sessionId);
+    } catch (error) {
+      target.textContent = `Could not fetch reconstruction — ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      return;
+    }
+
+    if (!result.ok) {
+      target.textContent = `Could not fetch reconstruction — ${result.error.message}`;
+      return;
+    }
+
+    if (result.body.status === "pending") {
+      target.textContent = "Reconstruction pending…";
+      if (attempt < maxAttempts) {
+        await delay(intervalMs);
+      }
+      continue;
+    }
+
+    renderReconstruction(target, result.body);
+    return;
+  }
+
+  target.textContent = `Reconstruction timed out after ${String(maxAttempts)} attempts.`;
+}
+
+function renderReconstruction(target: HTMLElement, result: ReconstructionResult): void {
+  if (result.status === "failed") {
+    const warnings = result.warnings?.length ? ` Warnings: ${result.warnings.join("; ")}` : "";
+    target.textContent = `Reconstruction failed.${warnings}`;
+    return;
+  }
+
+  const referenceTier = result.reference_tier_used ?? "unknown";
+  const metric = result.metric === true ? "yes" : "no";
+  const observed =
+    result.observed_fraction === undefined ? "unknown" : result.observed_fraction.toFixed(3);
+  const warnings = result.warnings?.length ? result.warnings.join("; ") : "none";
+  const dimensionalClaim = result.metric === false ? " No dimensional claims." : "";
+  target.textContent =
+    `Reconstruction complete. Reference tier: ${referenceTier}. Metric: ${metric}.` +
+    ` Observed fraction: ${observed}. Warnings: ${warnings}.${dimensionalClaim}`;
+}
+
+function delay(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }

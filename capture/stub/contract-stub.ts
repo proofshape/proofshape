@@ -4,14 +4,14 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ErrorDetail, Session, UploadFrameResult } from "../src/types.js";
+import type { ErrorDetail, ReconstructionResult, Session, UploadFrameResult } from "../src/types.js";
 
-// The three-route stub C-01's own tests run against — NOT the fuller S1 "mock service"
-// (docs/sprint-plan.md, S1) that will later answer every operation in the contract with a
-// canned GLB and verdict. This only exists so C-01 has something to call; it is not meant to be
-// reused once R-14 (the real reconstruction endpoint) exists.
+// C-01 started this as a three-route contract stub. C-10 extends it into the capture-side mock
+// reconstruction service: finish a session, poll reconstruction, and fetch a canned GLB without
+// needing the paid R-14 deployment. Later stories can extend the same stub for verdict-specific
+// UI rather than creating another mock server.
 //
-// Every canned body is loaded from contracts/examples/*.json at startup rather than typed in by
+// Every canned JSON body is loaded from contracts/examples/*.json at startup rather than typed in by
 // hand, so this stub cannot silently drift from the frozen contract (F-03).
 //
 // Path built with node:path, not `new URL(x, import.meta.url)` — that literal pattern is
@@ -35,6 +35,14 @@ const KNOWN_ORDER_CODE = (loadExample("createSession.request") as { order_code: 
 const CREATE_SESSION_400 = loadExample("createSession.response-400") as ErrorDetail;
 const UPLOAD_FRAME_422 = loadExample("uploadFrame.response-422") as ErrorDetail;
 const FINISH_SESSION_409_TOO_FEW = loadExample("finishSession.response-409") as ErrorDetail;
+const RECONSTRUCTION_COMPLETE = loadExample(
+  "getReconstruction.response-200",
+) as ReconstructionResult;
+const RECONSTRUCTION_NO_REFERENCE = loadExample(
+  "getReconstruction.response-200-no-reference",
+) as ReconstructionResult;
+const RECONSTRUCTION_404 = loadExample("getReconstruction.response-404") as ErrorDetail;
+const MODEL_FIXTURE_PATH = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "model.glb");
 
 interface StubSession {
   session_id: string;
@@ -42,6 +50,7 @@ interface StubSession {
   status: "capturing" | "finished";
   acceptedFrameCount: number;
   frameAttempts: number;
+  reconstructionPollCount: number;
 }
 
 export interface ContractStub {
@@ -52,12 +61,19 @@ export interface ContractStub {
   // Test control: the next accepted-otherwise frame upload is rejected instead, using the
   // contract's committed 422 example.
   rejectNextFrame: () => void;
+  // Test controls for C-10's terminal-state polling cases.
+  setReconstructionPendingPolls: (count: number) => void;
+  failReconstruction: () => void;
+  useNoReferenceReconstruction: () => void;
 }
 
 export function createContractStub(): ContractStub {
   const sessions = new Map<string, StubSession>();
   let rejectNext = false;
   let sessionCounter = 0;
+  let reconstructionPendingPolls = 1;
+  let reconstructionShouldFail = false;
+  let reconstructionNoReference = false;
 
   function sendJson(res: ServerResponse, status: number, body: unknown): void {
     const text = JSON.stringify(body);
@@ -122,6 +138,7 @@ export function createContractStub(): ContractStub {
       status: "capturing",
       acceptedFrameCount: 0,
       frameAttempts: 0,
+      reconstructionPollCount: 0,
     };
     sessions.set(session.session_id, session);
     const body: Session = {
@@ -230,10 +247,59 @@ export function createContractStub(): ContractStub {
     sendJson(res, 202, body);
   }
 
+  function handleReconstruction(
+    req: IncomingMessage,
+    res: ServerResponse,
+    sessionId: string,
+  ): void {
+    const session = sessions.get(sessionId);
+    if (!session || session.status !== "finished") {
+      sendJson(res, 404, RECONSTRUCTION_404);
+      return;
+    }
+
+    session.reconstructionPollCount += 1;
+    if (session.reconstructionPollCount <= reconstructionPendingPolls) {
+      const pending: ReconstructionResult = { status: "pending" };
+      sendJson(res, 200, pending);
+      return;
+    }
+
+    if (reconstructionShouldFail) {
+      const failed: ReconstructionResult = {
+        status: "failed",
+        warnings: ["Stub reconstruction failure."],
+      };
+      sendJson(res, 200, failed);
+      return;
+    }
+
+    const host = req.headers.host ?? "127.0.0.1";
+    const canned = reconstructionNoReference
+      ? RECONSTRUCTION_NO_REFERENCE
+      : RECONSTRUCTION_COMPLETE;
+    const body: ReconstructionResult = {
+      ...canned,
+      glb_url: `http://${host}/v1/sessions/${encodeURIComponent(sessionId)}/model.glb`,
+    };
+    sendJson(res, 200, body);
+  }
+
+  function handleModel(res: ServerResponse): void {
+    const bytes = readFileSync(MODEL_FIXTURE_PATH);
+    res.writeHead(200, {
+      "Content-Type": "model/gltf-binary",
+      "Content-Length": String(bytes.length),
+    });
+    res.end(bytes);
+  }
+
   function handle(req: IncomingMessage, res: ServerResponse, next?: (err?: unknown) => void): void {
     const path = new URL(req.url ?? "/", "http://stub.local").pathname;
     const framesMatch = /^\/v1\/sessions\/([^/]+)\/frames$/.exec(path);
     const finishMatch = /^\/v1\/sessions\/([^/]+)\/finish$/.exec(path);
+    const reconstructionMatch = /^\/v1\/sessions\/([^/]+)\/reconstruction$/.exec(path);
+    const modelMatch = /^\/v1\/sessions\/([^/]+)\/model\.glb$/.exec(path);
 
     if (req.method === "POST" && path === "/v1/sessions") {
       toWebRequest(req)
@@ -257,6 +323,15 @@ export function createContractStub(): ContractStub {
       handleFinishSession(res, sessionId);
       return;
     }
+    if (req.method === "GET" && reconstructionMatch) {
+      const sessionId = reconstructionMatch[1] as string;
+      handleReconstruction(req, res, sessionId);
+      return;
+    }
+    if (req.method === "GET" && modelMatch) {
+      handleModel(res);
+      return;
+    }
 
     if (next) {
       next();
@@ -270,6 +345,15 @@ export function createContractStub(): ContractStub {
     handle,
     rejectNextFrame: () => {
       rejectNext = true;
+    },
+    setReconstructionPendingPolls: (count: number) => {
+      reconstructionPendingPolls = Math.max(0, Math.floor(count));
+    },
+    failReconstruction: () => {
+      reconstructionShouldFail = true;
+    },
+    useNoReferenceReconstruction: () => {
+      reconstructionNoReference = true;
     },
   };
 }

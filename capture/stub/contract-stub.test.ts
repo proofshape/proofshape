@@ -97,6 +97,44 @@ describe("contract-stub shapes match the committed examples", () => {
     expect(await response.json()).toEqual(example);
   });
 
+
+  it("serves pending twice, then the canned reconstruction and GLB fixture", async () => {
+    const createResponse = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_code: "PO-48213-A" }),
+    });
+    const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
+
+    const form = new FormData();
+    form.set("frame", new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
+    form.set("gyro", new Blob([JSON.stringify({ alpha: 1, beta: 2, gamma: 3 })]));
+    await fetch(`${baseUrl}/v1/sessions/${sessionId}/frames`, { method: "POST", body: form });
+    await fetch(`${baseUrl}/v1/sessions/${sessionId}/finish`, { method: "POST" });
+
+    stub.setReconstructionPendingPolls(2);
+    const first = await fetch(`${baseUrl}/v1/sessions/${sessionId}/reconstruction`);
+    const second = await fetch(`${baseUrl}/v1/sessions/${sessionId}/reconstruction`);
+    const third = await fetch(`${baseUrl}/v1/sessions/${sessionId}/reconstruction`);
+    expect((await first.json()) as Record<string, unknown>).toEqual({ status: "pending" });
+    expect((await second.json()) as Record<string, unknown>).toEqual({ status: "pending" });
+
+    const complete = (await third.json()) as Record<string, unknown>;
+    const example = loadExample("getReconstruction.response-200");
+    expect(complete["status"]).toBe("complete");
+    expect(complete["reference_tier_used"]).toBe(example["reference_tier_used"]);
+    expect(complete["metric"]).toBe(example["metric"]);
+    expect(complete["observed_fraction"]).toBe(example["observed_fraction"]);
+
+    const glbUrl = complete["glb_url"];
+    expect(typeof glbUrl).toBe("string");
+    const glbResponse = await fetch(glbUrl as string);
+    expect(glbResponse.status).toBe(200);
+    expect(glbResponse.headers.get("content-type")).toBe("model/gltf-binary");
+    const bytes = new Uint8Array(await glbResponse.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe("glTF");
+  });
+
   it("fails loudly on a request missing order_code, instead of guessing", async () => {
     const response = await fetch(`${baseUrl}/v1/sessions`, {
       method: "POST",
