@@ -177,7 +177,7 @@ so this is behind schedule, not early.
 | [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Ready | _unclaimed_ |
 | [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Ready | _unclaimed_ |
 | [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Blocked | _unclaimed_ |
-| [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Ready | _unclaimed_ |
+| [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Claimed | @mbj1994 |
 | [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Blocked | _unclaimed_ |
 | [C-12](C/C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Blocked | _unclaimed_ |
 | [C-13](C/C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Blocked | _unclaimed_ |
