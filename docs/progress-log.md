@@ -921,3 +921,47 @@ measurement session, and no single accurate number exists without the owner's ow
 tracking).
 **Next:** nothing blocked on R-13. R-15 (container/deploy) remains `Claimed` by @TabeenRaoof,
 still pending its final live-redeploy verification.
+
+## 2026-10-08 — C-04 app shell: mechanism and tests done, device check still open (PR #102)
+
+**Who:** @dalwalyk, with Claude, reviewed by @TabeenRaoof.
+**What changed:** `capture/src/shell.ts` (`mountAppShell`) replaces C-01/C-02/C-03's three
+isolated demo sections (`#app`/`#camera-app`/`#gyro-app`) with one real flow: create a session
+(reusing `api.ts`'s `createSession`), then request camera and gyro permission together, reusing
+`camera.ts`'s/`gyro.ts`'s existing logic via two new exported functions
+(`requestCameraPermission`, `requestGyroPermission`) rather than reimplementing it.
+`mountCameraCheck`/`mountGyroCheck`/`page.ts` and their own tests are untouched — only
+`index.html`/`main.ts` now mount the new shell. App-level state (`AppState`: session id,
+camera/gyro granted, latest gyro reading) is a plain object returned by `mountAppShell`, not a
+module-level singleton — the same lesson C-03's own `listening` flag already taught this
+codebase about state leaking across test mounts.
+**A real constraint the acceptance criteria didn't spell out:** iOS requires `getUserMedia`/
+`requestPermission()` with no leading `await`, but the criteria describes "creates a session,
+then requests permission," and session creation is itself an awaited network call. Resolved by
+starting all three operations synchronously before awaiting any of them — verified by a
+regression test (`button.click()`, no `await` in the test, assert both permission mocks already
+fired), not just reasoned about.
+**Caught in review, confirmed by reproduction, not just reading:** @TabeenRaoof found that
+`createSession` can genuinely reject (real network failure, invalid JSON, an unexpected status),
+not just resolve `ok:false` — nothing caught it, so the click handler's async IIFE aborted
+mid-flight, leaving the Start button disabled forever with camera/gyro results never reflected
+even though their real permission prompts had already fired. Fixed with `try`/`catch` around the
+session await; camera/gyro are still awaited and reflected regardless of how session creation
+turns out. A new regression test was confirmed to actually fail against the pre-fix code (not
+just pass against the fix) before being kept.
+**Two real bugs caught while writing tests, not assumed:** happy-dom's own `MediaStream` class
+doesn't implement `getTracks()`, which `requestCameraPermission` calls to stop the stream
+immediately after confirming it opened (this story only needs to prove permission was granted;
+C-05 is the story that keeps a stream running) — fixed by giving the test fixture a working fake
+rather than relying on happy-dom's incomplete real class. Separately, adding this story's
+`shell.test.ts` as a second file needing the same fixed fetch port `page.test.ts` already used
+produced a real `EADDRINUSE`, since Vitest runs test files in parallel by default — fixed with
+`fileParallelism: false` in `vite.config.ts`.
+**Not marking C-04 `Done`:** the one new thing on a real device — requesting both permissions
+back-to-back in one flow, which neither C-02 nor C-03 tested in combination — can only be
+checked by a human tapping the button on a real iPhone. `State` stays `Claimed`;
+`stories/C-04.md`'s Tests section has a manual-check template ready to fill in once that happens.
+**Result:** 80 capture tests pass (10 new); `tsc`/`eslint`/`prettier` clean, stable across
+repeated runs; repo-wide `pytest` (305)/`ruff`/`check_story_states.py` unaffected.
+**Next:** hand off to run the real-device check — once that's in, C-04 can close and C-05 (live
+camera, currently `Blocked` on C-04) can proceed.
