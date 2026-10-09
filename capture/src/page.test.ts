@@ -125,6 +125,19 @@ describe("mountUploadPage", () => {
   });
 
 
+
+  it("states that no dimensional claims are made when the reconstruction is non-metric", async () => {
+    await startAndUploadOneFrame();
+    stub.useNoReferenceReconstruction();
+
+    button("finish-button").click();
+    await waitForNonEmptyText("finish-result");
+    const reconstruction = await waitForText("reconstruction-result", /Reconstruction complete/);
+    expect(reconstruction).toContain("Reference tier: none");
+    expect(reconstruction).toContain("Metric: no");
+    expect(reconstruction).toContain("No dimensional claims");
+  });
+
   it("shows a failed reconstruction instead of staying pending", async () => {
     await startAndUploadOneFrame();
     stub.failReconstruction();
