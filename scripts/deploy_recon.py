@@ -35,8 +35,8 @@ PORT = 8000
 # One replica, never autoscaled: SessionStore keeps sessions on one container's local disk, so a
 # second replica would answer session_not_found for sessions created on the first.
 REPLICAS = 1
-# Cost guard for on-demand use: Lightning releases the machine after this long even if nobody
-# runs `stop`.
+# Intended as a cost guard, but observed not to work: a deployment created with this was still
+# there 28.5 h later (stories/R-15.md, 2026-10-08). Only `stop` reliably ends billing.
 MAX_RUNTIME_S = 4 * 60 * 60
 MAIN_REF = "refs/heads/main"
 READY_TIMEOUT_S = 30 * 60
