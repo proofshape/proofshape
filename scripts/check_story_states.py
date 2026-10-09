@@ -38,7 +38,7 @@ STORIES_DIR = ROOT / "stories"
 INDEX = STORIES_DIR / "README.md"
 
 ROW_RE = re.compile(
-    r"^\|\s*\[([A-Z]-\d\d)\]\([A-Z]-\d\d\.md\)\s*\|"  # | [ID](ID.md) |
+    r"^\|\s*\[([A-Z]-\d\d)\]\(([^)]+\.md)\)\s*\|"  # | [ID](path/to/ID.md) |
     r"[^|\n]*\|"  # title
     r"\s*[\d.]+\s*h\s*\|"  # estimate
     r"\s*([^|\n]*?)\s*\|"  # depends-on
@@ -46,6 +46,9 @@ ROW_RE = re.compile(
     r"\s*([^|\n]*?)\s*\|\s*$",  # owner
     re.MULTILINE,
 )
+# The link target is read as-is rather than assumed to be "<ID>.md" — stories live under
+# stories/<lane-letter>/<ID>.md (e.g. stories/F/F-01.md), and this script trusts whatever path
+# the index actually links to instead of reconstructing one that could drift from reality.
 # Any table row that starts with a story link, whether or not ROW_RE can read the rest of it.
 # Comparing the two is what stops a malformed row from silently dropping out of every check.
 STORY_ROW_START_RE = re.compile(r"^\|\s*\[([A-Z]-\d\d)\]\(", re.MULTILINE)
@@ -74,11 +77,12 @@ AI_ASSISTANT_NAMES = {
 def parse_index():
     text = INDEX.read_text(encoding="utf-8")
     rows = {}
-    for sid, deps, state, owner in ROW_RE.findall(text):
+    for sid, path, deps, state, owner in ROW_RE.findall(text):
         dep_ids = (
             [] if deps.strip().lower() == "nothing" else re.findall(r"[A-Z]-\d\d", deps)
         )
         rows[sid] = {
+            "path": path,
             "deps": dep_ids,
             "index_state": state.strip(),
             "index_owner": owner.strip(),
@@ -95,8 +99,9 @@ def unparsed_rows(index_text, rows):
     return unreadable
 
 
-def file_state(sid):
-    path = STORIES_DIR / f"{sid}.md"
+def file_state(relpath):
+    """relpath is the story file's path as linked from the index (e.g. "F/F-01.md")."""
+    path = STORIES_DIR / relpath
     if not path.exists():
         return None, None
     text = path.read_text(encoding="utf-8")
@@ -173,7 +178,7 @@ def main():
         )
 
     for sid, info in rows.items():
-        fstate, ftext = file_state(sid)
+        fstate, ftext = file_state(info["path"])
         if fstate is None:
             problems.append(f"{sid}: no story file, or no **State:** line found")
             continue
@@ -200,7 +205,9 @@ def main():
         if effective_state == "Blocked":
             dep_states = []
             for dep in info["deps"]:
-                dstate, _ = file_state(dep)
+                dstate, _ = (
+                    file_state(rows[dep]["path"]) if dep in rows else (None, None)
+                )
                 dep_states.append((dep, dstate))
             unresolved = [d for d, s in dep_states if s != "Done"]
             if info["deps"] and not unresolved:
@@ -224,14 +231,14 @@ def main():
         new_index_text = index_text
         for sid in fixes:
             # story file
-            path = STORIES_DIR / f"{sid}.md"
+            path = STORIES_DIR / rows[sid]["path"]
             text = path.read_text(encoding="utf-8")
             text = FILE_STATE_RE.sub("**State:** Ready", text, count=1)
             path.write_text(text, encoding="utf-8")
             # index row: replace only the State cell (the fifth) for this ID's row. It is no
             # longer the last cell, since the Owner column follows it (D-037).
             new_index_text = re.sub(
-                rf"^(\|\s*\[{re.escape(sid)}\]\({re.escape(sid)}\.md\)\s*\|(?:[^|\n]*\|){{3}}\s*)"
+                rf"^(\|\s*\[{re.escape(sid)}\]\({re.escape(rows[sid]['path'])}\)\s*\|(?:[^|\n]*\|){{3}}\s*)"
                 r"Blocked(\s*\|)",
                 r"\1Ready\2",
                 new_index_text,

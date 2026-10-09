@@ -541,6 +541,21 @@ which is a separate story.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-041, so D-042 was the first free number.
 
+**D-043 · Story files are organised into one subfolder per lane letter.** (2026-10-09)
+`stories/` had grown to 39 files in one flat directory (7 F, 19 R, 13 C) with more lanes (I, G,
+A, X) still to come. Files now live at `stories/<lane-letter>/<ID>.md` (e.g. `stories/F/F-01.md`,
+`stories/C/C-09.md`) instead of directly under `stories/`. This does not relitigate D-023 (one
+file per story, index keeping one row each) — it only changes where those files sit.
+`stories/README.md`'s own index links are updated to point at the new paths, and
+`scripts/check_story_states.py` now resolves each story's file from whatever path the index
+actually links to, rather than assuming `<ID>.md` directly under `stories/` — so the checker
+does not silently break the next time the layout changes. No story file links to another story
+file by markdown path (only the index does), so that was the only link surface to fix; prose
+mentions of the old flat paths in `docs/progress-log.md` and code comments are left as-is,
+consistent with the progress log's own append-only, never-rewritten history.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-042, so D-043 was the first free number.
+
 ---
 
 ## Open — not yet decided
