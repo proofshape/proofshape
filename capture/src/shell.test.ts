@@ -212,6 +212,34 @@ describe("mountAppShell", () => {
     expect(button.disabled).toBe(false);
   });
 
+  it("recovers from createSession actually rejecting (not just resolving ok:false), still reflects camera/gyro, and re-enables the button", async () => {
+    // TabeenRaoof's PR #102 review, reproduced here as a permanent regression test: a real
+    // network failure makes createSession's fetch reject, not resolve with an error body.
+    // Before the fix, nothing caught it, so the async IIFE aborted at that `await` -- the
+    // button stayed disabled forever and the camera/gyro results (whose real prompts had
+    // already fired) were never reflected in state or the DOM.
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+    );
+    const { state, orderCode, button, sessionStatus, cameraStatus, gyroStatus } = mount();
+    orderCode.value = "PO-48213-A";
+
+    button.click();
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(state.sessionId).toBeNull();
+    expect(sessionStatus.textContent).toMatch(/Could not start session/);
+    expect(state.cameraGranted).toBe(true);
+    expect(cameraStatus.textContent).toBe("Camera permission granted.");
+    expect(state.gyroGranted).toBe(true);
+    expect(button.disabled).toBe(false);
+  });
+
   it("disables the button on click and leaves it disabled once a session is successfully created", async () => {
     stubGrantedCamera();
     stubGyroPermission("granted");

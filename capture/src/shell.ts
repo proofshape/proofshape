@@ -86,10 +86,23 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     const gyroPromise = requestGyroPermission();
 
     void (async () => {
-      const sessionResult = await sessionPromise;
-      sessionStatus.textContent = describeCreateSession(sessionResult);
-      if (sessionResult.ok) {
-        state.sessionId = sessionResult.body.session_id;
+      // createSession can genuinely reject, not just resolve with ok:false -- a real network
+      // failure, a non-JSON response, or any status outside 201/400 all throw inside api.ts.
+      // Catching here (TabeenRaoof's PR #102 review, reproduced: an unstubbed rejection left the
+      // button disabled forever with camera/gyro never reflected, even though their prompts had
+      // already fired) is what keeps that from silently stopping the user with no explanation.
+      let sessionOk = false;
+      try {
+        const sessionResult = await sessionPromise;
+        sessionStatus.textContent = describeCreateSession(sessionResult);
+        if (sessionResult.ok) {
+          state.sessionId = sessionResult.body.session_id;
+          sessionOk = true;
+        }
+      } catch (error) {
+        sessionStatus.textContent = `Could not start session — ${
+          error instanceof Error ? error.message : String(error)
+        }`;
       }
 
       const cameraResult = await cameraPromise;
@@ -106,8 +119,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       }
 
       // Nothing left for "Start" to do on this screen once a session exists -- only re-enable
-      // if session creation itself failed, so the order code can be fixed and retried.
-      startButton.disabled = sessionResult.ok;
+      // if session creation itself failed (rejected or resolved ok:false), so the order code
+      // can be fixed and retried.
+      startButton.disabled = sessionOk;
     })();
   });
 

@@ -26,7 +26,12 @@ function contractStubPlugin(): Plugin {
 // processes by default, and two files both trying to bind that one fixed port at the same time
 // collides (EADDRINUSE) rather than queuing — confirmed directly when C-04's shell.test.ts was
 // added alongside page.test.ts. camera.test.ts/gyro.test.ts/dom.test.ts also use happy-dom but
-// never fetch, so they were never affected by this until a second fetching file existed.
+// never fetch, so they were never affected by this until a second fetching file existed. This
+// turns off parallelism for the whole suite, not just these two files — Vitest has no
+// per-file-pair parallelism knob — but the suite is small enough (well under 5s) that this
+// costs nothing worth trading away. If a future test becomes slow, that is not this setting;
+// the fix for this specific problem, if it's ever worth narrowing, is giving page.test.ts and
+// shell.test.ts their own distinct fixed ports/origins rather than re-enabling parallelism.
 // C-02 needs a real iPhone to reach this dev server over HTTPS (Safari refuses getUserMedia
 // outside a secure context, and "localhost" doesn't help once a second device is involved) —
 // but C-01's own desktop-only workflow doesn't need the self-signed-cert browser warning that
