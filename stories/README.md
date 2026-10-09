@@ -116,13 +116,13 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [F-01](F-01.md) | Public repository with branch protection | 2 h | nothing | Done | @TabeenRaoof |
-| [F-02](F-02.md) | Repository skeleton and module boundaries | 3 h | F-01 | Done | @dalwalyk |
-| [F-03](F-03.md) | Interface contract v1, frozen | 3 h | F-01 | Done | @TabeenRaoof |
-| [F-04](F-04.md) | CI skeleton | 3 h | F-02 | Done | @dalwalyk |
-| [F-05](F-05.md) | Shared GPU workspace provisioned, three-way access | 4 h | nothing | Done | @mbj1994 |
-| [F-06](F-06.md) | Golden capture set | 5 h | nothing | Done | @mbj1994; @TabeenRaoof |
-| [F-07](F-07.md) | Reproducible dev environment | 3 h | F-02, F-05 | Done | @dalwalyk |
+| [F-01](F/F-01.md) | Public repository with branch protection | 2 h | nothing | Done | @TabeenRaoof |
+| [F-02](F/F-02.md) | Repository skeleton and module boundaries | 3 h | F-01 | Done | @dalwalyk |
+| [F-03](F/F-03.md) | Interface contract v1, frozen | 3 h | F-01 | Done | @TabeenRaoof |
+| [F-04](F/F-04.md) | CI skeleton | 3 h | F-02 | Done | @dalwalyk |
+| [F-05](F/F-05.md) | Shared GPU workspace provisioned, three-way access | 4 h | nothing | Done | @mbj1994 |
+| [F-06](F/F-06.md) | Golden capture set | 5 h | nothing | Done | @mbj1994; @TabeenRaoof |
+| [F-07](F/F-07.md) | Reproducible dev environment | 3 h | F-02, F-05 | Done | @dalwalyk |
 
 ---
 
@@ -136,25 +136,25 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [R-01](R-01.md) | Run the reconstruction model on the golden capture | 5 h | F-05, F-06, F-07 | Done | @dalwalyk |
-| [R-02](R-02.md) | Board detection and per-frame camera pose | 5 h | F-06, F-07 | Done | @TabeenRaoof |
-| [R-03](R-03.md) | Camera intrinsics from the board | 4 h | R-02 | Done | @mbj1994 |
-| [R-04](R-04.md) | Metric alignment | 6 h | R-01, R-02 | Done | @dalwalyk |
-| [R-05](R-05.md) | Scale agreement check | 4 h | R-04 | Done | @dalwalyk |
-| [R-06](R-06.md) | Segment the part from the board | 4 h | R-04 | Done | @dalwalyk |
-| [R-07](R-07.md) | TSDF fusion to a mesh | 6 h | R-04, R-06 | Done | @dalwalyk |
-| [R-08](R-08.md) | Mesh cleanup and GLB export | 4 h | R-07 | Done | @dalwalyk |
-| [R-09](R-09.md) | Per-vertex provenance | 5 h | R-07 | Done | @dalwalyk |
-| [R-10](R-10.md) | Per-vertex uncertainty | 5 h | R-09 | Done | @dalwalyk |
-| [R-11](R-11.md) | MASt3R behind the config flag | 5 h | R-01 | Done | @mbj1994 |
-| [R-12](R-12.md) | COLMAP behind the config flag | 5 h | R-01 | Done | @mbj1994 |
-| [R-13](R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Done | @TabeenRaoof |
-| [R-14](R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Done | @mbj1994 |
-| [R-15](R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Done | @TabeenRaoof |
-| [R-16](R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Blocked | _unclaimed_ |
-| [R-17](R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Claimed | @TabeenRaoof |
-| [R-18](R-18.md) | Produce and check TSDF-fused meshes on the golden set | 1 h | R-07 | Done | @dalwalyk |
-| [R-19](R-19.md) | Report per-vertex sigma distribution on the golden set | 1 h | R-10 | Done | @mbj1994 |
+| [R-01](R/R-01.md) | Run the reconstruction model on the golden capture | 5 h | F-05, F-06, F-07 | Done | @dalwalyk |
+| [R-02](R/R-02.md) | Board detection and per-frame camera pose | 5 h | F-06, F-07 | Done | @TabeenRaoof |
+| [R-03](R/R-03.md) | Camera intrinsics from the board | 4 h | R-02 | Done | @mbj1994 |
+| [R-04](R/R-04.md) | Metric alignment | 6 h | R-01, R-02 | Done | @dalwalyk |
+| [R-05](R/R-05.md) | Scale agreement check | 4 h | R-04 | Done | @dalwalyk |
+| [R-06](R/R-06.md) | Segment the part from the board | 4 h | R-04 | Done | @dalwalyk |
+| [R-07](R/R-07.md) | TSDF fusion to a mesh | 6 h | R-04, R-06 | Done | @dalwalyk |
+| [R-08](R/R-08.md) | Mesh cleanup and GLB export | 4 h | R-07 | Done | @dalwalyk |
+| [R-09](R/R-09.md) | Per-vertex provenance | 5 h | R-07 | Done | @dalwalyk |
+| [R-10](R/R-10.md) | Per-vertex uncertainty | 5 h | R-09 | Done | @dalwalyk |
+| [R-11](R/R-11.md) | MASt3R behind the config flag | 5 h | R-01 | Done | @mbj1994 |
+| [R-12](R/R-12.md) | COLMAP behind the config flag | 5 h | R-01 | Done | @mbj1994 |
+| [R-13](R/R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Done | @TabeenRaoof |
+| [R-14](R/R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Done | @mbj1994 |
+| [R-15](R/R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Done | @TabeenRaoof |
+| [R-16](R/R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Blocked | _unclaimed_ |
+| [R-17](R/R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Claimed | @TabeenRaoof |
+| [R-18](R/R-18.md) | Produce and check TSDF-fused meshes on the golden set | 1 h | R-07 | Done | @dalwalyk |
+| [R-19](R/R-19.md) | Report per-vertex sigma distribution on the golden set | 1 h | R-10 | Done | @mbj1994 |
 
 ---
 
@@ -168,19 +168,19 @@ so this is behind schedule, not early.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [C-01](C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Done | @TabeenRaoof |
-| [C-02](C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Done | @TabeenRaoof |
-| [C-03](C-03.md) | Gyro permission flow | 2 h | C-01 | Done | @dalwalyk |
-| [C-04](C-04.md) | App shell | 3 h | C-01, C-02, C-03 | Claimed | @dalwalyk |
-| [C-05](C-05.md) | Live camera | 3 h | C-04 | Blocked | _unclaimed_ |
-| [C-06](C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
-| [C-07](C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Ready | _unclaimed_ |
-| [C-08](C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Ready | _unclaimed_ |
-| [C-09](C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Blocked | _unclaimed_ |
-| [C-10](C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Claimed | @mbj1994 |
-| [C-11](C-11.md) | Model viewer | 3 h | C-10 | Blocked | _unclaimed_ |
-| [C-12](C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Blocked | _unclaimed_ |
-| [C-13](C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Blocked | _unclaimed_ |
+| [C-01](C/C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Done | @TabeenRaoof |
+| [C-02](C/C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Done | @TabeenRaoof |
+| [C-03](C/C-03.md) | Gyro permission flow | 2 h | C-01 | Done | @dalwalyk |
+| [C-04](C/C-04.md) | App shell | 3 h | C-01, C-02, C-03 | Claimed | @dalwalyk |
+| [C-05](C/C-05.md) | Live camera | 3 h | C-04 | Blocked | _unclaimed_ |
+| [C-06](C/C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
+| [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Ready | _unclaimed_ |
+| [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Ready | _unclaimed_ |
+| [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Blocked | _unclaimed_ |
+| [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Claimed | @mbj1994 |
+| [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Blocked | _unclaimed_ |
+| [C-12](C/C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Blocked | _unclaimed_ |
+| [C-13](C/C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Blocked | _unclaimed_ |
 
 ---
 
