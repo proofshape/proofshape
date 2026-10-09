@@ -53,6 +53,33 @@ export function describeOrientationError(error: unknown): string {
   return "Could not request gyro permission — unexpected error.";
 }
 
+export type GyroPermissionResult = { granted: true } | { granted: false; message: string };
+
+// C-04: requests permission and reports granted/denied, reusing the exact same logic
+// mountGyroCheck's own click handler already proves out -- not a new implementation. The
+// `requestPermission()` call is the first statement in this function's body (no `await` before
+// it), so calling this with no leading `await` from a click handler preserves the gesture the
+// same way mountGyroCheck's `.then()`-based handler does; capture/src/shell.test.ts proves this
+// in CI rather than relying on the reasoning alone.
+export async function requestGyroPermission(): Promise<GyroPermissionResult> {
+  const ctor = getIOSDeviceOrientationEventConstructor();
+  if (typeof ctor?.requestPermission !== "function") {
+    return { granted: true };
+  }
+  try {
+    const permissionState = await ctor.requestPermission();
+    if (permissionState === "granted") {
+      return { granted: true };
+    }
+    return {
+      granted: false,
+      message: "Gyro permission denied. Reload the page and tap Start to try again.",
+    };
+  } catch (error) {
+    return { granted: false, message: describeOrientationError(error) };
+  }
+}
+
 export const GYRO_CHECK_HTML = `
   <section>
     <h2>Gyro check (C-03)</h2>
