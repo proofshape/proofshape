@@ -892,3 +892,32 @@ didn't need.
 **Next:** C-04 (app shell) is still `Ready` and unclaimed — C-06 doesn't depend on it or get
 depended on by it, so either can proceed independently. C-05 (live camera) remains `Blocked` on
 C-04.
+
+## 2026-10-07 — R-13 closed: real three-backbone measurement recorded (PR #98)
+
+**Who:** @TabeenRaoof, reviewed and approved by @dalwalyk.
+**What changed:** R-13's mechanism (per-stage timing shared across all three backbones) shipped
+in PR #66 on 2026-09-30; the one remaining acceptance criterion — "recorded for all three
+backbones" — needed a real measurement, which this PR supplies: all 30 real `s-04` golden-capture
+frames run through VGGT, MASt3R and COLMAP on the shared Lightning T4.
+- **VGGT:** PASS, 80.21 s total (model_load 45.0%, preprocess 24.6%, inference 20.7%).
+- **MASt3R:** PASS, 265.90 s total — roughly 3.3x VGGT, almost entirely in `alignment_s` (79.6%
+  of its total), consistent with iterative global alignment versus VGGT's single forward pass.
+- **COLMAP:** REFUSED, 28/30 frames registered. Recorded as a legitimate, complete data point,
+  not a gap to fix here — R-12 is designed to refuse rather than fabricate geometry when it can't
+  register every frame, and the acceptance criterion is "recorded for all three backbones," not
+  "all three succeed."
+**Verified, not just read:** every print format (`RECON RUN: PASS - backend=..., N frames, M
+points` and `RECON RUN: REFUSED - backend=..., registered=N/M, reason=...`) was checked against
+`recon/reconstruction_runner.py`'s actual code during review, byte-for-byte. VGGT's and MASt3R's
+stage percentages don't sum to exactly 100% on their own — traced to `total_s` being an
+independently measured wall-clock span (`time.perf_counter()`, start to end), not the sum of the
+named sub-stages, so a small untracked-overhead gap is expected, legitimate behavior, not an
+inconsistency in the reported numbers.
+**Result:** `pytest` 295 passed/1 skipped, `ruff` clean, `check_story_states.py --fix` reports
+nothing to fix. R-13 is `Done`; actual hours left blank (same reasoning as R-01/R-03's completion
+records — this story's real effort spans the original PR #66 session and a separate later
+measurement session, and no single accurate number exists without the owner's own time
+tracking).
+**Next:** nothing blocked on R-13. R-15 (container/deploy) remains `Claimed` by @TabeenRaoof,
+still pending its final live-redeploy verification.
