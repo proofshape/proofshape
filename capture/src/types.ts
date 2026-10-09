@@ -40,3 +40,24 @@ export interface Gyro {
   beta: number;
   gamma: number;
 }
+
+
+export type ReferenceTier = "charuco_board" | "blank_sheet" | "credit_card" | "none";
+
+export interface ScaleAgreement {
+  sources_compared: Array<
+    "board_pitch" | "caliper_reading" | "cad_registration_residual"
+  >;
+  flagged: boolean;
+}
+
+export interface ReconstructionResult {
+  status: "pending" | "complete" | "failed";
+  glb_url?: string;
+  reference_tier_used?: ReferenceTier;
+  metric?: boolean;
+  observed_fraction?: number;
+  scale_agreement?: ScaleAgreement;
+  stage_timings_s?: Record<string, number>;
+  warnings?: string[];
+}
