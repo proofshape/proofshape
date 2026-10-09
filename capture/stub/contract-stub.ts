@@ -6,12 +6,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ErrorDetail, ReconstructionResult, Session, UploadFrameResult } from "../src/types.js";
 
-// The three-route stub C-01's own tests run against — NOT the fuller S1 "mock service"
-// (docs/sprint-plan.md, S1) that will later answer every operation in the contract with a
-// canned GLB and verdict. This only exists so C-01 has something to call; it is not meant to be
-// reused once R-14 (the real reconstruction endpoint) exists.
+// C-01 started this as a three-route contract stub. C-10 extends it into the capture-side mock
+// reconstruction service: finish a session, poll reconstruction, and fetch a canned GLB without
+// needing the paid R-14 deployment. Later stories can extend the same stub for verdict-specific
+// UI rather than creating another mock server.
 //
-// Every canned body is loaded from contracts/examples/*.json at startup rather than typed in by
+// Every canned JSON body is loaded from contracts/examples/*.json at startup rather than typed in by
 // hand, so this stub cannot silently drift from the frozen contract (F-03).
 //
 // Path built with node:path, not `new URL(x, import.meta.url)` — that literal pattern is
