@@ -242,7 +242,6 @@ export function createContractStub(): ContractStub {
     sendJson(res, 202, body);
   }
 
-
   function handleReconstruction(
     req: IncomingMessage,
     res: ServerResponse,
@@ -291,6 +290,8 @@ export function createContractStub(): ContractStub {
     const path = new URL(req.url ?? "/", "http://stub.local").pathname;
     const framesMatch = /^\/v1\/sessions\/([^/]+)\/frames$/.exec(path);
     const finishMatch = /^\/v1\/sessions\/([^/]+)\/finish$/.exec(path);
+    const reconstructionMatch = /^\/v1\/sessions\/([^/]+)\/reconstruction$/.exec(path);
+    const modelMatch = /^\/v1\/sessions\/([^/]+)\/model\.glb$/.exec(path);
 
     if (req.method === "POST" && path === "/v1/sessions") {
       toWebRequest(req)
