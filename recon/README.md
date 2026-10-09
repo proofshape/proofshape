@@ -109,7 +109,9 @@ curl -s -w '\n%{http_code}\n' -X POST "$URL/v1/sessions" \
   -H "Authorization: Bearer $PROOFSHAPE_ENDPOINT_TOKEN" \
   -H 'Content-Type: application/json' -d '{"order_code": "R15-CHECK"}'
 
-# End to end: real golden frames in, GLB out, over HTTPS.
+# End to end: real golden frames in, GLB out, over HTTPS. gdown isn't in any requirements file
+# yet; if Drive rate-limits it, download the s-04 folder as a zip in a browser instead.
+python3 -m pip install gdown
 bash fixtures/download_golden_capture.sh
 python scripts/smoke_r14.py fixtures/data/golden_capture/s-04 --base-url "$URL"
 ```
@@ -117,8 +119,10 @@ python scripts/smoke_r14.py fixtures/data/golden_capture/s-04 --base-url "$URL"
 The smoke check passes only if the GLB link the service returns is also `https://`. That catches
 the TLS-terminating proxy downgrading it.
 
-**Stop it when you're done.** It is billed while it runs. It is created with a four-hour
-`--max-runtime` as a backstop, but don't rely on that:
+**Stop it when you're done. Nothing else will.** It bills the T4 for as long as it exists. It is
+created with a four-hour `--max-runtime`, but that did **not** take it down in practice. The first
+deploy was still there 28.5 hours later, and the teamspace's credits ran out in that window
+(2026-10-06/07, see `stories/R-15.md`). Run this as soon as you've finished checking:
 
 ```bash
 gh workflow run deploy-recon.yml --ref main -f action=stop
