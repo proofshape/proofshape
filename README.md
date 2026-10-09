@@ -60,18 +60,20 @@ story in any of them.
 
 ## Running each part
 
-This is the repository skeleton (F-02) — none of the lanes have working code yet. What exists
-today:
+Foundations (Phase 1) and almost all of the reconstruction engine (Phase 2) are built; the
+capture app's thin thread (C-01 onward) is partway through its own stories. The
+[story index](stories/README.md) is the live source of truth for exactly what's `Done` versus
+still in flight — this table is just how to run what exists today:
 
 | Part | How to run it |
 |---|---|
 | Python project | `./scripts/bootstrap_dev_env.sh` from the repository root, one command. Creates `.venv` with Python 3.11+, installs `recon` in editable mode plus every pinned dependency in `requirements.txt` (F-07). |
-| `recon/` | Nothing runnable yet. First piece lands with R-01. |
-| `capture/` | `cd capture && npm install`, then `npm run dev` for the minimal upload page (C-01) or `npm test` for its suite. |
+| `recon/` | `uvicorn recon.service:app --host 0.0.0.0 --port 8000` runs the real reconstruction HTTP service (R-14): upload frames, get a metric mesh back. A Dockerfile and an on-demand, token-gated Lightning deployment also exist (R-15, container/deploy — still in progress) — see `recon/README.md` for the runbook. |
+| `capture/` | `cd capture && npm install`, then `npm run dev` for the app shell (C-04: starts a session, requests camera and gyro permission together) or `npm test` for its suite. |
 | `inspect/` | No runnable code yet, and not registered as a Python package — see `inspect/README.md`. Lands with the I-0x stories. |
 | `contracts/` | `openapi.yaml`, frozen at v1 (F-03). Changing it needs `CONTRIBUTING.md`'s approval rule. |
-| `fixtures/` | Empty until F-06 adds the download script. |
-| `scripts/` | `bootstrap_dev_env.sh` (F-07). Otherwise empty until a story needs a one-command helper. |
+| `fixtures/` | `bash fixtures/download_golden_capture.sh` downloads the five golden capture sets from the team's shared Drive (F-06) — never committed to git. |
+| `scripts/` | `bootstrap_dev_env.sh` (F-07) for the dev environment; `check_story_states.py` (run before every story closes out); GPU/deploy helpers (`check_gpu.py`, `deploy_recon.py`, `smoke_r14.py`) for the shared Lightning workspace. |
 
 Each directory has its own `README.md` with more detail. The bootstrap script works the same way
 on Apple Silicon and on the shared GPU environment (F-05) — same command, same pinned versions.
