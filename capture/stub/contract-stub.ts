@@ -38,6 +38,9 @@ const FINISH_SESSION_409_TOO_FEW = loadExample("finishSession.response-409") as 
 const RECONSTRUCTION_COMPLETE = loadExample(
   "getReconstruction.response-200",
 ) as ReconstructionResult;
+const RECONSTRUCTION_NO_REFERENCE = loadExample(
+  "getReconstruction.response-200-no-reference",
+) as ReconstructionResult;
 const RECONSTRUCTION_404 = loadExample("getReconstruction.response-404") as ErrorDetail;
 const MODEL_FIXTURE_PATH = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "model.glb");
 
@@ -61,6 +64,7 @@ export interface ContractStub {
   // Test controls for C-10's terminal-state polling cases.
   setReconstructionPendingPolls: (count: number) => void;
   failReconstruction: () => void;
+  useNoReferenceReconstruction: () => void;
 }
 
 export function createContractStub(): ContractStub {
@@ -69,6 +73,7 @@ export function createContractStub(): ContractStub {
   let sessionCounter = 0;
   let reconstructionPendingPolls = 1;
   let reconstructionShouldFail = false;
+  let reconstructionNoReference = false;
 
   function sendJson(res: ServerResponse, status: number, body: unknown): void {
     const text = JSON.stringify(body);
@@ -270,8 +275,11 @@ export function createContractStub(): ContractStub {
     }
 
     const host = req.headers.host ?? "127.0.0.1";
+    const canned = reconstructionNoReference
+      ? RECONSTRUCTION_NO_REFERENCE
+      : RECONSTRUCTION_COMPLETE;
     const body: ReconstructionResult = {
-      ...RECONSTRUCTION_COMPLETE,
+      ...canned,
       glb_url: `http://${host}/v1/sessions/${encodeURIComponent(sessionId)}/model.glb`,
     };
     sendJson(res, 200, body);
@@ -343,6 +351,9 @@ export function createContractStub(): ContractStub {
     },
     failReconstruction: () => {
       reconstructionShouldFail = true;
+    },
+    useNoReferenceReconstruction: () => {
+      reconstructionNoReference = true;
     },
   };
 }
