@@ -174,6 +174,8 @@ so this is behind schedule, not early.
 | [C-04](C-04.md) | App shell | 3 h | C-01, C-02, C-03 | Claimed | @dalwalyk |
 | [C-05](C-05.md) | Live camera | 3 h | C-04 | Blocked | _unclaimed_ |
 | [C-06](C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
+| [C-07](C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Ready | _unclaimed_ |
+| [C-08](C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Ready | _unclaimed_ |
 
 ---
 
@@ -201,11 +203,11 @@ The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16, 
 
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
-The thin capture thread (C-01–C-06) is the one exception — it's written up above, not here, since
+The thin capture thread (C-01–C-08) is the one exception — it's written up above, not here, since
 it's meant to run early rather than wait for a sprint boundary.
 
 **Capture app**
-C-07 gyro overlay and arrow · C-08 next-view scoring · C-09 model viewer · C-10 provenance colouring · C-11 heatmap rendering · C-12 report page · C-13 buyer setup · C-14 board PDF with order code · C-15 device testing
+C-09 model viewer · C-10 provenance colouring · C-11 heatmap rendering · C-12 report page · C-13 buyer setup · C-14 board PDF with order code · C-15 device testing
 
 **Inspection**
 I-01 synthetic mesh generator · I-02 CAD loading · I-03 global registration · I-04 robust ICP · I-05 symmetry ambiguity check · I-06 deviation computation · I-07 verdict logic · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
