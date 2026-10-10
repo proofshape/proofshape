@@ -174,7 +174,7 @@ so this is behind schedule, not early.
 | [C-04](C/C-04.md) | App shell | 3 h | C-01, C-02, C-03 | Claimed | @dalwalyk |
 | [C-05](C/C-05.md) | Live camera | 3 h | C-04 | Blocked | _unclaimed_ |
 | [C-06](C/C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
-| [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Ready | _unclaimed_ |
+| [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Claimed | @dalwalyk |
 | [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Ready | _unclaimed_ |
 | [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Blocked | _unclaimed_ |
 | [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Claimed | @mbj1994 |
