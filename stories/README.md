@@ -152,12 +152,9 @@ Full detail in each story file.
 | [R-14](R/R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Done | @mbj1994 |
 | [R-15](R/R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Done | @TabeenRaoof |
 | [R-16](R/R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Blocked | _unclaimed_ |
-| [R-17](R/R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Done | @TabeenRaoof |
+| [R-17](R/R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Claimed | @TabeenRaoof |
 | [R-18](R/R-18.md) | Produce and check TSDF-fused meshes on the golden set | 1 h | R-07 | Done | @dalwalyk |
 | [R-19](R/R-19.md) | Report per-vertex sigma distribution on the golden set | 1 h | R-10 | Done | @mbj1994 |
-| [R-20](R/R-20.md) | Use VGGT's confidence in the point cloud and in fusion | 4 h | R-01, R-07 | Ready | _unclaimed_ |
-| [R-21](R/R-21.md) | Measure the height cut from the real board surface | 3 h | R-06 | Ready | _unclaimed_ |
-| [R-22](R/R-22.md) | Find why parts reconstruct smaller than their CAD | 3 h | R-03, R-04 | Ready | _unclaimed_ |
 
 ---
 
