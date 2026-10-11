@@ -131,6 +131,22 @@ def unproject_depth_to_world(
     return world_points
 
 
+def confidence_keep_mask(confidence: np.ndarray, min_confidence: float) -> np.ndarray:
+    """Return a boolean mask, same shape as ``confidence``: True where a pixel is trusted.
+
+    A pixel is kept when its confidence is finite and at least ``min_confidence``. This is the
+    one predicate the whole pipeline uses to decide "do we trust this pixel's depth" --
+    ``select_point_cloud`` below applies it when building R-01's point cloud, and R-07's
+    ``recon.tsdf_fusion.fuse_run`` applies it again, on the same ``depth_conf`` array, when
+    deciding which pixels may update the TSDF. Sharing one function means a pixel dropped from
+    the cloud is dropped from the fused surface too (R-20's acceptance criteria), rather than the
+    two independently reimplementing "finite and above threshold" and risking them drifting apart
+    (the same reasoning as the PLY read/write pair sharing one fixed layout, above).
+    """
+    confidence = np.asarray(confidence)
+    return np.isfinite(confidence) & (confidence >= min_confidence)
+
+
 def select_point_cloud(
     world_points: np.ndarray,
     colors: np.ndarray,
@@ -139,9 +155,8 @@ def select_point_cloud(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Flatten per-pixel points to a cloud, dropping non-finite and low-confidence points.
 
-    ``min_confidence`` is an absolute threshold on VGGT's depth confidence. The default the CLI
-    passes is 0.0 (keep everything finite) because no threshold has been measured yet; picking
-    one is R-04+ work once there is ground truth to judge it against.
+    ``min_confidence`` is an absolute threshold on VGGT's depth confidence -- see
+    ``DEFAULT_MIN_CONFIDENCE``'s docstring for how that default was chosen (D-044).
     """
     if (
         world_points.shape[:3] != confidence.shape
@@ -156,8 +171,7 @@ def select_point_cloud(
     flat_confidence = confidence.reshape(-1)
 
     keep = np.isfinite(flat_points).all(axis=1)
-    keep &= np.isfinite(flat_confidence)
-    keep &= flat_confidence >= min_confidence
+    keep &= confidence_keep_mask(flat_confidence, min_confidence)
     return flat_points[keep], flat_colors[keep]
 
 

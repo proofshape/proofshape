@@ -151,6 +151,28 @@ def test_frames_chw_to_hwc_rejects_a_missing_frame_axis():
         vggt_runner.frames_chw_to_hwc(np.zeros((3, 4, 6)))
 
 
+# --- confidence_keep_mask -------------------------------------------------------------------
+
+
+def test_confidence_keep_mask_drops_non_finite_and_below_threshold():
+    confidence = np.array([5.0, 1.0, np.nan, np.inf, 0.999])
+
+    mask = vggt_runner.confidence_keep_mask(confidence, min_confidence=1.0)
+
+    # 5.0 above, 1.0 exactly at (inclusive), NaN and inf never kept (neither is finite), 0.999
+    # just below.
+    np.testing.assert_array_equal(mask, [True, True, False, False, False])
+
+
+def test_confidence_keep_mask_preserves_input_shape():
+    confidence = np.full((2, 3, 4), 2.0)
+
+    mask = vggt_runner.confidence_keep_mask(confidence, min_confidence=1.0)
+
+    assert mask.shape == (2, 3, 4)
+    assert mask.all()
+
+
 # --- select_point_cloud --------------------------------------------------------------------
 
 
@@ -170,6 +192,21 @@ def test_select_point_cloud_drops_non_finite_and_low_confidence():
     # Pixel (0,1) is NaN and pixel (1,0) is below the confidence floor.
     np.testing.assert_array_equal(kept_points, [[1, 2, 3], [7, 8, 9]])
     np.testing.assert_array_equal(kept_colors, [[0, 1, 2], [9, 10, 11]])
+
+
+def test_select_point_cloud_uses_confidence_keep_mask_not_a_reimplementation():
+    # Same predicate as confidence_keep_mask's own test, applied through select_point_cloud, so
+    # the two can never silently drift apart (R-20: the cloud and R-07's fusion must agree on
+    # which pixels are trusted).
+    points = np.ones((1, 1, 5, 3), dtype=np.float32)
+    colors = np.zeros((1, 1, 5, 3), dtype=np.uint8)
+    confidence = np.array([[[5.0, 1.0, np.nan, np.inf, 0.999]]])
+
+    kept_points, _ = vggt_runner.select_point_cloud(
+        points, colors, confidence, min_confidence=1.0
+    )
+
+    assert len(kept_points) == 2  # indices 0, 1 -- matches confidence_keep_mask's own test
 
 
 def test_select_point_cloud_rejects_mismatched_dimensions():
