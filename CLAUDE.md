@@ -36,6 +36,6 @@ file rather than recalling it. The planning documents have been revised many tim
 | What we are building, and the rules | `AGENTS.md`, then `submissions/` for the proposal |
 | Why something is the way it is | `docs/decisions.md` |
 | What a term means | `docs/glossary.md` |
-| What to work on | `stories/README.md`, then `stories/<ID>.md` |
+| What to work on | `stories/README.md`, then `stories/<lane>/<ID>.md` |
 | Schedule, capacity, process | `docs/sprint-plan.md` |
 | What happened already | `docs/progress-log.md` |

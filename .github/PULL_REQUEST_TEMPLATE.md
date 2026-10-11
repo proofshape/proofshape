@@ -4,7 +4,7 @@
 
 ## Story
 
-<!-- Link the story file, e.g. stories/F-02.md -->
+<!-- Link the story file, e.g. stories/F/F-02.md -->
 
 ## Definition of done
 

@@ -172,7 +172,7 @@ def test_fix_updates_both_the_story_file_and_the_index(css, monkeypatch):
     exit_code = css.main()
 
     assert exit_code == 0
-    file_state, _ = css.file_state("F-02")
+    file_state, _ = css.file_state("F-02.md")
     assert file_state == "Ready"
     rows, _ = css.parse_index()
     assert rows["F-01"]["index_state"] == "Done"  # didn't touch the wrong row
@@ -299,6 +299,51 @@ def test_row_the_parser_cannot_read_is_reported_not_skipped(css, capsys):
 
     assert exit_code == 1
     assert "F-02: its row in stories/README.md doesn't match" in out
+
+
+def test_lane_subfolder_layout_is_supported(css, monkeypatch):
+    """Stories live at stories/<lane>/<ID>.md; the script must resolve whatever path the
+    index actually links to, not assume "<ID>.md" directly under STORIES_DIR.
+    """
+    lane_dir = css.STORIES_DIR / "F"
+    lane_dir.mkdir()
+    (lane_dir / "F-05.md").write_text(
+        "# F-05 · a test story\n\n"
+        "**Area:** foundations · **Tier:** 1 · **Estimate:** 1 h\n"
+        "**Depends on:** nothing\n"
+        "**State:** Done\n"
+        "**Owner:** @member\n",
+        encoding="utf-8",
+    )
+    (lane_dir / "F-06.md").write_text(
+        "# F-06 · a test story\n\n"
+        "**Area:** foundations · **Tier:** 1 · **Estimate:** 1 h\n"
+        "**Depends on:** F-05\n"
+        "**State:** Blocked\n"
+        "**Owner:** _unclaimed_\n",
+        encoding="utf-8",
+    )
+    css.INDEX.write_text(
+        "| ID | Story | Est | Depends on | State | Owner |\n"
+        "|---|---|---|---|---|---|\n"
+        "| [F-05](F/F-05.md) | a test story | 1 h | nothing | Done | @member |\n"
+        "| [F-06](F/F-06.md) | a test story | 1 h | F-05 | Blocked | _unclaimed_ |\n",
+        encoding="utf-8",
+    )
+
+    # Consistency check: F-06 is correctly flagged Ready-able since its only dependency is Done.
+    exit_code = css.main()
+    assert exit_code == 1
+
+    # --fix must write the nested file at its real path and the matching index row.
+    monkeypatch.setattr(sys, "argv", ["check_story_states.py", "--fix"])
+    exit_code = css.main()
+    assert exit_code == 0
+    file_state, _ = css.file_state("F/F-06.md")
+    assert file_state == "Ready"
+    rows, _ = css.parse_index()
+    assert rows["F-06"]["index_state"] == "Ready"
+    assert rows["F-06"]["path"] == "F/F-06.md"
 
 
 def test_fix_never_writes_an_owner(css, capsys, monkeypatch):

@@ -191,7 +191,8 @@ docs/
   story-template.md      — template for a new story file
   archive/               — superseded drafts, kept for their reasoning
 
-stories/               — one file per story; README.md is the index
+stories/               — one subfolder per lane letter (F/, R/, C/, ...), one file per story
+                          inside it; README.md is the index
 submissions/           — what was handed to the course, dated
 
 recon/                 — reconstruction engine (backend)
