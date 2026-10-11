@@ -97,6 +97,82 @@ describe("contract-stub shapes match the committed examples", () => {
     expect(await response.json()).toEqual(example);
   });
 
+
+  it("serves pending twice, then a renderable canned GLB", async () => {
+    const createResponse = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_code: "PO-48213-A" }),
+    });
+    const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
+
+    const form = new FormData();
+    form.set("frame", new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
+    form.set("gyro", new Blob([JSON.stringify({ alpha: 1, beta: 2, gamma: 3 })]));
+    await fetch(`${baseUrl}/v1/sessions/${sessionId}/frames`, { method: "POST", body: form });
+    await fetch(`${baseUrl}/v1/sessions/${sessionId}/finish`, { method: "POST" });
+
+    stub.setReconstructionPendingPolls(2);
+    const first = await fetch(`${baseUrl}/v1/sessions/${sessionId}/reconstruction`);
+    const second = await fetch(`${baseUrl}/v1/sessions/${sessionId}/reconstruction`);
+    const third = await fetch(`${baseUrl}/v1/sessions/${sessionId}/reconstruction`);
+
+    expect(await first.json()).toEqual({ status: "pending" });
+    expect(await second.json()).toEqual({ status: "pending" });
+
+    const complete = (await third.json()) as Record<string, unknown>;
+    const example = loadExample("getReconstruction.response-200");
+    expect(complete["status"]).toBe("complete");
+    expect(complete["reference_tier_used"]).toBe(example["reference_tier_used"]);
+    expect(complete["metric"]).toBe(example["metric"]);
+    expect(complete["observed_fraction"]).toBe(example["observed_fraction"]);
+
+    const glbUrl = complete["glb_url"];
+    expect(typeof glbUrl).toBe("string");
+    const glbResponse = await fetch(glbUrl as string);
+    expect(glbResponse.status).toBe(200);
+    expect(glbResponse.headers.get("content-type")).toBe("model/gltf-binary");
+
+    const bytes = new Uint8Array(await glbResponse.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe("glTF");
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    expect(view.getUint32(4, true)).toBe(2);
+    const jsonLength = view.getUint32(12, true);
+    const jsonText = new TextDecoder()
+      .decode(bytes.slice(20, 20 + jsonLength))
+      .trim();
+    const gltf = JSON.parse(jsonText) as {
+      asset?: { version?: string };
+      meshes?: unknown[];
+      scenes?: unknown[];
+    };
+    expect(gltf.asset?.version).toBe("2.0");
+    expect(gltf.meshes?.length).toBeGreaterThan(0);
+    expect(gltf.scenes?.length).toBeGreaterThan(0);
+  });
+
+  it("preserves HTTPS in the canned GLB URL behind the device dev server", async () => {
+    const createResponse = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_code: "PO-48213-A" }),
+    });
+    const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
+
+    const form = new FormData();
+    form.set("frame", new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
+    form.set("gyro", new Blob([JSON.stringify({ alpha: 1, beta: 2, gamma: 3 })]));
+    await fetch(`${baseUrl}/v1/sessions/${sessionId}/frames`, { method: "POST", body: form });
+    await fetch(`${baseUrl}/v1/sessions/${sessionId}/finish`, { method: "POST" });
+
+    stub.setReconstructionPendingPolls(0);
+    const response = await fetch(`${baseUrl}/v1/sessions/${sessionId}/reconstruction`, {
+      headers: { "X-Forwarded-Proto": "https" },
+    });
+    const body = (await response.json()) as { glb_url?: string };
+    expect(body.glb_url).toMatch(/^https:\/\//);
+  });
+
   it("fails loudly on a request missing order_code, instead of guessing", async () => {
     const response = await fetch(`${baseUrl}/v1/sessions`, {
       method: "POST",
