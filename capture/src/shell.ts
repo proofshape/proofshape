@@ -149,7 +149,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     })();
   });
 
-  async function runReconstructionPolling(): Promise<"complete" | "failed" | "timeout" | "error"> {
+  async function runReconstructionPolling(): Promise<void> {
     if (state.sessionId === null) {
       return;
     }
@@ -203,7 +203,7 @@ async function pollReconstruction(
   target: HTMLElement,
   maxAttempts: number,
   intervalMs: number,
-): Promise<void> {
+): Promise<"complete" | "failed" | "timeout" | "error"> {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let result;
     try {
