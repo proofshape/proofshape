@@ -229,7 +229,9 @@ async function pollReconstruction(
     } catch (error) {
       setStatus(
         target,
-        `Could not fetch reconstruction — ${error instanceof Error ? error.message : String(error)}`,
+        `Could not fetch reconstruction — ${
+          error instanceof Error ? error.message : String(error)
+        }`,
         "error",
       );
       return "error";
