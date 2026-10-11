@@ -57,12 +57,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const sessionStatus = requireElement(root, "#shell-session-status");
   const cameraStatus = requireElement(root, "#shell-camera-status");
   const gyroStatus = requireElement(root, "#shell-gyro-status");
-  const finishButton = requireTyped(
-    root,
-    "#shell-finish-button",
-    HTMLButtonElement,
-    "<button>",
-  );
+  const finishButton = requireTyped(root, "#shell-finish-button", HTMLButtonElement, "<button>");
   const finishStatus = requireElement(root, "#shell-finish-status");
   const reconstructionStatus = requireElement(root, "#shell-reconstruction-status");
 
