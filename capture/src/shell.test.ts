@@ -116,7 +116,6 @@ describe("mountAppShell", () => {
     window.dispatchEvent(event);
   }
 
-
   async function startSuccessfulSession(): Promise<ReturnType<typeof mount>> {
     stubGrantedCamera();
     stubGyroPermission("granted");
@@ -304,7 +303,6 @@ describe("mountAppShell", () => {
 
     expect(button.disabled).toBe(true);
   });
-
 
   it("finishes from the live shell and renders pending then complete reconstruction", async () => {
     const mounted = await startSuccessfulSession();
