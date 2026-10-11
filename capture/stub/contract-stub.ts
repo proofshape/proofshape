@@ -290,7 +290,9 @@ export function createContractStub(): ContractStub {
     }
 
     const host = req.headers.host ?? "127.0.0.1";
-    const canned = reconstructionNoReference ? RECONSTRUCTION_NO_REFERENCE : RECONSTRUCTION_COMPLETE;
+    const canned = reconstructionNoReference
+      ? RECONSTRUCTION_NO_REFERENCE
+      : RECONSTRUCTION_COMPLETE;
     const body: ReconstructionResult = {
       ...canned,
       glb_url: `${requestProtocol(req)}://${host}/v1/sessions/${encodeURIComponent(sessionId)}/model.glb`,
