@@ -97,7 +97,6 @@ describe("contract-stub shapes match the committed examples", () => {
     expect(await response.json()).toEqual(example);
   });
 
-
   it("serves pending twice, then a renderable canned GLB", async () => {
     const createResponse = await fetch(`${baseUrl}/v1/sessions`, {
       method: "POST",
