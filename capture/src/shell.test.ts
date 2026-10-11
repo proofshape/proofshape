@@ -55,9 +55,7 @@ describe("mountAppShell", () => {
     const finishButton = document.getElementById("shell-finish-button");
     const finishStatus = document.getElementById("shell-finish-status");
     const reconstructionStatus = document.getElementById("shell-reconstruction-status");
-    const retryReconstructionButton = document.getElementById(
-      "shell-retry-reconstruction-button",
-    );
+    const retryReconstructionButton = document.getElementById("shell-retry-reconstruction-button");
     if (
       !(orderCode instanceof HTMLInputElement) ||
       !(button instanceof HTMLButtonElement) ||
@@ -378,7 +376,6 @@ describe("mountAppShell", () => {
 
     expect(mounted.reconstructionStatus.textContent).toContain("3 attempts");
   });
-
 
   it("offers retry after timeout and resumes polling without finishing the session again", async () => {
     const mounted = await startSuccessfulSession();
