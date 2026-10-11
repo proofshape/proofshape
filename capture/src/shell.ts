@@ -187,11 +187,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       setStatus(reconstructionStatus, "", "info");
       try {
         const result = await finishSession(options.baseUrl, state.sessionId);
-        setStatus(
-          finishStatus,
-          describeFinishSession(result),
-          result.ok ? "info" : "error",
-        );
+        setStatus(finishStatus, describeFinishSession(result), result.ok ? "info" : "error");
         if (!result.ok) {
           finishButton.disabled = false;
           return;
