@@ -222,8 +222,52 @@ def test_extract_mesh_poisson_on_a_synthetic_point_cloud():
 
 # --- fuse_run: end-to-end wiring on synthetic files ----------------------------------------------
 
+# Rotation flips z so that board-frame "above" (negative z) is camera-frame "in front" (positive
+# z) -- see recon/part_segmentation.py's docstring for why negative board-frame z means above
+# the board. With this rotation and zero translation, a pixel at depth D unprojects to
+# board-frame z=-D, and to (x,y) = ((u-cx)/fx*D, (v-cy)/fy*D) -- so many pixels sharing the same
+# depth D, at different (u,v), land on a flat board-frame plane at that one height (R-21's
+# `measure_board_surface` needs enough of those to fit a plane; a single pixel, as R-07's
+# original tests used, is far too few).
+_SCENE_ROTATION = np.diag([1.0, -1.0, -1.0])
+_SCENE_EXTRINSIC = np.concatenate([_SCENE_ROTATION, np.zeros((3, 1))], axis=1)[None]
+# cx=0, cy=120 (not symmetric): with this rotation, board-frame x=(u-cx)/fx*depth but
+# y=-(v-cy)/fy*depth, so positive x needs u>cx while positive y needs v<cy -- cx/cy are placed
+# so that non-negative pixel indices still land on the footprint's full x in [0,160], y in
+# [0,120].
+_SCENE_INTRINSIC = np.array([[10.0, 0.0, 0.0], [0.0, 10.0, 120.0], [0.0, 0.0, 1.0]])[
+    None
+]
+_SCENE_BOARD_DEPTH_MM = (
+    10.0  # board-frame z=-10 for every board pixel below (within the
+)
+# default 15mm search band `measure_board_surface` looks in around the assumed z=0)
+_SCENE_PART_DEPTH_MM = 40.0  # board-frame z=-40, i.e. 30mm above the flat board plane
+_SCENE_PART_PIXEL = (
+    105,
+    20,
+)  # (v, u) -> board-frame (x=80, y=60), inside the default footprint
 
-def _write_synthetic_run(run_dir, depth, extrinsic, intrinsic) -> None:
+
+def _board_and_part_depth(
+    include_board: bool = True, include_part: bool = True
+) -> np.ndarray:
+    """A (1, 130, 170) depth image: a grid of same-depth pixels spanning the default 160x120mm
+    footprint (a flat board), plus one pixel 30mm above it (the "part"). `_SCENE_EXTRINSIC` /
+    `_SCENE_INTRINSIC` above are the matching camera for every test that uses this."""
+    depth = np.zeros((1, 130, 170))
+    if include_board:
+        u_grid = np.arange(0, 161)  # x = u in [0, 160]
+        v_grid = np.arange(0, 121)  # y = 120 - v in [0, 120]
+        depth[0, v_grid[:, None], u_grid[None, :]] = _SCENE_BOARD_DEPTH_MM
+    if include_part:
+        depth[0, _SCENE_PART_PIXEL] = _SCENE_PART_DEPTH_MM
+    return depth
+
+
+def _write_synthetic_run(
+    run_dir, depth, extrinsic=_SCENE_EXTRINSIC, intrinsic=_SCENE_INTRINSIC
+) -> None:
     run_dir.mkdir()
     frame_count = depth.shape[0]
     np.savez_compressed(
@@ -253,18 +297,7 @@ def _write_identity_alignment(path) -> None:
 
 def test_fuse_run_writes_mesh_and_report(tmp_path):
     run_dir = tmp_path / "run"
-    # A point 50mm "above the board" (board-frame z=-50) sitting inside the default footprint,
-    # seen by one frame whose rotation flips z so that board-frame "above" (negative z) is
-    # camera-frame "in front" (positive z) -- see recon/part_segmentation.py's docstring for why
-    # negative board-frame z means above the board.
-    rotation = np.diag([1.0, -1.0, -1.0])
-    extrinsic = np.concatenate([rotation, np.zeros((3, 1))], axis=1)[None]
-    intrinsic = np.array([[10.0, 0.0, 50.0], [0.0, 10.0, 50.0], [0.0, 0.0, 1.0]])[None]
-    depth = np.zeros((1, 100, 150))
-    # Board-frame point (80, 60, -50): camera-frame (80, -60, 50) -> u=10*80/50+50=66,
-    # v=10*(-60)/50+50=38.
-    depth[0, 38, 66] = 50.0
-    _write_synthetic_run(run_dir, depth, extrinsic, intrinsic)
+    _write_synthetic_run(run_dir, _board_and_part_depth())
     alignment_json = run_dir / "metric_alignment.json"
     _write_identity_alignment(alignment_json)
     out_dir = tmp_path / "mesh_out"
@@ -282,6 +315,7 @@ def test_fuse_run_writes_mesh_and_report(tmp_path):
     assert report["method"] == "marching_cubes"
     assert report["observed_voxel_count"] >= 1
     assert report["total_voxel_count"] == 16 * 12 * 10  # (160/10) * (120/10) * (100/10)
+    assert report["board_surface"]["offset_mm"] == pytest.approx(-10.0, abs=0.5)
     assert (out_dir / "mesh.ply").exists()
     vertices, faces = tsdf_fusion.read_mesh_ply(out_dir / "mesh.ply")
     assert len(vertices) == report["vertex_count"]
@@ -290,14 +324,65 @@ def test_fuse_run_writes_mesh_and_report(tmp_path):
     assert on_disk_report == report
 
 
+def test_fuse_run_grid_top_follows_the_fitted_plane(tmp_path):
+    # The fitted plane sits at z=-10 (board-frame), not z=0 -- the voxel grid's top must follow
+    # it, or the grid itself would clip the part's base before fusion even runs.
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth())
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "mesh_out",
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+    )
+
+    assert report["bounds_max_mm"][2] == pytest.approx(-10.0, abs=0.5)
+    assert report["bounds_min_mm"][2] == pytest.approx(-110.0, abs=0.5)
+
+
+def test_fuse_run_excludes_invalid_depth_pixels_from_the_board_fit(tmp_path):
+    # A non-finite depth pixel unprojects to a non-finite board-frame point; it must never reach
+    # measure_board_surface (which would otherwise either crash on it or let it skew the fit).
+    run_dir = tmp_path / "run"
+    depth = _board_and_part_depth()
+    depth[0, 0, 0] = np.nan
+    _write_synthetic_run(run_dir, depth)
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+    out_dir = tmp_path / "mesh_out"
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        out_dir,
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+    )
+
+    assert report["board_surface"]["offset_mm"] == pytest.approx(-10.0, abs=0.5)
+
+
+def test_fuse_run_raises_when_no_board_is_visible(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth(include_board=False))
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    with pytest.raises(ValueError, match="board points"):
+        tsdf_fusion.fuse_run(
+            run_dir, alignment_json, tmp_path / "mesh_out", voxel_size_mm=10.0
+        )
+
+
 def test_fuse_run_refuses_to_overwrite_existing_output(tmp_path):
     run_dir = tmp_path / "run"
-    rotation = np.diag([1.0, -1.0, -1.0])
-    extrinsic = np.concatenate([rotation, np.zeros((3, 1))], axis=1)[None]
-    intrinsic = np.array([[10.0, 0.0, 5.0], [0.0, 10.0, 5.0], [0.0, 0.0, 1.0]])[None]
-    depth = np.zeros((1, 10, 10))
-    depth[0, 5, 5] = 30.0
-    _write_synthetic_run(run_dir, depth, extrinsic, intrinsic)
+    _write_synthetic_run(run_dir, _board_and_part_depth())
     alignment_json = run_dir / "metric_alignment.json"
     _write_identity_alignment(alignment_json)
     out_dir = tmp_path / "mesh_out"
