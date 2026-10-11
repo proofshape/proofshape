@@ -3,11 +3,11 @@
 // one shared place to read/write app state instead of per-module globals.
 
 import { requestCameraPermission, setStatus } from "./camera.js";
-import { createSession } from "./api.js";
+import { createSession, finishSession, getReconstruction } from "./api.js";
 import { requireElement, requireTyped } from "./dom.js";
 import { requestGyroPermission } from "./gyro.js";
-import { describeCreateSession } from "./messages.js";
-import type { Gyro } from "./types.js";
+import { describeCreateSession, describeFinishSession } from "./messages.js";
+import type { Gyro, ReconstructionResult } from "./types.js";
 
 export interface AppState {
   sessionId: string | null;
@@ -20,7 +20,12 @@ export interface AppState {
 
 export interface AppShellOptions {
   baseUrl: string;
+  reconstructionPollIntervalMs?: number;
+  reconstructionMaxAttempts?: number;
 }
+
+const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
+const DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS = 300;
 
 export const APP_SHELL_HTML = `
   <section>
@@ -30,6 +35,15 @@ export const APP_SHELL_HTML = `
     <p id="shell-session-status"></p>
     <p id="shell-camera-status"></p>
     <p id="shell-gyro-status"></p>
+  </section>
+  <section>
+    <h2>Finish and reconstruct (C-10)</h2>
+    <button id="shell-finish-button" type="button" disabled>Finish session</button>
+    <button id="shell-retry-reconstruction-button" type="button" hidden>
+      Retry reconstruction
+    </button>
+    <p id="shell-finish-status"></p>
+    <p id="shell-reconstruction-status"></p>
   </section>
 `;
 
@@ -46,6 +60,15 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const sessionStatus = requireElement(root, "#shell-session-status");
   const cameraStatus = requireElement(root, "#shell-camera-status");
   const gyroStatus = requireElement(root, "#shell-gyro-status");
+  const finishButton = requireTyped(root, "#shell-finish-button", HTMLButtonElement, "<button>");
+  const retryReconstructionButton = requireTyped(
+    root,
+    "#shell-retry-reconstruction-button",
+    HTMLButtonElement,
+    "<button>",
+  );
+  const finishStatus = requireElement(root, "#shell-finish-status");
+  const reconstructionStatus = requireElement(root, "#shell-reconstruction-status");
 
   const state: AppState = {
     sessionId: null,
@@ -101,6 +124,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
         if (sessionResult.ok) {
           state.sessionId = sessionResult.body.session_id;
+          finishButton.disabled = false;
           sessionOk = true;
         }
       } catch (error) {
@@ -111,9 +135,6 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
       }
 
-      // Plain textContent here was the exact bug TabeenRaoof's PR #117 review caught: camera.ts's
-      // own mountCameraCheck already learned (from real on-device testing) that unstyled text is
-      // easy to miss as an error -- setStatus carries that same fix into this shell.
       const cameraResult = await cameraPromise;
       state.cameraGranted = cameraResult.granted;
       setStatus(
@@ -140,5 +161,125 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     })();
   });
 
+  async function runReconstructionPolling(): Promise<void> {
+    if (state.sessionId === null) {
+      return;
+    }
+    retryReconstructionButton.hidden = true;
+    const outcome = await pollReconstruction(
+      options.baseUrl,
+      state.sessionId,
+      reconstructionStatus,
+      options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
+      options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
+    );
+    retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
+  }
+
+  finishButton.addEventListener("click", () => {
+    void (async () => {
+      if (state.sessionId === null) {
+        setStatus(finishStatus, "Start a session first.", "error");
+        return;
+      }
+
+      finishButton.disabled = true;
+      setStatus(reconstructionStatus, "", "info");
+      try {
+        const result = await finishSession(options.baseUrl, state.sessionId);
+        setStatus(finishStatus, describeFinishSession(result), result.ok ? "info" : "error");
+        if (!result.ok) {
+          finishButton.disabled = false;
+          return;
+        }
+        await runReconstructionPolling();
+      } catch (error) {
+        setStatus(
+          finishStatus,
+          `Could not finish session — ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
+        finishButton.disabled = false;
+      }
+    })();
+  });
+
+  retryReconstructionButton.addEventListener("click", () => {
+    void runReconstructionPolling();
+  });
+
   return state;
+}
+
+async function pollReconstruction(
+  baseUrl: string,
+  sessionId: string,
+  target: HTMLElement,
+  maxAttempts: number,
+  intervalMs: number,
+): Promise<"complete" | "failed" | "timeout" | "error"> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let result;
+    try {
+      result = await getReconstruction(baseUrl, sessionId);
+    } catch (error) {
+      setStatus(
+        target,
+        `Could not fetch reconstruction — ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        "error",
+      );
+      return "error";
+    }
+
+    if (!result.ok) {
+      setStatus(target, `Could not fetch reconstruction — ${result.error.message}`, "error");
+      return "error";
+    }
+
+    if (result.body.status === "pending") {
+      setStatus(target, "Reconstruction pending…", "info");
+      if (attempt < maxAttempts) {
+        await delay(intervalMs);
+      }
+      continue;
+    }
+
+    renderReconstruction(target, result.body);
+    return result.body.status === "failed" ? "failed" : "complete";
+  }
+
+  setStatus(target, `Reconstruction timed out after ${String(maxAttempts)} attempts.`, "error");
+  return "timeout";
+}
+
+function renderReconstruction(target: HTMLElement, result: ReconstructionResult): void {
+  if (result.status === "failed") {
+    const warnings = result.warnings?.length ? ` Warnings: ${result.warnings.join("; ")}` : "";
+    setStatus(target, `Reconstruction failed.${warnings}`, "error");
+    return;
+  }
+
+  const referenceTier = result.reference_tier_used ?? "unknown";
+  const metric = result.metric === true ? "yes" : "no";
+  const observed =
+    result.observed_fraction === undefined ? "unknown" : result.observed_fraction.toFixed(3);
+  const warnings = result.warnings?.length ? result.warnings.join("; ") : "none";
+  const dimensionalClaim = result.metric === false ? " No dimensional claims." : "";
+  setStatus(
+    target,
+    `Reconstruction complete. Reference tier: ${referenceTier}. Metric: ${metric}.` +
+      ` Observed fraction: ${observed}. Warnings: ${warnings}.${dimensionalClaim}`,
+    "info",
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
