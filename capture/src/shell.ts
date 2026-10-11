@@ -145,7 +145,6 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     })();
   });
 
-
   finishButton.addEventListener("click", () => {
     void (async () => {
       if (state.sessionId === null) {
@@ -180,7 +179,6 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
   return state;
 }
-
 
 async function pollReconstruction(
   baseUrl: string,
