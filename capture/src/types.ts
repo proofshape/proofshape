@@ -44,9 +44,7 @@ export interface Gyro {
 export type ReferenceTier = "charuco_board" | "blank_sheet" | "credit_card" | "none";
 
 export interface ScaleAgreement {
-  sources_compared: Array<
-    "board_pitch" | "caliper_reading" | "cad_registration_residual"
-  >;
+  sources_compared: Array<"board_pitch" | "caliper_reading" | "cad_registration_residual">;
   flagged: boolean;
 }
 
