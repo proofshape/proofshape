@@ -113,7 +113,6 @@ describe("api against the contract stub", () => {
     }
   });
 
-
   it("polls reconstruction from pending to complete after finish", async () => {
     const session = await createSession(baseUrl, "PO-48213-A");
     if (!session.ok) throw new Error("setup: createSession failed");
