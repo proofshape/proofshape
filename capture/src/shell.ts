@@ -25,7 +25,7 @@ export interface AppShellOptions {
 }
 
 const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
-const DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS = 60;
+const DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS = 300;
 
 export const APP_SHELL_HTML = `
   <section>
@@ -39,6 +39,9 @@ export const APP_SHELL_HTML = `
   <section>
     <h2>Finish and reconstruct (C-10)</h2>
     <button id="shell-finish-button" type="button" disabled>Finish session</button>
+    <button id="shell-retry-reconstruction-button" type="button" hidden>
+      Retry reconstruction
+    </button>
     <p id="shell-finish-status"></p>
     <p id="shell-reconstruction-status"></p>
   </section>
@@ -58,6 +61,12 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const cameraStatus = requireElement(root, "#shell-camera-status");
   const gyroStatus = requireElement(root, "#shell-gyro-status");
   const finishButton = requireTyped(root, "#shell-finish-button", HTMLButtonElement, "<button>");
+  const retryReconstructionButton = requireTyped(
+    root,
+    "#shell-retry-reconstruction-button",
+    HTMLButtonElement,
+    "<button>",
+  );
   const finishStatus = requireElement(root, "#shell-finish-status");
   const reconstructionStatus = requireElement(root, "#shell-reconstruction-status");
 
@@ -140,6 +149,21 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     })();
   });
 
+  async function runReconstructionPolling(): Promise<"complete" | "failed" | "timeout" | "error"> {
+    if (state.sessionId === null) {
+      return;
+    }
+    retryReconstructionButton.hidden = true;
+    const outcome = await pollReconstruction(
+      options.baseUrl,
+      state.sessionId,
+      reconstructionStatus,
+      options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
+      options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
+    );
+    retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
+  }
+
   finishButton.addEventListener("click", () => {
     void (async () => {
       if (state.sessionId === null) {
@@ -156,13 +180,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           finishButton.disabled = false;
           return;
         }
-        await pollReconstruction(
-          options.baseUrl,
-          state.sessionId,
-          reconstructionStatus,
-          options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
-          options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
-        );
+        await runReconstructionPolling();
       } catch (error) {
         finishStatus.textContent = `Could not finish session — ${
           error instanceof Error ? error.message : String(error)
@@ -170,6 +188,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         finishButton.disabled = false;
       }
     })();
+  });
+
+  retryReconstructionButton.addEventListener("click", () => {
+    void runReconstructionPolling();
   });
 
   return state;
@@ -190,12 +212,12 @@ async function pollReconstruction(
       target.textContent = `Could not fetch reconstruction — ${
         error instanceof Error ? error.message : String(error)
       }`;
-      return;
+      return "error";
     }
 
     if (!result.ok) {
       target.textContent = `Could not fetch reconstruction — ${result.error.message}`;
-      return;
+      return "error";
     }
 
     if (result.body.status === "pending") {
@@ -207,10 +229,11 @@ async function pollReconstruction(
     }
 
     renderReconstruction(target, result.body);
-    return;
+    return result.body.status === "failed" ? "failed" : "complete";
   }
 
   target.textContent = `Reconstruction timed out after ${String(maxAttempts)} attempts.`;
+  return "timeout";
 }
 
 function renderReconstruction(target: HTMLElement, result: ReconstructionResult): void {
