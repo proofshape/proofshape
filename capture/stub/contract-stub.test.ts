@@ -137,9 +137,7 @@ describe("contract-stub shapes match the committed examples", () => {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     expect(view.getUint32(4, true)).toBe(2);
     const jsonLength = view.getUint32(12, true);
-    const jsonText = new TextDecoder()
-      .decode(bytes.slice(20, 20 + jsonLength))
-      .trim();
+    const jsonText = new TextDecoder().decode(bytes.slice(20, 20 + jsonLength)).trim();
     const gltf = JSON.parse(jsonText) as {
       asset?: { version?: string };
       meshes?: unknown[];
