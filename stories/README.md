@@ -157,7 +157,7 @@ Full detail in each story file.
 | [R-19](R/R-19.md) | Report per-vertex sigma distribution on the golden set | 1 h | R-10 | Done | @mbj1994 |
 | [R-20](R/R-20.md) | Use VGGT's confidence in the point cloud and in fusion | 4 h | R-01, R-07 | Claimed | @TabeenRaoof |
 | [R-21](R/R-21.md) | Measure the height cut from the real board surface | 3 h | R-06 | Ready | _unclaimed_ |
-| [R-22](R/R-22.md) | Find why parts reconstruct smaller than their CAD | 3 h | R-03, R-04 | Ready | _unclaimed_ |
+| [R-22](R/R-22.md) | Find why parts reconstruct smaller than their CAD | 3 h | R-03, R-04 | Claimed | @TabeenRaoof |
 
 ---
 
