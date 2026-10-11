@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createSession, finishSession, uploadFrame } from "./api.js";
+import { createSession, finishSession, getReconstruction, uploadFrame } from "./api.js";
 import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
 
 const FAKE_JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
@@ -110,6 +110,39 @@ describe("api against the contract stub", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe("session_already_finished");
+    }
+  });
+
+
+  it("polls reconstruction from pending to complete after finish", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+    const frame = new Blob([FAKE_JPEG_BYTES], { type: "image/jpeg" });
+    await uploadFrame(baseUrl, session.body.session_id, frame, { alpha: 1, beta: 2, gamma: 3 });
+    await finishSession(baseUrl, session.body.session_id);
+
+    const pending = await getReconstruction(baseUrl, session.body.session_id);
+    expect(pending.ok).toBe(true);
+    if (pending.ok) expect(pending.body.status).toBe("pending");
+
+    const complete = await getReconstruction(baseUrl, session.body.session_id);
+    expect(complete.ok).toBe(true);
+    if (complete.ok) {
+      expect(complete.body.status).toBe("complete");
+      expect(complete.body.metric).toBe(true);
+      expect(complete.body.glb_url).toMatch(/\/model\.glb$/);
+    }
+  });
+
+  it("returns the contract 404 before reconstruction has started", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+
+    const result = await getReconstruction(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(404);
+      expect(result.error.code).toBe("session_not_found");
     }
   });
 
