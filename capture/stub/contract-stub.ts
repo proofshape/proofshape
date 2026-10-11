@@ -4,7 +4,12 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ErrorDetail, ReconstructionResult, Session, UploadFrameResult } from "../src/types.js";
+import type {
+  ErrorDetail,
+  ReconstructionResult,
+  Session,
+  UploadFrameResult,
+} from "../src/types.js";
 
 // C-01 started this as a three-route contract stub. C-10 extends it into the capture-side mock
 // reconstruction service: finish a session, poll reconstruction, and fetch a canned GLB without
@@ -286,9 +291,7 @@ export function createContractStub(): ContractStub {
     }
 
     const host = req.headers.host ?? "127.0.0.1";
-    const canned = reconstructionNoReference
-      ? RECONSTRUCTION_NO_REFERENCE
-      : RECONSTRUCTION_COMPLETE;
+    const canned = reconstructionNoReference ? RECONSTRUCTION_NO_REFERENCE : RECONSTRUCTION_COMPLETE;
     const body: ReconstructionResult = {
       ...canned,
       glb_url: `${requestProtocol(req)}://${host}/v1/sessions/${encodeURIComponent(
