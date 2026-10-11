@@ -251,7 +251,6 @@ export function createContractStub(): ContractStub {
     sendJson(res, 202, body);
   }
 
-
   function requestProtocol(req: IncomingMessage): "http" | "https" {
     const forwarded = req.headers["x-forwarded-proto"];
     if (typeof forwarded === "string" && forwarded.split(",")[0]?.trim() === "https") {
@@ -294,9 +293,7 @@ export function createContractStub(): ContractStub {
     const canned = reconstructionNoReference ? RECONSTRUCTION_NO_REFERENCE : RECONSTRUCTION_COMPLETE;
     const body: ReconstructionResult = {
       ...canned,
-      glb_url: `${requestProtocol(req)}://${host}/v1/sessions/${encodeURIComponent(
-        sessionId,
-      )}/model.glb`,
+      glb_url: `${requestProtocol(req)}://${host}/v1/sessions/${encodeURIComponent(sessionId)}/model.glb`,
     };
     sendJson(res, 200, body);
   }
