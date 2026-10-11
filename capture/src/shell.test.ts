@@ -178,6 +178,24 @@ describe("mountAppShell", () => {
     expect(state.gyroGranted).toBe(true);
   });
 
+  it("styles a camera denial as a visible error, not plain unstyled text", async () => {
+    // TabeenRaoof's PR #117 review: shell.ts rendered the denial message with plain textContent,
+    // exactly the "easy to miss" bug camera.ts's own setStatus already exists to prevent.
+    // Asserting the real styling, not just the text, is what would have caught the regression.
+    stubDeniedCamera();
+    stubGyroPermission("granted");
+    const { orderCode, button, cameraStatus, gyroStatus } = mount();
+    orderCode.value = "PO-48213-A";
+
+    button.click();
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(cameraStatus.style.color).not.toBe("");
+    expect(cameraStatus.style.fontWeight).toBe("bold");
+  });
+
   it("records a gyro denial without blocking the session or camera from proceeding", async () => {
     stubGrantedCamera();
     stubGyroPermission("denied");
@@ -191,7 +209,24 @@ describe("mountAppShell", () => {
 
     expect(state.gyroGranted).toBe(false);
     expect(gyroStatus.textContent).toMatch(/denied/);
+    expect(gyroStatus.style.color).not.toBe("");
+    expect(gyroStatus.style.fontWeight).toBe("bold");
     expect(state.cameraGranted).toBe(true);
+  });
+
+  it("does not style a success status as an error", async () => {
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    const { orderCode, button, cameraStatus, gyroStatus } = mount();
+    orderCode.value = "PO-48213-A";
+
+    button.click();
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(cameraStatus.style.fontWeight).not.toBe("bold");
+    expect(gyroStatus.style.fontWeight).not.toBe("bold");
   });
 
   it("records a failed session creation, and re-enables the button, while permissions still proceed", async () => {

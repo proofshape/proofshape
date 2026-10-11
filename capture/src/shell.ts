@@ -2,7 +2,7 @@
 // one real flow — create a session, request both permissions together — and gives C-05 onward
 // one shared place to read/write app state instead of per-module globals.
 
-import { requestCameraPermission } from "./camera.js";
+import { requestCameraPermission, setStatus } from "./camera.js";
 import { createSession } from "./api.js";
 import { requireElement, requireTyped } from "./dom.js";
 import { requestGyroPermission } from "./gyro.js";
@@ -71,9 +71,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   }
 
   startButton.addEventListener("click", () => {
-    sessionStatus.textContent = "";
-    cameraStatus.textContent = "";
-    gyroStatus.textContent = "";
+    setStatus(sessionStatus, "", "info");
+    setStatus(cameraStatus, "", "info");
+    setStatus(gyroStatus, "", "info");
     startButton.disabled = true;
 
     // All three started synchronously, before awaiting any of them: getUserMedia and
@@ -94,26 +94,41 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       let sessionOk = false;
       try {
         const sessionResult = await sessionPromise;
-        sessionStatus.textContent = describeCreateSession(sessionResult);
+        setStatus(
+          sessionStatus,
+          describeCreateSession(sessionResult),
+          sessionResult.ok ? "info" : "error",
+        );
         if (sessionResult.ok) {
           state.sessionId = sessionResult.body.session_id;
           sessionOk = true;
         }
       } catch (error) {
-        sessionStatus.textContent = `Could not start session — ${
-          error instanceof Error ? error.message : String(error)
-        }`;
+        setStatus(
+          sessionStatus,
+          `Could not start session — ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
       }
 
+      // Plain textContent here was the exact bug TabeenRaoof's PR #117 review caught: camera.ts's
+      // own mountCameraCheck already learned (from real on-device testing) that unstyled text is
+      // easy to miss as an error -- setStatus carries that same fix into this shell.
       const cameraResult = await cameraPromise;
       state.cameraGranted = cameraResult.granted;
-      cameraStatus.textContent = cameraResult.granted
-        ? "Camera permission granted."
-        : cameraResult.message;
+      setStatus(
+        cameraStatus,
+        cameraResult.granted ? "Camera permission granted." : cameraResult.message,
+        cameraResult.granted ? "info" : "error",
+      );
 
       const gyroResult = await gyroPromise;
       state.gyroGranted = gyroResult.granted;
-      gyroStatus.textContent = gyroResult.granted ? "Gyro permission granted." : gyroResult.message;
+      setStatus(
+        gyroStatus,
+        gyroResult.granted ? "Gyro permission granted." : gyroResult.message,
+        gyroResult.granted ? "info" : "error",
+      );
       if (gyroResult.granted) {
         startListeningForGyro();
       }
