@@ -2,7 +2,7 @@
 // one real flow — create a session, request both permissions together — and gives C-05 onward
 // one shared place to read/write app state instead of per-module globals.
 
-import { requestCameraPermission } from "./camera.js";
+import { requestCameraPermission, setStatus } from "./camera.js";
 import { createSession, finishSession, getReconstruction } from "./api.js";
 import { requireElement, requireTyped } from "./dom.js";
 import { requestGyroPermission } from "./gyro.js";
@@ -94,9 +94,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   }
 
   startButton.addEventListener("click", () => {
-    sessionStatus.textContent = "";
-    cameraStatus.textContent = "";
-    gyroStatus.textContent = "";
+    setStatus(sessionStatus, "", "info");
+    setStatus(cameraStatus, "", "info");
+    setStatus(gyroStatus, "", "info");
     startButton.disabled = true;
 
     // All three started synchronously, before awaiting any of them: getUserMedia and
@@ -117,27 +117,39 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       let sessionOk = false;
       try {
         const sessionResult = await sessionPromise;
-        sessionStatus.textContent = describeCreateSession(sessionResult);
+        setStatus(
+          sessionStatus,
+          describeCreateSession(sessionResult),
+          sessionResult.ok ? "info" : "error",
+        );
         if (sessionResult.ok) {
           state.sessionId = sessionResult.body.session_id;
           finishButton.disabled = false;
           sessionOk = true;
         }
       } catch (error) {
-        sessionStatus.textContent = `Could not start session — ${
-          error instanceof Error ? error.message : String(error)
-        }`;
+        setStatus(
+          sessionStatus,
+          `Could not start session — ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
       }
 
       const cameraResult = await cameraPromise;
       state.cameraGranted = cameraResult.granted;
-      cameraStatus.textContent = cameraResult.granted
-        ? "Camera permission granted."
-        : cameraResult.message;
+      setStatus(
+        cameraStatus,
+        cameraResult.granted ? "Camera permission granted." : cameraResult.message,
+        cameraResult.granted ? "info" : "error",
+      );
 
       const gyroResult = await gyroPromise;
       state.gyroGranted = gyroResult.granted;
-      gyroStatus.textContent = gyroResult.granted ? "Gyro permission granted." : gyroResult.message;
+      setStatus(
+        gyroStatus,
+        gyroResult.granted ? "Gyro permission granted." : gyroResult.message,
+        gyroResult.granted ? "info" : "error",
+      );
       if (gyroResult.granted) {
         startListeningForGyro();
       }
@@ -167,24 +179,30 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   finishButton.addEventListener("click", () => {
     void (async () => {
       if (state.sessionId === null) {
-        finishStatus.textContent = "Start a session first.";
+        setStatus(finishStatus, "Start a session first.", "error");
         return;
       }
 
       finishButton.disabled = true;
-      reconstructionStatus.textContent = "";
+      setStatus(reconstructionStatus, "", "info");
       try {
         const result = await finishSession(options.baseUrl, state.sessionId);
-        finishStatus.textContent = describeFinishSession(result);
+        setStatus(
+          finishStatus,
+          describeFinishSession(result),
+          result.ok ? "info" : "error",
+        );
         if (!result.ok) {
           finishButton.disabled = false;
           return;
         }
         await runReconstructionPolling();
       } catch (error) {
-        finishStatus.textContent = `Could not finish session — ${
-          error instanceof Error ? error.message : String(error)
-        }`;
+        setStatus(
+          finishStatus,
+          `Could not finish session — ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
         finishButton.disabled = false;
       }
     })();
@@ -209,19 +227,21 @@ async function pollReconstruction(
     try {
       result = await getReconstruction(baseUrl, sessionId);
     } catch (error) {
-      target.textContent = `Could not fetch reconstruction — ${
-        error instanceof Error ? error.message : String(error)
-      }`;
+      setStatus(
+        target,
+        `Could not fetch reconstruction — ${error instanceof Error ? error.message : String(error)}`,
+        "error",
+      );
       return "error";
     }
 
     if (!result.ok) {
-      target.textContent = `Could not fetch reconstruction — ${result.error.message}`;
+      setStatus(target, `Could not fetch reconstruction — ${result.error.message}`, "error");
       return "error";
     }
 
     if (result.body.status === "pending") {
-      target.textContent = "Reconstruction pending…";
+      setStatus(target, "Reconstruction pending…", "info");
       if (attempt < maxAttempts) {
         await delay(intervalMs);
       }
@@ -232,14 +252,14 @@ async function pollReconstruction(
     return result.body.status === "failed" ? "failed" : "complete";
   }
 
-  target.textContent = `Reconstruction timed out after ${String(maxAttempts)} attempts.`;
+  setStatus(target, `Reconstruction timed out after ${String(maxAttempts)} attempts.`, "error");
   return "timeout";
 }
 
 function renderReconstruction(target: HTMLElement, result: ReconstructionResult): void {
   if (result.status === "failed") {
     const warnings = result.warnings?.length ? ` Warnings: ${result.warnings.join("; ")}` : "";
-    target.textContent = `Reconstruction failed.${warnings}`;
+    setStatus(target, `Reconstruction failed.${warnings}`, "error");
     return;
   }
 
@@ -249,9 +269,12 @@ function renderReconstruction(target: HTMLElement, result: ReconstructionResult)
     result.observed_fraction === undefined ? "unknown" : result.observed_fraction.toFixed(3);
   const warnings = result.warnings?.length ? result.warnings.join("; ") : "none";
   const dimensionalClaim = result.metric === false ? " No dimensional claims." : "";
-  target.textContent =
+  setStatus(
+    target,
     `Reconstruction complete. Reference tier: ${referenceTier}. Metric: ${metric}.` +
-    ` Observed fraction: ${observed}. Warnings: ${warnings}.${dimensionalClaim}`;
+      ` Observed fraction: ${observed}. Warnings: ${warnings}.${dimensionalClaim}`,
+    "info",
+  );
 }
 
 function delay(ms: number): Promise<void> {

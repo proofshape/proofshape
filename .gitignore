@@ -15,6 +15,7 @@ fixtures/**
 !submissions/assets/**/*.png
 *.ply
 *.glb
+!capture/stub/fixtures/*.glb
 *.obj
 *.stl
 !fixtures/reference_cad/

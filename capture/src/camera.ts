@@ -79,11 +79,14 @@ export const CAMERA_PAGE_HTML = `
 // A denial is "visible" per this story's own acceptance criteria only if a tester would actually
 // notice it, not just technically find a non-empty string somewhere in the DOM -- confirmed by
 // real on-device testing that plain body-text color blended in enough to almost be missed. Not
-// styling choices for their own sake (that's C-04's UI-polish job); this is the minimum needed so
-// an error reads as an error.
-type StatusKind = "info" | "error";
+// styling choices for their own sake; this is the minimum needed so an error reads as an error.
+// Exported so C-04's shell.ts (and anywhere else rendering a granted/denied status) can reuse the
+// same fix rather than silently losing it -- caught in review (TabeenRaoof, PR #117): shell.ts's
+// camera/gyro status rendering used plain textContent with no styling, exactly the bug this
+// comment already named as a thing to not repeat.
+export type StatusKind = "info" | "error";
 
-function setStatus(status: HTMLElement, message: string, kind: StatusKind): void {
+export function setStatus(status: HTMLElement, message: string, kind: StatusKind): void {
   status.textContent = message;
   status.style.color = kind === "error" ? "#b00020" : "";
   status.style.fontWeight = kind === "error" ? "bold" : "";

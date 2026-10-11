@@ -174,14 +174,14 @@ so this is behind schedule, not early.
 | [C-01](C/C-01.md) | Minimal upload page | 3 h | F-02, F-03 | Done | @TabeenRaoof |
 | [C-02](C/C-02.md) | Camera permissions on a real iPhone | 2 h | C-01 | Done | @TabeenRaoof |
 | [C-03](C/C-03.md) | Gyro permission flow | 2 h | C-01 | Done | @dalwalyk |
-| [C-04](C/C-04.md) | App shell | 3 h | C-01, C-02, C-03 | Claimed | @dalwalyk |
-| [C-05](C/C-05.md) | Live camera | 3 h | C-04 | Blocked | _unclaimed_ |
+| [C-04](C/C-04.md) | App shell | 3 h | C-01, C-02, C-03 | Done | @dalwalyk |
+| [C-05](C/C-05.md) | Live camera | 3 h | C-04 | Ready | _unclaimed_ |
 | [C-06](C/C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
-| [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Ready | _unclaimed_ |
+| [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Claimed | @dalwalyk |
 | [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Ready | _unclaimed_ |
 | [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Blocked | _unclaimed_ |
-| [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Claimed | @mbj1994 |
-| [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Blocked | _unclaimed_ |
+| [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Done | @mbj1994 |
+| [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Ready | _unclaimed_ |
 | [C-12](C/C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Blocked | _unclaimed_ |
 | [C-13](C/C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Blocked | _unclaimed_ |
 
