@@ -556,6 +556,41 @@ consistent with the progress log's own append-only, never-rewritten history.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-042, so D-043 was the first free number.
 
+**D-044 · R-06's height cut is measured from the reconstructed board surface, not R-04's z=0
+assumption; R-04 itself is unchanged.** (2026-10-11)
+R-17 measured the real board sitting 1.6-5.4 mm below z=0 after R-04's alignment, with tilt up
+to 0.9°, so R-06's "2 mm above z=0" cut removed 3.6-7.4 mm of every part's base (a quarter of
+s-04's 30 mm height). R-21's story notes left the owner a choice: fix it at the source (teach
+R-04 to land the board on z=0) or measure it downstream (fit the real board plane in R-06 and
+cut relative to that). Chosen: measure it in R-06, via a new `measure_board_surface` in
+`recon/part_segmentation.py`. R-04 is left alone, for two reasons. First, R-22 (owned separately,
+in progress) is investigating a different R-04/R-01 scale discrepancy at the same time; changing
+R-04's alignment now would move the ground under that measurement while it's being taken.
+Second, the plane fit's own residual noise is what the height threshold needs anyway (see
+below), so R-06 has to do this measurement regardless of what R-04 does.
+
+The height threshold itself is no longer a fixed 2 mm: R-17 also found VGGT reconstructing a
+weak second board layer 4-6 mm above the real board on two of the five golden objects, which a
+fixed margin moved down to the real board would let through. `measure_board_surface` instead
+histograms point density above the fitted plane and sets the threshold to the top of the
+highest dense bin (never below a 2 mm floor), so a noisier or thicker board layer gets a taller
+cut automatically. `recon/tsdf_fusion.py`'s `fuse_run` fits the same surface from its own
+valid-depth pixels and uses it for both the mask and the voxel grid's z bounds, so the fused
+mesh (and so the deployed service, which calls `fuse_run` directly) keeps the same base R-06
+now keeps.
+
+Real-data rerun on the golden set (offset / tilt / threshold, measured vs. R-17's old cut):
+
+| | s-01 | s-02 | s-03 | s-04 | s-05 |
+|---|---|---|---|---|---|
+| Offset (mm) | 1.9 | 0.9 | 3.2 | 5.4 | 3.2 |
+| Tilt (deg) | 0.38 | 0.53 | 0.23 | 0.78 | 0.47 |
+| New threshold (mm) | 6.0 | 4.5 | 3.5 | 2.5 | 3.5 |
+| Old cut above real board (mm, R-17) | 4.2 | 3.6 | 4.8 | 7.4 | 5.3 |
+
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-043, so D-044 was the first free number.
+
 ---
 
 ## Open — not yet decided
