@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it } from "vitest";
-import { mountGyroOverlay } from "./overlay.js";
+import { mountGyroOverlay, type GyroOverlayHandle } from "./overlay.js";
 import { DEFAULT_ORBIT, type OrbitSlot } from "./orbit.js";
 import type { Gyro } from "./types.js";
 
@@ -46,15 +46,27 @@ function text(root: HTMLElement, selector: string): string | null {
   return root.querySelector(selector)?.textContent ?? null;
 }
 
+// Every mount's handle is tracked and disposed in afterEach -- the exact listener-leak bug
+// TabeenRaoof and mbj1994 independently caught means every prior mount in this file would
+// otherwise leave a permanent `window` listener live for the rest of the test run.
+let mountedHandles: GyroOverlayHandle[] = [];
+function mountOverlay(container: HTMLElement, orbit?: readonly OrbitSlot[]): GyroOverlayHandle {
+  const handle = orbit ? mountGyroOverlay(container, orbit) : mountGyroOverlay(container);
+  mountedHandles.push(handle);
+  return handle;
+}
+
 describe("mountGyroOverlay", () => {
   afterEach(() => {
-    // No vi.stubGlobal used here (no permission mocking needed), but dispatched events are
-    // real window listeners -- nothing to explicitly unstub, each test gets a fresh document.
+    for (const handle of mountedHandles) {
+      handle.dispose();
+    }
+    mountedHandles = [];
   });
 
   it("renders into the given container, not a new root it creates itself", () => {
     const { container, root } = mount();
-    mountGyroOverlay(container);
+    mountOverlay(container);
 
     expect(root.querySelector(".gyro-overlay")).not.toBeNull();
     // The container passed in is the one that got the markup -- nothing escaped it.
@@ -63,7 +75,7 @@ describe("mountGyroOverlay", () => {
 
   it("shows an initial state and a 0-covered count before any frame is accepted", () => {
     const { container } = mount();
-    mountGyroOverlay(container);
+    mountOverlay(container);
 
     expect(text(container, ".gyro-overlay-count")).toBe(
       `Covered: 0/${String(DEFAULT_ORBIT.length)}`,
@@ -73,7 +85,7 @@ describe("mountGyroOverlay", () => {
 
   it("reportAcceptedFrame advances the covered count", () => {
     const { container } = mount();
-    const handle = mountGyroOverlay(container);
+    const handle = mountOverlay(container);
 
     const slot0 = requireSlot(0);
     const firstReading: Gyro = {
@@ -90,7 +102,7 @@ describe("mountGyroOverlay", () => {
 
   it("a dispatched orientation event updates the arrow toward the next target -- not just status text", () => {
     const { container } = mount();
-    const handle = mountGyroOverlay(container);
+    const handle = mountOverlay(container);
     // Anchor at alpha=0, elevation matching slot 0 -- covers slot 0, next target is slot 1.
     const slot0 = requireSlot(0);
     handle.reportAcceptedFrame({ alpha: 0, beta: elevationToBeta(slot0.elevationDeg), gamma: 0 });
@@ -110,7 +122,7 @@ describe("mountGyroOverlay", () => {
 
   it("hides the arrow and shows an on-target status once the live reading matches the target", () => {
     const { container } = mount();
-    const handle = mountGyroOverlay(container);
+    const handle = mountOverlay(container);
     handle.reportAcceptedFrame({
       alpha: 0,
       beta: elevationToBeta(requireSlot(0).elevationDeg),
@@ -127,7 +139,7 @@ describe("mountGyroOverlay", () => {
 
   it("shows an orbit-complete status once every slot is covered", () => {
     const { container } = mount();
-    const handle = mountGyroOverlay(container);
+    const handle = mountOverlay(container);
     for (const slot of DEFAULT_ORBIT) {
       handle.reportAcceptedFrame({
         alpha: slot.azimuthDeg,
@@ -143,7 +155,7 @@ describe("mountGyroOverlay", () => {
 
   it("ignores a deviceorientation event with a null component rather than crashing", () => {
     const { container } = mount();
-    const handle = mountGyroOverlay(container);
+    const handle = mountOverlay(container);
     handle.reportAcceptedFrame({
       alpha: 0,
       beta: elevationToBeta(requireSlot(0).elevationDeg),
@@ -155,21 +167,47 @@ describe("mountGyroOverlay", () => {
     }).not.toThrow();
   });
 
-  it("does not attach a second deviceorientation listener on a second mount into a fresh container", () => {
+  it("does not corrupt a second mount into a fresh container", () => {
     const { container } = mount();
-    mountGyroOverlay(container);
+    mountOverlay(container);
 
     document.body.innerHTML += '<div id="second-container"></div>';
     const secondContainer = document.getElementById("second-container");
     if (!secondContainer) throw new Error("test setup: second container missing");
-    const secondHandle = mountGyroOverlay(secondContainer);
+    const secondHandle = mountOverlay(secondContainer);
     secondHandle.reportAcceptedFrame({ alpha: 0, beta: elevationToBeta(45), gamma: 0 });
 
-    // Each mount's own closure guards its own listener (scoped, not module-level) -- this just
-    // proves a second mount doesn't throw or corrupt the first container's content.
     expect(() => {
       dispatchOrientation(0, elevationToBeta(45), 0);
     }).not.toThrow();
     expect(container.querySelector(".gyro-overlay")).not.toBeNull();
+  });
+
+  it("dispose() actually removes the deviceorientation listener -- the regression TabeenRaoof and mbj1994 both caught", () => {
+    // Before this fix: mountGyroOverlay attached a permanent `window` listener with no way to
+    // remove it (the `listening` flag it was guarded by never did anything, since nothing ever
+    // re-called the function it guarded). Every mount leaked one more listener forever.
+    const { container } = mount();
+    const handle = mountGyroOverlay(container); // not tracked via mountOverlay -- disposed by hand below
+    handle.reportAcceptedFrame({
+      alpha: 0,
+      beta: elevationToBeta(requireSlot(0).elevationDeg),
+      gamma: 0,
+    });
+    const countBeforeDispose = text(container, ".gyro-overlay-count");
+
+    handle.dispose();
+    // After disposal, a live orientation event must not reach this overlay's own render logic
+    // again -- proven here by checking the arrow, which only updateArrow (triggered solely by
+    // the listener) ever touches.
+    const arrow = container.querySelector<HTMLElement>(".gyro-overlay-arrow");
+    const transformBeforeEvent = arrow?.style.transform;
+    const target = requireSlot(1);
+    dispatchOrientation(target.azimuthDeg + 90, elevationToBeta(target.elevationDeg), 0);
+
+    expect(arrow?.style.transform).toBe(transformBeforeEvent);
+    // The count (driven only by reportAcceptedFrame, not the listener) is unaffected either way
+    // -- confirms this test's dispatch targeted the listener path, not some unrelated change.
+    expect(text(container, ".gyro-overlay-count")).toBe(countBeforeDispose);
   });
 });

@@ -51,11 +51,18 @@ export function relativeAzimuthDeg(rawAlphaDeg: number, anchorDeg: number): numb
 }
 
 // beta: W3C front-back tilt, 0 deg when the device lies flat screen-up, ~90 deg when held
-// upright facing the user. The normal "mid elevation" photo pose -- standing, rear camera
-// pointing roughly horizontally at the part -- is beta ~= 90; tilting the phone forward/down to
-// point the camera at the part from above moves beta toward 0. This is a defensible first pass,
-// not a verified one -- isolated here specifically so it's a one-line fix if the real-device
-// manual check shows it's backwards.
+// upright facing the user. The normal upright photo pose -- standing, rear camera pointing
+// roughly horizontally at the part -- is beta ~= 90, which this function maps to elevation 0
+// (level with the part; *not* the "mid elevation" ring, which sits higher at 45 deg -- an
+// earlier version of this comment, a test name, and the story notes all called beta~90 "mid
+// elevation" by mistake, confusingly, even though the arithmetic itself was always correct.
+// Fixed everywhere per review, TabeenRaoof and mbj1994 both independently caught it). Tilting the
+// phone forward/down to point the camera at the part from above moves beta toward 0, i.e.
+// elevation toward 90 (straight down). This mapping itself is a defensible first pass, not a
+// verified one -- isolated here specifically so it's a one-line fix if the real-device manual
+// check shows it's backwards. That same check should also confirm two things this function
+// assumes but can't verify itself: portrait orientation (beta/gamma swap roles in landscape), and
+// which rotation direction W3C's alpha actually increases in on a real device.
 export function elevationFromBeta(betaDeg: number): number {
   return 90 - betaDeg;
 }
@@ -65,23 +72,43 @@ export function anchorAlphaDeg(acceptedReadings: readonly Gyro[]): number | null
   return acceptedReadings[0]?.alpha ?? null;
 }
 
-function slotMatches(
+// A reading counts toward its single nearest *eligible* slot only, not every slot within
+// tolerance -- caught in review (TabeenRaoof and mbj1994, independently): the tolerance (15 deg)
+// is wider than half the gap between rings (45/70 is a 25 deg gap, 70/90 is 20 deg), so "within
+// tolerance of every nearby slot" let one reading mark two different rings covered at once,
+// reaching "13/13" with fewer distinct views than the orbit is meant to require. Ranking by
+// elevation distance (the dimension that was actually ambiguous between rings) and taking the
+// closest fixes it without having to shrink the tolerance and lose aiming forgiveness.
+function nearestEligibleSlotIndex(
   reading: Gyro,
   anchorDeg: number,
-  slot: OrbitSlot,
+  orbit: readonly OrbitSlot[],
   toleranceDeg: number,
-): boolean {
+): number | null {
   // Plain subtraction, not angularDistanceDeg: unlike azimuth, elevation isn't a wraparound
   // quantity (computeArrowGuidance's elevationDiff uses the same plain subtraction).
   const elevationDeg = elevationFromBeta(reading.beta);
-  if (Math.abs(elevationDeg - slot.elevationDeg) > toleranceDeg) {
-    return false;
-  }
-  if (slot.elevationDeg >= AZIMUTH_EXEMPT_ELEVATION_DEG) {
-    return true;
-  }
   const azimuthDeg = relativeAzimuthDeg(reading.alpha, anchorDeg);
-  return angularDistanceDeg(azimuthDeg, slot.azimuthDeg) <= toleranceDeg;
+
+  let bestIndex: number | null = null;
+  let bestElevationDist = Infinity;
+  orbit.forEach((slot, index) => {
+    const elevationDist = Math.abs(elevationDeg - slot.elevationDeg);
+    if (elevationDist > toleranceDeg) {
+      return;
+    }
+    const azimuthEligible =
+      slot.elevationDeg >= AZIMUTH_EXEMPT_ELEVATION_DEG ||
+      angularDistanceDeg(azimuthDeg, slot.azimuthDeg) <= toleranceDeg;
+    if (!azimuthEligible) {
+      return;
+    }
+    if (elevationDist < bestElevationDist) {
+      bestElevationDist = elevationDist;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
 }
 
 export interface CoverageState {
@@ -99,12 +126,15 @@ export function computeCoverage(
   toleranceDeg: number = DEFAULT_COVERAGE_TOLERANCE_DEG,
 ): CoverageState {
   const anchorDeg = anchorAlphaDeg(acceptedReadings);
-  const covered = orbit.map((slot) => {
-    if (anchorDeg === null) {
-      return false;
+  const covered = orbit.map(() => false);
+  if (anchorDeg !== null) {
+    for (const reading of acceptedReadings) {
+      const index = nearestEligibleSlotIndex(reading, anchorDeg, orbit, toleranceDeg);
+      if (index !== null) {
+        covered[index] = true;
+      }
     }
-    return acceptedReadings.some((reading) => slotMatches(reading, anchorDeg, slot, toleranceDeg));
-  });
+  }
   const nextTargetIndex = covered.indexOf(false);
   return { covered, nextTargetIndex: nextTargetIndex === -1 ? null : nextTargetIndex };
 }
@@ -114,7 +144,10 @@ export type ArrowGuidance =
 
 // Signed deltas: positive azimuthDeltaDeg means the target is clockwise (to the right) of the
 // current reading; positive elevationDeltaDeg means the target is higher (tilt further toward
-// straight down).
+// straight down). The "clockwise" direction assumes W3C alpha increases in a specific rotation
+// sense that hasn't been confirmed on a real device -- worth checking alongside
+// elevationFromBeta's own flagged assumption during the manual check below, not just trusting
+// the spec's wording.
 export function computeArrowGuidance(
   liveGyro: Gyro,
   anchorAlphaDegValue: number,

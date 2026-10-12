@@ -10,6 +10,7 @@ import type { Gyro } from "./types.js";
 
 export interface GyroOverlayHandle {
   reportAcceptedFrame(gyro: Gyro): void;
+  dispose(): void;
 }
 
 const OVERLAY_HTML = `
@@ -78,23 +79,19 @@ export function mountGyroOverlay(
     arrow.style.transform = `rotate(${String(arrowRotationDeg(guidance.azimuthDeltaDeg, guidance.elevationDeltaDeg))}deg)`;
   }
 
-  // Scoped to this mount, not module-level -- the same reasoning gyro.ts's own `listening` flag
-  // uses, to avoid leaking across repeated mounts (e.g. in tests).
-  let listening = false;
-
-  function startListening(): void {
-    if (listening) {
+  // A named reference, not an inline arrow function, specifically so it can be removed again --
+  // caught in review (TabeenRaoof and mbj1994, independently): this mount previously attached the
+  // listener with no way to remove it, and the old `listening` flag it was guarded by never
+  // actually did anything (it was only ever checked once per mount, since nothing re-called
+  // `startListening`), so every remount (a new session, or each test) leaked one more permanent
+  // `window` listener.
+  function handleOrientation(event: DeviceOrientationEvent): void {
+    if (event.alpha === null || event.beta === null || event.gamma === null) {
       return;
     }
-    listening = true;
-    window.addEventListener("deviceorientation", (event) => {
-      if (event.alpha === null || event.beta === null || event.gamma === null) {
-        return;
-      }
-      updateArrow({ alpha: event.alpha, beta: event.beta, gamma: event.gamma });
-    });
+    updateArrow({ alpha: event.alpha, beta: event.beta, gamma: event.gamma });
   }
-  startListening();
+  window.addEventListener("deviceorientation", handleOrientation);
 
   return {
     reportAcceptedFrame(gyro: Gyro): void {
@@ -102,6 +99,9 @@ export function mountGyroOverlay(
       render();
       status.textContent =
         acceptedReadings.length === 1 ? "First position captured." : "Position captured.";
+    },
+    dispose(): void {
+      window.removeEventListener("deviceorientation", handleOrientation);
     },
   };
 }

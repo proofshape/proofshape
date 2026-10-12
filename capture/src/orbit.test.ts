@@ -47,7 +47,7 @@ describe("relativeAzimuthDeg", () => {
 });
 
 describe("elevationFromBeta", () => {
-  it("maps the upright mid-elevation pose (beta ~90) to elevation 0", () => {
+  it("maps the upright, camera-level pose (beta ~90) to elevation 0 -- not the mid-elevation ring, which is 45 deg higher", () => {
     expect(elevationFromBeta(90)).toBe(0);
   });
 
@@ -112,6 +112,22 @@ describe("computeCoverage", () => {
     const state = computeCoverage([gyro(0, 0), strayAzimuthReading], DEFAULT_ORBIT);
     const straightDownIndex = DEFAULT_ORBIT.findIndex((s) => s.elevationDeg === 90);
     expect(state.covered[straightDownIndex]).toBe(true);
+  });
+
+  it("assigns one reading to only its single nearest slot, even when it falls within tolerance of two rings", () => {
+    // TabeenRaoof's and mbj1994's independently-caught regression: the 45/70 ring gap is 25 deg
+    // and the default tolerance is 15 deg, so a reading at elevation 57 (12 from the mid ring at
+    // 45, 13 from the high ring at 70) is within tolerance of both -- it must only cover the
+    // nearer one (the mid ring, at distance 12), not both.
+    const midRingIndex = 0; // DEFAULT_ORBIT[0]: azimuth 0, elevation 45
+    const highRingIndex = 8; // DEFAULT_ORBIT[8]: azimuth 0, elevation 70
+    const anchor = gyro(0, elevationFromBetaInverse(45)); // sets anchor, also covers the mid ring itself
+    const ambiguousReading = gyro(0, elevationFromBetaInverse(57));
+
+    const state = computeCoverage([anchor, ambiguousReading], DEFAULT_ORBIT);
+
+    expect(state.covered[midRingIndex]).toBe(true);
+    expect(state.covered[highRingIndex]).toBe(false);
   });
 });
 
