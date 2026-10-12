@@ -164,7 +164,7 @@ def select_point_cloud(
     """Flatten per-pixel points to a cloud, dropping non-finite and low-confidence points.
 
     ``min_confidence`` is an absolute threshold on VGGT's depth confidence -- see
-    ``DEFAULT_MIN_CONFIDENCE``'s docstring for how that default was chosen (D-044).
+    ``DEFAULT_MIN_CONFIDENCE``'s docstring for how that default was chosen (D-045).
     """
     if (
         world_points.shape[:3] != confidence.shape

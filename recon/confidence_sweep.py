@@ -1,10 +1,10 @@
 """R-20: measure, on one real R-01+R-04 run, how a confidence threshold trades off stray
-points against part coverage -- the evidence D-044's chosen default is picked from.
+points against part coverage -- the evidence D-045's chosen default is picked from.
 
 R-17 found that 11.5-29.3% of segmented points on the golden set are "stray": segmented points
 outside the largest connected cluster of occupied voxels, more than 2 mm above the fitted board.
 R-17's own measurement was a one-off script. This module replaces it with committed, tested code
-so the sweep behind D-044 (and any later re-measurement, e.g. after R-21/R-22 land) can be rerun
+so the sweep behind D-045 (and any later re-measurement, e.g. after R-22 lands) can be rerun
 rather than re-derived by hand.
 
 The sweep, per threshold:
@@ -13,7 +13,8 @@ The sweep, per threshold:
   2. Drop pixels `recon.vggt_runner.confidence_keep_mask` would drop at that threshold -- the
      same predicate R-01's point cloud and R-07's fusion use, so this sweep measures exactly the
      choice those two stages make.
-  3. Run R-06's `segment_part` (board/table exclusion) on what survives.
+  3. Run R-06/R-21's `segment_part` (board/table exclusion, relative to the real fitted board
+     surface, not z=0) on what survives.
   4. Call `stray_point_fraction` on the segmented points.
 
 "Part coverage" compares each threshold's largest cluster against threshold 0's (no confidence
@@ -37,7 +38,8 @@ from scipy import ndimage
 from recon.metric_alignment import apply_similarity_transform
 from recon.part_segmentation import (
     DEFAULT_FOOTPRINT_MM,
-    DEFAULT_HEIGHT_THRESHOLD_MM,
+    DEFAULT_MAX_BOARD_TILT_DEG,
+    measure_board_surface,
     segment_part,
 )
 from recon.vggt_runner import confidence_keep_mask, unproject_depth_to_world
@@ -168,14 +170,21 @@ def sweep_run(
     reconstruction_run_dir: Path,
     alignment_json_path: Path,
     thresholds: Sequence[float] = DEFAULT_THRESHOLDS,
-    height_threshold_mm: float = DEFAULT_HEIGHT_THRESHOLD_MM,
+    height_threshold_mm: float | None = None,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
+    max_board_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
     voxel_size_mm: float = DEFAULT_VOXEL_SIZE_MM,
     min_points_per_voxel: int = DEFAULT_MIN_POINTS_PER_VOXEL,
 ) -> dict[str, Any]:
     """Load one real R-01 run and R-04 alignment, and measure stray fraction and part voxel
     coverage at each confidence threshold. 0.0 (no filtering) is always evaluated first, whether
     or not it is in `thresholds`, since every other threshold's coverage is measured against it.
+
+    R-21: the board surface is fit once, from this run's own valid-depth pixels, before the
+    threshold loop runs -- the same board shouldn't shift depending on which confidence
+    threshold is being measured. `height_threshold_mm=None` (the default) uses that fitted
+    surface's own measured threshold, same as `fuse_run`/`segment_run`; passing a value
+    overrides it but the height is still measured above the fitted plane, never above z=0.
     """
     reconstruction_run_dir = Path(reconstruction_run_dir)
     alignment_json_path = Path(alignment_json_path)
@@ -205,6 +214,19 @@ def sweep_run(
     board_frame_points = board_frame_points[finite]
     flat_confidence = flat_confidence[finite]
 
+    # measure_board_surface needs real depth measurements, not confidence -- the same
+    # valid_depth definition fuse_run uses (finite, positive depth; a zero/invalid pixel
+    # unprojects to the camera centre, not a board point, regardless of its confidence).
+    valid_depth = (np.isfinite(depth) & (depth > 0.0)).reshape(-1)[finite]
+    board_surface = measure_board_surface(
+        board_frame_points[valid_depth], footprint_mm, max_tilt_deg=max_board_tilt_deg
+    )
+    resolved_height_threshold_mm = (
+        board_surface.height_threshold_mm
+        if height_threshold_mm is None
+        else height_threshold_mm
+    )
+
     # 0.0 first (coverage's reference point), then the requested thresholds ascending, with
     # duplicates dropped but order preserved (dict.fromkeys keeps first-seen order).
     ordered_thresholds = list(dict.fromkeys([0.0, *sorted(thresholds)]))
@@ -214,7 +236,9 @@ def sweep_run(
     for threshold in ordered_thresholds:
         trusted = confidence_keep_mask(flat_confidence, threshold)
         trusted_points = board_frame_points[trusted]
-        keep = segment_part(trusted_points, height_threshold_mm, footprint_mm)
+        keep = segment_part(
+            trusted_points, board_surface, height_threshold_mm, footprint_mm
+        )
         segmented_points = trusted_points[keep]
 
         measurement = stray_point_fraction(
@@ -239,12 +263,13 @@ def sweep_run(
         )
 
     return {
-        "story": "R-20",
+        "story": ["R-20", "R-21"],
         "source_run_dir": str(reconstruction_run_dir),
         "source_alignment_json": str(alignment_json_path),
         "voxel_size_mm": voxel_size_mm,
         "min_points_per_voxel": min_points_per_voxel,
-        "height_threshold_mm": height_threshold_mm,
+        "board_surface": board_surface.as_report(),
+        "height_threshold_mm": resolved_height_threshold_mm,
         "footprint_mm": list(footprint_mm),
         "thresholds": rows,
     }
@@ -254,7 +279,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "R-20: sweep VGGT confidence thresholds on one real reconstruction run and report "
-            "stray-point fraction and part voxel coverage at each (evidence for D-044)."
+            "stray-point fraction and part voxel coverage at each (evidence for D-045)."
         )
     )
     parser.add_argument("reconstruction_run_dir", type=Path)
@@ -275,7 +300,13 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="defaults to <reconstruction_run_dir>/confidence_sweep.json",
     )
     parser.add_argument(
-        "--height-threshold-mm", type=float, default=DEFAULT_HEIGHT_THRESHOLD_MM
+        "--height-threshold-mm",
+        type=float,
+        default=None,
+        help="override the measured board-layer threshold (mm above the fitted board surface)",
+    )
+    parser.add_argument(
+        "--max-board-tilt-deg", type=float, default=DEFAULT_MAX_BOARD_TILT_DEG
     )
     parser.add_argument("--voxel-size-mm", type=float, default=DEFAULT_VOXEL_SIZE_MM)
     return parser
@@ -301,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
             alignment_json,
             thresholds=args.thresholds,
             height_threshold_mm=args.height_threshold_mm,
+            max_board_tilt_deg=args.max_board_tilt_deg,
             voxel_size_mm=args.voxel_size_mm,
         )
     except (FileNotFoundError, ValueError) as exc:

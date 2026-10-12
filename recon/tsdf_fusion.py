@@ -16,6 +16,13 @@ Masking: per-frame, per-pixel board-frame points are classified with
 volume -- the same height/footprint predicate R-06 uses to filter a point cloud, applied here to
 filter depth samples before fusion instead.
 
+R-21: the height check is relative to the real board surface, fit by
+`recon.part_segmentation.measure_board_surface` from this run's own valid-depth pixels (depth
+that is finite and positive -- an invalid pixel unprojects to the camera centre, not a board
+point, and would corrupt the fit). The voxel grid's top is set from the fitted plane too, so the
+grid itself doesn't repeat R-06's old z=0 assumption and clip the part's base before fusion even
+starts.
+
 R-20/D-045: a pixel VGGT's own confidence is too low to trust is also excluded here, with
 `recon.vggt_runner.confidence_keep_mask` -- the same predicate R-01 applies when building the
 point cloud in `points.ply`, so a pixel left out of the cloud is left out of the fused surface
@@ -41,7 +48,9 @@ from recon.metric_alignment import (
 )
 from recon.part_segmentation import (
     DEFAULT_FOOTPRINT_MM,
-    DEFAULT_HEIGHT_THRESHOLD_MM,
+    DEFAULT_MAX_BOARD_TILT_DEG,
+    BoardSurface,
+    measure_board_surface,
     segment_part,
 )
 from recon.vggt_runner import confidence_keep_mask, unproject_depth_to_world
@@ -361,6 +370,7 @@ def write_fusion_report(
     truncation_mm: float,
     bounds_min_mm: np.ndarray,
     bounds_max_mm: np.ndarray,
+    board_surface: BoardSurface,
     frame_count: int,
     observed_voxel_count: int,
     total_voxel_count: int,
@@ -371,7 +381,7 @@ def write_fusion_report(
     confidence_dropped_pixel_count: int,
 ) -> dict[str, Any]:
     report = {
-        "story": "R-07",
+        "story": ["R-07", "R-20", "R-21"],
         "source_run_dir": str(reconstruction_run_dir),
         "source_alignment_json": str(alignment_json_path),
         "units": "mm",
@@ -381,6 +391,7 @@ def write_fusion_report(
         "truncation_mm": truncation_mm,
         "bounds_min_mm": list(np.asarray(bounds_min_mm, dtype=float)),
         "bounds_max_mm": list(np.asarray(bounds_max_mm, dtype=float)),
+        "board_surface": board_surface.as_report(),
         "frame_count": frame_count,
         "observed_voxel_count": observed_voxel_count,
         "total_voxel_count": total_voxel_count,
@@ -408,9 +419,10 @@ def fuse_run(
     voxel_size_mm: float = DEFAULT_VOXEL_SIZE_MM,
     truncation_mm: float | None = None,
     method: str = "marching_cubes",
-    height_threshold_mm: float = DEFAULT_HEIGHT_THRESHOLD_MM,
+    height_threshold_mm: float | None = None,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
     max_part_height_mm: float = DEFAULT_MAX_PART_HEIGHT_MM,
+    max_board_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
     min_confidence: float | None = None,
 ) -> dict[str, Any]:
     """Load R-01 depth/poses and an R-04 alignment, fuse, extract a mesh, and write the outputs.
@@ -419,6 +431,10 @@ def fuse_run(
     `method="poisson"` (the fallback) skips the volume entirely and runs Poisson reconstruction
     directly on the segmented, board-frame-mm point cloud -- Open3D is required for that path
     only (see `extract_mesh_poisson`).
+
+    R-21: the board surface is fit from this run's own valid-depth pixels before segmenting, so
+    the height cut (and the voxel grid's z top, below) follow the real board, not z=0.
+    `height_threshold_mm` still overrides the measured value when given, same as `segment_run`.
 
     `min_confidence=None` (the default) reads the threshold the source run itself used
     (`run.json`'s own `min_confidence`), so the fused surface agrees with `points.ply` by
@@ -491,9 +507,27 @@ def fuse_run(
     board_frame_points = apply_similarity_transform(
         original_world_points.reshape(-1, 3), scale, rotation, translation
     ).reshape(frame_count, height, width, 3)
-    segmented_mask = segment_part(
-        board_frame_points.reshape(-1, 3), height_threshold_mm, footprint_mm
-    ).reshape(frame_count, height, width)
+
+    # Only pixels with a real depth measurement feed the board-plane fit -- an invalid pixel
+    # (depth <= 0 or non-finite) unprojects to the camera centre, not a board point.
+    flat_points = board_frame_points.reshape(-1, 3)
+    valid_depth = (np.isfinite(depth) & (depth > 0.0)).reshape(-1)
+    board_surface = measure_board_surface(
+        flat_points[valid_depth], footprint_mm, max_tilt_deg=max_board_tilt_deg
+    )
+    # segment_part itself requires every point finite; an invalid pixel's unprojected point can
+    # still be non-finite (e.g. NaN depth), so it's excluded here too rather than passed through
+    # and never classified as part geometry -- fuse_tsdf already drops invalid-depth pixels on
+    # its own, independently of this mask, so their keep value doesn't otherwise matter.
+    segmented_flat = np.zeros(flat_points.shape[0], dtype=bool)
+    segmented_flat[valid_depth] = segment_part(
+        flat_points[valid_depth], board_surface, height_threshold_mm, footprint_mm
+    )
+    segmented_mask = segmented_flat.reshape(frame_count, height, width)
+
+    # R-20/D-045: a pixel whose own confidence is too low to trust is excluded here too, with
+    # the same predicate R-01's point cloud uses, so a pixel left out of points.ply is left out
+    # of the fused surface too.
     if depth_conf is None:
         keep_mask = segmented_mask
         confidence_dropped_pixel_count = 0
@@ -502,8 +536,17 @@ def fuse_run(
         keep_mask = segmented_mask & confidence_mask
         confidence_dropped_pixel_count = int(np.count_nonzero(~confidence_mask))
 
-    bounds_min_mm = np.array([0.0, 0.0, -max_part_height_mm])
-    bounds_max_mm = np.array([footprint_mm[0], footprint_mm[1], 0.0])
+    # The grid follows the fitted (possibly tilted) plane, not z=0 -- otherwise the grid itself
+    # would cut off the part's base before fusion even runs. Its top is the plane's highest
+    # footprint corner (the deepest-into-the-table point of the real board); its bottom gives
+    # every corner, even the shallowest, the full max_part_height_mm of clearance above it.
+    footprint_corners_x = np.array([0.0, footprint_mm[0], 0.0, footprint_mm[0]])
+    footprint_corners_y = np.array([0.0, 0.0, footprint_mm[1], footprint_mm[1]])
+    corner_z_mm = board_surface.plane_z_mm(footprint_corners_x, footprint_corners_y)
+    grid_top_mm = float(np.max(corner_z_mm))
+    grid_bottom_mm = float(np.min(corner_z_mm)) - max_part_height_mm
+    bounds_min_mm = np.array([0.0, 0.0, grid_bottom_mm])
+    bounds_max_mm = np.array([footprint_mm[0], footprint_mm[1], grid_top_mm])
     resolved_truncation_mm = (
         truncation_mm or DEFAULT_TRUNCATION_VOXEL_MULTIPLE * voxel_size_mm
     )
@@ -543,6 +586,7 @@ def fuse_run(
         resolved_truncation_mm,
         bounds_min_mm,
         bounds_max_mm,
+        board_surface,
         frame_count=frame_count,
         observed_voxel_count=observed_voxel_count,
         total_voxel_count=total_voxel_count,
@@ -556,7 +600,7 @@ def fuse_run(
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Fuse R-01 depth into a TSDF volume and extract a mesh (R-07)."
+        description="Fuse R-01 depth into a TSDF volume and extract a mesh (R-07/R-20/R-21)."
     )
     parser.add_argument("reconstruction_run_dir", type=Path)
     parser.add_argument(
@@ -570,6 +614,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--voxel-size-mm", type=float, default=DEFAULT_VOXEL_SIZE_MM)
     parser.add_argument(
         "--method", choices=["marching_cubes", "poisson"], default="marching_cubes"
+    )
+    parser.add_argument(
+        "--height-threshold-mm",
+        type=float,
+        default=None,
+        help="override the measured board-layer threshold (mm above the fitted board surface)",
+    )
+    parser.add_argument(
+        "--max-board-tilt-deg", type=float, default=DEFAULT_MAX_BOARD_TILT_DEG
     )
     parser.add_argument(
         "--min-confidence",
@@ -596,6 +649,8 @@ def main(argv: list[str] | None = None) -> int:
             out_dir,
             voxel_size_mm=args.voxel_size_mm,
             method=args.method,
+            height_threshold_mm=args.height_threshold_mm,
+            max_board_tilt_deg=args.max_board_tilt_deg,
             min_confidence=args.min_confidence,
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:

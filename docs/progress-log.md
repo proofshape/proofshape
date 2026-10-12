@@ -965,3 +965,19 @@ checked by a human tapping the button on a real iPhone. `State` stays `Claimed`;
 repeated runs; repo-wide `pytest` (305)/`ruff`/`check_story_states.py` unaffected.
 **Next:** hand off to run the real-device check — once that's in, C-04 can close and C-05 (live
 camera, currently `Blocked` on C-04) can proceed.
+
+## 2026-10-11 — C-10 reconstruction result and mock service merged (PR #121)
+
+**Who:** @mbj1994, reviewed and approved by @TabeenRaoof.
+**What changed:** the live capture shell now finishes a session, polls the frozen-contract
+`getReconstruction` endpoint through pending/complete/failed states, shows reference tier,
+metric status, observed fraction and warnings, and explicitly says "No dimensional claims" for
+non-metric results. The existing capture stub now serves canned reconstruction responses plus a
+small renderable GLB, preserving HTTPS behind the device dev server; timeout/fetch-error states
+can resume polling the same finished session.
+**Result:** TypeScript and Python CI passed on the final reviewed head. C-10 closed at 1.5 h
+actual against a 3 h estimate, with no frozen OpenAPI change.
+**Concluded:** the capture app now has a contract-faithful post-finish path that works without
+the paid reconstruction deployment and never turns a non-metric result into a dimensional claim.
+**Next:** C-11 (model viewer) is now Ready and can render the GLB returned by this path.
+

@@ -275,10 +275,65 @@ def test_extract_mesh_poisson_on_a_synthetic_point_cloud():
 
 
 # --- fuse_run: end-to-end wiring on synthetic files ----------------------------------------------
+#
+# R-21: fuse_run now always fits the real board surface (measure_board_surface), which needs at
+# least DEFAULT_MIN_BOARD_POINTS candidate board points spread across the footprint -- a single
+# pixel, as R-07's original tests used, is far too few. `_board_and_part_depth` below builds a
+# synthetic scene with a real (flat) board layer plus one part pixel, shared by every test in
+# this section unless noted otherwise.
+#
+# Rotation flips z so that board-frame "above" (negative z) is camera-frame "in front" (positive
+# z) -- see recon/part_segmentation.py's docstring for why negative board-frame z means above
+# the board. With this rotation and zero translation, a pixel at depth D unprojects to
+# board-frame z=-D, and to (x,y) = ((u-cx)/fx*D, (v-cy)/fy*D) -- so many pixels sharing the same
+# depth D, at different (u,v), land on a flat board-frame plane at that one height (R-21's
+# `measure_board_surface` needs enough of those to fit a plane).
+_SCENE_ROTATION = np.diag([1.0, -1.0, -1.0])
+_SCENE_EXTRINSIC = np.concatenate([_SCENE_ROTATION, np.zeros((3, 1))], axis=1)[None]
+# cx=0, cy=120 (not symmetric): with this rotation, board-frame x=(u-cx)/fx*depth but
+# y=-(v-cy)/fy*depth, so positive x needs u>cx while positive y needs v<cy -- cx/cy are placed
+# so that non-negative pixel indices still land on the footprint's full x in [0,160], y in
+# [0,120].
+_SCENE_INTRINSIC = np.array([[10.0, 0.0, 0.0], [0.0, 10.0, 120.0], [0.0, 0.0, 1.0]])[
+    None
+]
+_SCENE_BOARD_DEPTH_MM = (
+    10.0  # board-frame z=-10 for every board pixel below (within the
+)
+# default 15mm search band `measure_board_surface` looks in around the assumed z=0)
+_SCENE_PART_DEPTH_MM = 40.0  # board-frame z=-40, i.e. 30mm above the flat board plane
+# NOTE: numpy fancy-indexes depth[0, _SCENE_PART_PIXEL] as *two full rows* (v=105 and v=20
+# across every u), not the single pixel the name suggests -- a pre-existing quirk of this
+# fixture (see _board_and_part_depth), not something this story's tests rely on or fix.
+_SCENE_PART_PIXEL = (
+    105,
+    20,
+)  # (v, u) -> board-frame (x=80, y=60), inside the default footprint
+
+
+def _board_and_part_depth(
+    include_board: bool = True, include_part: bool = True
+) -> np.ndarray:
+    """A (1, 130, 170) depth image: a grid of same-depth pixels spanning the default 160x120mm
+    footprint (a flat board), plus one pixel 30mm above it (the "part"). `_SCENE_EXTRINSIC` /
+    `_SCENE_INTRINSIC` above are the matching camera for every test that uses this."""
+    depth = np.zeros((1, 130, 170))
+    if include_board:
+        u_grid = np.arange(0, 161)  # x = u in [0, 160]
+        v_grid = np.arange(0, 121)  # y = 120 - v in [0, 120]
+        depth[0, v_grid[:, None], u_grid[None, :]] = _SCENE_BOARD_DEPTH_MM
+    if include_part:
+        depth[0, _SCENE_PART_PIXEL] = _SCENE_PART_DEPTH_MM
+    return depth
 
 
 def _write_synthetic_run(
-    run_dir, depth, extrinsic, intrinsic, depth_conf=None, min_confidence=0.0
+    run_dir,
+    depth,
+    extrinsic=_SCENE_EXTRINSIC,
+    intrinsic=_SCENE_INTRINSIC,
+    depth_conf=None,
+    min_confidence=0.0,
 ) -> None:
     run_dir.mkdir()
     frame_count = depth.shape[0]
@@ -317,18 +372,7 @@ def _write_identity_alignment(path) -> None:
 
 def test_fuse_run_writes_mesh_and_report(tmp_path):
     run_dir = tmp_path / "run"
-    # A point 50mm "above the board" (board-frame z=-50) sitting inside the default footprint,
-    # seen by one frame whose rotation flips z so that board-frame "above" (negative z) is
-    # camera-frame "in front" (positive z) -- see recon/part_segmentation.py's docstring for why
-    # negative board-frame z means above the board.
-    rotation = np.diag([1.0, -1.0, -1.0])
-    extrinsic = np.concatenate([rotation, np.zeros((3, 1))], axis=1)[None]
-    intrinsic = np.array([[10.0, 0.0, 50.0], [0.0, 10.0, 50.0], [0.0, 0.0, 1.0]])[None]
-    depth = np.zeros((1, 100, 150))
-    # Board-frame point (80, 60, -50): camera-frame (80, -60, 50) -> u=10*80/50+50=66,
-    # v=10*(-60)/50+50=38.
-    depth[0, 38, 66] = 50.0
-    _write_synthetic_run(run_dir, depth, extrinsic, intrinsic)
+    _write_synthetic_run(run_dir, _board_and_part_depth())
     alignment_json = run_dir / "metric_alignment.json"
     _write_identity_alignment(alignment_json)
     out_dir = tmp_path / "mesh_out"
@@ -346,12 +390,71 @@ def test_fuse_run_writes_mesh_and_report(tmp_path):
     assert report["method"] == "marching_cubes"
     assert report["observed_voxel_count"] >= 1
     assert report["total_voxel_count"] == 16 * 12 * 10  # (160/10) * (120/10) * (100/10)
+    assert report["board_surface"]["offset_mm"] == pytest.approx(-10.0, abs=0.5)
+    assert report["min_confidence"] == 0.0
+    assert report["min_confidence_source"] == "run.json"
     assert (out_dir / "mesh.ply").exists()
     vertices, faces = tsdf_fusion.read_mesh_ply(out_dir / "mesh.ply")
     assert len(vertices) == report["vertex_count"]
     assert len(faces) == report["face_count"]
     on_disk_report = json.loads((out_dir / "tsdf_fusion.json").read_text())
     assert on_disk_report == report
+
+
+def test_fuse_run_grid_top_follows_the_fitted_plane(tmp_path):
+    # The fitted plane sits at z=-10 (board-frame), not z=0 -- the voxel grid's top must follow
+    # it, or the grid itself would clip the part's base before fusion even runs.
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth())
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "mesh_out",
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+    )
+
+    assert report["bounds_max_mm"][2] == pytest.approx(-10.0, abs=0.5)
+    assert report["bounds_min_mm"][2] == pytest.approx(-110.0, abs=0.5)
+
+
+def test_fuse_run_excludes_invalid_depth_pixels_from_the_board_fit(tmp_path):
+    # A non-finite depth pixel unprojects to a non-finite board-frame point; it must never reach
+    # measure_board_surface (which would otherwise either crash on it or let it skew the fit).
+    run_dir = tmp_path / "run"
+    depth = _board_and_part_depth()
+    depth[0, 0, 0] = np.nan
+    _write_synthetic_run(run_dir, depth)
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+    out_dir = tmp_path / "mesh_out"
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        out_dir,
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+    )
+
+    assert report["board_surface"]["offset_mm"] == pytest.approx(-10.0, abs=0.5)
+
+
+def test_fuse_run_raises_when_no_board_is_visible(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth(include_board=False))
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    with pytest.raises(ValueError, match="board points"):
+        tsdf_fusion.fuse_run(
+            run_dir, alignment_json, tmp_path / "mesh_out", voxel_size_mm=10.0
+        )
 
 
 def test_fuse_run_at_min_confidence_zero_never_reads_depth_conf(tmp_path):
@@ -362,16 +465,12 @@ def test_fuse_run_at_min_confidence_zero_never_reads_depth_conf(tmp_path):
     # mask.
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    rotation = np.diag([1.0, -1.0, -1.0])
-    extrinsic = np.concatenate([rotation, np.zeros((3, 1))], axis=1)[None]
-    intrinsic = np.array([[10.0, 0.0, 50.0], [0.0, 10.0, 50.0], [0.0, 0.0, 1.0]])[None]
-    depth = np.zeros((1, 100, 150))
-    depth[0, 38, 66] = 50.0  # board-frame (80, 60, -50), same point as the test above
+    depth = _board_and_part_depth()
     np.savez_compressed(
         run_dir / "poses.npz",
         frame_names=np.array(["frame_0.jpg"]),
-        extrinsic=extrinsic.astype(np.float32),
-        intrinsic=intrinsic.astype(np.float32),
+        extrinsic=_SCENE_EXTRINSIC.astype(np.float32),
+        intrinsic=_SCENE_INTRINSIC.astype(np.float32),
     )
     np.savez_compressed(run_dir / "depth.npz", depth=depth.astype(np.float32))
     (run_dir / "run.json").write_text(json.dumps({"min_confidence": 0.0}))
@@ -389,17 +488,12 @@ def test_fuse_run_at_min_confidence_zero_never_reads_depth_conf(tmp_path):
 
     assert report["min_confidence"] == 0.0
     assert report["confidence_dropped_pixel_count"] == 0
-    assert report["observed_voxel_count"] >= 1  # the point was still fused normally
+    assert report["observed_voxel_count"] >= 1  # the part was still fused normally
 
 
 def test_fuse_run_refuses_to_overwrite_existing_output(tmp_path):
     run_dir = tmp_path / "run"
-    rotation = np.diag([1.0, -1.0, -1.0])
-    extrinsic = np.concatenate([rotation, np.zeros((3, 1))], axis=1)[None]
-    intrinsic = np.array([[10.0, 0.0, 5.0], [0.0, 10.0, 5.0], [0.0, 0.0, 1.0]])[None]
-    depth = np.zeros((1, 10, 10))
-    depth[0, 5, 5] = 30.0
-    _write_synthetic_run(run_dir, depth, extrinsic, intrinsic)
+    _write_synthetic_run(run_dir, _board_and_part_depth())
     alignment_json = run_dir / "metric_alignment.json"
     _write_identity_alignment(alignment_json)
     out_dir = tmp_path / "mesh_out"
@@ -432,42 +526,40 @@ def test_fuse_run_rejects_unknown_method(tmp_path):
 # resolving the right threshold (from the run's own run.json by default, or an explicit
 # override) and computing the right mask from it. `confidence_dropped_pixel_count` is used as
 # the check because it is exact and deterministic -- unlike mesh vertex positions, it does not
-# depend on marching cubes' neighbourhood requirements or this camera's perspective geometry.
+# depend on marching cubes' neighbourhood requirements or this scene's perspective geometry.
 
 _CONFIDENCE_TEST_FUSE_KWARGS = {
     "voxel_size_mm": 10.0,
     "footprint_mm": (160.0, 120.0),
     "max_part_height_mm": 100.0,
 }
+_CONFIDENCE_TEST_PIXEL_COUNT = 1 * 130 * 170  # _board_and_part_depth's image size
 
 
 def _write_confidence_test_run(
     run_dir, true_confidence, spurious_confidence, min_confidence_in_run_json=0.0
 ) -> None:
-    """One frame, two measurements, both of them real part geometry that `segment_part` would
-    keep on its own (inside the default footprint and well above the height threshold) -- so
-    confidence is the ONLY thing that can tell them apart. Without that, a test could pass for
-    the wrong reason: a "spurious" point segmentation would have excluded anyway proves nothing
-    about whether confidence filtering actually runs.
+    """R-21's board scene (needed so `measure_board_surface` has enough points to fit), plus two
+    of this story's own part pixels -- both real part geometry `segment_part` would keep on its
+    own (inside the footprint, well above the board), so confidence is the ONLY thing that can
+    tell them apart. Without that, a test could pass for the wrong reason: a "spurious" point
+    segmentation would have excluded anyway proves nothing about whether confidence filtering
+    actually runs. `include_part=False` avoids `_SCENE_PART_PIXEL`'s own fancy-indexing quirk
+    (see its comment above) -- these two pixels are indexed directly and unambiguously instead.
 
-    `true_confidence` is at board-frame (80, 60, -50) (the same point
-    `test_fuse_run_writes_mesh_and_report` uses). `spurious_confidence` is at board-frame
-    (21, 21, -30) -- a different, unrelated location, also inside the footprint.
+    `true_confidence` is at board-frame (80, 60, -40) (pixel (105, 20), 30mm above the board).
+    `spurious_confidence` is at board-frame (40, 60, -40) (pixel (105, 10)), a different,
+    unrelated location at the same height, also inside the footprint.
     """
-    rotation = np.diag([1.0, -1.0, -1.0])
-    extrinsic = np.concatenate([rotation, np.zeros((3, 1))], axis=1)[None]
-    intrinsic = np.array([[10.0, 0.0, 50.0], [0.0, 10.0, 50.0], [0.0, 0.0, 1.0]])[None]
-    depth = np.zeros((1, 100, 150))
-    depth_conf = np.zeros((1, 100, 150))
-    depth[0, 38, 66] = 50.0  # board-frame (80, 60, -50)
-    depth_conf[0, 38, 66] = true_confidence
-    depth[0, 43, 57] = 30.0  # board-frame (21, 21, -30)
-    depth_conf[0, 43, 57] = spurious_confidence
+    depth = _board_and_part_depth(include_part=False)
+    depth_conf = np.zeros_like(depth)
+    depth[0, 105, 20] = _SCENE_PART_DEPTH_MM  # board-frame (80, 60, -40)
+    depth_conf[0, 105, 20] = true_confidence
+    depth[0, 105, 10] = _SCENE_PART_DEPTH_MM  # board-frame (40, 60, -40)
+    depth_conf[0, 105, 10] = spurious_confidence
     _write_synthetic_run(
         run_dir,
         depth,
-        extrinsic,
-        intrinsic,
         depth_conf=depth_conf,
         min_confidence=min_confidence_in_run_json,
     )
@@ -487,9 +579,9 @@ def test_fuse_run_confidence_threshold_excludes_the_spurious_pixel(tmp_path):
         **_CONFIDENCE_TEST_FUSE_KWARGS,
     )
 
-    # Of the 1*100*150 = 15000 pixels, only the one true pixel (confidence 5.0) clears 1.0 --
-    # the spurious pixel (0.5) and every untouched background pixel (0.0, never set) don't.
-    assert report["confidence_dropped_pixel_count"] == 100 * 150 - 1
+    # Of the scene's pixels, only the one true pixel (confidence 5.0) clears 1.0 -- the
+    # spurious pixel (0.5) and every untouched board/background pixel (0.0, never set) don't.
+    assert report["confidence_dropped_pixel_count"] == _CONFIDENCE_TEST_PIXEL_COUNT - 1
 
     # Control, in the same test: with confidence ignored (threshold 0), nothing is dropped on
     # confidence grounds -- proving this field actually reflects the threshold, not some fixed
@@ -529,7 +621,7 @@ def test_fuse_run_reads_min_confidence_from_run_json_by_default(tmp_path):
 
     assert report["min_confidence"] == 1.0
     assert report["min_confidence_source"] == "run.json"
-    assert report["confidence_dropped_pixel_count"] == 100 * 150 - 1
+    assert report["confidence_dropped_pixel_count"] == _CONFIDENCE_TEST_PIXEL_COUNT - 1
 
 
 def test_fuse_run_explicit_min_confidence_overrides_run_json(tmp_path):
@@ -608,9 +700,9 @@ def test_fuse_run_poisson_path_also_respects_confidence(tmp_path, monkeypatch):
         **_CONFIDENCE_TEST_FUSE_KWARGS,
     )
 
-    # Only the true, trusted point (board-frame (80, 60, -50)) reaches Poisson -- the spurious
+    # Only the true, trusted point (board-frame (80, 60, -40)) reaches Poisson -- the spurious
     # pixel is excluded by confidence before extract_mesh_poisson ever sees it, same as the
     # marching-cubes path.
     points_mm = captured["points_mm"]
     assert len(points_mm) == 1
-    np.testing.assert_allclose(points_mm[0], [80.0, 60.0, -50.0])
+    np.testing.assert_allclose(points_mm[0], [80.0, 60.0, -40.0])

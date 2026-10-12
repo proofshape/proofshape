@@ -162,14 +162,29 @@ def test_part_voxel_coverage_nan_when_baseline_empty():
 # at each threshold. The camera is rotation=diag([1,-1,-1]) (board-frame "above the board" is
 # camera-frame "in front", same convention tsdf_fusion's own tests use), identity alignment, so
 # board-frame coordinates can be chosen directly and the required pixel/depth values solved for.
+#
+# R-21: sweep_run now always fits a real board surface (measure_board_surface), which needs at
+# least DEFAULT_MIN_BOARD_POINTS candidate points -- A/B/C alone, as R-20's original tests used,
+# is far too few. _write_synthetic_sweep_run also writes a flat board layer at board-frame
+# z=-14mm (within the 15mm search band), at this same camera's scale, well separated in height
+# from A/B/C (z=-20mm, 6mm above the fitted board -- comfortably above the measured 2mm-floor
+# threshold) so it never interferes with their own segmentation or clustering.
 
 
-def _write_synthetic_sweep_run(run_dir, points_confidences, image_hw=(50, 100)):
+def _write_synthetic_sweep_run(run_dir, points_confidences, image_hw=(50, 120)):
     """points_confidences: list of (x_mm, y_mm, z_mm, confidence, pixel_row, pixel_col)."""
     run_dir.mkdir()
     height, width = image_hw
     depth = np.zeros((1, height, width))
     depth_conf = np.zeros((1, height, width))
+
+    # Flat board layer: board-frame z=-14mm for every pixel in this block (u in [50,115],
+    # v in [0,25] at this camera's f=10/cx=50/cy=25 scale -> x in [0,91], y in [0,35], both well
+    # inside the default 160x120mm footprint). 66*26=1716 points, comfortably over
+    # DEFAULT_MIN_BOARD_POINTS (1000).
+    board_depth_mm = 14.0
+    depth[0, 0:26, 50:116] = board_depth_mm
+
     for _x, _y, z_mm, confidence, row, col in points_confidences:
         depth[
             0, row, col
