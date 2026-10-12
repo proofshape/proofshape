@@ -354,6 +354,44 @@ def test_fuse_run_writes_mesh_and_report(tmp_path):
     assert on_disk_report == report
 
 
+def test_fuse_run_at_min_confidence_zero_never_reads_depth_conf(tmp_path):
+    # Efficiency fix: min_confidence resolving to 0.0 (the project-wide "no filtering"
+    # sentinel) must skip touching depth_conf entirely, not just produce an all-True mask from
+    # it. Proven here by never writing a depth_conf array to depth.npz at all -- if fuse_run
+    # tried to read depth_conf at 0.0, this would raise a KeyError, not just compute a trivial
+    # mask.
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    rotation = np.diag([1.0, -1.0, -1.0])
+    extrinsic = np.concatenate([rotation, np.zeros((3, 1))], axis=1)[None]
+    intrinsic = np.array([[10.0, 0.0, 50.0], [0.0, 10.0, 50.0], [0.0, 0.0, 1.0]])[None]
+    depth = np.zeros((1, 100, 150))
+    depth[0, 38, 66] = 50.0  # board-frame (80, 60, -50), same point as the test above
+    np.savez_compressed(
+        run_dir / "poses.npz",
+        frame_names=np.array(["frame_0.jpg"]),
+        extrinsic=extrinsic.astype(np.float32),
+        intrinsic=intrinsic.astype(np.float32),
+    )
+    np.savez_compressed(run_dir / "depth.npz", depth=depth.astype(np.float32))
+    (run_dir / "run.json").write_text(json.dumps({"min_confidence": 0.0}))
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "out",
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+    )
+
+    assert report["min_confidence"] == 0.0
+    assert report["confidence_dropped_pixel_count"] == 0
+    assert report["observed_voxel_count"] >= 1  # the point was still fused normally
+
+
 def test_fuse_run_refuses_to_overwrite_existing_output(tmp_path):
     run_dir = tmp_path / "run"
     rotation = np.diag([1.0, -1.0, -1.0])

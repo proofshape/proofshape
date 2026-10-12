@@ -465,7 +465,16 @@ def fuse_run(
         intrinsic = poses["intrinsic"].astype(np.float64)
     with np.load(reconstruction_run_dir / "depth.npz") as depth_data:
         depth = depth_data["depth"].astype(np.float64)
-        depth_conf = depth_data["depth_conf"].astype(np.float64)
+        # 0.0 is the project-wide "no confidence filtering" sentinel (R-01's own CLI default
+        # before D-045, and this function's documented way to reproduce pre-R-20 fusion for
+        # comparison): skip decompressing depth_conf and computing the mask entirely rather
+        # than paying for an array the same size as depth to build a predicate that was never
+        # applied before this story existed.
+        depth_conf = (
+            None
+            if resolved_min_confidence == 0.0
+            else depth_data["depth_conf"].astype(np.float64)
+        )
 
     alignment_json = json.loads(alignment_json_path.read_text(encoding="utf-8"))
     scale = float(alignment_json["scale"])
@@ -482,14 +491,16 @@ def fuse_run(
     board_frame_points = apply_similarity_transform(
         original_world_points.reshape(-1, 3), scale, rotation, translation
     ).reshape(frame_count, height, width, 3)
-    confidence_mask = confidence_keep_mask(depth_conf, resolved_min_confidence)
-    keep_mask = (
-        segment_part(
-            board_frame_points.reshape(-1, 3), height_threshold_mm, footprint_mm
-        ).reshape(frame_count, height, width)
-        & confidence_mask
-    )
-    confidence_dropped_pixel_count = int(np.count_nonzero(~confidence_mask))
+    segmented_mask = segment_part(
+        board_frame_points.reshape(-1, 3), height_threshold_mm, footprint_mm
+    ).reshape(frame_count, height, width)
+    if depth_conf is None:
+        keep_mask = segmented_mask
+        confidence_dropped_pixel_count = 0
+    else:
+        confidence_mask = confidence_keep_mask(depth_conf, resolved_min_confidence)
+        keep_mask = segmented_mask & confidence_mask
+        confidence_dropped_pixel_count = int(np.count_nonzero(~confidence_mask))
 
     bounds_min_mm = np.array([0.0, 0.0, -max_part_height_mm])
     bounds_max_mm = np.array([footprint_mm[0], footprint_mm[1], 0.0])
