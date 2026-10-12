@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from recon import tsdf_fusion
+from recon.vggt_runner import confidence_keep_mask
 
 # --- build_voxel_grid ------------------------------------------------------------------------
 
@@ -109,6 +110,59 @@ def test_fuse_tsdf_keep_mask_excludes_masked_pixels():
     )
 
     np.testing.assert_allclose(weight, [0.0, 0.0, 0.0])
+
+
+def test_fuse_tsdf_confidence_derived_mask_excludes_a_spurious_reading():
+    # R-20's own acceptance criterion: "a low-confidence spurious region must not appear in the
+    # fused TSDF." Two frames look at the same pixel (the x=y=0 trick above): frame 0 measures
+    # the true, trusted surface at z=50; frame 1 measures a different, untrusted depth (z=100)
+    # that would otherwise plant its own zero-crossing elsewhere in the column. keep_mask comes
+    # from recon.vggt_runner.confidence_keep_mask on each frame's own confidence -- the same
+    # function R-01's point cloud uses -- not a hand-written boolean array, so this actually
+    # exercises the confidence predicate, not just fuse_tsdf's pre-existing generic masking.
+    voxel_centers = np.array(
+        [
+            [0.0, 0.0, 30.0],
+            [0.0, 0.0, 50.0],
+            [0.0, 0.0, 70.0],
+            [0.0, 0.0, 90.0],
+            [0.0, 0.0, 110.0],
+        ]
+    )
+    extrinsic = np.concatenate([_RAY_EXTRINSIC, _RAY_EXTRINSIC], axis=0)
+    intrinsic = np.concatenate([_RAY_INTRINSIC, _RAY_INTRINSIC], axis=0)
+    depth_mm = np.concatenate([_ray_depth(50.0), _ray_depth(100.0)], axis=0)
+    confidence = np.zeros((2, 3, 3))
+    confidence[0, 1, 1] = 5.0  # frame 0: trusted
+    confidence[1, 1, 1] = 0.5  # frame 1: untrusted
+
+    keep_mask = confidence_keep_mask(confidence, min_confidence=1.0)
+    _tsdf, weight = tsdf_fusion.fuse_tsdf(
+        depth_mm,
+        extrinsic,
+        intrinsic,
+        voxel_centers,
+        truncation_mm=25.0,
+        keep_mask=keep_mask,
+    )
+
+    # Frame 1's reading at z=100 (truncation band [75,125]) never contributes: voxels at z=90
+    # and z=110 stay entirely unobserved, even though they sit inside that band.
+    np.testing.assert_allclose(weight, [1.0, 1.0, 1.0, 0.0, 0.0])
+
+    # Control, in the same test: with confidence ignored (no mask at all), frame 1's spurious
+    # reading DOES contribute -- proving this test would actually catch the problem, not just
+    # pass regardless of whether fusion reads confidence at all.
+    _tsdf_unfiltered, weight_unfiltered = tsdf_fusion.fuse_tsdf(
+        depth_mm,
+        extrinsic,
+        intrinsic,
+        voxel_centers,
+        truncation_mm=25.0,
+        keep_mask=None,
+    )
+    assert weight_unfiltered[3] > 0.0
+    assert weight_unfiltered[4] > 0.0
 
 
 def test_fuse_tsdf_rejects_bad_shapes():
@@ -223,7 +277,9 @@ def test_extract_mesh_poisson_on_a_synthetic_point_cloud():
 # --- fuse_run: end-to-end wiring on synthetic files ----------------------------------------------
 
 
-def _write_synthetic_run(run_dir, depth, extrinsic, intrinsic) -> None:
+def _write_synthetic_run(
+    run_dir, depth, extrinsic, intrinsic, depth_conf=None, min_confidence=0.0
+) -> None:
     run_dir.mkdir()
     frame_count = depth.shape[0]
     np.savez_compressed(
@@ -232,10 +288,18 @@ def _write_synthetic_run(run_dir, depth, extrinsic, intrinsic) -> None:
         extrinsic=extrinsic.astype(np.float32),
         intrinsic=intrinsic.astype(np.float32),
     )
+    if depth_conf is None:
+        depth_conf = np.ones_like(depth, dtype=np.float32)
     np.savez_compressed(
         run_dir / "depth.npz",
         depth=depth.astype(np.float32),
-        depth_conf=np.ones_like(depth, dtype=np.float32),
+        depth_conf=depth_conf.astype(np.float32),
+    )
+    # R-20: fuse_run reads its confidence threshold from the source run's own run.json by
+    # default -- writing it here keeps every existing synthetic test's "keep everything"
+    # behaviour unchanged (min_confidence=0.0) unless a test deliberately overrides it.
+    (run_dir / "run.json").write_text(
+        json.dumps({"min_confidence": min_confidence}), encoding="utf-8"
     )
 
 
@@ -321,3 +385,194 @@ def test_fuse_run_rejects_unknown_method(tmp_path):
         tsdf_fusion.fuse_run(
             run_dir, alignment_json, tmp_path / "out", method="nonsense"
         )
+
+
+# --- R-20: fuse_run's own confidence-threshold wiring -------------------------------------------
+#
+# The fuse_tsdf-level test above already proves a confidence-derived mask keeps a spurious
+# reading out of the fused TSDF. These tests cover what's actually new in R-20: fuse_run
+# resolving the right threshold (from the run's own run.json by default, or an explicit
+# override) and computing the right mask from it. `confidence_dropped_pixel_count` is used as
+# the check because it is exact and deterministic -- unlike mesh vertex positions, it does not
+# depend on marching cubes' neighbourhood requirements or this camera's perspective geometry.
+
+_CONFIDENCE_TEST_FUSE_KWARGS = {
+    "voxel_size_mm": 10.0,
+    "footprint_mm": (160.0, 120.0),
+    "max_part_height_mm": 100.0,
+}
+
+
+def _write_confidence_test_run(
+    run_dir, true_confidence, spurious_confidence, min_confidence_in_run_json=0.0
+) -> None:
+    """One frame, two measurements, both of them real part geometry that `segment_part` would
+    keep on its own (inside the default footprint and well above the height threshold) -- so
+    confidence is the ONLY thing that can tell them apart. Without that, a test could pass for
+    the wrong reason: a "spurious" point segmentation would have excluded anyway proves nothing
+    about whether confidence filtering actually runs.
+
+    `true_confidence` is at board-frame (80, 60, -50) (the same point
+    `test_fuse_run_writes_mesh_and_report` uses). `spurious_confidence` is at board-frame
+    (21, 21, -30) -- a different, unrelated location, also inside the footprint.
+    """
+    rotation = np.diag([1.0, -1.0, -1.0])
+    extrinsic = np.concatenate([rotation, np.zeros((3, 1))], axis=1)[None]
+    intrinsic = np.array([[10.0, 0.0, 50.0], [0.0, 10.0, 50.0], [0.0, 0.0, 1.0]])[None]
+    depth = np.zeros((1, 100, 150))
+    depth_conf = np.zeros((1, 100, 150))
+    depth[0, 38, 66] = 50.0  # board-frame (80, 60, -50)
+    depth_conf[0, 38, 66] = true_confidence
+    depth[0, 43, 57] = 30.0  # board-frame (21, 21, -30)
+    depth_conf[0, 43, 57] = spurious_confidence
+    _write_synthetic_run(
+        run_dir,
+        depth,
+        extrinsic,
+        intrinsic,
+        depth_conf=depth_conf,
+        min_confidence=min_confidence_in_run_json,
+    )
+
+
+def test_fuse_run_confidence_threshold_excludes_the_spurious_pixel(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_confidence_test_run(run_dir, true_confidence=5.0, spurious_confidence=0.5)
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "out",
+        min_confidence=1.0,
+        **_CONFIDENCE_TEST_FUSE_KWARGS,
+    )
+
+    # Of the 1*100*150 = 15000 pixels, only the one true pixel (confidence 5.0) clears 1.0 --
+    # the spurious pixel (0.5) and every untouched background pixel (0.0, never set) don't.
+    assert report["confidence_dropped_pixel_count"] == 100 * 150 - 1
+
+    # Control, in the same test: with confidence ignored (threshold 0), nothing is dropped on
+    # confidence grounds -- proving this field actually reflects the threshold, not some fixed
+    # number regardless of it.
+    report_unfiltered = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "out_unfiltered",
+        min_confidence=0.0,
+        **_CONFIDENCE_TEST_FUSE_KWARGS,
+    )
+    assert report_unfiltered["confidence_dropped_pixel_count"] == 0
+
+    # The field alone could be computed correctly while the mask it describes never reaches
+    # fusion (confidence_dropped_pixel_count comes straight from confidence_mask, independent of
+    # whether that mask is actually ANDed into keep_mask) -- observed_voxel_count depends on
+    # keep_mask itself, so this is the assertion that would actually fail if that AND were
+    # dropped: the spurious point's own voxel column only contributes when confidence lets it
+    # through, so filtering it out must observe strictly fewer voxels than keeping it does.
+    assert report["observed_voxel_count"] < report_unfiltered["observed_voxel_count"]
+
+
+def test_fuse_run_reads_min_confidence_from_run_json_by_default(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_confidence_test_run(
+        run_dir,
+        true_confidence=5.0,
+        spurious_confidence=0.5,
+        min_confidence_in_run_json=1.0,
+    )
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = tsdf_fusion.fuse_run(
+        run_dir, alignment_json, tmp_path / "out", **_CONFIDENCE_TEST_FUSE_KWARGS
+    )
+
+    assert report["min_confidence"] == 1.0
+    assert report["min_confidence_source"] == "run.json"
+    assert report["confidence_dropped_pixel_count"] == 100 * 150 - 1
+
+
+def test_fuse_run_explicit_min_confidence_overrides_run_json(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_confidence_test_run(
+        run_dir,
+        true_confidence=5.0,
+        spurious_confidence=0.5,
+        min_confidence_in_run_json=1.0,
+    )
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "out",
+        min_confidence=0.0,
+        **_CONFIDENCE_TEST_FUSE_KWARGS,
+    )
+
+    assert report["min_confidence"] == 0.0
+    assert report["min_confidence_source"] == "override"
+    assert report["confidence_dropped_pixel_count"] == 0
+
+
+def test_fuse_run_raises_if_run_json_missing_and_no_override_given(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_confidence_test_run(run_dir, true_confidence=5.0, spurious_confidence=0.5)
+    (run_dir / "run.json").unlink()
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    with pytest.raises(FileNotFoundError, match="run.json"):
+        tsdf_fusion.fuse_run(
+            run_dir, alignment_json, tmp_path / "out", **_CONFIDENCE_TEST_FUSE_KWARGS
+        )
+
+
+def test_fuse_run_raises_if_run_json_predates_min_confidence(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_confidence_test_run(run_dir, true_confidence=5.0, spurious_confidence=0.5)
+    # An R-01 run from before R-20 -- run.json exists but has no min_confidence field.
+    (run_dir / "run.json").write_text(json.dumps({"story": "R-01"}), encoding="utf-8")
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    with pytest.raises(ValueError, match="min_confidence"):
+        tsdf_fusion.fuse_run(
+            run_dir, alignment_json, tmp_path / "out", **_CONFIDENCE_TEST_FUSE_KWARGS
+        )
+
+
+def test_fuse_run_poisson_path_also_respects_confidence(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_extract_mesh_poisson(
+        points_mm, poisson_depth=tsdf_fusion.DEFAULT_POISSON_DEPTH
+    ):
+        captured["points_mm"] = np.asarray(points_mm)
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
+
+    monkeypatch.setattr(tsdf_fusion, "extract_mesh_poisson", fake_extract_mesh_poisson)
+
+    run_dir = tmp_path / "run"
+    _write_confidence_test_run(run_dir, true_confidence=5.0, spurious_confidence=0.5)
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "out",
+        method="poisson",
+        min_confidence=1.0,
+        **_CONFIDENCE_TEST_FUSE_KWARGS,
+    )
+
+    # Only the true, trusted point (board-frame (80, 60, -50)) reaches Poisson -- the spurious
+    # pixel is excluded by confidence before extract_mesh_poisson ever sees it, same as the
+    # marching-cubes path.
+    points_mm = captured["points_mm"]
+    assert len(points_mm) == 1
+    np.testing.assert_allclose(points_mm[0], [80.0, 60.0, -50.0])

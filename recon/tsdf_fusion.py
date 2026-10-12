@@ -15,6 +15,13 @@ Masking: per-frame, per-pixel board-frame points are classified with
 `recon.part_segmentation.segment_part` (R-06) so board/table/hand pixels never contribute to the
 volume -- the same height/footprint predicate R-06 uses to filter a point cloud, applied here to
 filter depth samples before fusion instead.
+
+R-20/D-045: a pixel VGGT's own confidence is too low to trust is also excluded here, with
+`recon.vggt_runner.confidence_keep_mask` -- the same predicate R-01 applies when building the
+point cloud in `points.ply`, so a pixel left out of the cloud is left out of the fused surface
+too, rather than the two silently disagreeing on which pixels to trust. `fuse_run` reads the
+threshold from the run's own `run.json` by default, so the fused surface always matches the
+cloud that was actually written for that run; passing `min_confidence` explicitly overrides it.
 """
 
 from __future__ import annotations
@@ -37,7 +44,7 @@ from recon.part_segmentation import (
     DEFAULT_HEIGHT_THRESHOLD_MM,
     segment_part,
 )
-from recon.vggt_runner import unproject_depth_to_world
+from recon.vggt_runner import confidence_keep_mask, unproject_depth_to_world
 
 DEFAULT_VOXEL_SIZE_MM = 2.0
 
@@ -359,6 +366,9 @@ def write_fusion_report(
     total_voxel_count: int,
     vertex_count: int,
     face_count: int,
+    min_confidence: float,
+    min_confidence_source: str,
+    confidence_dropped_pixel_count: int,
 ) -> dict[str, Any]:
     report = {
         "story": "R-07",
@@ -376,6 +386,13 @@ def write_fusion_report(
         "total_voxel_count": total_voxel_count,
         "vertex_count": vertex_count,
         "face_count": face_count,
+        # R-20/D-045: which pixels were trusted, and where that threshold came from -- "run.json"
+        # means it was read from the source run's own recorded min_confidence (the default, so
+        # the fused surface matches points.ply by construction); "override" means fuse_run's
+        # caller passed one explicitly.
+        "min_confidence": min_confidence,
+        "min_confidence_source": min_confidence_source,
+        "confidence_dropped_pixel_count": confidence_dropped_pixel_count,
     }
     path = Path(path)
     path.write_text(
@@ -394,6 +411,7 @@ def fuse_run(
     height_threshold_mm: float = DEFAULT_HEIGHT_THRESHOLD_MM,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
     max_part_height_mm: float = DEFAULT_MAX_PART_HEIGHT_MM,
+    min_confidence: float | None = None,
 ) -> dict[str, Any]:
     """Load R-01 depth/poses and an R-04 alignment, fuse, extract a mesh, and write the outputs.
 
@@ -401,6 +419,13 @@ def fuse_run(
     `method="poisson"` (the fallback) skips the volume entirely and runs Poisson reconstruction
     directly on the segmented, board-frame-mm point cloud -- Open3D is required for that path
     only (see `extract_mesh_poisson`).
+
+    `min_confidence=None` (the default) reads the threshold the source run itself used
+    (`run.json`'s own `min_confidence`), so the fused surface agrees with `points.ply` by
+    construction (R-20). A run whose `run.json` is missing, or predates this field, is a
+    genuine ambiguity -- falling back to 0.0 would silently fuse pixels the cloud itself
+    excluded -- so it is an explicit error rather than a silent default. Pass `min_confidence`
+    explicitly to override it (e.g. to reproduce a pre-R-20 fusion for comparison).
     """
     reconstruction_run_dir = Path(reconstruction_run_dir)
     alignment_json_path = Path(alignment_json_path)
@@ -415,11 +440,32 @@ def fuse_run(
             "overwriting silently would let outputs from two runs get mixed."
         )
 
+    if min_confidence is None:
+        run_json_path = reconstruction_run_dir / "run.json"
+        if not run_json_path.exists():
+            raise FileNotFoundError(
+                f"{run_json_path} does not exist, so fuse_run cannot tell which confidence "
+                "threshold points.ply was built with. Pass min_confidence explicitly if this "
+                "run predates that field."
+            )
+        run_json = json.loads(run_json_path.read_text(encoding="utf-8"))
+        if "min_confidence" not in run_json:
+            raise ValueError(
+                f"{run_json_path} has no 'min_confidence' field (an older run, before R-20). "
+                "Pass min_confidence explicitly rather than silently assuming 0.0."
+            )
+        resolved_min_confidence = float(run_json["min_confidence"])
+        min_confidence_source = "run.json"
+    else:
+        resolved_min_confidence = float(min_confidence)
+        min_confidence_source = "override"
+
     with np.load(reconstruction_run_dir / "poses.npz") as poses:
         extrinsic = poses["extrinsic"].astype(np.float64)
         intrinsic = poses["intrinsic"].astype(np.float64)
     with np.load(reconstruction_run_dir / "depth.npz") as depth_data:
         depth = depth_data["depth"].astype(np.float64)
+        depth_conf = depth_data["depth_conf"].astype(np.float64)
 
     alignment_json = json.loads(alignment_json_path.read_text(encoding="utf-8"))
     scale = float(alignment_json["scale"])
@@ -436,9 +482,14 @@ def fuse_run(
     board_frame_points = apply_similarity_transform(
         original_world_points.reshape(-1, 3), scale, rotation, translation
     ).reshape(frame_count, height, width, 3)
-    keep_mask = segment_part(
-        board_frame_points.reshape(-1, 3), height_threshold_mm, footprint_mm
-    ).reshape(frame_count, height, width)
+    confidence_mask = confidence_keep_mask(depth_conf, resolved_min_confidence)
+    keep_mask = (
+        segment_part(
+            board_frame_points.reshape(-1, 3), height_threshold_mm, footprint_mm
+        ).reshape(frame_count, height, width)
+        & confidence_mask
+    )
+    confidence_dropped_pixel_count = int(np.count_nonzero(~confidence_mask))
 
     bounds_min_mm = np.array([0.0, 0.0, -max_part_height_mm])
     bounds_max_mm = np.array([footprint_mm[0], footprint_mm[1], 0.0])
@@ -486,6 +537,9 @@ def fuse_run(
         total_voxel_count=total_voxel_count,
         vertex_count=len(vertices_mm),
         face_count=len(faces),
+        min_confidence=resolved_min_confidence,
+        min_confidence_source=min_confidence_source,
+        confidence_dropped_pixel_count=confidence_dropped_pixel_count,
     )
 
 
@@ -506,6 +560,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--method", choices=["marching_cubes", "poisson"], default="marching_cubes"
     )
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=None,
+        help=(
+            "override the confidence threshold read from the run's own run.json "
+            "(default: use whatever points.ply was already built with, D-045)"
+        ),
+    )
     return parser
 
 
@@ -522,14 +585,16 @@ def main(argv: list[str] | None = None) -> int:
             out_dir,
             voxel_size_mm=args.voxel_size_mm,
             method=args.method,
+            min_confidence=args.min_confidence,
         )
-    except FileExistsError as exc:
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
         print(f"R-07 TSDF FUSION: FAIL - {exc}", file=sys.stderr)
         return 1
 
     print(
         f"R-07 TSDF FUSION: PASS - {report['method']}, {report['vertex_count']} vertices, "
-        f"{report['face_count']} faces"
+        f"{report['face_count']} faces, min_confidence={report['min_confidence']} "
+        f"({report['min_confidence_source']})"
     )
     print(f"Outputs written to {out_dir}")
     return 0
