@@ -41,6 +41,14 @@ from recon.timing import format_timing_table
 
 DEFAULT_MODEL_ID = "facebook/VGGT-1B"
 
+# D-045: the golden-set sweep (recon/confidence_sweep.py) found that almost all of the achievable
+# stray-point reduction is captured the instant the threshold clears VGGT's exact confidence
+# floor of 1.0 -- the median pixel sits exactly at that floor on every golden object. Pushing the
+# threshold any higher past that buys little further cleanup while steadily costing part
+# coverage, so 1.0001 (strictly above the floor, not a larger round number) is the chosen
+# default. See D-045 for the full evidence and stories/R/R-20.md's notes for the per-object table.
+DEFAULT_MIN_CONFIDENCE = 1.0001
+
 # Compute capability 8.0 is Ampere, the first NVIDIA generation with fast bf16. The Lightning
 # Studio's Tesla T4 is 7.5, where bf16 is emulated and slow, so it must use fp16 (D-011 records
 # the same lesson for Metal, where fp16 also wins).
@@ -397,7 +405,7 @@ def run_on_capture(
     out_dir: Path,
     model_id: str = DEFAULT_MODEL_ID,
     device_type: str = "cuda",
-    min_confidence: float = 0.0,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> dict[str, Any]:
     """Run the whole R-01 pipeline on one capture folder and return the run.json contents."""
     total_started = time.perf_counter()
@@ -478,8 +486,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--min-confidence",
         type=float,
-        default=0.0,
-        help="drop cloud points whose depth confidence is below this (default keeps all)",
+        default=DEFAULT_MIN_CONFIDENCE,
+        help=(
+            "drop cloud points whose depth confidence is below this "
+            f"(default {DEFAULT_MIN_CONFIDENCE}, D-045: excludes VGGT's exact confidence "
+            "floor of 1.0; pass 0.0 to keep every finite point)"
+        ),
     )
     return parser
 

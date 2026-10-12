@@ -556,6 +556,52 @@ consistent with the progress log's own append-only, never-rewritten history.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-042, so D-043 was the first free number.
 
+**D-045 · Default confidence threshold is `1.0001`, chosen to exclude only VGGT's exact
+confidence floor.** (2026-10-11)
+R-17 found 11.5-29.3% of segmented points on the golden set are stray, and that almost all of
+them sit at VGGT's confidence floor of 1.0 (R-01's own note: "VGGT's depth confidence bottoms
+out at 1.0"). R-20's committed sweep (`recon/confidence_sweep.py`, replacing R-17's one-off
+script) measured stray-point fraction and part voxel coverage at a grid of thresholds on all
+five real golden-set runs; the full grid is in `stories/R/R-20.md`'s notes. It reproduced R-17's
+own numbers as a cross-check first: s-04's baseline stray fraction (29.3%) matches exactly, and
+R-17's diagnostic 1.5 cut reproduces R-17's reported 1.1-2.3% band.
+
+The measurement's result was not the one expected going in. Almost all of the achievable
+stray-fraction reduction is already captured the instant the threshold clears the *exact* floor
+value -- the median pixel confidence is 1.0 on every object, and 50-73% of pixels sit exactly
+there. Pushing the threshold any higher past that buys negligible further stray-fraction
+reduction while steadily costing part coverage, until a much higher value (~3-5, object-
+dependent) where fusion starts fragmenting badly -- R-17's own warning against overshooting:
+at confidence >= 5, s-05 kept only 21% of its points and its walls became too sparse to measure.
+Baseline vs the chosen value vs R-17's informal 1.5 diagnostic, stray fraction / part voxel
+coverage:
+
+| | s-01 | s-02 | s-03 | s-04 | s-05 |
+|---|---|---|---|---|---|
+| baseline (0.0) | 19.2% / 100% | 18.7% / 100% | 11.4% / 100% | 29.3% / 100% | 17.7% / 100% |
+| chosen (1.0001) | 2.5% / 88.2% | 2.5% / 96.6% | 1.8% / 93.5% | 2.0% / 99.8% | 2.5% / 99.1% |
+| R-17's diagnostic (1.5) | 2.3% / 68.4% | 1.9% / 75.3% | 1.0% / 86.7% | 1.8% / 96.2% | 1.7% / 92.0% |
+
+1.0001 reaches nearly the same stray-fraction cleanup as 1.5 while preserving meaningfully more
+of the part on every object, most visibly on s-01 (88.2% vs 68.4%). s-01 and s-02's baseline
+cluster is itself contaminated by R-17's "weaker second board layer" (its baseline x/y extent is
+exactly 160x120mm, the board pattern's own size, not the padlock's), so their coverage numbers
+are measured against a cluster that is partly that spurious layer, not purely the part -- the
+true coverage cost on those two is likely lower than the table shows.
+
+`recon.vggt_runner.DEFAULT_MIN_CONFIDENCE = 1.0001` and the CLI default change with this
+decision. `recon.reconstruction_runner`'s dispatcher leaves MASt3R and COLMAP at `0.0`: MASt3R's
+confidence is a different, unmeasured scale, and COLMAP's is a binary validity mask, not a
+learned confidence, and already refuses any nonzero threshold.
+
+*Why not a simpler round number like 1.5 or 2.0:* the sweep showed those cost real part coverage
+for no further stray-fraction benefit; the knee sits essentially at the floor itself, not
+partway up the confidence scale.
+
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked.
+`recon/R-21-board-surface-height-cut` (PR #125, open) already holds D-044 for an unrelated
+decision, so D-045 is the next number free everywhere, not D-044.
+
 ---
 
 ## Open — not yet decided
