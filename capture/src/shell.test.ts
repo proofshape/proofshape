@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { uploadFrame } from "./api.js";
 import { mountAppShell, type AppState } from "./shell.js";
-import { startContractStub } from "../stub/contract-stub.js";
+import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 
 // Same fixed-port reasoning as page.test.ts: happy-dom enforces same-origin, matching
@@ -10,11 +11,13 @@ import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 describe("mountAppShell", () => {
   let close: () => Promise<void>;
   let baseUrl: string;
+  let stub: ContractStub;
 
   beforeEach(async () => {
     const started = await startContractStub(PAGE_TEST_STUB_PORT);
     baseUrl = started.baseUrl;
     close = started.close;
+    stub = started.stub;
   });
 
   afterEach(async () => {
@@ -31,26 +34,53 @@ describe("mountAppShell", () => {
     sessionStatus: HTMLElement;
     cameraStatus: HTMLElement;
     gyroStatus: HTMLElement;
+    finishButton: HTMLButtonElement;
+    finishStatus: HTMLElement;
+    reconstructionStatus: HTMLElement;
+    retryReconstructionButton: HTMLButtonElement;
   } {
     document.body.innerHTML = '<main id="shell-app"></main>';
     const root = document.getElementById("shell-app");
     if (!root) throw new Error("test setup: #shell-app missing");
-    const state = mountAppShell(root, { baseUrl });
+    const state = mountAppShell(root, {
+      baseUrl,
+      reconstructionPollIntervalMs: 0,
+      reconstructionMaxAttempts: 3,
+    });
     const orderCode = document.getElementById("shell-order-code");
     const button = document.getElementById("shell-start-button");
     const sessionStatus = document.getElementById("shell-session-status");
     const cameraStatus = document.getElementById("shell-camera-status");
     const gyroStatus = document.getElementById("shell-gyro-status");
+    const finishButton = document.getElementById("shell-finish-button");
+    const finishStatus = document.getElementById("shell-finish-status");
+    const reconstructionStatus = document.getElementById("shell-reconstruction-status");
+    const retryReconstructionButton = document.getElementById("shell-retry-reconstruction-button");
     if (
       !(orderCode instanceof HTMLInputElement) ||
       !(button instanceof HTMLButtonElement) ||
+      !(finishButton instanceof HTMLButtonElement) ||
+      !(retryReconstructionButton instanceof HTMLButtonElement) ||
       !sessionStatus ||
       !cameraStatus ||
-      !gyroStatus
+      !gyroStatus ||
+      !finishStatus ||
+      !reconstructionStatus
     ) {
       throw new Error("test setup: mounted elements missing");
     }
-    return { state, orderCode, button, sessionStatus, cameraStatus, gyroStatus };
+    return {
+      state,
+      orderCode,
+      button,
+      sessionStatus,
+      cameraStatus,
+      gyroStatus,
+      finishButton,
+      finishStatus,
+      reconstructionStatus,
+      retryReconstructionButton,
+    };
   }
 
   function stubGrantedCamera(): void {
@@ -88,6 +118,29 @@ describe("mountAppShell", () => {
     (event as unknown as { beta: number | null }).beta = beta;
     (event as unknown as { gamma: number | null }).gamma = gamma;
     window.dispatchEvent(event);
+  }
+
+  async function startSuccessfulSession(): Promise<ReturnType<typeof mount>> {
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount();
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    return mounted;
+  }
+
+  async function uploadAcceptedFrame(sessionId: string): Promise<void> {
+    const frame = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
+    const result = await uploadFrame(baseUrl, sessionId, frame, {
+      alpha: 1,
+      beta: 2,
+      gamma: 3,
+    });
+    if (!result.ok) throw new Error("test setup: uploadFrame failed");
   }
 
   it("requests camera and gyro permission synchronously, inside the click handler -- the regression this story exists to prevent", async () => {
@@ -179,9 +232,6 @@ describe("mountAppShell", () => {
   });
 
   it("styles a camera denial as a visible error, not plain unstyled text", async () => {
-    // TabeenRaoof's PR #117 review: shell.ts rendered the denial message with plain textContent,
-    // exactly the "easy to miss" bug camera.ts's own setStatus already exists to prevent.
-    // Asserting the real styling, not just the text, is what would have caught the regression.
     stubDeniedCamera();
     stubGyroPermission("granted");
     const { orderCode, button, cameraStatus, gyroStatus } = mount();
@@ -288,6 +338,100 @@ describe("mountAppShell", () => {
     });
 
     expect(button.disabled).toBe(true);
+  });
+
+  it("finishes from the live shell and renders pending then complete reconstruction", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stub.setReconstructionPendingPolls(2);
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("Reconstruction complete")) {
+        throw new Error("reconstruction not complete yet");
+      }
+    });
+
+    expect(mounted.finishStatus.textContent).toMatch(/^Session finished: sess_/);
+    expect(mounted.reconstructionStatus.textContent).toContain("Reference tier: charuco_board");
+    expect(mounted.reconstructionStatus.textContent).toContain("Metric: yes");
+    expect(mounted.reconstructionStatus.textContent).toContain("Observed fraction: 0.910");
+  });
+
+  it("states that a non-metric result makes no dimensional claims", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stub.useNoReferenceReconstruction();
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("Reconstruction complete")) {
+        throw new Error("reconstruction not complete yet");
+      }
+    });
+
+    expect(mounted.reconstructionStatus.textContent).toContain("Reference tier: none");
+    expect(mounted.reconstructionStatus.textContent).toContain("Metric: no");
+    expect(mounted.reconstructionStatus.textContent).toContain("No dimensional claims");
+  });
+
+  it("shows failed reconstruction instead of staying pending", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stub.failReconstruction();
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("Reconstruction failed")) {
+        throw new Error("failure not rendered yet");
+      }
+    });
+
+    expect(mounted.reconstructionStatus.textContent).toContain("Stub reconstruction failure");
+    expect(mounted.reconstructionStatus.style.fontWeight).toBe("bold");
+  });
+
+  it("times out after the bounded polling budget", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stub.setReconstructionPendingPolls(99);
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("timed out after 3 attempts")) {
+        throw new Error("timeout not rendered yet");
+      }
+    });
+
+    expect(mounted.reconstructionStatus.textContent).toContain("3 attempts");
+    expect(mounted.reconstructionStatus.style.fontWeight).toBe("bold");
+  });
+
+  it("offers retry after timeout and resumes polling without finishing the session again", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stub.setReconstructionPendingPolls(3);
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("timed out after 3 attempts")) {
+        throw new Error("timeout not rendered yet");
+      }
+    });
+    expect(mounted.retryReconstructionButton.hidden).toBe(false);
+
+    mounted.retryReconstructionButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("Reconstruction complete")) {
+        throw new Error("reconstruction did not complete after retry");
+      }
+    });
+    expect(mounted.retryReconstructionButton.hidden).toBe(true);
   });
 
   it("updates latestGyro from a dispatched orientation event once gyro is granted", async () => {
