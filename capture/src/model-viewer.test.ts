@@ -40,7 +40,11 @@ describe("mountModelViewer", () => {
     const loaderFactory = vi.fn((): ModelLoader => ({ load: vi.fn() }));
     const target = makeRoot();
 
-    mountModelViewer(target, { status: "failed", warnings: ["backend failed"] }, { loaderFactory });
+    mountModelViewer(
+      target,
+      { status: "failed", warnings: ["backend failed"] },
+      { loaderFactory },
+    );
 
     expect(target.textContent).toContain("unavailable because reconstruction failed");
     expect(loaderFactory).not.toHaveBeenCalled();
