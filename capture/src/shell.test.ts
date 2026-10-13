@@ -46,6 +46,7 @@ describe("mountAppShell", () => {
       baseUrl,
       reconstructionPollIntervalMs: 0,
       reconstructionMaxAttempts: 3,
+      modelViewerOptions: { loaderFactory: () => ({ load: () => undefined }) },
     });
     const orderCode = document.getElementById("shell-order-code");
     const button = document.getElementById("shell-start-button");
