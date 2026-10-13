@@ -7,6 +7,7 @@ import { createSession, finishSession, getReconstruction } from "./api.js";
 import { requireElement, requireTyped } from "./dom.js";
 import { requestGyroPermission } from "./gyro.js";
 import { describeCreateSession, describeFinishSession } from "./messages.js";
+import { mountModelViewer, type ModelViewerOptions } from "./model-viewer.js";
 import type { Gyro, ReconstructionResult } from "./types.js";
 
 export interface AppState {
@@ -22,6 +23,7 @@ export interface AppShellOptions {
   baseUrl: string;
   reconstructionPollIntervalMs?: number;
   reconstructionMaxAttempts?: number;
+  modelViewerOptions?: ModelViewerOptions;
 }
 
 const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
@@ -44,6 +46,10 @@ export const APP_SHELL_HTML = `
     </button>
     <p id="shell-finish-status"></p>
     <p id="shell-reconstruction-status"></p>
+  </section>
+  <section>
+    <h2>3D model (C-11)</h2>
+    <div id="shell-model-viewer"></div>
   </section>
 `;
 
@@ -69,6 +75,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   );
   const finishStatus = requireElement(root, "#shell-finish-status");
   const reconstructionStatus = requireElement(root, "#shell-reconstruction-status");
+  const modelViewer = requireElement(root, "#shell-model-viewer");
 
   const state: AppState = {
     sessionId: null,
@@ -172,6 +179,14 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       reconstructionStatus,
       options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
       options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
+      (terminalResult) => {
+        disposeModelViewer();
+        disposeModelViewer = mountModelViewer(
+          modelViewer,
+          terminalResult,
+          options.modelViewerOptions,
+        );
+      },
     );
     retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
   }
@@ -217,6 +232,7 @@ async function pollReconstruction(
   target: HTMLElement,
   maxAttempts: number,
   intervalMs: number,
+  onTerminalResult: (result: ReconstructionResult) => void,
 ): Promise<"complete" | "failed" | "timeout" | "error"> {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let result;
@@ -247,6 +263,7 @@ async function pollReconstruction(
     }
 
     renderReconstruction(target, result.body);
+    onTerminalResult(result.body);
     return result.body.status === "failed" ? "failed" : "complete";
   }
 
