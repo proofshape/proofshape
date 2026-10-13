@@ -28,6 +28,7 @@ declare module "three" {
   }
 
   export class Color {
+    readonly isColor: true;
     constructor(value: number | string);
   }
 
