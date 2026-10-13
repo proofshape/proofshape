@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountGyroOverlay, type GyroOverlayHandle } from "./overlay.js";
 import { DEFAULT_ORBIT, type OrbitSlot } from "./orbit.js";
 import type { Gyro } from "./types.js";
@@ -209,5 +209,46 @@ describe("mountGyroOverlay", () => {
     // The count (driven only by reportAcceptedFrame, not the listener) is unaffected either way
     // -- confirms this test's dispatch targeted the listener path, not some unrelated change.
     expect(text(container, ".gyro-overlay-count")).toBe(countBeforeDispose);
+  });
+
+  it("mounting again on the same container disposes the first mount's listener automatically -- the regression TabeenRaoof caught on PR #120", () => {
+    // Before this fix: a second mountGyroOverlay call on the same container left the first
+    // mount's `deviceorientation` listener permanently attached, since only the *returned
+    // handle's* own dispose() removed anything, and nothing called it. A caller that just
+    // remounts (e.g. a retry) rather than remembering to dispose the old handle first would leak
+    // one more listener per remount.
+    const { container } = mount();
+    const firstHandle = mountGyroOverlay(container);
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+
+    mountOverlay(container); // remount on the same container, without disposing firstHandle first
+
+    expect(removeSpy).toHaveBeenCalledWith("deviceorientation", expect.any(Function));
+    removeSpy.mockRestore();
+    // firstHandle's own dispose() is now a harmless no-op, not a double-removal error.
+    expect(() => {
+      firstHandle.dispose();
+    }).not.toThrow();
+  });
+
+  it("reportAcceptedFrame refreshes the arrow immediately, without waiting for the next orientation event", () => {
+    // Before this fix: accepting a frame updated the count and status text but never called
+    // updateArrow(), so the arrow kept pointing at the previous target until the next
+    // deviceorientation event happened to fire -- caught in review (TabeenRaoof, PR #120).
+    const { container } = mount();
+    const handle = mountOverlay(container);
+
+    // Live reading parked at slot 1's position before any frame is accepted.
+    const slot0 = requireSlot(0);
+    const slot1 = requireSlot(1);
+    dispatchOrientation(slot1.azimuthDeg, elevationToBeta(slot1.elevationDeg), 0);
+
+    // Accepting slot 0 (not where the live reading is) makes slot 1 the next target -- the live
+    // reading is now already on-target for it, but no new orientation event fires to say so.
+    handle.reportAcceptedFrame({ alpha: 0, beta: elevationToBeta(slot0.elevationDeg), gamma: 0 });
+
+    expect(text(container, ".gyro-overlay-status")).toMatch(/on target/i);
+    const arrow = container.querySelector<HTMLElement>(".gyro-overlay-arrow");
+    expect(arrow?.style.visibility).toBe("hidden");
   });
 });

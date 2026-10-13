@@ -63,6 +63,10 @@ export function relativeAzimuthDeg(rawAlphaDeg: number, anchorDeg: number): numb
 // check shows it's backwards. That same check should also confirm two things this function
 // assumes but can't verify itself: portrait orientation (beta/gamma swap roles in landscape), and
 // which rotation direction W3C's alpha actually increases in on a real device.
+// Also assumes betaDeg stays within [0, 180] -- W3C's full range is [-180, 180], but a negative
+// reading (tilted back past flat) has no sensible elevation in this story's orbit-walking
+// context and isn't reachable by normal use; flagged rather than guarded against, per TabeenRaoof's
+// PR #120 review, since it would require tilting past flat to trigger.
 export function elevationFromBeta(betaDeg: number): number {
   return 90 - betaDeg;
 }

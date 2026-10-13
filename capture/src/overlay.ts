@@ -32,10 +32,18 @@ function arrowRotationDeg(azimuthDeltaDeg: number, elevationDeltaDeg: number): n
   return (Math.atan2(azimuthDeltaDeg, elevationDeltaDeg) * 180) / Math.PI;
 }
 
+// Per-container teardown, so a second mount on the same container (e.g. C-09's capture loop
+// re-mounting on retry) can't leak the first mount's listener -- caught in review (TabeenRaoof,
+// PR #120): disposing the *returned* handle only helps a caller that remembers to call it; a
+// caller that just calls mountGyroOverlay again on the same element had no such guard.
+const activeDisposalsByContainer = new WeakMap<HTMLElement, () => void>();
+
 export function mountGyroOverlay(
   container: HTMLElement,
   orbit: readonly OrbitSlot[] = DEFAULT_ORBIT,
 ): GyroOverlayHandle {
+  activeDisposalsByContainer.get(container)?.();
+
   container.innerHTML = OVERLAY_HTML;
 
   const status = requireElement(container, ".gyro-overlay-status");
@@ -43,6 +51,7 @@ export function mountGyroOverlay(
   const count = requireElement(container, ".gyro-overlay-count");
 
   const acceptedReadings: Gyro[] = [];
+  let latestLiveGyro: Gyro | null = null;
   count.textContent = formatCount(0, orbit.length);
   status.textContent = "Capture the first frame to start.";
   arrow.style.visibility = "hidden";
@@ -89,9 +98,16 @@ export function mountGyroOverlay(
     if (event.alpha === null || event.beta === null || event.gamma === null) {
       return;
     }
-    updateArrow({ alpha: event.alpha, beta: event.beta, gamma: event.gamma });
+    latestLiveGyro = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
+    updateArrow(latestLiveGyro);
   }
   window.addEventListener("deviceorientation", handleOrientation);
+
+  function dispose(): void {
+    window.removeEventListener("deviceorientation", handleOrientation);
+    activeDisposalsByContainer.delete(container);
+  }
+  activeDisposalsByContainer.set(container, dispose);
 
   return {
     reportAcceptedFrame(gyro: Gyro): void {
@@ -99,9 +115,14 @@ export function mountGyroOverlay(
       render();
       status.textContent =
         acceptedReadings.length === 1 ? "First position captured." : "Position captured.";
+      // Without this, the arrow stays stale (pointing at whatever was the target before this
+      // frame was accepted) until the next deviceorientation event happens to fire -- caught in
+      // review (TabeenRaoof, PR #120). Re-run on the last live reading, if there's been one, so
+      // the arrow reflects the new target immediately.
+      if (latestLiveGyro) {
+        updateArrow(latestLiveGyro);
+      }
     },
-    dispose(): void {
-      window.removeEventListener("deviceorientation", handleOrientation);
-    },
+    dispose,
   };
 }
