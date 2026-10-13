@@ -86,6 +86,11 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
   // Scoped to this mount, same reasoning as gyro.ts's own `listening` flag.
   let listeningForGyro = false;
+  let disposeModelViewer = mountModelViewer(
+    modelViewer,
+    { status: "pending" },
+    options.modelViewerOptions,
+  );
 
   function startListeningForGyro(): void {
     if (listeningForGyro) {
