@@ -999,11 +999,12 @@ Also fixed a latent crash in `fuse_run`, found while writing this story's tests:
 finiteness check rejected the whole per-frame array if any single pixel had non-finite depth,
 which `vggt_runner.py` already anticipates as a real case elsewhere.
 **Result:** real-data rerun on all five golden objects: measured offsets 0.9–5.4 mm, tilt
-0.23–0.78°, new height thresholds 2.5–6.0 mm (all below R-17's old, over-cut thresholds except
-s-01, where the old cut happened to sit under the real board's own noisy top rather than above
-it). s-04's base cut dropped from R-17's 7.4 mm (a quarter of the part) to 2.5 mm. `fuse_run`
-smoke-tested end to end on s-04's real data. Repo-wide `pytest` (325)/`ruff`/`check_story_states.py`
-clean on the merged head; R-21 closed at 1.5 h actual against a 3 h estimate.
+0.23–0.78°, new height thresholds 2.5–6.0 mm (below R-17's old, over-cut thresholds on three of
+five objects; s-01 and s-02 are exceptions, where the old cut happened to sit under the real
+board's own noisy top rather than above it). s-04's base cut dropped from R-17's 7.4 mm (a
+quarter of the part) to 2.5 mm. `fuse_run` smoke-tested end to end on s-04's real data. Repo-wide
+`pytest` (325)/`ruff`/`check_story_states.py` clean on the merged head; R-21 closed at 1.5 h
+actual against a 3 h estimate.
 **Concluded:** the segmented point cloud and fused mesh now keep the part's full base on all five
 golden objects, without reintroducing the raised second board layer R-17 flagged. D-044 records
 the R-06-vs-R-04 decision and the full real-data numbers. The reviewer's close-out comments on the
