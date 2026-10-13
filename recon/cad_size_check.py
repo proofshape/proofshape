@@ -50,7 +50,7 @@ from recon.board_pose import MIN_CORNERS_FOR_POSE, make_board
 from recon.camera_intrinsics import rescale_vggt_intrinsic
 from recon.metric_alignment import apply_similarity_transform, solve_similarity
 from recon.part_segmentation import DEFAULT_FOOTPRINT_MM
-from recon.vggt_runner import read_ply
+from recon.vggt_runner import read_ply, select_point_cloud, unproject_depth_to_world
 
 # --- CAD: a simple extruded-prism STL reader -----------------------------------------------
 
@@ -127,10 +127,10 @@ def prism_from_cad(vertices: np.ndarray) -> PrismCAD:
             f"{len(z_levels)}: {z_levels.tolist()}. This reader only supports a simple extruded "
             "prism, not an arbitrary mesh."
         )
+    # z_levels is np.unique's sorted output of exactly 2 distinct values (checked above), so
+    # z_min < z_max always holds -- no separate height_mm > 0 guard is reachable to write.
     z_min, z_max = float(z_levels.min()), float(z_levels.max())
     height_mm = z_max - z_min
-    if height_mm <= 0:
-        raise ValueError("Prism height must be positive.")
 
     def footprint_at(z_level: float) -> np.ndarray:
         at_level = vertices[np.round(vertices[:, 2], _ROUND_DECIMALS) == z_level, :2]
@@ -667,6 +667,32 @@ def load_bundle(recon_run_dir: Path, board_pose_dir: Path) -> _RunBundle:
     )
 
 
+def reconstruct_confidence_filtered_points(
+    bundle: _RunBundle, min_confidence: float
+) -> np.ndarray:
+    """Rebuild R-01's point cloud directly from ``depth.npz``/``poses.npz``, confidence-filtered.
+
+    ``points.ply``'s rows no longer line up positionally with ``depth_conf.reshape(-1)`` the
+    moment R-01's own ``select_point_cloud`` dropped even one non-finite point -- common near an
+    edge or occlusion in a real capture -- because ``points.ply`` only has the *kept* rows, not
+    one row per (S,H,W) pixel. Indexing ``depth_conf`` by raw position against ``points.ply``
+    therefore breaks on exactly the real captures this function's callers need it for. Rebuilding
+    points and their confidence together from the same raw depth array, via the identical
+    ``unproject_depth_to_world`` + ``select_point_cloud`` R-01 itself uses, keeps a point and its
+    confidence value inseparable, so there is no positional assumption left to break -- and it
+    needs only ``depth.npz``/``poses.npz``, both stored losslessly regardless of what threshold
+    R-01 happened to use when it wrote ``points.ply``.
+    """
+    world_points = unproject_depth_to_world(
+        bundle.depth, bundle.poses_extrinsic, bundle.poses_intrinsic
+    )
+    dummy_colors = np.zeros(world_points.shape, dtype=np.uint8)
+    points, _colors = select_point_cloud(
+        world_points, dummy_colors, bundle.depth_conf, min_confidence
+    )
+    return points.astype(np.float64)
+
+
 @dataclass(frozen=True)
 class BoardScaleResult:
     scale: float  # reconstructed board size / true (nominal) board size
@@ -877,16 +903,11 @@ def build_report(
     if cad_path is not None:
         cad_path = Path(cad_path)
         prism = prism_from_cad(read_ascii_stl(cad_path))
-        points, _colors = read_ply(Path(recon_run_dir) / "points.ply")
-        points = points.astype(np.float64)
         if min_confidence > 0:
-            confidence = bundle.depth_conf.reshape(-1)
-            if len(confidence) != len(points):
-                raise ValueError(
-                    "points.ply and depth.npz have different point counts; cannot filter by "
-                    "confidence."
-                )
-            points = points[confidence >= min_confidence]
+            points = reconstruct_confidence_filtered_points(bundle, min_confidence)
+        else:
+            points, _colors = read_ply(Path(recon_run_dir) / "points.ply")
+            points = points.astype(np.float64)
         points_board = apply_similarity_transform(
             points,
             bundle.alignment_scale,

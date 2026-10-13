@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import replace
 from pathlib import Path
 
 import cv2
@@ -28,6 +29,7 @@ from recon.cad_size_check import (
     measure_prism,
     prism_from_cad,
     read_ascii_stl,
+    reconstruct_confidence_filtered_points,
     write_report,
 )
 from recon.vggt_runner import write_ply
@@ -518,6 +520,48 @@ def test_measure_board_scale_rejects_too_few_observations() -> None:
     bundle = _make_synthetic_board_bundle(frame_count=1, corner_ids=range(2))
     with pytest.raises(ValueError, match="usable board corner observations"):
         measure_board_scale(bundle)
+
+
+# --- reconstruct_confidence_filtered_points -----------------------------------------------------
+
+
+def test_reconstruct_confidence_filtered_points_survives_dropped_pixels() -> None:
+    # Regression test (review finding on PR #126): a real capture commonly has a handful of
+    # non-finite depth pixels near an edge or occlusion. R-01's own select_point_cloud drops
+    # those before points.ply is ever written, so points.ply's row count -- and therefore its
+    # row order relative to depth_conf's full (S,H,W) grid -- cannot be assumed to match depth
+    # confidence by raw position. This exercises exactly that: depth with some NaNs, confirming
+    # the count comes out right (every finite pixel kept, every non-finite pixel dropped) without
+    # going anywhere near points.ply at all.
+    bundle = _make_synthetic_board_bundle(frame_count=1, corner_ids=range(12))
+    depth = bundle.depth.copy()
+    total_pixels = depth.size
+    rng = np.random.default_rng(0)
+    bad_rows = rng.integers(0, depth.shape[1], size=37)
+    bad_cols = rng.integers(0, depth.shape[2], size=37)
+    depth[0, bad_rows, bad_cols] = np.nan
+    dropped_pixel_count = len(set(zip(bad_rows.tolist(), bad_cols.tolist())))
+    bundle = replace(bundle, depth=depth)
+
+    points = reconstruct_confidence_filtered_points(bundle, min_confidence=0.5)
+
+    assert len(points) == total_pixels - dropped_pixel_count
+    assert np.isfinite(points).all()
+
+
+def test_reconstruct_confidence_filtered_points_applies_the_threshold() -> None:
+    bundle = _make_synthetic_board_bundle(frame_count=1, corner_ids=range(12))
+    confidence = bundle.depth_conf.copy()
+    confidence[0, : confidence.shape[1] // 2, :] = (
+        0.2  # half the image below the threshold
+    )
+    bundle = replace(bundle, depth_conf=confidence)
+
+    low = reconstruct_confidence_filtered_points(bundle, min_confidence=0.0)
+    high = reconstruct_confidence_filtered_points(bundle, min_confidence=0.5)
+
+    assert len(high) < len(low)
+    assert len(high) == pytest.approx(len(low) / 2, rel=0.05)
 
 
 # --- write_report / build_report / CLI, end to end on tmp_path fixtures ------------------------
