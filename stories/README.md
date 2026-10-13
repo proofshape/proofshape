@@ -158,7 +158,7 @@ Full detail in each story file.
 | [R-20](R/R-20.md) | Use VGGT's confidence in the point cloud and in fusion | 4 h | R-01, R-07 | Done | @TabeenRaoof |
 | [R-21](R/R-21.md) | Measure the height cut from the real board surface | 3 h | R-06 | Done | @TabeenRaoof |
 | [R-22](R/R-22.md) | Find why parts reconstruct smaller than their CAD | 3 h | R-03, R-04 | Claimed | @TabeenRaoof |
-| [R-23](R/R-23.md) | Use VGGT's confidence in provenance's observation count | 3 h | R-20 | Ready | _unclaimed_ |
+| [R-24](R/R-24.md) | Use VGGT's confidence in provenance's observation count | 3 h | R-20 | Ready | _unclaimed_ |
 
 ---
 
