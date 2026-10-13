@@ -481,16 +481,7 @@ def fuse_run(
         intrinsic = poses["intrinsic"].astype(np.float64)
     with np.load(reconstruction_run_dir / "depth.npz") as depth_data:
         depth = depth_data["depth"].astype(np.float64)
-        # 0.0 is the project-wide "no confidence filtering" sentinel (R-01's own CLI default
-        # before D-045, and this function's documented way to reproduce pre-R-20 fusion for
-        # comparison): skip decompressing depth_conf and computing the mask entirely rather
-        # than paying for an array the same size as depth to build a predicate that was never
-        # applied before this story existed.
-        depth_conf = (
-            None
-            if resolved_min_confidence == 0.0
-            else depth_data["depth_conf"].astype(np.float64)
-        )
+        depth_conf = depth_data["depth_conf"].astype(np.float64)
 
     alignment_json = json.loads(alignment_json_path.read_text(encoding="utf-8"))
     scale = float(alignment_json["scale"])
@@ -526,15 +517,14 @@ def fuse_run(
     segmented_mask = segmented_flat.reshape(frame_count, height, width)
 
     # R-20/D-045: a pixel whose own confidence is too low to trust is excluded here too, with
-    # the same predicate R-01's point cloud uses, so a pixel left out of points.ply is left out
-    # of the fused surface too.
-    if depth_conf is None:
-        keep_mask = segmented_mask
-        confidence_dropped_pixel_count = 0
-    else:
-        confidence_mask = confidence_keep_mask(depth_conf, resolved_min_confidence)
-        keep_mask = segmented_mask & confidence_mask
-        confidence_dropped_pixel_count = int(np.count_nonzero(~confidence_mask))
+    # the same predicate R-01's point cloud uses (confidence_keep_mask's own isfinite check
+    # also drops a NaN/inf confidence pixel regardless of threshold), so a pixel left out of
+    # points.ply is left out of the fused surface too -- computed unconditionally, even at
+    # threshold 0.0, rather than skipping it as a "no-op": a once-attempted shortcut there
+    # silently let a NaN/inf-confidence pixel through, which this predicate would not have.
+    confidence_mask = confidence_keep_mask(depth_conf, resolved_min_confidence)
+    keep_mask = segmented_mask & confidence_mask
+    confidence_dropped_pixel_count = int(np.count_nonzero(~confidence_mask))
 
     # The grid follows the fitted (possibly tilted) plane, not z=0 -- otherwise the grid itself
     # would cut off the part's base before fusion even runs. Its top is the plane's highest

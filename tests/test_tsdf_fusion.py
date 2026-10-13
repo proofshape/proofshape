@@ -457,23 +457,21 @@ def test_fuse_run_raises_when_no_board_is_visible(tmp_path):
         )
 
 
-def test_fuse_run_at_min_confidence_zero_never_reads_depth_conf(tmp_path):
-    # Efficiency fix: min_confidence resolving to 0.0 (the project-wide "no filtering"
-    # sentinel) must skip touching depth_conf entirely, not just produce an all-True mask from
-    # it. Proven here by never writing a depth_conf array to depth.npz at all -- if fuse_run
-    # tried to read depth_conf at 0.0, this would raise a KeyError, not just compute a trivial
-    # mask.
+def test_fuse_run_at_min_confidence_zero_still_excludes_non_finite_confidence(tmp_path):
+    # Code review on PR #128 caught a real gap: an earlier "efficiency" version of this
+    # function skipped loading depth_conf entirely whenever the resolved threshold was 0.0 (the
+    # project-wide "no filtering" sentinel), on the assumption that 0.0 makes the confidence
+    # mask a no-op. It doesn't: confidence_keep_mask's own isfinite check still excludes a
+    # NaN/inf-confidence pixel at *any* threshold, including 0.0, and the cloud
+    # (select_point_cloud) would exclude it too -- skipping the array let such a pixel into the
+    # fused mesh when it shouldn't have been. Reverted; this proves the predicate still applies
+    # at threshold 0.0, not just at every threshold above it.
     run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    depth = _board_and_part_depth()
-    np.savez_compressed(
-        run_dir / "poses.npz",
-        frame_names=np.array(["frame_0.jpg"]),
-        extrinsic=_SCENE_EXTRINSIC.astype(np.float32),
-        intrinsic=_SCENE_INTRINSIC.astype(np.float32),
-    )
-    np.savez_compressed(run_dir / "depth.npz", depth=depth.astype(np.float32))
-    (run_dir / "run.json").write_text(json.dumps({"min_confidence": 0.0}))
+    depth = _board_and_part_depth(include_part=False)
+    depth_conf = np.ones_like(depth)
+    depth[0, 105, 20] = _SCENE_PART_DEPTH_MM  # board-frame (80, 60, -40)
+    depth_conf[0, 105, 20] = np.nan
+    _write_synthetic_run(run_dir, depth, depth_conf=depth_conf, min_confidence=0.0)
     alignment_json = run_dir / "metric_alignment.json"
     _write_identity_alignment(alignment_json)
 
@@ -487,8 +485,9 @@ def test_fuse_run_at_min_confidence_zero_never_reads_depth_conf(tmp_path):
     )
 
     assert report["min_confidence"] == 0.0
-    assert report["confidence_dropped_pixel_count"] == 0
-    assert report["observed_voxel_count"] >= 1  # the part was still fused normally
+    # Only the one NaN-confidence pixel is dropped on confidence grounds -- every board pixel
+    # has a valid confidence of 1.0.
+    assert report["confidence_dropped_pixel_count"] == 1
 
 
 def test_fuse_run_refuses_to_overwrite_existing_output(tmp_path):

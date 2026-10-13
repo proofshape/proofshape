@@ -48,7 +48,7 @@ DEFAULT_VOXEL_SIZE_MM = 2.0
 # R-17's definition: a voxel needs at least 3 points to count as "occupied" (not just a single
 # ray's worth of noise landing there by chance).
 DEFAULT_MIN_POINTS_PER_VOXEL = 3
-DEFAULT_THRESHOLDS = (0.0, 1.05, 1.1, 1.2, 1.3, 1.5, 2.0, 3.0, 5.0)
+DEFAULT_THRESHOLDS = (0.0, 1.0001, 1.001, 1.01, 1.05, 1.1, 1.3, 1.5, 2.0, 3.0, 5.0)
 
 # A guard against a dense voxel grid blowing up memory if an extreme outlier widens the bounding
 # box -- not expected on segmented, footprint-bounded points, but cheap to check.
