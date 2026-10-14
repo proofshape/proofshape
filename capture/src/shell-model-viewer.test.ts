@@ -29,7 +29,9 @@ describe("C-11 model viewer shell wiring", () => {
       getTracks: () => [{ stop: () => undefined }],
     };
     // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
-    navigator.mediaDevices = { getUserMedia: () => Promise.resolve(fakeStream) };
+    navigator.mediaDevices = {
+      getUserMedia: () => Promise.resolve(fakeStream),
+    };
     vi.stubGlobal("DeviceOrientationEvent", {
       requestPermission: () => Promise.resolve("granted"),
     });
@@ -58,9 +60,13 @@ describe("C-11 model viewer shell wiring", () => {
     const orderCode = document.getElementById("shell-order-code");
     const startButton = document.getElementById("shell-start-button");
     const finishButton = document.getElementById("shell-finish-button");
-    const reconstructionStatus = document.getElementById("shell-reconstruction-status");
+    const reconstructionStatus = document.getElementById(
+      "shell-reconstruction-status",
+    );
     const modelViewer = document.getElementById("shell-model-viewer");
-    const retryButton = document.getElementById("shell-retry-reconstruction-button");
+    const retryButton = document.getElementById(
+      "shell-retry-reconstruction-button",
+    );
 
     if (
       !(orderCode instanceof HTMLInputElement) ||
@@ -101,7 +107,9 @@ describe("C-11 model viewer shell wiring", () => {
       throw new Error("test setup: session id missing after wait");
     }
 
-    const frame = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
+    const frame = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], {
+      type: "image/jpeg",
+    });
     const uploaded = await uploadFrame(baseUrl, sessionId, frame, {
       alpha: 1,
       beta: 2,
@@ -114,20 +122,29 @@ describe("C-11 model viewer shell wiring", () => {
     return mounted;
   }
 
-  it("remounts the viewer with the completed reconstruction GLB URL", async () => {
-    const mounted = await prepareSession();
-    stub.setReconstructionPendingPolls(0);
+  it(
+    "remounts the viewer with the completed reconstruction GLB URL",
+    async () => {
+      const mounted = await prepareSession();
+      stub.setReconstructionPendingPolls(0);
 
-    mounted.finishButton.click();
-    await vi.waitFor(() => {
-      if (!mounted.reconstructionStatus.textContent.includes("Reconstruction complete")) {
-        throw new Error("reconstruction not complete yet");
-      }
-    });
+      mounted.finishButton.click();
+      await vi.waitFor(() => {
+        if (
+          !mounted.reconstructionStatus.textContent.includes(
+            "Reconstruction complete",
+          )
+        ) {
+          throw new Error("reconstruction not complete yet");
+        }
+      });
 
-    expect(mounted.modelViewer.textContent).toContain("Loading 3D model");
-    expect(mounted.modelViewer.querySelector("a")?.getAttribute("href")).toMatch(/model\.glb$/);
-  });
+      expect(mounted.modelViewer.textContent).toContain("Loading 3D model");
+      expect(
+        mounted.modelViewer.querySelector("a")?.getAttribute("href"),
+      ).toMatch(/model\.glb$/);
+    },
+  );
 
   it("remounts the viewer with the backend failed state", async () => {
     const mounted = await prepareSession();
@@ -136,7 +153,11 @@ describe("C-11 model viewer shell wiring", () => {
 
     mounted.finishButton.click();
     await vi.waitFor(() => {
-      if (!mounted.reconstructionStatus.textContent.includes("Reconstruction failed")) {
+      if (
+        !mounted.reconstructionStatus.textContent.includes(
+          "Reconstruction failed",
+        )
+      ) {
         throw new Error("reconstruction failure not rendered yet");
       }
     });
@@ -144,54 +165,72 @@ describe("C-11 model viewer shell wiring", () => {
     expect(mounted.modelViewer.textContent).toContain(
       "3D model unavailable because reconstruction failed",
     );
-    expect(mounted.modelViewer.textContent).toContain("Stub reconstruction failure");
-  });
-
-  it("does not leave the viewer promising a future model after polling times out", async () => {
-    const mounted = await prepareSession();
-    stub.setReconstructionPendingPolls(99);
-
-    mounted.finishButton.click();
-    await vi.waitFor(() => {
-      if (!mounted.reconstructionStatus.textContent.includes("timed out after 2 attempts")) {
-        throw new Error("timeout not rendered yet");
-      }
-    });
-
-    expect(mounted.modelViewer.textContent).toContain("reconstruction timed out");
-    expect(mounted.retryButton.hidden).toBe(false);
-  });
-
-  it("does not leave the viewer pending when reconstruction fetch rejects", async () => {
-    const mounted = await prepareSession();
-    const nativeFetch = globalThis.fetch.bind(globalThis);
-
-    vi.stubGlobal(
-      "fetch",
-      (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const url =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.href
-              : input.url;
-        if (url.includes("/reconstruction")) {
-          return Promise.reject(new TypeError("Failed to fetch"));
-        }
-        return nativeFetch(input, init);
-      },
-    );
-
-    mounted.finishButton.click();
-    await vi.waitFor(() => {
-      if (!mounted.reconstructionStatus.textContent.includes("Could not fetch reconstruction")) {
-        throw new Error("fetch failure not rendered yet");
-      }
-    });
-
     expect(mounted.modelViewer.textContent).toContain(
-      "reconstruction status could not be fetched",
+      "Stub reconstruction failure",
     );
-    expect(mounted.retryButton.hidden).toBe(false);
   });
+
+  it(
+    "does not leave the viewer promising a future model after polling times out",
+    async () => {
+      const mounted = await prepareSession();
+      stub.setReconstructionPendingPolls(99);
+
+      mounted.finishButton.click();
+      await vi.waitFor(() => {
+        if (
+          !mounted.reconstructionStatus.textContent.includes(
+            "timed out after 2 attempts",
+          )
+        ) {
+          throw new Error("timeout not rendered yet");
+        }
+      });
+
+      expect(mounted.modelViewer.textContent).toContain(
+        "reconstruction timed out",
+      );
+      expect(mounted.retryButton.hidden).toBe(false);
+    },
+  );
+
+  it(
+    "does not leave the viewer pending when reconstruction fetch rejects",
+    async () => {
+      const mounted = await prepareSession();
+      const nativeFetch = globalThis.fetch.bind(globalThis);
+
+      vi.stubGlobal(
+        "fetch",
+        (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+          const url =
+            typeof input === "string"
+              ? input
+              : input instanceof URL
+                ? input.href
+                : input.url;
+          if (url.includes("/reconstruction")) {
+            return Promise.reject(new TypeError("Failed to fetch"));
+          }
+          return nativeFetch(input, init);
+        },
+      );
+
+      mounted.finishButton.click();
+      await vi.waitFor(() => {
+        if (
+          !mounted.reconstructionStatus.textContent.includes(
+            "Could not fetch reconstruction",
+          )
+        ) {
+          throw new Error("fetch failure not rendered yet");
+        }
+      });
+
+      expect(mounted.modelViewer.textContent).toContain(
+        "reconstruction status could not be fetched",
+      );
+      expect(mounted.retryButton.hidden).toBe(false);
+    },
+  );
 });
