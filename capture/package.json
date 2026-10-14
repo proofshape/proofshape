@@ -14,7 +14,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "format:check": "prettier --write src/shell-model-viewer.test.ts && git diff -- src/shell-model-viewer.test.ts && exit 1"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
