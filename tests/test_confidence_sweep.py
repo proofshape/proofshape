@@ -279,6 +279,72 @@ def test_sweep_run_overshoot_drops_coverage_even_though_stray_fraction_looks_cle
     assert by_threshold[1.5]["part_voxel_coverage"] == pytest.approx(0.5)
 
 
+def test_sweep_run_excludes_invalid_depth_pixel_even_at_high_confidence(tmp_path):
+    # Caught in review (dalwalyk): unproject_depth_to_world maps an invalid (<=0) depth pixel to
+    # the camera centre regardless of its pixel coordinates, since camera_point = ray * depth is
+    # zero whatever the ray's direction. fuse_run never lets such a pixel reach segment_part --
+    # it gates on valid_depth first -- so sweep_run must too, or a stray high-confidence pixel
+    # whose camera centre happens to land inside the footprint/height window gets silently
+    # counted as real geometry, contradicting the "measures exactly what fuse_run does" premise
+    # the sweep's evidence (D-045) relies on.
+    #
+    # A second frame supplies the spurious pixel: its whole depth map is 0 (invalid) except one
+    # pixel's confidence, which is cranked up. Every zero-depth pixel in that frame maps to that
+    # frame's own camera centre, so the frame's translation is chosen to land that centre at
+    # board-frame (10, 50, -20) -- inside the default 160x120mm footprint and the same 20mm
+    # board height A/B/C already use, well clear of their own voxels.
+    run_dir = tmp_path / "run"
+    _write_synthetic_sweep_run(
+        run_dir, [_POINT_A]
+    )  # frame 0: board layer + the one real point
+    height, width = 50, 120
+
+    rotation = np.diag([1.0, -1.0, -1.0])
+    bogus_camera_centre_board = np.array([10.0, 50.0, -20.0])
+    # points = -translation @ rotation for a depth=0 pixel (see unproject_depth_to_world), and
+    # rotation is self-inverse (a +-1 diagonal), so translation = -bogus_point @ rotation.
+    bogus_translation = -(bogus_camera_centre_board @ rotation)
+    bogus_extrinsic = np.concatenate(
+        [rotation, bogus_translation.reshape(3, 1)], axis=1
+    )
+
+    with np.load(run_dir / "poses.npz") as poses:
+        extrinsic = np.concatenate(
+            [poses["extrinsic"], bogus_extrinsic[None].astype(np.float32)], axis=0
+        )
+        intrinsic = np.concatenate([poses["intrinsic"], poses["intrinsic"]], axis=0)
+    with np.load(run_dir / "depth.npz") as depth_data:
+        depth = np.concatenate(
+            [depth_data["depth"], np.zeros((1, height, width), dtype=np.float32)],
+            axis=0,
+        )
+        depth_conf = depth_data["depth_conf"]
+        bogus_conf = np.zeros((1, height, width), dtype=np.float32)
+        bogus_conf[0, 0, 0] = 5.0  # pixel choice is arbitrary -- depth=0 ignores it
+        depth_conf = np.concatenate([depth_conf, bogus_conf], axis=0)
+
+    np.savez_compressed(
+        run_dir / "poses.npz",
+        frame_names=np.array(["frame_0.jpg", "frame_1.jpg"]),
+        extrinsic=extrinsic,
+        intrinsic=intrinsic,
+    )
+    np.savez_compressed(run_dir / "depth.npz", depth=depth, depth_conf=depth_conf)
+
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = confidence_sweep.sweep_run(
+        run_dir, alignment_json, thresholds=[1.0], min_points_per_voxel=1
+    )
+
+    by_threshold = {row["min_confidence"]: row for row in report["thresholds"]}
+    # Only A (confidence 5.0) should clear threshold 1.0 and reach segmentation -- the bogus
+    # pixel's confidence (also 5.0) clears it too, but its depth is invalid, so it must never
+    # reach segment_part regardless of confidence. Without the valid_depth gate, this would be 2.
+    assert by_threshold[1.0]["segmented_point_count"] == 1
+
+
 def test_sweep_run_orders_thresholds_with_baseline_first_regardless_of_input_order(
     tmp_path,
 ):

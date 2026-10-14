@@ -234,7 +234,10 @@ def sweep_run(
     rows: list[dict[str, Any]] = []
     baseline_voxel_keys: frozenset = frozenset()
     for threshold in ordered_thresholds:
-        trusted = confidence_keep_mask(flat_confidence, threshold)
+        # ANDed with valid_depth for the same reason fuse_run never lets segment_part see an
+        # invalid-depth pixel: unproject_depth_to_world maps depth<=0/non-finite to the camera
+        # centre, not a real point, regardless of what its confidence happens to be.
+        trusted = confidence_keep_mask(flat_confidence, threshold) & valid_depth
         trusted_points = board_frame_points[trusted]
         keep = segment_part(
             trusted_points, board_surface, height_threshold_mm, footprint_mm
