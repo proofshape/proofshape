@@ -71,13 +71,17 @@ describe("mountModelViewer", () => {
     expect(target.textContent).toContain("Download GLB is still available");
     expect(target.querySelector("a")?.getAttribute("href")).toBe(glbUrl);
   });
+
   it("renders an explicit unavailable state without constructing a loader", () => {
     const loaderFactory = vi.fn((): ModelLoader => ({ load: vi.fn() }));
     const target = makeRoot();
 
     mountModelViewer(
       target,
-      { status: "unavailable", message: "3D model unavailable because reconstruction timed out." },
+      {
+        status: "unavailable",
+        message: "3D model unavailable because reconstruction timed out.",
+      },
       { loaderFactory },
     );
 
@@ -87,5 +91,4 @@ describe("mountModelViewer", () => {
     expect((status as HTMLElement).style.fontWeight).toBe("bold");
     expect(loaderFactory).not.toHaveBeenCalled();
   });
-
 });

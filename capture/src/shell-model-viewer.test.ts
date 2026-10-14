@@ -170,7 +170,11 @@ describe("C-11 model viewer shell wiring", () => {
       "fetch",
       (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url =
-          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
         if (url.includes("/reconstruction")) {
           return Promise.reject(new TypeError("Failed to fetch"));
         }
