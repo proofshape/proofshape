@@ -47,7 +47,7 @@ import numpy as np
 from scipy.ndimage import map_coordinates
 
 from recon.board_pose import MIN_CORNERS_FOR_POSE, make_board
-from recon.camera_intrinsics import rescale_vggt_intrinsic
+from recon.camera_intrinsics import CalibrationFailure, rescale_vggt_intrinsic
 from recon.metric_alignment import apply_similarity_transform, solve_similarity
 from recon.part_segmentation import DEFAULT_FOOTPRINT_MM
 from recon.vggt_runner import read_ply, select_point_cloud, unproject_depth_to_world
@@ -1007,7 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
             args.recon_run_dir, args.board_pose_dir, args.cad, args.min_confidence
         )
         write_report(out, report)
-    except (FileNotFoundError, FileExistsError, ValueError) as exc:
+    except (FileNotFoundError, FileExistsError, ValueError, CalibrationFailure) as exc:
         print(f"R-22 CAD SIZE CHECK: FAIL - {exc}", file=sys.stderr)
         return 1
 

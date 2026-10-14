@@ -692,6 +692,36 @@ def test_cli_fails_loudly_on_missing_run_dir(tmp_path: Path, capsys) -> None:
     assert "FAIL" in capsys.readouterr().err
 
 
+def test_cli_fails_loudly_on_degenerate_vggt_intrinsic(tmp_path: Path, capsys) -> None:
+    # Caught in review (dalwalyk): measure_board_scale calls rescale_vggt_intrinsic
+    # unconditionally for every matched frame, and rescale_vggt_intrinsic can raise
+    # CalibrationFailure (a RuntimeError subclass, not a ValueError) on a non-positive focal
+    # length -- main()'s except clause didn't list it, so a degenerate VGGT intrinsic on even
+    # one frame crashed with a raw traceback instead of the intended FAIL message. A negative
+    # (not zero) focal length keeps the intrinsic invertible, so this isolates
+    # rescale_vggt_intrinsic's own check rather than failing earlier for an unrelated reason.
+    prism = _box_prism(30.0, 60.0)
+    run_dir, board_dir = tmp_path / "run", tmp_path / "board"
+    _write_synthetic_run(run_dir, board_dir, prism)
+
+    poses_path = run_dir / "poses.npz"
+    with np.load(poses_path) as poses:
+        frame_names = poses["frame_names"]
+        extrinsic = poses["extrinsic"]
+        intrinsic = poses["intrinsic"].copy()
+    intrinsic[0, 0, 0] *= -1.0
+    np.savez(
+        poses_path, frame_names=frame_names, extrinsic=extrinsic, intrinsic=intrinsic
+    )
+
+    exit_code = main(
+        [str(run_dir), str(board_dir), "--out", str(tmp_path / "out.json")]
+    )
+
+    assert exit_code == 1
+    assert "FAIL" in capsys.readouterr().err
+
+
 def test_build_argument_parser_defaults() -> None:
     args = build_argument_parser().parse_args(["run_dir", "board_dir"])
     assert args.cad is None
