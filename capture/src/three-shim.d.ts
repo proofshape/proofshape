@@ -10,6 +10,7 @@ declare module "three" {
 
   export class Object3D {
     position: Vector3;
+    traverse(callback: (object: Object3D) => void): void;
   }
 
   export class Scene extends Object3D {
@@ -47,6 +48,23 @@ declare module "three" {
     constructor(color?: number, intensity?: number);
   }
 
+  export class BufferGeometry {
+    dispose(): void;
+  }
+
+  export class Texture {
+    dispose(): void;
+  }
+
+  export class Material {
+    dispose(): void;
+  }
+
+  export class Mesh extends Object3D {
+    geometry: BufferGeometry;
+    material: Material | Material[];
+  }
+
   export class WebGLRenderer {
     domElement: HTMLCanvasElement;
     constructor(parameters?: { antialias?: boolean });
@@ -59,7 +77,9 @@ declare module "three" {
 
   export const TOUCH: {
     ROTATE: number;
+    PAN: number;
     DOLLY_ROTATE: number;
+    DOLLY_PAN: number;
   };
 }
 
@@ -74,7 +94,7 @@ declare module "three/addons/loaders/GLTFLoader.js" {
     load(
       url: string,
       onLoad: (model: GLTF) => void,
-      onProgress?: undefined,
+      onProgress?: (event: ProgressEvent<EventTarget>) => void,
       onError?: (error: unknown) => void,
     ): void;
   }

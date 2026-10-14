@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { setStatus } from "./camera.js";
 import type { ReconstructionResult } from "./types.js";
 
 interface LoadedModel {
@@ -11,7 +12,7 @@ export interface ModelLoader {
   load(
     url: string,
     onLoad: (model: LoadedModel) => void,
-    onProgress: undefined,
+    onProgress: ((event: ProgressEvent<EventTarget>) => void) | undefined,
     onError: (error: unknown) => void,
   ): void;
 }
@@ -20,11 +21,12 @@ export interface ModelViewerOptions {
   loaderFactory?: () => ModelLoader;
 }
 
-function setMessage(target: HTMLElement, message: string, isError = false): void {
-  target.textContent = message;
-  target.style.fontWeight = isError ? "bold" : "";
-  target.style.color = isError ? "#b00020" : "";
+interface ModelViewerUnavailable {
+  status: "unavailable";
+  message: string;
 }
+
+export type ModelViewerState = ReconstructionResult | ModelViewerUnavailable;
 
 function describeLoadError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "unknown loading error";
@@ -45,6 +47,46 @@ function viewportSize(viewport: HTMLElement): { width: number; height: number } 
     width: Math.max(1, Math.round(rect.width || window.innerWidth || 1)),
     height: Math.max(1, Math.round(rect.height || window.innerHeight * 0.6 || 1)),
   };
+}
+
+function disposeModelResources(model: THREE.Object3D): void {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
+
+  model.traverse((object) => {
+    const mesh = object as Partial<THREE.Mesh>;
+    if (mesh.geometry) {
+      geometries.add(mesh.geometry);
+    }
+
+    const material = mesh.material;
+    if (Array.isArray(material)) {
+      for (const item of material) {
+        materials.add(item);
+      }
+    } else if (material) {
+      materials.add(material);
+    }
+  });
+
+  for (const material of materials) {
+    for (const value of Object.values(material as unknown as Record<string, unknown>)) {
+      if (value instanceof THREE.Texture) {
+        textures.add(value);
+      }
+    }
+  }
+
+  for (const texture of textures) {
+    texture.dispose();
+  }
+  for (const material of materials) {
+    material.dispose();
+  }
+  for (const geometry of geometries) {
+    geometry.dispose();
+  }
 }
 
 function createThreePreview(viewport: HTMLElement, model: THREE.Object3D): () => void {
@@ -77,39 +119,56 @@ function createThreePreview(viewport: HTMLElement, model: THREE.Object3D): () =>
   scene.add(keyLight);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.domElement.style.display = "block";
-  renderer.domElement.style.width = "100%";
-  renderer.domElement.style.height = "100%";
-  renderer.domElement.style.touchAction = "none";
-  viewport.append(renderer.domElement);
-
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.enablePan = false;
-  controls.target.set(0, 0, 0);
-  controls.touches.ONE = THREE.TOUCH.ROTATE;
-  controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
-  controls.update();
-
+  let controls: OrbitControls | null = null;
+  let resizeAttached = false;
   const resize = (): void => {
     const { width, height } = viewportSize(viewport);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     renderer.setSize(width, height, false);
   };
-  resize();
-  window.addEventListener("resize", resize);
 
-  renderer.setAnimationLoop(() => {
+  try {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+    renderer.domElement.style.touchAction = "none";
+    viewport.append(renderer.domElement);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.target.set(0, 0, 0);
+    controls.touches.ONE = THREE.TOUCH.ROTATE;
+    controls.touches.TWO = THREE.TOUCH.DOLLY_ROTATE;
     controls.update();
-    renderer.render(scene, camera);
-  });
+
+    resize();
+    window.addEventListener("resize", resize);
+    resizeAttached = true;
+
+    renderer.setAnimationLoop(() => {
+      controls?.update();
+      renderer.render(scene, camera);
+    });
+  } catch (error) {
+    if (resizeAttached) {
+      window.removeEventListener("resize", resize);
+    }
+    renderer.setAnimationLoop(null);
+    controls?.dispose();
+    disposeModelResources(model);
+    renderer.dispose();
+    renderer.domElement.remove();
+    throw error;
+  }
 
   return () => {
     window.removeEventListener("resize", resize);
     renderer.setAnimationLoop(null);
-    controls.dispose();
+    controls?.dispose();
+    disposeModelResources(model);
     renderer.dispose();
     renderer.domElement.remove();
   };
@@ -117,7 +176,7 @@ function createThreePreview(viewport: HTMLElement, model: THREE.Object3D): () =>
 
 export function mountModelViewer(
   root: HTMLElement,
-  result: ReconstructionResult,
+  result: ModelViewerState,
   options: ModelViewerOptions = {},
 ): () => void {
   root.replaceChildren();
@@ -126,28 +185,34 @@ export function mountModelViewer(
   status.setAttribute("role", "status");
   root.append(status);
 
+  if (result.status === "unavailable") {
+    setStatus(status, result.message, "error");
+    return () => undefined;
+  }
+
   if (result.status === "pending") {
-    setMessage(status, "3D model will appear when reconstruction completes.");
+    setStatus(status, "3D model will appear when reconstruction completes.", "info");
     return () => undefined;
   }
 
   if (result.status === "failed") {
-    setMessage(status, "3D model unavailable because reconstruction failed.", true);
+    const detail = result.warnings?.length ? " " + result.warnings.join(" ") : "";
+    setStatus(status, "3D model unavailable because reconstruction failed." + detail, "error");
     return () => undefined;
   }
 
   if (!result.glb_url) {
-    setMessage(
+    setStatus(
       status,
       "Reconstruction completed, but no GLB model URL was returned. The 3D viewer cannot start.",
-      true,
+      "error",
     );
     return () => undefined;
   }
 
-  const controls = document.createElement("div");
-  controls.append(createDownloadLink(result.glb_url));
-  root.append(controls);
+  const controlsContainer = document.createElement("div");
+  controlsContainer.append(createDownloadLink(result.glb_url));
+  root.append(controlsContainer);
 
   const viewport = document.createElement("div");
   viewport.setAttribute("aria-label", "3D reconstruction viewer");
@@ -157,7 +222,7 @@ export function mountModelViewer(
   viewport.style.touchAction = "none";
   root.append(viewport);
 
-  setMessage(status, "Loading 3D model…");
+  setStatus(status, "Loading 3D model…", "info");
 
   const loader = options.loaderFactory?.() ?? new GLTFLoader();
   let disposed = false;
@@ -171,14 +236,14 @@ export function mountModelViewer(
       }
       try {
         disposePreview = createThreePreview(viewport, loaded.scene);
-        setMessage(status, "3D model loaded. Drag to orbit; pinch to zoom.");
+        setStatus(status, "3D model loaded. Drag to orbit; pinch to zoom.", "info");
       } catch (error) {
-        setMessage(
+        setStatus(
           status,
           "3D preview could not start: " +
             describeLoadError(error) +
             " Download GLB is still available.",
-          true,
+          "error",
         );
       }
     },
@@ -187,12 +252,12 @@ export function mountModelViewer(
       if (disposed) {
         return;
       }
-      setMessage(
+      setStatus(
         status,
         "3D preview could not load: " +
           describeLoadError(error) +
           " Download GLB is still available.",
-        true,
+        "error",
       );
     },
   );

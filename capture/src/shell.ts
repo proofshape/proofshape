@@ -7,7 +7,11 @@ import { createSession, finishSession, getReconstruction } from "./api.js";
 import { requireElement, requireTyped } from "./dom.js";
 import { requestGyroPermission } from "./gyro.js";
 import { describeCreateSession, describeFinishSession } from "./messages.js";
-import { mountModelViewer, type ModelViewerOptions } from "./model-viewer.js";
+import {
+  mountModelViewer,
+  type ModelViewerOptions,
+  type ModelViewerState,
+} from "./model-viewer.js";
 import type { Gyro, ReconstructionResult } from "./types.js";
 
 export interface AppState {
@@ -91,6 +95,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     { status: "pending" },
     options.modelViewerOptions,
   );
+  function remountModelViewer(result: ModelViewerState): void {
+    disposeModelViewer();
+    disposeModelViewer = mountModelViewer(modelViewer, result, options.modelViewerOptions);
+  }
 
   function startListeningForGyro(): void {
     if (listeningForGyro) {
@@ -178,6 +186,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       return;
     }
     retryReconstructionButton.hidden = true;
+    remountModelViewer({ status: "pending" });
     const outcome = await pollReconstruction(
       options.baseUrl,
       state.sessionId,
@@ -185,15 +194,22 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
       options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
       (terminalResult) => {
-        disposeModelViewer();
-        disposeModelViewer = mountModelViewer(
-          modelViewer,
-          terminalResult,
-          options.modelViewerOptions,
-        );
+        remountModelViewer(terminalResult);
       },
     );
     retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
+    if (outcome === "timeout") {
+      remountModelViewer({
+        status: "unavailable",
+        message: "3D model unavailable because reconstruction timed out. Retry reconstruction.",
+      });
+    } else if (outcome === "error") {
+      remountModelViewer({
+        status: "unavailable",
+        message:
+          "3D model unavailable because reconstruction status could not be fetched. Retry reconstruction.",
+      });
+    }
   }
 
   finishButton.addEventListener("click", () => {
