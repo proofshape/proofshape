@@ -981,3 +981,35 @@ actual against a 3 h estimate, with no frozen OpenAPI change.
 the paid reconstruction deployment and never turns a non-metric result into a dimensional claim.
 **Next:** C-11 (model viewer) is now Ready and can render the GLB returned by this path.
 
+## 2026-10-12 — R-21 height cut measured from the real board surface (PR #125)
+
+**Who:** @TabeenRaoof, reviewed and approved by @mbj1994.
+**What changed:** R-06's segmentation cut 2 mm above z=0, which R-04 doesn't actually put the
+board on — R-17 measured it 1.6–5.4 mm off, with tilt up to 0.9°, costing up to a quarter of a
+part's height (s-04). `recon/part_segmentation.py` gained `measure_board_surface`: a robust plane
+fit on in-footprint near-board points, with the height threshold set from the fitted plane's own
+point-density layer rather than a fixed margin, so it still clears the raised second board layer
+R-17 found on s-01/s-02. `segment_part` now takes that fitted `BoardSurface` instead of defaulting
+to z=0. `recon/tsdf_fusion.py`'s `fuse_run` fits the same surface from its own valid-depth pixels
+and uses it for both the mask and the voxel grid's z bounds, so the fused mesh (and the deployed
+service, which calls `fuse_run` directly) keep the same base. Chose to measure in R-06 rather than
+fix R-04's alignment at the source (D-044), since R-22 was mid-flight on a different R-04 scale
+question at the same time and touching R-04 would have moved the ground under that measurement.
+Also fixed a latent crash in `fuse_run`, found while writing this story's tests: `segment_part`'s
+finiteness check rejected the whole per-frame array if any single pixel had non-finite depth,
+which `vggt_runner.py` already anticipates as a real case elsewhere.
+**Result:** real-data rerun on all five golden objects: measured offsets 0.9–5.4 mm, tilt
+0.23–0.78°, new height thresholds 2.5–6.0 mm (below R-17's old, over-cut thresholds on three of
+five objects; s-01 and s-02 are exceptions, where the old cut happened to sit under the real
+board's own noisy top rather than above it). s-04's base cut dropped from R-17's 7.4 mm (a
+quarter of the part) to 2.5 mm. `fuse_run` smoke-tested end to end on s-04's real data. Repo-wide
+`pytest` (325)/`ruff`/`check_story_states.py` clean on the merged head; R-21 closed at 1.5 h
+actual against a 3 h estimate.
+**Concluded:** the segmented point cloud and fused mesh now keep the part's full base on all five
+golden objects, without reintroducing the raised second board layer R-17 flagged. D-044 records
+the R-06-vs-R-04 decision and the full real-data numbers. The reviewer's close-out comments on the
+second-member clean-checkout run and the golden-set visual pass/fail were left as non-blocking
+rather than confirmed complete before merge — worth a follow-up check rather than assuming done.
+**Next:** R-20's mesh rerun (confidence-filtered fusion) now sees an intact base rather than one
+with the bottom cut off, making its before/after comparison against R-18 more telling.
+
