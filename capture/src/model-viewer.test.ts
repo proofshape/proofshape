@@ -82,7 +82,9 @@ describe("mountModelViewer", () => {
     );
 
     expect(target.textContent).toContain("reconstruction timed out");
-    expect(target.querySelector('[role="status"]')?.style.fontWeight).toBe("bold");
+    const status = target.querySelector('[role="status"]');
+    expect(status).toBeInstanceOf(HTMLElement);
+    expect((status as HTMLElement).style.fontWeight).toBe("bold");
     expect(loaderFactory).not.toHaveBeenCalled();
   });
 

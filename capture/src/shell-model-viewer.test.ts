@@ -96,8 +96,13 @@ describe("C-11 model viewer shell wiring", () => {
       }
     });
 
+    const sessionId = mounted.state.sessionId;
+    if (sessionId === null) {
+      throw new Error("test setup: session id missing after wait");
+    }
+
     const frame = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
-    const uploaded = await uploadFrame(baseUrl, mounted.state.sessionId, frame, {
+    const uploaded = await uploadFrame(baseUrl, sessionId, frame, {
       alpha: 1,
       beta: 2,
       gamma: 3,
