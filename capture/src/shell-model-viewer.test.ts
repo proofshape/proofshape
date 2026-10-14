@@ -60,13 +60,9 @@ describe("C-11 model viewer shell wiring", () => {
     const orderCode = document.getElementById("shell-order-code");
     const startButton = document.getElementById("shell-start-button");
     const finishButton = document.getElementById("shell-finish-button");
-    const reconstructionStatus = document.getElementById(
-      "shell-reconstruction-status",
-    );
+    const reconstructionStatus = document.getElementById("shell-reconstruction-status");
     const modelViewer = document.getElementById("shell-model-viewer");
-    const retryButton = document.getElementById(
-      "shell-retry-reconstruction-button",
-    );
+    const retryButton = document.getElementById("shell-retry-reconstruction-button");
 
     if (
       !(orderCode instanceof HTMLInputElement) ||
@@ -122,29 +118,20 @@ describe("C-11 model viewer shell wiring", () => {
     return mounted;
   }
 
-  it(
-    "remounts the viewer with the completed reconstruction GLB URL",
-    async () => {
-      const mounted = await prepareSession();
-      stub.setReconstructionPendingPolls(0);
+  it("remounts the viewer with the completed reconstruction GLB URL", async () => {
+    const mounted = await prepareSession();
+    stub.setReconstructionPendingPolls(0);
 
-      mounted.finishButton.click();
-      await vi.waitFor(() => {
-        if (
-          !mounted.reconstructionStatus.textContent.includes(
-            "Reconstruction complete",
-          )
-        ) {
-          throw new Error("reconstruction not complete yet");
-        }
-      });
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("Reconstruction complete")) {
+        throw new Error("reconstruction not complete yet");
+      }
+    });
 
-      expect(mounted.modelViewer.textContent).toContain("Loading 3D model");
-      expect(
-        mounted.modelViewer.querySelector("a")?.getAttribute("href"),
-      ).toMatch(/model\.glb$/);
-    },
-  );
+    expect(mounted.modelViewer.textContent).toContain("Loading 3D model");
+    expect(mounted.modelViewer.querySelector("a")?.getAttribute("href")).toMatch(/model\.glb$/);
+  });
 
   it("remounts the viewer with the backend failed state", async () => {
     const mounted = await prepareSession();
@@ -153,11 +140,7 @@ describe("C-11 model viewer shell wiring", () => {
 
     mounted.finishButton.click();
     await vi.waitFor(() => {
-      if (
-        !mounted.reconstructionStatus.textContent.includes(
-          "Reconstruction failed",
-        )
-      ) {
+      if (!mounted.reconstructionStatus.textContent.includes("Reconstruction failed")) {
         throw new Error("reconstruction failure not rendered yet");
       }
     });
@@ -165,72 +148,44 @@ describe("C-11 model viewer shell wiring", () => {
     expect(mounted.modelViewer.textContent).toContain(
       "3D model unavailable because reconstruction failed",
     );
-    expect(mounted.modelViewer.textContent).toContain(
-      "Stub reconstruction failure",
-    );
+    expect(mounted.modelViewer.textContent).toContain("Stub reconstruction failure");
   });
 
-  it(
-    "does not leave the viewer promising a future model after polling times out",
-    async () => {
-      const mounted = await prepareSession();
-      stub.setReconstructionPendingPolls(99);
+  it("does not leave the viewer promising a future model after polling times out", async () => {
+    const mounted = await prepareSession();
+    stub.setReconstructionPendingPolls(99);
 
-      mounted.finishButton.click();
-      await vi.waitFor(() => {
-        if (
-          !mounted.reconstructionStatus.textContent.includes(
-            "timed out after 2 attempts",
-          )
-        ) {
-          throw new Error("timeout not rendered yet");
-        }
-      });
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("timed out after 2 attempts")) {
+        throw new Error("timeout not rendered yet");
+      }
+    });
 
-      expect(mounted.modelViewer.textContent).toContain(
-        "reconstruction timed out",
-      );
-      expect(mounted.retryButton.hidden).toBe(false);
-    },
-  );
+    expect(mounted.modelViewer.textContent).toContain("reconstruction timed out");
+    expect(mounted.retryButton.hidden).toBe(false);
+  });
 
-  it(
-    "does not leave the viewer pending when reconstruction fetch rejects",
-    async () => {
-      const mounted = await prepareSession();
-      const nativeFetch = globalThis.fetch.bind(globalThis);
+  it("does not leave the viewer pending when reconstruction fetch rejects", async () => {
+    const mounted = await prepareSession();
+    const nativeFetch = globalThis.fetch.bind(globalThis);
 
-      vi.stubGlobal(
-        "fetch",
-        (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-          const url =
-            typeof input === "string"
-              ? input
-              : input instanceof URL
-                ? input.href
-                : input.url;
-          if (url.includes("/reconstruction")) {
-            return Promise.reject(new TypeError("Failed to fetch"));
-          }
-          return nativeFetch(input, init);
-        },
-      );
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/reconstruction")) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return nativeFetch(input, init);
+    });
 
-      mounted.finishButton.click();
-      await vi.waitFor(() => {
-        if (
-          !mounted.reconstructionStatus.textContent.includes(
-            "Could not fetch reconstruction",
-          )
-        ) {
-          throw new Error("fetch failure not rendered yet");
-        }
-      });
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("Could not fetch reconstruction")) {
+        throw new Error("fetch failure not rendered yet");
+      }
+    });
 
-      expect(mounted.modelViewer.textContent).toContain(
-        "reconstruction status could not be fetched",
-      );
-      expect(mounted.retryButton.hidden).toBe(false);
-    },
-  );
+    expect(mounted.modelViewer.textContent).toContain("reconstruction status could not be fetched");
+    expect(mounted.retryButton.hidden).toBe(false);
+  });
 });
