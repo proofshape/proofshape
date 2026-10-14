@@ -168,7 +168,7 @@ function createThreePreview(viewport: HTMLElement, model: THREE.Object3D): () =>
   return () => {
     window.removeEventListener("resize", resize);
     renderer.setAnimationLoop(null);
-    controls?.dispose();
+    controls.dispose();
     disposeModelResources(model);
     renderer.dispose();
     renderer.domElement.remove();
