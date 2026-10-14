@@ -1,6 +1,15 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { describeCameraError, isGetUserMediaSupported, mountCameraCheck } from "./camera.js";
+import {
+  capturePixelsFromVideo,
+  captureFrame,
+  describeCameraError,
+  isGetUserMediaSupported,
+  mountCameraCheck,
+  requestCameraPermission,
+  stopCameraStream,
+} from "./camera.js";
+import type { Gyro } from "./types.js";
 
 describe("describeCameraError", () => {
   it("names the specific reason for each known denial", () => {
@@ -148,5 +157,122 @@ describe("mountCameraCheck", () => {
     expect(status.textContent).toContain("needs HTTPS");
     expect(status.style.color).not.toBe("");
     expect(status.style.fontWeight).toBe("bold");
+  });
+});
+
+describe("requestCameraPermission", () => {
+  afterEach(() => {
+    // @ts-expect-error -- test-only cleanup of a property this file itself may have set.
+    delete navigator.mediaDevices;
+  });
+
+  it("hands back the live stream on grant, without stopping it -- C-05's whole point", async () => {
+    const fakeStream = new MediaStream();
+    const stopSpy = vi.fn();
+    fakeStream.getTracks = () => [{ stop: stopSpy } as unknown as MediaStreamTrack];
+    // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
+    navigator.mediaDevices = { getUserMedia: () => Promise.resolve(fakeStream) };
+
+    const result = await requestCameraPermission();
+
+    expect(result).toEqual({ granted: true, stream: fakeStream });
+    expect(stopSpy).not.toHaveBeenCalled();
+  });
+
+  it("still reports a specific denial message", async () => {
+    // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
+    navigator.mediaDevices = {
+      getUserMedia: () => Promise.reject(new DOMException("", "NotAllowedError")),
+    };
+
+    const result = await requestCameraPermission();
+
+    expect(result.granted).toBe(false);
+    expect(!result.granted && result.message).toContain("permission denied");
+  });
+});
+
+describe("capturePixelsFromVideo", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function fakeVideo(width: number, height: number): HTMLVideoElement {
+    const video = document.createElement("video");
+    // happy-dom's real videoWidth/videoHeight are always 0 (no decode pipeline) -- overridden to
+    // stand in for a real playing video's reported frame size.
+    Object.defineProperty(video, "videoWidth", { value: width, configurable: true });
+    Object.defineProperty(video, "videoHeight", { value: height, configurable: true });
+    return video;
+  }
+
+  it("draws the video into a canvas sized to its dimensions and reads the pixels back", () => {
+    const drawImageSpy = vi.fn();
+    const imageData = { data: new Uint8ClampedArray([9, 8, 7, 6]), width: 1, height: 1 };
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: drawImageSpy,
+      getImageData: () => imageData,
+    } as unknown as CanvasRenderingContext2D);
+    const video = fakeVideo(640, 480);
+
+    const pixels = capturePixelsFromVideo(video);
+
+    expect(drawImageSpy).toHaveBeenCalledWith(video, 0, 0, 640, 480);
+    expect(pixels).toBe(imageData);
+  });
+
+  it("throws rather than capturing a garbage frame when the video has no dimensions yet", () => {
+    const video = fakeVideo(0, 0);
+
+    expect(() => {
+      capturePixelsFromVideo(video);
+    }).toThrow(/no dimensions yet/);
+  });
+});
+
+describe("captureFrame", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("pairs the captured pixels with exactly the gyro value passed in, each call independently", () => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: () => undefined,
+      getImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+    } as unknown as CanvasRenderingContext2D);
+    const video = document.createElement("video");
+    Object.defineProperty(video, "videoWidth", { value: 10, configurable: true });
+    Object.defineProperty(video, "videoHeight", { value: 10, configurable: true });
+    const gyroA: Gyro = { alpha: 1, beta: 2, gamma: 3 };
+    const gyroB: Gyro = { alpha: 40, beta: 50, gamma: 60 };
+
+    const resultA = captureFrame(video, gyroA);
+    const resultB = captureFrame(video, gyroB);
+
+    expect(resultA.gyro).toEqual(gyroA);
+    expect(resultB.gyro).toEqual(gyroB);
+  });
+});
+
+describe("stopCameraStream", () => {
+  it("stops every track on the stream", () => {
+    const stopA = vi.fn();
+    const stopB = vi.fn();
+    const fakeStream = {
+      getTracks: () => [{ stop: stopA }, { stop: stopB }],
+    } as unknown as MediaStream;
+
+    stopCameraStream(fakeStream);
+
+    expect(stopA).toHaveBeenCalledTimes(1);
+    expect(stopB).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not throw on a stream with no tracks", () => {
+    const fakeStream = { getTracks: () => [] } as unknown as MediaStream;
+
+    expect(() => {
+      stopCameraStream(fakeStream);
+    }).not.toThrow();
   });
 });

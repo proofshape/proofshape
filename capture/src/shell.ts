@@ -2,7 +2,14 @@
 // one real flow — create a session, request both permissions together — and gives C-05 onward
 // one shared place to read/write app state instead of per-module globals.
 
-import { requestCameraPermission, setStatus } from "./camera.js";
+import {
+  captureFrame,
+  describeCameraError,
+  requestCameraPermission,
+  setStatus,
+  stopCameraStream,
+  type CapturedFrame,
+} from "./camera.js";
 import { createSession, finishSession, getReconstruction } from "./api.js";
 import { requireElement, requireTyped } from "./dom.js";
 import { requestGyroPermission } from "./gyro.js";
@@ -16,6 +23,12 @@ export interface AppState {
   // null components from a real deviceorientation event are dropped, never coerced to 0 -- Gyro
   // requires `number`, the DOM event reports `number | null`.
   latestGyro: Gyro | null;
+  // C-05: the live stream, kept running for the length of a session -- null once never granted,
+  // or after a successful finish releases it.
+  cameraStream: MediaStream | null;
+  // C-05: overwritten on each capture, not accumulated -- C-09 (not yet built) is what will
+  // actually consume/accumulate captured frames; this story only proves one can be grabbed.
+  lastCapturedFrame: CapturedFrame | null;
 }
 
 export interface AppShellOptions {
@@ -35,6 +48,9 @@ export const APP_SHELL_HTML = `
     <p id="shell-session-status"></p>
     <p id="shell-camera-status"></p>
     <p id="shell-gyro-status"></p>
+    <video id="shell-camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
+    <button id="shell-capture-button" type="button" disabled>Capture frame</button>
+    <p id="shell-capture-status"></p>
   </section>
   <section>
     <h2>Finish and reconstruct (C-10)</h2>
@@ -60,6 +76,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const sessionStatus = requireElement(root, "#shell-session-status");
   const cameraStatus = requireElement(root, "#shell-camera-status");
   const gyroStatus = requireElement(root, "#shell-gyro-status");
+  const cameraPreview = requireTyped(root, "#shell-camera-preview", HTMLVideoElement, "<video>");
+  const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
+  const captureStatus = requireElement(root, "#shell-capture-status");
   const finishButton = requireTyped(root, "#shell-finish-button", HTMLButtonElement, "<button>");
   const retryReconstructionButton = requireTyped(
     root,
@@ -75,6 +94,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     cameraGranted: false,
     gyroGranted: false,
     latestGyro: null,
+    cameraStream: null,
+    lastCapturedFrame: null,
   };
 
   // Scoped to this mount, same reasoning as gyro.ts's own `listening` flag.
@@ -137,11 +158,28 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
       const cameraResult = await cameraPromise;
       state.cameraGranted = cameraResult.granted;
-      setStatus(
-        cameraStatus,
-        cameraResult.granted ? "Camera permission granted." : cameraResult.message,
-        cameraResult.granted ? "info" : "error",
-      );
+      if (cameraResult.granted) {
+        state.cameraStream = cameraResult.stream;
+        cameraPreview.srcObject = cameraResult.stream;
+        // Same "autoplay alone isn't reliable once a stream is attached after the element
+        // already exists" fix mountCameraCheck's preview needed (C-02) -- play() explicitly so a
+        // silently-stalled preview fails loudly instead.
+        cameraPreview.play().then(
+          () => {
+            setStatus(cameraStatus, "Camera started.", "info");
+            captureButton.disabled = false;
+          },
+          (playError: unknown) => {
+            setStatus(
+              cameraStatus,
+              `Camera permission granted, but the preview failed to play: ${describeCameraError(playError)}`,
+              "error",
+            );
+          },
+        );
+      } else {
+        setStatus(cameraStatus, cameraResult.message, "error");
+      }
 
       const gyroResult = await gyroPromise;
       state.gyroGranted = gyroResult.granted;
@@ -159,6 +197,20 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       // can be fixed and retried.
       startButton.disabled = sessionOk;
     })();
+  });
+
+  captureButton.addEventListener("click", () => {
+    if (state.latestGyro === null) {
+      setStatus(captureStatus, "No gyro reading yet -- try again in a moment.", "error");
+      return;
+    }
+    try {
+      state.lastCapturedFrame = captureFrame(cameraPreview, state.latestGyro);
+      const { width, height } = state.lastCapturedFrame.pixels;
+      setStatus(captureStatus, `Captured a ${String(width)}x${String(height)} frame.`, "info");
+    } catch (error) {
+      setStatus(captureStatus, error instanceof Error ? error.message : String(error), "error");
+    }
   });
 
   async function runReconstructionPolling(): Promise<void> {
@@ -191,6 +243,13 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         if (!result.ok) {
           finishButton.disabled = false;
           return;
+        }
+        // The session has actually ended now -- release the camera rather than leaving a real
+        // camera-stays-on bug running (this story's own acceptance criteria).
+        if (state.cameraStream !== null) {
+          stopCameraStream(state.cameraStream);
+          state.cameraStream = null;
+          captureButton.disabled = true;
         }
         await runReconstructionPolling();
       } catch (error) {

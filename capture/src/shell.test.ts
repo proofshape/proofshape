@@ -34,6 +34,9 @@ describe("mountAppShell", () => {
     sessionStatus: HTMLElement;
     cameraStatus: HTMLElement;
     gyroStatus: HTMLElement;
+    cameraPreview: HTMLVideoElement;
+    captureButton: HTMLButtonElement;
+    captureStatus: HTMLElement;
     finishButton: HTMLButtonElement;
     finishStatus: HTMLElement;
     reconstructionStatus: HTMLElement;
@@ -52,6 +55,9 @@ describe("mountAppShell", () => {
     const sessionStatus = document.getElementById("shell-session-status");
     const cameraStatus = document.getElementById("shell-camera-status");
     const gyroStatus = document.getElementById("shell-gyro-status");
+    const cameraPreview = document.getElementById("shell-camera-preview");
+    const captureButton = document.getElementById("shell-capture-button");
+    const captureStatus = document.getElementById("shell-capture-status");
     const finishButton = document.getElementById("shell-finish-button");
     const finishStatus = document.getElementById("shell-finish-status");
     const reconstructionStatus = document.getElementById("shell-reconstruction-status");
@@ -59,11 +65,14 @@ describe("mountAppShell", () => {
     if (
       !(orderCode instanceof HTMLInputElement) ||
       !(button instanceof HTMLButtonElement) ||
+      !(cameraPreview instanceof HTMLVideoElement) ||
+      !(captureButton instanceof HTMLButtonElement) ||
       !(finishButton instanceof HTMLButtonElement) ||
       !(retryReconstructionButton instanceof HTMLButtonElement) ||
       !sessionStatus ||
       !cameraStatus ||
       !gyroStatus ||
+      !captureStatus ||
       !finishStatus ||
       !reconstructionStatus
     ) {
@@ -76,6 +85,9 @@ describe("mountAppShell", () => {
       sessionStatus,
       cameraStatus,
       gyroStatus,
+      cameraPreview,
+      captureButton,
+      captureStatus,
       finishButton,
       finishStatus,
       reconstructionStatus,
@@ -83,16 +95,17 @@ describe("mountAppShell", () => {
     };
   }
 
-  function stubGrantedCamera(): void {
-    // happy-dom's own `MediaStream` class doesn't implement `getTracks()` -- a real browser's
-    // does, which is what requestCameraPermission's stop-the-tracks-immediately logic calls. A
-    // plain object with a working getTracks() stands in for it here, rather than the incomplete
-    // real class, the same class of happy-dom gap this project has run into before.
-    const fakeStream = {
-      getTracks: () => [{ stop: () => undefined }],
-    };
+  function stubGrantedCamera(): { trackStopSpy: ReturnType<typeof vi.fn> } {
+    // C-05 actually assigns the granted stream to `srcObject` now, and happy-dom's own
+    // `srcObject` setter (unlike its incomplete `MediaStream.getTracks()`) does validate the
+    // value is a real `MediaStream` instance -- so the fake has to be a real one, with
+    // `getTracks` overridden on the instance to make track-stop calls observable.
+    const trackStopSpy = vi.fn();
+    const fakeStream = new MediaStream();
+    fakeStream.getTracks = () => [{ stop: trackStopSpy } as unknown as MediaStreamTrack];
     // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
     navigator.mediaDevices = { getUserMedia: () => Promise.resolve(fakeStream) };
+    return { trackStopSpy };
   }
 
   function stubDeniedCamera(): void {
@@ -120,8 +133,10 @@ describe("mountAppShell", () => {
     window.dispatchEvent(event);
   }
 
-  async function startSuccessfulSession(): Promise<ReturnType<typeof mount>> {
-    stubGrantedCamera();
+  async function startSuccessfulSession(): Promise<
+    ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }
+  > {
+    const { trackStopSpy } = stubGrantedCamera();
     stubGyroPermission("granted");
     const mounted = mount();
     mounted.orderCode.value = "PO-48213-A";
@@ -130,7 +145,34 @@ describe("mountAppShell", () => {
       if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
     });
     if (mounted.state.sessionId === null) throw new Error("session id missing");
-    return mounted;
+    return { ...mounted, trackStopSpy };
+  }
+
+  // happy-dom's canvas has no real 2D rendering, so capturePixelsFromVideo's drawImage/getImageData
+  // calls need a stub -- this is what "a fake video element" in C-05's own Tests section maps to
+  // on the <canvas> side. Returns the drawImage spy and the pixel data captureFrame will read back.
+  function stubCanvasContext(): {
+    drawImageSpy: ReturnType<typeof vi.fn>;
+    imageData: ImageData;
+  } {
+    const drawImageSpy = vi.fn();
+    const imageData = {
+      data: new Uint8ClampedArray([1, 2, 3, 4]),
+      width: 1,
+      height: 1,
+    } as ImageData;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: drawImageSpy,
+      getImageData: () => imageData,
+    } as unknown as CanvasRenderingContext2D);
+    return { drawImageSpy, imageData };
+  }
+
+  function setVideoDimensions(video: HTMLVideoElement, width: number, height: number): void {
+    // happy-dom's own videoWidth/videoHeight are always 0 (no real decode pipeline) --
+    // overridden here the same way a real playing video would report its frame size.
+    Object.defineProperty(video, "videoWidth", { value: width, configurable: true });
+    Object.defineProperty(video, "videoHeight", { value: height, configurable: true });
   }
 
   async function uploadAcceptedFrame(sessionId: string): Promise<void> {
@@ -188,14 +230,19 @@ describe("mountAppShell", () => {
 
     button.click();
     await vi.waitFor(() => {
-      if (gyroStatus.textContent === "") throw new Error("still pending");
+      if (gyroStatus.textContent === "" || cameraStatus.textContent === "") {
+        throw new Error("still pending");
+      }
     });
 
     expect(state.sessionId).toMatch(/^sess_/);
     expect(state.cameraGranted).toBe(true);
     expect(state.gyroGranted).toBe(true);
     expect(sessionStatus.textContent).toMatch(/Session started/);
-    expect(cameraStatus.textContent).toBe("Camera permission granted.");
+    // C-05: the camera doesn't just report permission granted anymore -- it keeps the stream
+    // running and confirms the preview actually started playing, same wording C-02's own
+    // mountCameraCheck already uses for this.
+    expect(cameraStatus.textContent).toBe("Camera started.");
     expect(gyroStatus.textContent).toBe("Gyro permission granted.");
   });
 
@@ -314,13 +361,15 @@ describe("mountAppShell", () => {
 
     button.click();
     await vi.waitFor(() => {
-      if (gyroStatus.textContent === "") throw new Error("still pending");
+      if (gyroStatus.textContent === "" || cameraStatus.textContent === "") {
+        throw new Error("still pending");
+      }
     });
 
     expect(state.sessionId).toBeNull();
     expect(sessionStatus.textContent).toMatch(/Could not start session/);
     expect(state.cameraGranted).toBe(true);
-    expect(cameraStatus.textContent).toBe("Camera permission granted.");
+    expect(cameraStatus.textContent).toBe("Camera started.");
     expect(state.gyroGranted).toBe(true);
     expect(button.disabled).toBe(false);
   });
@@ -463,5 +512,86 @@ describe("mountAppShell", () => {
     dispatchOrientation(null, 9, 9);
 
     expect(state.latestGyro).toEqual({ alpha: 1, beta: 2, gamma: 3 });
+  });
+
+  it("keeps the camera stream running on grant -- not stopped immediately like C-02 -- and enables the capture button", async () => {
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const { state, orderCode, button, gyroStatus, captureButton } = mount();
+    orderCode.value = "PO-48213-A";
+
+    expect(captureButton.disabled).toBe(true);
+
+    button.click();
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(state.cameraStream).not.toBeNull();
+    expect(trackStopSpy).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      if (captureButton.disabled) throw new Error("still disabled");
+    });
+  });
+
+  it("captures a frame paired with the live gyro reading, without restarting the stream", async () => {
+    const mounted = await startSuccessfulSession();
+    const { imageData } = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+
+    expect(mounted.state.lastCapturedFrame).toEqual({
+      pixels: imageData,
+      gyro: { alpha: 12.3, beta: -45.6, gamma: 78.9 },
+    });
+    expect(mounted.captureStatus.textContent).toMatch(/captured/i);
+  });
+
+  it("shows an error and does not capture when there is no gyro reading yet", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+
+    expect(mounted.state.lastCapturedFrame).toBeNull();
+    expect(mounted.captureStatus.textContent).toMatch(/no gyro reading/i);
+  });
+
+  it("stops every camera track and disables capture once the session actually finishes", async () => {
+    const mounted = await startSuccessfulSession();
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (mounted.finishStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalledTimes(1);
+    expect(mounted.state.cameraStream).toBeNull();
+    expect(mounted.captureButton.disabled).toBe(true);
+  });
+
+  it("does not touch the camera stream when finishSession resolves not-ok", async () => {
+    const mounted = await startSuccessfulSession();
+    // No frame uploaded -- the stub's own finishSession rejects with 409 "too few frames" when
+    // acceptedFrameCount is 0, giving a real not-ok response without a separate stub method.
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (mounted.finishStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(mounted.finishStatus.style.fontWeight).toBe("bold");
+    expect(mounted.trackStopSpy).not.toHaveBeenCalled();
+    expect(mounted.state.cameraStream).not.toBeNull();
   });
 });
