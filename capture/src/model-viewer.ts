@@ -12,7 +12,7 @@ export interface ModelLoader {
   load(
     url: string,
     onLoad: (model: LoadedModel) => void,
-    onProgress: ((event: ProgressEvent<EventTarget>) => void) | undefined,
+    onProgress: ((event: ProgressEvent) => void) | undefined,
     onError: (error: unknown) => void,
   ): void;
 }
@@ -148,8 +148,9 @@ function createThreePreview(viewport: HTMLElement, model: THREE.Object3D): () =>
     window.addEventListener("resize", resize);
     resizeAttached = true;
 
+    const activeControls = controls;
     renderer.setAnimationLoop(() => {
-      controls?.update();
+      activeControls.update();
       renderer.render(scene, camera);
     });
   } catch (error) {

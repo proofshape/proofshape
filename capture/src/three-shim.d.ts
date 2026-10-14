@@ -94,7 +94,7 @@ declare module "three/addons/loaders/GLTFLoader.js" {
     load(
       url: string,
       onLoad: (model: GLTF) => void,
-      onProgress?: (event: ProgressEvent<EventTarget>) => void,
+      onProgress?: (event: ProgressEvent) => void,
       onError?: (error: unknown) => void,
     ): void;
   }
