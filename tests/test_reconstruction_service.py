@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+import pytest
 import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft7Validator, RefResolver
@@ -320,6 +321,50 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
     assert result["observed_fraction"] == 0.75
     assert "provenance" in result["stage_timings_s"]
     assert "uncertainty" in result["stage_timings_s"]
+
+
+def test_pipeline_maps_fuse_run_failures_to_a_named_fusion_error_not_a_generic_one(
+    tmp_path, monkeypatch
+):
+    # R-20: fuse_run can now raise FileNotFoundError/ValueError (a run.json missing or
+    # predating min_confidence). Without the pipeline's own except clause, that would propagate
+    # past run_reconstruction_pipeline uncaught and get caught by run_session's generic
+    # terminal-exception handler instead, which reports an unrelated "Reconstruction failed: "
+    # message -- this confirms the pipeline maps it explicitly before that happens.
+    from recon import board_pose, metric_alignment, reconstruction_runner, tsdf_fusion
+
+    capture_dir = tmp_path / "capture"
+    artifact_dir = tmp_path / "artifacts"
+    capture_dir.mkdir()
+
+    monkeypatch.setattr(
+        board_pose,
+        "estimate_board_poses",
+        lambda capture, out: {"posed_count": 3, "failure_counts": {}},
+    )
+    monkeypatch.setattr(
+        reconstruction_runner,
+        "run_on_capture",
+        lambda *args, **kwargs: {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        metric_alignment, "load_and_align", lambda *args, **kwargs: {"scale": 1.0}
+    )
+    monkeypatch.setattr(
+        metric_alignment, "write_alignment", lambda *args, **kwargs: None
+    )
+
+    def fail_fuse_run(*args, **kwargs):
+        raise FileNotFoundError("run.json does not exist")
+
+    monkeypatch.setattr(tsdf_fusion, "fuse_run", fail_fuse_run)
+
+    with pytest.raises(service.ReconstructionFailure) as excinfo:
+        service.run_reconstruction_pipeline(capture_dir, artifact_dir)
+
+    assert excinfo.value.code == "metric_alignment_failed"
+    assert "Fusion failed" in excinfo.value.message
+    assert "run.json does not exist" in excinfo.value.message
 
 
 def test_malformed_gyro_is_contract_valid_and_explicitly_not_a_vlm_decision(tmp_path):
