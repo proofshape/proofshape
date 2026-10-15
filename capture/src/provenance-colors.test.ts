@@ -60,7 +60,7 @@ describe("C-12 provenance colors", () => {
     geometry.setAttribute("color", colors);
     const material = new THREE.MeshStandardMaterial({ metalness: 1, roughness: 1 });
     const mesh = new THREE.Mesh(geometry, material);
-    const scene = new THREE.Object3D();
+    const scene = new THREE.Scene();
     scene.add(mesh);
 
     const result = remapModelProvenanceColors(scene);
@@ -77,7 +77,7 @@ describe("C-12 provenance colors", () => {
     const geometry = new THREE.BufferGeometry();
     const colors = new THREE.BufferAttribute(new Uint8Array([255, 255, 255]), 3, true);
     geometry.setAttribute("color", colors);
-    const scene = new THREE.Object3D();
+    const scene = new THREE.Scene();
     scene.add(
       new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()),
       new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()),
@@ -90,7 +90,7 @@ describe("C-12 provenance colors", () => {
   });
 
   it("reports no provenance when a model has no color attribute", () => {
-    const scene = new THREE.Object3D();
+    const scene = new THREE.Scene();
     scene.add(new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial()));
 
     expect(remapModelProvenanceColors(scene)).toEqual({
