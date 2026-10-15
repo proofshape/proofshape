@@ -41,6 +41,14 @@ from recon.timing import format_timing_table
 
 DEFAULT_MODEL_ID = "facebook/VGGT-1B"
 
+# D-045: the golden-set sweep (recon/confidence_sweep.py) found that almost all of the achievable
+# stray-point reduction is captured the instant the threshold clears VGGT's exact confidence
+# floor of 1.0 -- the median pixel sits exactly at that floor on every golden object. Pushing the
+# threshold any higher past that buys little further cleanup while steadily costing part
+# coverage, so 1.0001 (strictly above the floor, not a larger round number) is the chosen
+# default. See D-045 for the full evidence and stories/R/R-20.md's notes for the per-object table.
+DEFAULT_MIN_CONFIDENCE = 1.0001
+
 # Compute capability 8.0 is Ampere, the first NVIDIA generation with fast bf16. The Lightning
 # Studio's Tesla T4 is 7.5, where bf16 is emulated and slow, so it must use fp16 (D-011 records
 # the same lesson for Metal, where fp16 also wins).
@@ -131,6 +139,22 @@ def unproject_depth_to_world(
     return world_points
 
 
+def confidence_keep_mask(confidence: np.ndarray, min_confidence: float) -> np.ndarray:
+    """Return a boolean mask, same shape as ``confidence``: True where a pixel is trusted.
+
+    A pixel is kept when its confidence is finite and at least ``min_confidence``. This is the
+    one predicate the whole pipeline uses to decide "do we trust this pixel's depth" --
+    ``select_point_cloud`` below applies it when building R-01's point cloud, and R-07's
+    ``recon.tsdf_fusion.fuse_run`` applies it again, on the same ``depth_conf`` array, when
+    deciding which pixels may update the TSDF. Sharing one function means a pixel dropped from
+    the cloud is dropped from the fused surface too (R-20's acceptance criteria), rather than the
+    two independently reimplementing "finite and above threshold" and risking them drifting apart
+    (the same reasoning as the PLY read/write pair sharing one fixed layout, above).
+    """
+    confidence = np.asarray(confidence)
+    return np.isfinite(confidence) & (confidence >= min_confidence)
+
+
 def select_point_cloud(
     world_points: np.ndarray,
     colors: np.ndarray,
@@ -139,9 +163,8 @@ def select_point_cloud(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Flatten per-pixel points to a cloud, dropping non-finite and low-confidence points.
 
-    ``min_confidence`` is an absolute threshold on VGGT's depth confidence. The default the CLI
-    passes is 0.0 (keep everything finite) because no threshold has been measured yet; picking
-    one is R-04+ work once there is ground truth to judge it against.
+    ``min_confidence`` is an absolute threshold on VGGT's depth confidence -- see
+    ``DEFAULT_MIN_CONFIDENCE``'s docstring for how that default was chosen (D-045).
     """
     if (
         world_points.shape[:3] != confidence.shape
@@ -156,8 +179,7 @@ def select_point_cloud(
     flat_confidence = confidence.reshape(-1)
 
     keep = np.isfinite(flat_points).all(axis=1)
-    keep &= np.isfinite(flat_confidence)
-    keep &= flat_confidence >= min_confidence
+    keep &= confidence_keep_mask(flat_confidence, min_confidence)
     return flat_points[keep], flat_colors[keep]
 
 
@@ -383,7 +405,7 @@ def run_on_capture(
     out_dir: Path,
     model_id: str = DEFAULT_MODEL_ID,
     device_type: str = "cuda",
-    min_confidence: float = 0.0,
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE,
 ) -> dict[str, Any]:
     """Run the whole R-01 pipeline on one capture folder and return the run.json contents."""
     total_started = time.perf_counter()
@@ -464,8 +486,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--min-confidence",
         type=float,
-        default=0.0,
-        help="drop cloud points whose depth confidence is below this (default keeps all)",
+        default=DEFAULT_MIN_CONFIDENCE,
+        help=(
+            "drop cloud points whose depth confidence is below this "
+            f"(default {DEFAULT_MIN_CONFIDENCE}, D-045: excludes VGGT's exact confidence "
+            "floor of 1.0; pass 0.0 to keep every finite point)"
+        ),
     )
     return parser
 

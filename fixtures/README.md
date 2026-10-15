@@ -40,5 +40,7 @@ BSD/macOS-native `shasum -a 256` — the documented local dev path is native App
 expected Drive fixture inventory. The per-image `SHA256SUMS.local` generated after download is
 intentionally local because the photographs themselves remain outside git.
 
-A reference CAD model for `s-04` is committed under `reference_cad/`. It is the explicit
-exception to the global `*.stl` ignore rule required by F-06.
+Reference CAD models for `s-04` and `s-05` are committed under `reference_cad/` (both already
+listed in the manifest's `reference_cad` block above). They are the explicit exception to the
+global `*.stl` ignore rule required by F-06; R-22 added `s-05`'s file to let its reconstructed
+size be checked against CAD the same way R-17 did for `s-04`.
