@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { setStatus } from "./camera.js";
+import { createProvenanceLegend, remapModelProvenanceColors } from "./provenance-colors.js";
 import type { ReconstructionResult } from "./types.js";
 
 interface LoadedModel {
@@ -212,7 +213,7 @@ export function mountModelViewer(
   }
 
   const controlsContainer = document.createElement("div");
-  controlsContainer.append(createDownloadLink(result.glb_url));
+  controlsContainer.append(createDownloadLink(result.glb_url), createProvenanceLegend());
   root.append(controlsContainer);
 
   const viewport = document.createElement("div");
@@ -236,6 +237,7 @@ export function mountModelViewer(
         return;
       }
       try {
+        remapModelProvenanceColors(loaded.scene);
         disposePreview = createThreePreview(viewport, loaded.scene);
         setStatus(status, "3D model loaded. Drag to orbit; pinch to zoom.", "info");
       } catch (error) {
