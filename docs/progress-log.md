@@ -1013,3 +1013,11 @@ rather than confirmed complete before merge — worth a follow-up check rather t
 **Next:** R-20's mesh rerun (confidence-filtered fusion) now sees an intact base rather than one
 with the bottom cut off, making its before/after comparison against R-18 more telling.
 
+
+
+## 2026-10-15 — C-11 model viewer merged (PR #131)
+
+**Who:** @mbj1994, reviewed and approved by @TabeenRaoof.
+**What changed:** C-11 added the interactive Three.js GLB viewer, wired it to completed reconstruction results, preserved raw GLB download access, and added explicit failed/missing-URL/load-error states. The real iPhone Safari device check confirmed rendering, one-finger orbit, pinch zoom, and GLB retrieval.
+**Result:** TypeScript, pytest, and ruff CI passed on the reviewed head; the second-member clean checkout passed typecheck, lint, format check, tests, and dev startup. C-11 is Done at 5 h actual against a 3 h estimate.
+**Next:** C-12 is Ready. The separate HTTP/2 contract-stub issue found during device verification is tracked outside C-11 and did not block this merge.
