@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   PROVENANCE_DISPLAY_COLORS,
@@ -35,7 +36,7 @@ describe("C-12 provenance colors", () => {
   });
 
   it("stays equal to recon/provenance.py's committed source-color constants", () => {
-    const source = readFileSync(new URL("../../recon/provenance.py", import.meta.url), "utf8");
+    const source = readFileSync(resolve(process.cwd(), "../recon/provenance.py"), "utf8");
     const observed = source.match(/OBSERVED_COLOR\s*=\s*\((\d+),\s*(\d+),\s*(\d+)\)/);
     const unobserved = source.match(/UNOBSERVED_COLOR\s*=\s*\((\d+),\s*(\d+),\s*(\d+)\)/);
 
