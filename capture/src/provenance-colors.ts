@@ -18,11 +18,7 @@ export const PROVENANCE_DISPLAY_COLORS = {
 export type ProvenanceDisplayClass = keyof typeof PROVENANCE_DISPLAY_COLORS;
 
 function matchesSource(rgb: SourceRgb, expected: SourceRgb): boolean {
-  return (
-    rgb[0] === expected[0] &&
-    rgb[1] === expected[1] &&
-    rgb[2] === expected[2]
-  );
+  return rgb[0] === expected[0] && rgb[1] === expected[1] && rgb[2] === expected[2];
 }
 
 export function mapProvenanceRgb(rgb: SourceRgb): {
@@ -48,9 +44,7 @@ function channelToByte(value: number): number {
 
 function srgbChannelToLinear(value: number): number {
   const channel = clamp01(value);
-  return channel <= 0.04045
-    ? channel / 12.92
-    : Math.pow((channel + 0.055) / 1.055, 2.4);
+  return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
 }
 
 function displayRgbToLinear(rgb: DisplayRgb): readonly [number, number, number] {
@@ -104,9 +98,7 @@ export function remapModelProvenanceColors(model: THREE.Object3D): void {
     }
     color.needsUpdate = true;
 
-    const materials = Array.isArray(mesh.material)
-      ? mesh.material
-      : [mesh.material];
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const material of materials) {
       const vertexMaterial = material as THREE.Material & VertexColorMaterial;
       vertexMaterial.vertexColors = true;
@@ -138,8 +130,7 @@ export function createProvenanceLegend(): HTMLElement {
     swatch.style.width = "0.8rem";
     swatch.style.height = "0.8rem";
     swatch.style.border = "1px solid currentColor";
-    swatch.style.backgroundColor =
-      "rgb(" + rgb.join(", ") + ")";
+    swatch.style.backgroundColor = "rgb(" + rgb.join(", ") + ")";
 
     const text = document.createElement("span");
     text.textContent = label;
