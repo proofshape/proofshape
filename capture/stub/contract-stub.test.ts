@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startContractStub, type ContractStub } from "./contract-stub.js";
+import { createContractStub, startContractStub, type ContractStub } from "./contract-stub.js";
 
 // See contract-stub.ts for why this is node:path, not `new URL(x, import.meta.url)`.
 const EXAMPLES_DIR = join(
@@ -184,5 +185,204 @@ describe("contract-stub shapes match the committed examples", () => {
       method: "POST",
     });
     expect(response.status).toBe(500);
+  });
+});
+
+// C-09: `npm run dev:device` serves HTTPS over HTTP/2 (Vite's resolveHttpServer uses
+// http2.createSecureServer with allowHTTP1:true whenever basicSsl is active), so a real request
+// from a phone carries HTTP/2 pseudo-headers (:method, :path, :authority, :scheme) in req.headers
+// and no `host` header at all -- confirmed against a real Node http2.createServer(). `handle`
+// is called directly here, in-process, with a hand-built fake IncomingMessage/ServerResponse --
+// createContractStub()'s own `handle` is designed to work this way ("usable both as a bare
+// http.createServer handler... and as Vite dev middleware"), so this needs no real socket or TLS.
+describe("contract stub over HTTP/2 (no real socket)", () => {
+  function fakeHttp2Request(
+    method: string,
+    path: string,
+    authority: string,
+    extraHeaders: Record<string, string> = {},
+    body: Buffer | null = null,
+  ): IncomingMessage {
+    const chunks = body ? [body] : [];
+    return {
+      method,
+      url: path,
+      headers: {
+        ":method": method,
+        ":path": path,
+        ":authority": authority,
+        ":scheme": "http",
+        ...extraHeaders,
+      },
+      socket: {},
+      [Symbol.asyncIterator]: () => {
+        let index = 0;
+        return {
+          next: () =>
+            Promise.resolve(
+              index < chunks.length
+                ? { value: chunks[index++], done: false }
+                : { value: undefined, done: true },
+            ),
+        };
+      },
+    } as unknown as IncomingMessage;
+  }
+
+  function fakeServerResponse(): {
+    res: ServerResponse;
+    waitForResponse: () => Promise<{ status: number; body: unknown }>;
+  } {
+    let statusCode = 0;
+    const chunks: Buffer[] = [];
+    let resolveDone: (() => void) | undefined;
+    const done = new Promise<void>((resolve) => {
+      resolveDone = resolve;
+    });
+    const res = {
+      writeHead(code: number) {
+        statusCode = code;
+        return res;
+      },
+      end(chunk?: string | Buffer) {
+        if (chunk) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+        resolveDone?.();
+      },
+    } as unknown as ServerResponse;
+    return {
+      res,
+      waitForResponse: async () => {
+        await done;
+        return {
+          status: statusCode,
+          body: JSON.parse(Buffer.concat(chunks).toString("utf-8")) as unknown,
+        };
+      },
+    };
+  }
+
+  // Built from a real FormData/Request, not hand-rolled multipart bytes -- the raw JPEG magic
+  // bytes (0xFF 0xD8 0xFF) aren't valid UTF-8, and a hand-written boundary around them turned out
+  // to desync undici's own multipart parser (it found "frame" but never "gyro"). Letting the
+  // fetch implementation that will later *parse* this body also *generate* it guarantees the two
+  // agree byte-for-byte.
+  async function multipartFrameBody(): Promise<{ body: Buffer; contentType: string }> {
+    const form = new FormData();
+    form.set(
+      "frame",
+      new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }),
+      "frame.jpg",
+    );
+    form.set("gyro", new Blob([JSON.stringify({ alpha: 1, beta: 2, gamma: 3 })]));
+    const probeRequest = new Request("http://stub.local", { method: "POST", body: form });
+    const contentType = probeRequest.headers.get("content-type");
+    if (!contentType) {
+      throw new Error("test setup: no content-type generated for the multipart body");
+    }
+    return { body: Buffer.from(await probeRequest.arrayBuffer()), contentType };
+  }
+
+  it("createSession answers per the contract, not a 500, given HTTP/2 pseudo-headers", async () => {
+    const stub = createContractStub();
+    const body = Buffer.from(JSON.stringify({ order_code: "PO-48213-A" }));
+    const req = fakeHttp2Request(
+      "POST",
+      "/v1/sessions",
+      "192.168.1.42:5173",
+      {
+        "content-type": "application/json",
+      },
+      body,
+    );
+    const { res, waitForResponse } = fakeServerResponse();
+
+    stub.handle(req, res);
+    const { status, body: responseBody } = await waitForResponse();
+
+    expect(status).toBe(201);
+    expect((responseBody as { session_id?: string }).session_id).toMatch(/^sess_/);
+  });
+
+  it("uploadFrame answers per the contract, not a 500, given an HTTP/2-shaped multipart request", async () => {
+    const stub = createContractStub();
+    const createReq = fakeHttp2Request(
+      "POST",
+      "/v1/sessions",
+      "192.168.1.42:5173",
+      { "content-type": "application/json" },
+      Buffer.from(JSON.stringify({ order_code: "PO-48213-A" })),
+    );
+    const created = fakeServerResponse();
+    stub.handle(createReq, created.res);
+    const { body: session } = await created.waitForResponse();
+    const sessionId = (session as { session_id: string }).session_id;
+
+    const { body: multipartBody, contentType } = await multipartFrameBody();
+    const uploadReq = fakeHttp2Request(
+      "POST",
+      `/v1/sessions/${sessionId}/frames`,
+      "192.168.1.42:5173",
+      { "content-type": contentType },
+      multipartBody,
+    );
+    const uploaded = fakeServerResponse();
+
+    stub.handle(uploadReq, uploaded.res);
+    const { status } = await uploaded.waitForResponse();
+
+    expect(status).toBe(202);
+  });
+
+  it("glb_url names the phone's real :authority, not 127.0.0.1, when host is absent", async () => {
+    const stub = createContractStub();
+    stub.setReconstructionPendingPolls(0);
+
+    const created = fakeServerResponse();
+    stub.handle(
+      fakeHttp2Request(
+        "POST",
+        "/v1/sessions",
+        "192.168.1.42:5173",
+        { "content-type": "application/json" },
+        Buffer.from(JSON.stringify({ order_code: "PO-48213-A" })),
+      ),
+      created.res,
+    );
+    const { body: session } = await created.waitForResponse();
+    const sessionId = (session as { session_id: string }).session_id;
+
+    const { body: multipartBody, contentType } = await multipartFrameBody();
+    const uploaded = fakeServerResponse();
+    stub.handle(
+      fakeHttp2Request(
+        "POST",
+        `/v1/sessions/${sessionId}/frames`,
+        "192.168.1.42:5173",
+        { "content-type": contentType },
+        multipartBody,
+      ),
+      uploaded.res,
+    );
+    await uploaded.waitForResponse();
+
+    const finished = fakeServerResponse();
+    stub.handle(
+      fakeHttp2Request("POST", `/v1/sessions/${sessionId}/finish`, "192.168.1.42:5173"),
+      finished.res,
+    );
+    await finished.waitForResponse();
+
+    const reconstructed = fakeServerResponse();
+    stub.handle(
+      fakeHttp2Request("GET", `/v1/sessions/${sessionId}/reconstruction`, "192.168.1.42:5173"),
+      reconstructed.res,
+    );
+    const { body } = await reconstructed.waitForResponse();
+
+    const glbUrl = (body as { glb_url?: string }).glb_url ?? "";
+    expect(glbUrl).toContain("192.168.1.42:5173");
+    expect(glbUrl).not.toContain("127.0.0.1");
   });
 });
