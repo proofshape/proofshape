@@ -30,6 +30,10 @@ describe("mountModelViewer", () => {
     const download = target.querySelector("a");
     expect(download?.getAttribute("href")).toBe(glbUrl);
     expect(download?.textContent).toBe("Download GLB");
+    const legend = target.querySelector('[aria-label="3D model provenance legend"]');
+    expect(legend?.textContent).toContain("Observed");
+    expect(legend?.textContent).toContain("Unobserved");
+    expect(legend?.textContent).toContain("Inferred (reserved)");
   });
 
   it("shows a failed-reconstruction fallback without constructing a loader", () => {
