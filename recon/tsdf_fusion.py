@@ -253,17 +253,18 @@ def extract_mesh_poisson(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Poisson surface reconstruction from a segmented board-frame-mm point cloud (the fallback).
 
-    Lazily imports Open3D, which is deliberately not in requirements.txt -- a heavy, GUI-adjacent
-    dependency not needed for the primary marching-cubes path. Raises loudly, not silently, if
-    it's unavailable.
+    Lazily imports Open3D. R-07 kept it out of requirements.txt -- a heavy, GUI-adjacent
+    dependency not needed for the primary marching-cubes path. C-08 has since pinned it there for
+    its raycasting (D-047), but the import stays lazy so an environment without Open3D still gets
+    this loud, specific error here rather than a failure at module import. Raises loudly, not
+    silently, if it's unavailable.
     """
     try:
         import open3d as o3d
     except ImportError as exc:
         raise ImportError(
-            "extract_mesh_poisson needs Open3D installed (deliberately not in requirements.txt "
-            "-- see recon/tsdf_fusion.py's module docstring). Install it locally to use this "
-            "fallback path: pip install open3d"
+            "extract_mesh_poisson needs Open3D installed. It is pinned in requirements.txt "
+            "(D-047), so this environment is missing it: pip install -r requirements.txt"
         ) from exc
 
     points_mm = np.asarray(points_mm, dtype=np.float64)
