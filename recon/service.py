@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -406,6 +407,20 @@ def create_app(
     )
     store = SessionStore(root)
     app = FastAPI(title="ProofShape reconstruction service", version="1.0.0")
+    # C-13: capture/ is served from a different origin than this service (D-042 left this
+    # decision to whichever story first connected them). A wildcard origin is deliberate, not an
+    # oversight: CORS only restricts *browser* JS -- a non-browser caller (curl, smoke_r14.py)
+    # ignores it entirely -- and the deployed service's real access controls are Lightning's own
+    # bearer token (checked at its proxy, never in this app) and the known-order-code check
+    # below, neither of which CORS can add to or take away from. No cookies/credentials are
+    # used, so allow_credentials stays False, which is what makes a wildcard origin valid here.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
     app.state.store = store
     app.state.orphaned_pending_failed = store.fail_orphaned_pending()
 

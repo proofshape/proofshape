@@ -100,6 +100,35 @@ def test_session_frames_finish_and_reconstruction_match_contract(tmp_path):
         assert model.content == b"glTF-test"
 
 
+def test_cors_allows_any_browser_origin(tmp_path):
+    # C-13: capture/ is served from a different origin than this service; D-042 left the exact
+    # access-control story to whichever story first connected them. The wildcard is deliberate
+    # (see create_app's own comment) -- confirm it actually answers a cross-origin request
+    # rather than relying on FastAPI's default (none) going unnoticed.
+    app = service.create_app(
+        tmp_path, pipeline_runner=_fake_pipeline, known_order_codes={"PO-1"}
+    )
+    with TestClient(app) as client:
+        preflight = client.options(
+            "/v1/sessions",
+            headers={
+                "Origin": "https://example.lightning.ai",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+        assert preflight.status_code == 200
+        assert preflight.headers["access-control-allow-origin"] == "*"
+
+        created = client.post(
+            "/v1/sessions",
+            json={"order_code": "PO-1"},
+            headers={"Origin": "https://example.lightning.ai"},
+        )
+        assert created.status_code == 201
+        assert created.headers["access-control-allow-origin"] == "*"
+
+
 def test_contract_error_paths_are_structured(tmp_path):
     app = service.create_app(
         tmp_path,

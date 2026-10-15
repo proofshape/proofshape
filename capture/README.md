@@ -49,3 +49,27 @@ no longer needed.
 
 See `docs/decisions.md` D-040 (tooling choice) and D-041 (how `gyro` travels inside the
 multipart `uploadFrame` request) for the reasoning behind this setup.
+
+## Pointing at the deployed service (C-13)
+
+By default (`VITE_RECON_BASE_URL`/`VITE_RECON_TOKEN` unset), every command above talks to the
+local contract stub. To instead talk to the real deployed recon service (R-15's runbook,
+`recon/README.md`), set both at build/dev time:
+
+```
+VITE_RECON_BASE_URL=https://…lightning…   # the run summary from `deploy-recon.yml`'s start
+VITE_RECON_TOKEN=…                        # PROOFSHAPE_ENDPOINT_TOKEN, from the password manager
+npm run dev:device                        # same LAN-HTTPS pattern C-02/C-03/C-09 already used
+```
+
+`VITE_RECON_TOKEN` is attached as `Authorization: Bearer <token>` on every outgoing request
+(`src/api.ts`) — it ends up in the built JS, visible to anyone who opens dev tools on the page.
+That's a deliberate, recorded trade-off, not an oversight: see `docs/decisions.md` D-048. The
+order code (checked server-side in `recon/service.py`'s `create_session`) is what actually gates
+whether a session does real work.
+
+A capture link can pre-fill the order code so a supplier doesn't type one in:
+`https://…?order=PO-48213-A`.
+
+**Remember to stop the deployment when done** (`recon/README.md`'s R-15 runbook) — it bills a
+GPU for as long as it's running, and nothing else stops it.

@@ -663,6 +663,39 @@ patching the three call sites.
 highest decision anywhere was D-045 (on `recon/R-20-confidence-in-fusion`, not yet merged), so
 D-046 was the first free number.
 
+**D-048 · C-13 connects `capture/` to the deployed service with a wildcard-origin CORS policy
+and the bearer token embedded in the client build; the order code is the real access control.**
+(2026-10-15)
+D-042 deliberately deferred this: "the phone app cannot hold a secret, so browser-facing access
+is decided by whichever story first connects capture to the deployed service, not here." Traced
+concretely before deciding: Lightning's `--token-auth` (R-15, `scripts/deploy_recon.py`) gates
+every request at the proxy, including a plain page load (R-15's manual check: POST without the
+token → 401). That rules out serving `capture/`'s static files from the recon container itself
+— a phone's top-level navigation can't attach an `Authorization` header before any JS runs, so
+the page would never load — and it would tie the free static frontend's reachability to the
+paid, on-demand GPU container's uptime.
+
+So `capture/` is served from a separate origin (for C-13 itself, the existing `npm run
+dev:device` LAN-HTTPS pattern C-02/C-03/C-09 already used for phone checks, pointed at the
+deployed base URL instead of the stub; a permanent host like GitHub Pages, named in the original
+proposal, is explicitly deferred to its own future story). `recon/service.py`'s `create_app` adds
+`CORSMiddleware` with `allow_origins=["*"]` and `allow_credentials=False`. The bearer token is
+resolved from a build-time `VITE_RECON_TOKEN` (`capture/src/config.ts`) and attached as
+`Authorization: Bearer <token>` on every outgoing `fetch` (`capture/src/api.ts`) — visible to
+anyone who opens dev tools on the page, not a real secret.
+
+*Why the wildcard origin is deliberate, not an oversight:* CORS only restricts *browser* JS; a
+non-browser caller (`curl`, `scripts/smoke_r14.py`) ignores it entirely. Once the token is
+already public-in-the-bundle, restricting the allowed origin adds no real protection and would
+otherwise have to track whatever LAN IP a tester's phone session happens to use that day. The
+service's real access controls stay what they already were: Lightning's bearer token at the
+proxy, and `create_session`'s check against `known_order_codes` — the order code is what
+actually gates whether a session does real work, which is why it is named as "the access
+control" in C-13's own acceptance criteria.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-047 (on `capture/C-08-next-view-scoring`, not yet merged), so
+D-048 was the first free number.
+
 ---
 
 ## Open — not yet decided

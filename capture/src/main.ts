@@ -1,3 +1,4 @@
+import { resolveAuthToken, resolveBaseUrl } from "./config.js";
 import { mountModelViewer } from "./model-viewer.js";
 import { mountAppShell } from "./shell.js";
 
@@ -17,7 +18,22 @@ if (viewerDemo) {
     metric: false,
   });
 } else {
+  // C-13: VITE_RECON_BASE_URL/VITE_RECON_TOKEN point this build at the deployed service instead
+  // of the local contract stub; both are unset in every existing dev/test run, so baseUrl stays
+  // "" and authToken stays undefined -- today's behaviour is the default.
+  const baseUrl = resolveBaseUrl(import.meta.env.VITE_RECON_BASE_URL);
+  const authToken = resolveAuthToken(import.meta.env.VITE_RECON_TOKEN);
+  // Same reasoning as viewer-demo above: a capture link pre-fills the order code so a supplier
+  // isn't typing one in.
+  const initialOrderCode = new URLSearchParams(window.location.search).get("order") ?? undefined;
+
   // Return value not captured: nothing consumes it yet until C-05 exists to read/write it.
-  // mountAppShell still returns it for tests and for whenever C-05 is wired in here.
-  mountAppShell(shellRoot, { baseUrl: "" });
+  // mountAppShell still returns it for tests and for whenever C-05 is wired in here. Keys are
+  // omitted rather than set to `undefined` -- tsconfig's exactOptionalPropertyTypes treats those
+  // as different things.
+  mountAppShell(shellRoot, {
+    baseUrl,
+    ...(authToken !== undefined ? { authToken } : {}),
+    ...(initialOrderCode !== undefined ? { initialOrderCode } : {}),
+  });
 }

@@ -45,6 +45,12 @@ export interface AppState {
 
 export interface AppShellOptions {
   baseUrl: string;
+  // C-13: the bearer token the deployed service's Lightning proxy requires (D-042); absent
+  // against the local contract stub, which expects no auth header.
+  authToken?: string;
+  // C-13: pre-fills the order-code input from a capture link's `?order=` query param, so a
+  // supplier doesn't have to type it in.
+  initialOrderCode?: string;
   reconstructionPollIntervalMs?: number;
   reconstructionMaxAttempts?: number;
   modelViewerOptions?: ModelViewerOptions;
@@ -90,6 +96,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   root.innerHTML = APP_SHELL_HTML;
 
   const orderCodeInput = requireTyped(root, "#shell-order-code", HTMLInputElement, "<input>");
+  orderCodeInput.value = options.initialOrderCode ?? "";
   const startButton = requireTyped(root, "#shell-start-button", HTMLButtonElement, "<button>");
   const sessionStatus = requireElement(root, "#shell-session-status");
   const cameraStatus = requireElement(root, "#shell-camera-status");
@@ -238,7 +245,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // leading `await` to preserve the iOS gesture that triggered this click; createSession has
     // no such constraint, but starting it here too keeps this one real flow from one click,
     // rather than literally serializing session-creation ahead of the gesture-critical calls.
-    const sessionPromise = createSession(options.baseUrl, orderCodeInput.value);
+    const sessionPromise = createSession(options.baseUrl, orderCodeInput.value, options.authToken);
     const cameraPromise = requestCameraPermission();
     const gyroPromise = requestGyroPermission();
 
@@ -447,7 +454,13 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     void (async () => {
       try {
         const jpeg = await encodeFrameAsJpeg(captured.pixels);
-        const result = await uploadFrame(options.baseUrl, sessionId, jpeg, captured.gyro);
+        const result = await uploadFrame(
+          options.baseUrl,
+          sessionId,
+          jpeg,
+          captured.gyro,
+          options.authToken,
+        );
         setStatus(captureStatus, describeUploadFrame(result), result.ok ? "info" : "error");
         if (result.ok) {
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
@@ -486,6 +499,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       (terminalResult) => {
         remountModelViewer(terminalResult);
       },
+      options.authToken,
     );
     retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
     if (outcome === "timeout") {
@@ -529,7 +543,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       setStatus(reconstructionStatus, "", "info");
       let finished = false;
       try {
-        const result = await finishSession(options.baseUrl, state.sessionId);
+        const result = await finishSession(options.baseUrl, state.sessionId, options.authToken);
         setStatus(finishStatus, describeFinishSession(result), result.ok ? "info" : "error");
         finished = result.ok;
       } catch (error) {
@@ -585,11 +599,12 @@ async function pollReconstruction(
   maxAttempts: number,
   intervalMs: number,
   onTerminalResult: (result: ReconstructionResult) => void,
+  authToken?: string,
 ): Promise<"complete" | "failed" | "timeout" | "error"> {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let result;
     try {
-      result = await getReconstruction(baseUrl, sessionId);
+      result = await getReconstruction(baseUrl, sessionId, authToken);
     } catch (error) {
       setStatus(
         target,
