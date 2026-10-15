@@ -591,6 +591,32 @@ Real-data rerun on the golden set (offset / tilt / threshold, measured vs. R-17'
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-043, so D-044 was the first free number.
 
+**D-046 · `requestCameraPermission` hands back a live `MediaStream`; the caller owns stopping
+it.** (2026-10-15)
+C-05 changed `requestCameraPermission` (`capture/src/camera.ts`) to stop doing what C-02's
+version did — requesting the camera, proving permission, then immediately stopping every track —
+and instead hand the granted `MediaStream` back alive, so a caller can keep it running for a real
+session. That shifts an obligation onto every caller: nothing stops the stream automatically
+anymore, so whoever holds it has to release it on every path that's done with it, not just the
+one happy path. `capture/src/shell.ts`'s `releaseCamera()` is the reference implementation —
+called before acquiring a new stream (so a second `Start` can't overwrite a live one without
+stopping it first), when a granted stream turns out to be unusable (`cameraPreview.play()`
+rejecting), and on definitive teardown (a confirmed-successful `finishSession`). Any future caller
+of `requestCameraPermission` — C-09's capture loop is the next one — needs the same discipline:
+hold the stream only as long as it's wired to something live, and release it on every exit path,
+not just success.
+*Why:* TabeenRaoof's review of PR #134 (C-05) caught three separate camera-stays-on leaks that
+all trace to this one unwritten rule — a second `Start` click overwriting `state.cameraStream`
+without stopping the first, a `play()` rejection leaving a granted-but-unusable stream running
+with no way to release it, and a successful-finish teardown that stopped the stream's tracks but
+left `srcObject` and `cameraGranted` stale. Three independent bugs from the same missing
+invariant is exactly the pattern D-025/D-027/D-038 already exist to stop recurring in different
+forms — the fix here is writing the rule down where the next caller (C-09) will find it, not just
+patching the three call sites.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-045 (on `recon/R-20-confidence-in-fusion`, not yet merged), so
+D-046 was the first free number.
+
 ---
 
 ## Open — not yet decided
