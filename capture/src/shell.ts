@@ -137,6 +137,14 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // Capture a few milliseconds after a tap disabled it -- a second tap started a second, concurrent
   // upload. Also gates Finish, which could otherwise run while an upload was still in flight.
   let uploadInFlight = false;
+  // The reverse race of uploadInFlight, caught on a second pass of the same review: clicking
+  // Finish only ever disabled Finish, not Capture, so a capture started right after could still
+  // be mid-upload when finishSession resolved -- and that upload's own `finally` called
+  // updateFinishAvailability(), which re-enabled Finish on a session that had already finished.
+  // Set the moment Finish is clicked (before finishSession is even awaited) and reset to false
+  // only if finishSession itself fails (so a retry is possible); left `true` forever once it
+  // actually succeeds, since there's nothing left in this session to capture into or finish again.
+  let sessionFinishing = false;
   let disposeModelViewer = mountModelViewer(
     modelViewer,
     { status: "pending" },
@@ -196,15 +204,18 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // without it, a deviceorientation reading arriving a few milliseconds after a tap disabled this
   // button would immediately re-enable it, mid-upload.
   function updateCaptureAvailability(): void {
-    captureButton.disabled = uploadInFlight || !(state.cameraPlaying && state.latestGyro !== null);
+    captureButton.disabled =
+      uploadInFlight || sessionFinishing || !(state.cameraPlaying && state.latestGyro !== null);
   }
 
   // Finish must not run while an upload is still in flight (TabeenRaoof's PR #139 review): a tap
   // right after a first good frame could get a false 409 "too few frames" just before that frame
   // is accepted, and a session finishing while a later upload is still pending would land that
-  // upload on an already-finished session.
+  // upload on an already-finished session. sessionFinishing covers the reverse: once Finish has
+  // been clicked, Finish itself must not become clickable again from some other, unrelated state
+  // change (a lagging capture's own finally) while it's still resolving or already succeeded.
   function updateFinishAvailability(): void {
-    finishButton.disabled = uploadInFlight || state.sessionId === null;
+    finishButton.disabled = uploadInFlight || sessionFinishing || state.sessionId === null;
   }
 
   startButton.addEventListener("click", () => {
@@ -218,6 +229,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // (overlay.ts's own comment anticipates this exact remount).
     gyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
     lastAcceptedForGate = null;
+    // A previous session's finish (success or in-flight-then-abandoned) must not carry over and
+    // leave Capture/Finish permanently disabled for this new attempt.
+    sessionFinishing = false;
 
     // All three started synchronously, before awaiting any of them: getUserMedia and
     // requestPermission (inside requestCameraPermission/requestGyroPermission) must have no
@@ -340,8 +354,12 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   });
 
   captureButton.addEventListener("click", () => {
-    // Two more layers of defense beyond the disabled attribute itself (fails loudly rather than
-    // silently misbehaving if this handler is ever reached in a state the button shouldn't allow):
+    // Layers of defense beyond the disabled attribute itself (fails loudly rather than silently
+    // misbehaving if this handler is ever reached in a state the button shouldn't allow):
+    if (sessionFinishing) {
+      setStatus(captureStatus, "Session is finishing -- cannot capture now.", "error");
+      return;
+    }
     if (state.latestGyro === null) {
       setStatus(captureStatus, "No gyro reading yet -- try again in a moment.", "error");
       return;
@@ -502,6 +520,11 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         return;
       }
 
+      // Set before finishSession is even awaited -- the window this closes is exactly the one
+      // between this click and that call resolving, during which Capture must not be startable
+      // (TabeenRaoof's second-pass review, the reverse of the uploadInFlight race above).
+      sessionFinishing = true;
+      updateCaptureAvailability();
       finishButton.disabled = true;
       setStatus(reconstructionStatus, "", "info");
       let finished = false;
@@ -517,7 +540,11 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
       }
       if (!finished) {
+        // Genuinely retryable -- finishSession itself failed, so this session is not finishing
+        // after all. Left `true` only on the success path below.
+        sessionFinishing = false;
         updateFinishAvailability();
+        updateCaptureAvailability();
         return;
       }
       // Everything from here on runs only once finishSession has genuinely resolved ok:true, and

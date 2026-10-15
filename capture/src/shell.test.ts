@@ -1018,10 +1018,10 @@ describe("mountAppShell", () => {
     expect(mounted.finishStatus.textContent).toMatch(/^Session finished: sess_/);
   });
 
-  // Holds any POST to .../frames pending until resolve() is called, passing every other fetch
-  // through to the real implementation (the contract stub itself, for session/finish/etc) --
-  // lets these tests observe button state *while* an upload is genuinely still in flight.
-  function pendingFramesFetch(): {
+  // Holds any fetch whose URL contains urlSubstring pending until resolve() is called, passing
+  // every other fetch through to the real implementation (the contract stub itself) -- lets
+  // these tests observe button state *while* a specific request is genuinely still in flight.
+  function pendingFetchMatching(urlSubstring: string): {
     fetchSpy: ReturnType<typeof vi.fn>;
     resolve: (status: number, body: unknown) => void;
   } {
@@ -1029,7 +1029,7 @@ describe("mountAppShell", () => {
     let resolveResponse: ((response: Response) => void) | undefined;
     const fetchSpy = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      if (url.includes("/frames")) {
+      if (url.includes(urlSubstring)) {
         return new Promise<Response>((resolve) => {
           resolveResponse = resolve;
         });
@@ -1049,6 +1049,59 @@ describe("mountAppShell", () => {
       },
     };
   }
+
+  // Holds any POST to .../frames pending until resolve() is called, passing every other fetch
+  // through to the real implementation (the contract stub itself, for session/finish/etc) --
+  // lets these tests observe button state *while* an upload is genuinely still in flight.
+  function pendingFramesFetch(): ReturnType<typeof pendingFetchMatching> {
+    return pendingFetchMatching("/frames");
+  }
+
+  // Same, for .../finish -- lets these tests observe button state while finishSession is
+  // genuinely still in flight.
+  function pendingFinishFetch(): ReturnType<typeof pendingFetchMatching> {
+    return pendingFetchMatching("/finish");
+  }
+
+  it("capture is disabled the moment Finish is clicked, and stays disabled after a stale completion -- the reverse race TabeenRaoof's second-pass review caught", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("test setup: session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const { fetchSpy, resolve } = pendingFinishFetch();
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (fetchSpy.mock.calls.length === 0) throw new Error("finish fetch not called yet");
+    });
+
+    // The window the original bug left open: before finishSession even resolves, Capture must
+    // already be disabled, not just Finish.
+    expect(mounted.captureButton.disabled).toBe(true);
+
+    mounted.captureButton.disabled = false; // bypass -- proves the handler's own guard too
+    mounted.captureButton.click();
+    expect(mounted.captureStatus.textContent).toMatch(/session is finishing/i);
+
+    resolve(202, {
+      session_id: mounted.state.sessionId,
+      order_code: "PO-48213-A",
+      status: "finished",
+    });
+    await vi.waitFor(() => {
+      if (mounted.finishStatus.textContent === "") throw new Error("still pending");
+    });
+
+    // Still disabled afterward -- nothing (e.g. a lagging, unrelated state change) should
+    // re-enable either button on a session that has already finished.
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+  });
 
   it("capture stays disabled for the whole upload, even as new gyro readings arrive mid-upload -- the overlapping-upload regression TabeenRaoof's PR #139 review caught", async () => {
     const mounted = await startSuccessfulSession();
