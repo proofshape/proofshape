@@ -34,28 +34,58 @@ export function mapProvenanceRgb(rgb: SourceRgb): {
   return { kind: "unknown", rgb: PROVENANCE_DISPLAY_COLORS.unknown };
 }
 
-function channelToByte(value: number): number {
-  return Math.round(THREE.MathUtils.clamp(value, 0, 1) * 255);
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }
 
-function displayRgbToLinearColor(rgb: DisplayRgb): THREE.Color {
-  return new THREE.Color().setRGB(
-    rgb[0] / 255,
-    rgb[1] / 255,
-    rgb[2] / 255,
-    THREE.SRGBColorSpace,
-  );
+function channelToByte(value: number): number {
+  return Math.round(clamp01(value) * 255);
+}
+
+function srgbChannelToLinear(value: number): number {
+  const channel = clamp01(value);
+  return channel <= 0.04045
+    ? channel / 12.92
+    : Math.pow((channel + 0.055) / 1.055, 2.4);
+}
+
+function displayRgbToLinear(rgb: DisplayRgb): readonly [number, number, number] {
+  return [
+    srgbChannelToLinear(rgb[0] / 255),
+    srgbChannelToLinear(rgb[1] / 255),
+    srgbChannelToLinear(rgb[2] / 255),
+  ];
+}
+
+interface MutableColorAttribute {
+  itemSize: number;
+  count: number;
+  getX(index: number): number;
+  getY(index: number): number;
+  getZ(index: number): number;
+  setXYZ(index: number, x: number, y: number, z: number): void;
+  needsUpdate: boolean;
+}
+
+interface ColorGeometry {
+  getAttribute(name: string): MutableColorAttribute | undefined;
+}
+
+interface VertexColorMaterial {
+  vertexColors?: boolean;
+  needsUpdate?: boolean;
 }
 
 export function remapModelProvenanceColors(model: THREE.Object3D): void {
   model.traverse((object) => {
-    const mesh = object as THREE.Mesh;
+    const mesh = object as THREE.Mesh & { isMesh?: boolean };
     if (!mesh.isMesh) {
       return;
     }
 
-    const color = mesh.geometry.getAttribute("color");
-    if (!(color instanceof THREE.BufferAttribute) || color.itemSize < 3) {
+    const geometry = mesh.geometry as THREE.BufferGeometry & ColorGeometry;
+    const color = geometry.getAttribute("color");
+    if (!color || color.itemSize < 3) {
       return;
     }
 
@@ -65,20 +95,16 @@ export function remapModelProvenanceColors(model: THREE.Object3D): void {
         channelToByte(color.getY(index)),
         channelToByte(color.getZ(index)),
       ]);
-      const linear = displayRgbToLinearColor(mapped.rgb);
-      color.setXYZ(index, linear.r, linear.g, linear.b);
+      const linear = displayRgbToLinear(mapped.rgb);
+      color.setXYZ(index, linear[0], linear[1], linear[2]);
     }
     color.needsUpdate = true;
 
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const material of materials) {
-      if (
-        material instanceof THREE.MeshStandardMaterial ||
-        material instanceof THREE.MeshBasicMaterial
-      ) {
-        material.vertexColors = true;
-        material.needsUpdate = true;
-      }
+      const vertexMaterial = material as THREE.Material & VertexColorMaterial;
+      vertexMaterial.vertexColors = true;
+      vertexMaterial.needsUpdate = true;
     }
   });
 }
