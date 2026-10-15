@@ -132,7 +132,7 @@ export function createProvenanceLegend(): HTMLElement {
     swatch.style.width = "0.8rem";
     swatch.style.height = "0.8rem";
     swatch.style.border = "1px solid currentColor";
-    swatch.style.backgroundColor = `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    swatch.style.backgroundColor = "rgb(" + rgb.join(", ") + ")";
 
     const text = document.createElement("span");
     text.textContent = label;
