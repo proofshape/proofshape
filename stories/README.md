@@ -180,7 +180,7 @@ so this is behind schedule, not early.
 | [C-05](C/C-05.md) | Live camera | 3 h | C-04 | Done | @dalwalyk |
 | [C-06](C/C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
 | [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Done | @dalwalyk |
-| [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Ready | _unclaimed_ |
+| [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Claimed | @TabeenRaoof |
 | [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Claimed | @dalwalyk |
 | [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Done | @mbj1994 |
 | [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Done | @mbj1994 |
