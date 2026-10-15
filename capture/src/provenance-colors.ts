@@ -46,11 +46,7 @@ function srgbChannelToLinear(channelByte: number): number {
 }
 
 function displayRgbToLinear(rgb: Rgb): Rgb {
-  return [
-    srgbChannelToLinear(rgb[0]),
-    srgbChannelToLinear(rgb[1]),
-    srgbChannelToLinear(rgb[2]),
-  ];
+  return [srgbChannelToLinear(rgb[0]), srgbChannelToLinear(rgb[1]), srgbChannelToLinear(rgb[2])];
 }
 
 // Three.js stores vertex colours in linear working space while the CSS legend uses sRGB.
