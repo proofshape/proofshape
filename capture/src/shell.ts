@@ -132,6 +132,11 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // state.lastCapturedFrame, which is just the most recent capture attempt, accepted or not.
   // Reset alongside gyroOverlayHandle on every Start click, for the same reason.
   let lastAcceptedForGate: { frame: FramePixels; gyro: Gyro } | null = null;
+  // TabeenRaoof's PR #139 review: the deviceorientation listener calls updateCaptureAvailability
+  // on every reading (~60/s on a phone), so without this flag the very next reading re-enabled
+  // Capture a few milliseconds after a tap disabled it -- a second tap started a second, concurrent
+  // upload. Also gates Finish, which could otherwise run while an upload was still in flight.
+  let uploadInFlight = false;
   let disposeModelViewer = mountModelViewer(
     modelViewer,
     { status: "pending" },
@@ -166,17 +171,19 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // state.cameraGranted (stale "granted" after release is misleading, not just unused), the
   // preview's srcObject (a stale frozen frame otherwise), and the capture button.
   function releaseCamera(): void {
+    // Only claim "stopped" (and only touch the status) when something was actually running --
+    // otherwise this ran unconditionally at the top of every camera-grant attempt (including the
+    // very first one, with nothing to release yet) and "Camera stopped." flashed on screen during
+    // a normal, successful Start, until play() overwrote it a moment later (TabeenRaoof's PR #139
+    // review).
     if (state.cameraStream !== null) {
       stopCameraStream(state.cameraStream);
+      setStatus(cameraStatus, "Camera stopped.", "info");
     }
     state.cameraStream = null;
     state.cameraGranted = false;
     state.cameraPlaying = false;
     cameraPreview.srcObject = null;
-    // "Camera started." otherwise stayed on screen after the camera was actually off (TabeenRaoof's
-    // PR #137 review). A caller with a more specific reason (e.g. play() rejecting) calls
-    // releaseCamera() first, then overwrites this with that reason.
-    setStatus(cameraStatus, "Camera stopped.", "info");
     updateCaptureAvailability();
   }
 
@@ -185,9 +192,19 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // permission granted -- gyroGranted can be true with no sensor ever firing an event (desktop,
   // Android, iOS without motion access ever prompted), which left captureFrame's own "No gyro
   // reading yet" message permanently misleading rather than the transient delay it's meant to be
-  // (TabeenRaoof's PR #137 review).
+  // (TabeenRaoof's PR #137 review). Also gated on uploadInFlight (TabeenRaoof's PR #139 review) --
+  // without it, a deviceorientation reading arriving a few milliseconds after a tap disabled this
+  // button would immediately re-enable it, mid-upload.
   function updateCaptureAvailability(): void {
-    captureButton.disabled = !(state.cameraPlaying && state.latestGyro !== null);
+    captureButton.disabled = uploadInFlight || !(state.cameraPlaying && state.latestGyro !== null);
+  }
+
+  // Finish must not run while an upload is still in flight (TabeenRaoof's PR #139 review): a tap
+  // right after a first good frame could get a false 409 "too few frames" just before that frame
+  // is accepted, and a session finishing while a later upload is still pending would land that
+  // upload on an already-finished session.
+  function updateFinishAvailability(): void {
+    finishButton.disabled = uploadInFlight || state.sessionId === null;
   }
 
   startButton.addEventListener("click", () => {
@@ -227,7 +244,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
         if (sessionResult.ok) {
           state.sessionId = sessionResult.body.session_id;
-          finishButton.disabled = false;
+          updateFinishAvailability();
           sessionOk = true;
         }
       } catch (error) {
@@ -252,6 +269,11 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           // than attach an unusable stream to the preview and leave it running until the user
           // notices and retries, stop it immediately (TabeenRaoof's PR #137 review, item 2).
           stopCameraStream(cameraResult.stream);
+          // Consistent with every other "stream got stopped without ever really being usable"
+          // path (releaseCamera() does the same) -- cameraGranted means "there's a usable camera
+          // right now," not just "permission was granted at some point" (TabeenRaoof's PR #139
+          // review).
+          state.cameraGranted = false;
           setStatus(
             cameraStatus,
             "Camera granted, but no session is active -- fix the order code and try again.",
@@ -344,40 +366,65 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // shown alongside the message, not just the message alone -- checkDuplicate's own message
     // ("Gyro delta ... are both below their thresholds") never actually says "duplicate," so the
     // code is what makes the specific reason identifiable (this story's own acceptance criteria
-    // name all three codes explicitly).
-    const blurResult = checkBlur(captured.pixels);
-    if (!blurResult.ok) {
-      setStatus(
-        captureStatus,
-        `Frame rejected (${blurResult.code}) — ${blurResult.message}`,
-        "error",
-      );
-      return;
-    }
-    const exposureResult = checkExposure(captured.pixels);
-    if (!exposureResult.ok) {
-      setStatus(
-        captureStatus,
-        `Frame rejected (${exposureResult.code}) — ${exposureResult.message}`,
-        "error",
-      );
-      return;
-    }
-    const duplicateResult = checkDuplicate(captured.pixels, captured.gyro, lastAcceptedForGate);
-    if (!duplicateResult.ok) {
-      setStatus(
-        captureStatus,
-        `Frame rejected (${duplicateResult.code}) — ${duplicateResult.message}`,
-        "error",
-      );
+    // name all three codes explicitly). Wrapped in a try -- checkDuplicate throws, not returns a
+    // rejection, on a dimension mismatch (frame_gate.ts's own frozen behavior), and nothing here
+    // caught that (TabeenRaoof's PR #139 review).
+    try {
+      const blurResult = checkBlur(captured.pixels);
+      if (!blurResult.ok) {
+        setStatus(
+          captureStatus,
+          `Frame rejected (${blurResult.code}) — ${blurResult.message}`,
+          "error",
+        );
+        return;
+      }
+      const exposureResult = checkExposure(captured.pixels);
+      if (!exposureResult.ok) {
+        setStatus(
+          captureStatus,
+          `Frame rejected (${exposureResult.code}) — ${exposureResult.message}`,
+          "error",
+        );
+        return;
+      }
+      // A real resolution change (e.g. the phone rotating -- iOS swaps videoWidth/videoHeight,
+      // which the cached-canvas rework in camera.ts already handles) is genuine motion, not a
+      // frozen duplicate -- checkDuplicate itself assumes resolution never changes mid-session
+      // and throws rather than compares across sizes. Treating it as "not a duplicate" here (and
+      // re-anchoring below) is what keeps a rotation from permanently bricking capture for the
+      // rest of the session against a now-stale-sized anchor (TabeenRaoof's PR #139 review).
+      const dimensionsChanged =
+        lastAcceptedForGate !== null &&
+        (lastAcceptedForGate.frame.width !== captured.pixels.width ||
+          lastAcceptedForGate.frame.height !== captured.pixels.height);
+      const duplicateResult = dimensionsChanged
+        ? { ok: true as const }
+        : checkDuplicate(captured.pixels, captured.gyro, lastAcceptedForGate);
+      if (!duplicateResult.ok) {
+        setStatus(
+          captureStatus,
+          `Frame rejected (${duplicateResult.code}) — ${duplicateResult.message}`,
+          "error",
+        );
+        return;
+      }
+    } catch (error) {
+      setStatus(captureStatus, error instanceof Error ? error.message : String(error), "error");
       return;
     }
 
     // Accepted by the local gate -- anchors the next duplicate check, independent of whatever the
-    // server goes on to say about this particular upload.
+    // server goes on to say about this particular upload. Rolled back below if the upload itself
+    // doesn't succeed (network error or a 422): otherwise a retry from the exact same spot was
+    // rejected as a duplicate of an upload the server never actually accepted (TabeenRaoof's PR
+    // #139 review).
+    const previousAcceptedForGate = lastAcceptedForGate;
     lastAcceptedForGate = { frame: captured.pixels, gyro: captured.gyro };
 
-    captureButton.disabled = true;
+    uploadInFlight = true;
+    updateCaptureAvailability();
+    updateFinishAvailability();
     setStatus(captureStatus, "Uploading…", "info");
     void (async () => {
       try {
@@ -388,15 +435,20 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
           gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
+        } else {
+          lastAcceptedForGate = previousAcceptedForGate;
         }
       } catch (error) {
+        lastAcceptedForGate = previousAcceptedForGate;
         setStatus(
           captureStatus,
           `Could not upload frame — ${error instanceof Error ? error.message : String(error)}`,
           "error",
         );
       } finally {
+        uploadInFlight = false;
         updateCaptureAvailability();
+        updateFinishAvailability();
       }
     })();
   });
@@ -438,6 +490,17 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         setStatus(finishStatus, "Start a session first.", "error");
         return;
       }
+      // Defense in depth beyond the disabled attribute itself, same pattern as the capture
+      // handler's own guards (TabeenRaoof's PR #139 review) -- an upload still in flight must
+      // not race finishSession.
+      if (uploadInFlight) {
+        setStatus(
+          finishStatus,
+          "An upload is still in progress -- try again in a moment.",
+          "error",
+        );
+        return;
+      }
 
       finishButton.disabled = true;
       setStatus(reconstructionStatus, "", "info");
@@ -454,16 +517,30 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
       }
       if (!finished) {
-        finishButton.disabled = false;
+        updateFinishAvailability();
         return;
       }
       // Everything from here on runs only once finishSession has genuinely resolved ok:true, and
       // outside the try above -- a failure past this point (e.g. the reconstruction poll, or the
       // viewer it rebuilds) is not a "could not finish session" error, and mislabeling it as one
       // also wrongly re-enabled Finish on an already-finished session (TabeenRaoof's PR #137
-      // review, item 9).
-      releaseCamera();
-      await runReconstructionPolling();
+      // review, item 9). Still inside its own try (TabeenRaoof's PR #139 review) -- moving this
+      // out of the first try fixed the mislabeling, but left failures here genuinely silent (a
+      // fire-and-forget void (async () => {...})() has nothing else to report them to).
+      try {
+        releaseCamera();
+        // The arrow's guidance is stale the moment the camera is off -- dispose rather than leave
+        // it saying "move to the next position" with nothing left to move to (TabeenRaoof's PR
+        // #139 review).
+        gyroOverlayHandle.dispose();
+        await runReconstructionPolling();
+      } catch (error) {
+        setStatus(
+          reconstructionStatus,
+          `Could not load the reconstruction — ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+        );
+      }
     })();
   });
 

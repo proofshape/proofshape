@@ -150,7 +150,12 @@ export const DEFAULT_JPEG_QUALITY = 0.92;
 // gate; sampling it again here would upload a different frame than the one that was actually
 // checked. putImageData (writing known pixels back) rather than drawImage (sampling the video)
 // is what keeps this an encoding step, not a second observation.
-export function encodeFrameAsJpeg(
+// `async`, not a plain function that returns a `Promise`, specifically so the "no 2D context"
+// guard below throws into a rejected promise like every other failure here, instead of
+// synchronously throwing out of the call itself -- a caller doing `encodeFrameAsJpeg(...).catch()`
+// without its own surrounding `try` would otherwise see this one failure mode escape uncaught
+// (TabeenRaoof's PR #139 review).
+export async function encodeFrameAsJpeg(
   pixels: FramePixels,
   quality = DEFAULT_JPEG_QUALITY,
 ): Promise<Blob> {
