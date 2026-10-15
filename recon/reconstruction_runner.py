@@ -32,17 +32,29 @@ def run_on_capture(
     out_dir: Path,
     backend: str | None = None,
     device_type: str = "cuda",
-    min_confidence: float = 0.0,
+    min_confidence: float | None = None,
     board_pose_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Run one backend without changing the R-01 four-file output contract."""
+    """Run one backend without changing the R-01 four-file output contract.
+
+    ``min_confidence=None`` (the default) defers to the selected backend's own default rather
+    than forcing one number on all three: VGGT's confidence is a measured threshold (D-045,
+    ``vggt_runner.DEFAULT_MIN_CONFIDENCE``), MASt3R's confidence is on a different, unmeasured
+    scale, and COLMAP's is a binary validity mask, not a learned confidence, that already refuses
+    any nonzero value. An explicit ``min_confidence`` overrides that default and is forwarded to
+    whichever backend is selected unchanged, same as before.
+    """
     selected = resolve_backend(backend)
     if selected == "vggt":
         return vggt_runner.run_on_capture(
             capture_dir,
             out_dir,
             device_type=device_type,
-            min_confidence=min_confidence,
+            min_confidence=(
+                min_confidence
+                if min_confidence is not None
+                else vggt_runner.DEFAULT_MIN_CONFIDENCE
+            ),
         )
 
     if selected == "mast3r":
@@ -50,7 +62,7 @@ def run_on_capture(
             capture_dir,
             out_dir,
             device_type=device_type,
-            min_confidence=min_confidence,
+            min_confidence=min_confidence if min_confidence is not None else 0.0,
         )
 
     return colmap_runner.run_on_capture(
@@ -58,7 +70,7 @@ def run_on_capture(
         out_dir,
         board_pose_path=board_pose_path,
         device_type=device_type,
-        min_confidence=min_confidence,
+        min_confidence=min_confidence if min_confidence is not None else 0.0,
     )
 
 
@@ -80,7 +92,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="output folder (default: fixtures/data/recon_runs/<capture folder name>)",
     )
     parser.add_argument("--device", choices=("cuda", "mps"), default="cuda")
-    parser.add_argument("--min-confidence", type=float, default=0.0)
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=None,
+        help="override the selected backend's own default confidence threshold (D-045)",
+    )
     return parser
 
 

@@ -99,13 +99,66 @@ def test_run_selected_backend_keeps_vggt_default(tmp_path, monkeypatch):
     assert len(seen) == 1
 
 
+def test_run_on_capture_defers_confidence_to_each_backends_own_default(
+    tmp_path, monkeypatch
+):
+    # R-20/D-045: no `min_confidence` means "use whichever this backend already trusts", not
+    # one number forced on all three -- VGGT's is the measured D-045 default, MASt3R's and
+    # COLMAP's stay at 0.0 (MASt3R's confidence is a different, unmeasured scale; COLMAP's is a
+    # binary validity mask that already refuses any nonzero threshold).
+    seen_vggt = {}
+    seen_colmap = {}
+
+    def fake_vggt(*args, min_confidence, **kwargs):
+        seen_vggt["min_confidence"] = min_confidence
+        return {"backend": "vggt", "frame_count": 1, "point_count": 1, "timings": {}}
+
+    def fake_colmap(*args, min_confidence, **kwargs):
+        seen_colmap["min_confidence"] = min_confidence
+        return {"backend": "colmap", "frame_count": 1, "point_count": 1, "timings": {}}
+
+    monkeypatch.setattr(reconstruction_runner.vggt_runner, "run_on_capture", fake_vggt)
+    monkeypatch.setattr(
+        reconstruction_runner.colmap_runner, "run_on_capture", fake_colmap
+    )
+
+    reconstruction_runner.run_on_capture(Path("capture"), tmp_path / "vggt_out")
+    reconstruction_runner.run_on_capture(
+        Path("capture"), tmp_path / "colmap_out", backend="colmap"
+    )
+
+    assert (
+        seen_vggt["min_confidence"]
+        == reconstruction_runner.vggt_runner.DEFAULT_MIN_CONFIDENCE
+    )
+    assert seen_colmap["min_confidence"] == 0.0
+
+
+def test_run_on_capture_explicit_confidence_overrides_the_backend_default(
+    tmp_path, monkeypatch
+):
+    seen = {}
+
+    def fake_vggt(*args, min_confidence, **kwargs):
+        seen["min_confidence"] = min_confidence
+        return {"backend": "vggt", "frame_count": 1, "point_count": 1, "timings": {}}
+
+    monkeypatch.setattr(reconstruction_runner.vggt_runner, "run_on_capture", fake_vggt)
+
+    reconstruction_runner.run_on_capture(
+        Path("capture"), tmp_path / "out", min_confidence=0.0
+    )
+
+    assert seen["min_confidence"] == 0.0
+
+
 def test_main_prints_the_full_per_stage_table_not_just_the_total(
     tmp_path, monkeypatch, capsys
 ):
     # R-13: before this story, main() printed only `total_s`, discarding the per-stage
     # breakdown each backend's own run_on_capture already returns.
     def fake_run_on_capture(
-        capture_dir, out_dir, backend=None, device_type="cuda", min_confidence=0.0
+        capture_dir, out_dir, backend=None, device_type="cuda", min_confidence=None
     ):
         return {
             "backend": "vggt",
