@@ -134,6 +134,32 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     });
   }
 
+  // D-046: requestCameraPermission no longer stops the stream itself -- this is the one place
+  // that releases it, called on every exit path (a new stream about to replace this one, a
+  // granted-but-unusable stream after play() rejects, or a confirmed-successful finish), not
+  // just the happy path. Resets every piece of camera-related state together, caught missing
+  // individually in TabeenRaoof's PR #134 review: the stream's tracks, state.cameraStream,
+  // state.cameraGranted (stale "granted" after release is misleading, not just unused), the
+  // preview's srcObject (a stale frozen frame otherwise), and the capture button.
+  function releaseCamera(): void {
+    if (state.cameraStream !== null) {
+      stopCameraStream(state.cameraStream);
+    }
+    state.cameraStream = null;
+    state.cameraGranted = false;
+    cameraPreview.srcObject = null;
+    updateCaptureAvailability();
+  }
+
+  // Capture needs both a live stream to draw from and a gyro reading to pair with (the "never a
+  // stale or default reading" acceptance criterion) -- gating on camera alone (the bug
+  // TabeenRaoof's review caught: capture enabled the moment the camera started, even with gyro
+  // denied) left captureFrame's own "No gyro reading yet" message permanently misleading rather
+  // than the transient-delay message it's meant to be.
+  function updateCaptureAvailability(): void {
+    captureButton.disabled = !(state.cameraStream !== null && state.gyroGranted);
+  }
+
   startButton.addEventListener("click", () => {
     setStatus(sessionStatus, "", "info");
     setStatus(cameraStatus, "", "info");
@@ -177,24 +203,44 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       }
 
       const cameraResult = await cameraPromise;
+      // Releases any stream left over from a previous Start click before this one replaces it --
+      // without this, a second Start (e.g. retrying after session creation failed) overwrote
+      // state.cameraStream with a new stream and left the first one's tracks running forever
+      // (TabeenRaoof's PR #134 review).
+      releaseCamera();
       state.cameraGranted = cameraResult.granted;
       if (cameraResult.granted) {
         state.cameraStream = cameraResult.stream;
         cameraPreview.srcObject = cameraResult.stream;
+        // Captured so the .then() callbacks below can tell whether this is still the current
+        // stream by the time they run -- otherwise a slow play() resolving after a later
+        // Start/Finish already released or replaced it could resurrect "Camera started." or
+        // re-enable capture on a stream that no longer exists (TabeenRaoof's PR #134 review).
+        const thisStream = cameraResult.stream;
         // Same "autoplay alone isn't reliable once a stream is attached after the element
         // already exists" fix mountCameraCheck's preview needed (C-02) -- play() explicitly so a
         // silently-stalled preview fails loudly instead.
         cameraPreview.play().then(
           () => {
+            if (state.cameraStream !== thisStream) {
+              return;
+            }
             setStatus(cameraStatus, "Camera started.", "info");
-            captureButton.disabled = false;
+            updateCaptureAvailability();
           },
           (playError: unknown) => {
+            if (state.cameraStream !== thisStream) {
+              return;
+            }
             setStatus(
               cameraStatus,
               `Camera permission granted, but the preview failed to play: ${describeCameraError(playError)}`,
               "error",
             );
+            // Granted but unusable -- holding it open would be exactly the camera-stays-on bug
+            // this story exists to prevent, just reached through a different path than a normal
+            // finish (TabeenRaoof's PR #134 review).
+            releaseCamera();
           },
         );
       } else {
@@ -211,6 +257,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       if (gyroResult.granted) {
         startListeningForGyro();
       }
+      updateCaptureAvailability();
 
       // Nothing left for "Start" to do on this screen once a session exists -- only re-enable
       // if session creation itself failed (rejected or resolved ok:false), so the order code
@@ -282,11 +329,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         }
         // The session has actually ended now -- release the camera rather than leaving a real
         // camera-stays-on bug running (this story's own acceptance criteria).
-        if (state.cameraStream !== null) {
-          stopCameraStream(state.cameraStream);
-          state.cameraStream = null;
-          captureButton.disabled = true;
-        }
+        releaseCamera();
         await runReconstructionPolling();
       } catch (error) {
         setStatus(

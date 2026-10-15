@@ -567,7 +567,10 @@ describe("mountAppShell", () => {
     expect(mounted.captureStatus.textContent).toMatch(/no gyro reading/i);
   });
 
-  it("stops every camera track and disables capture once the session actually finishes", async () => {
+  it("stops every camera track and fully resets camera state once the session actually finishes", async () => {
+    // TabeenRaoof's PR #134 review: the original teardown stopped the stream's tracks but left
+    // srcObject and cameraGranted stale -- a frozen last frame still showing in the preview, and
+    // state claiming the camera was still granted when it had actually been released.
     const mounted = await startSuccessfulSession();
     await uploadAcceptedFrame(mounted.state.sessionId as string);
 
@@ -578,6 +581,8 @@ describe("mountAppShell", () => {
 
     expect(mounted.trackStopSpy).toHaveBeenCalledTimes(1);
     expect(mounted.state.cameraStream).toBeNull();
+    expect(mounted.state.cameraGranted).toBe(false);
+    expect(mounted.cameraPreview.srcObject).toBeNull();
     expect(mounted.captureButton.disabled).toBe(true);
   });
 
@@ -594,5 +599,148 @@ describe("mountAppShell", () => {
     expect(mounted.finishStatus.style.fontWeight).toBe("bold");
     expect(mounted.trackStopSpy).not.toHaveBeenCalled();
     expect(mounted.state.cameraStream).not.toBeNull();
+  });
+
+  it("stops the first stream's tracks before a second Start overwrites it -- the leak TabeenRaoof's PR #134 review caught", async () => {
+    // getUserMedia resolves with a distinct stream (and spy) each call, so this can tell the
+    // first stream's tracks were actually stopped, not just that state now points at the second.
+    const streamStopSpies: ReturnType<typeof vi.fn>[] = [];
+    // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
+    navigator.mediaDevices = {
+      getUserMedia: () => {
+        const spy = vi.fn();
+        streamStopSpies.push(spy);
+        const stream = new MediaStream();
+        stream.getTracks = () => [{ stop: spy } as unknown as MediaStreamTrack];
+        return Promise.resolve(stream);
+      },
+    };
+    stubGyroPermission("granted");
+    const { state, orderCode, button, gyroStatus } = mount();
+    orderCode.value = "PO-NOT-REAL"; // fails session creation -> button re-enabled, Start again
+
+    button.click();
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    const firstStream = state.cameraStream;
+    expect(firstStream).not.toBeNull();
+    expect(streamStopSpies[0]).not.toHaveBeenCalled();
+
+    orderCode.value = "PO-48213-A"; // a real order code this time
+    button.click();
+    await vi.waitFor(() => {
+      if (state.cameraStream === firstStream) throw new Error("still the first stream");
+    });
+
+    expect(streamStopSpies).toHaveLength(2);
+    expect(streamStopSpies[0]).toHaveBeenCalledTimes(1); // the first stream was released
+    expect(streamStopSpies[1]).not.toHaveBeenCalled(); // the second (current) one wasn't
+  });
+
+  it("releases a granted-but-unusable stream when the preview's play() rejects", async () => {
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const { state, orderCode, button, cameraStatus, gyroStatus, captureButton } = mount();
+    // A bad order code the first time around -- session creation fails, so the Start button is
+    // re-enabled for the real second click below (a disabled button doesn't dispatch click()).
+    orderCode.value = "PO-NOT-REAL";
+
+    button.click();
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    const preview = document.getElementById("shell-camera-preview") as HTMLVideoElement;
+    preview.play = () => Promise.reject(new DOMException("", "NotAllowedError"));
+    // Trigger the rejecting play() path by starting over -- releaseCamera() runs first (the
+    // regression above), then the new grant's play() call is the one that rejects this time.
+    orderCode.value = "PO-48213-A";
+    button.click();
+
+    await vi.waitFor(() => {
+      if (!cameraStatus.textContent.includes("failed to play")) {
+        throw new Error("still pending");
+      }
+    });
+
+    expect(state.cameraStream).toBeNull();
+    expect(state.cameraGranted).toBe(false);
+    expect(captureButton.disabled).toBe(true);
+    expect(trackStopSpy).toHaveBeenCalled();
+  });
+
+  it("keeps capture disabled with a misleading-free state when camera is granted but gyro is denied", async () => {
+    // Before this fix, captureButton was enabled on camera grant alone -- with gyro denied (or
+    // no sensor), tapping it could only ever show "No gyro reading yet -- try again in a
+    // moment," forever, which is misleading for a permanent state, not a transient one
+    // (TabeenRaoof's PR #134 review).
+    stubGrantedCamera();
+    stubGyroPermission("denied");
+    const { orderCode, button, cameraStatus, captureButton } = mount();
+    orderCode.value = "PO-48213-A";
+
+    button.click();
+    await vi.waitFor(() => {
+      if (cameraStatus.textContent === "") throw new Error("still pending");
+    });
+    await vi.waitFor(() => {
+      if (cameraStatus.textContent !== "Camera started.") throw new Error("still pending");
+    });
+
+    expect(captureButton.disabled).toBe(true);
+  });
+
+  it("ignores a stale play() resolution that arrives after the stream was already released", async () => {
+    // TabeenRaoof's PR #134 review: a slow play() resolving after a later Finish already
+    // released the stream could resurrect "Camera started." and re-enable capture on a stream
+    // that no longer exists.
+    let resolvePlay: (() => void) | undefined;
+    const fakeStream = new MediaStream();
+    const trackStopSpy = vi.fn();
+    fakeStream.getTracks = () => [{ stop: trackStopSpy } as unknown as MediaStreamTrack];
+    // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
+    navigator.mediaDevices = { getUserMedia: () => Promise.resolve(fakeStream) };
+    stubGyroPermission("granted");
+    const { state, orderCode, button, gyroStatus, cameraStatus, captureButton, finishStatus } =
+      mount();
+    // A bad order code the first time around -- session creation fails, so the Start button is
+    // re-enabled for the real second click below (a disabled button doesn't dispatch click()).
+    orderCode.value = "PO-NOT-REAL";
+    button.click();
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    const preview = document.getElementById("shell-camera-preview") as HTMLVideoElement;
+    preview.play = () =>
+      new Promise((resolve) => {
+        resolvePlay = resolve;
+      });
+    // Start over, this time with a real order code -- this run's play() is the controlled,
+    // not-yet-resolved one, and session creation actually succeeds.
+    orderCode.value = "PO-48213-A";
+    button.click();
+    await vi.waitFor(() => {
+      if (resolvePlay === undefined) throw new Error("play() not called yet");
+    });
+
+    if (state.sessionId === null) throw new Error("test setup: session id missing");
+    await uploadAcceptedFrame(state.sessionId);
+    const captureStatusBefore = document.getElementById("shell-capture-status")?.textContent;
+    document.getElementById("shell-finish-button")?.dispatchEvent(new Event("click"));
+    await vi.waitFor(() => {
+      if (finishStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(state.cameraStream).toBeNull();
+
+    // The stale play() call finally resolves, after release -- its success callback must not
+    // resurrect any camera UI state.
+    resolvePlay?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(cameraStatus.textContent).not.toBe("Camera started.");
+    expect(captureButton.disabled).toBe(true);
+    expect(state.cameraStream).toBeNull();
+    expect(document.getElementById("shell-capture-status")?.textContent).toBe(captureStatusBefore);
   });
 });

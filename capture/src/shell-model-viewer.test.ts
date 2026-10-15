@@ -25,9 +25,12 @@ describe("C-11 model viewer shell wiring", () => {
   });
 
   function grantPermissions(): void {
-    const fakeStream = {
-      getTracks: () => [{ stop: () => undefined }],
-    };
+    // C-05: shell.ts now actually assigns the granted stream to a <video> `srcObject`, and
+    // happy-dom's `srcObject` setter validates the value is a real `MediaStream` instance -- so
+    // the fake has to be a real one, with `getTracks` overridden on the instance to stay
+    // controllable (happy-dom's own `MediaStream` class doesn't implement `getTracks()`).
+    const fakeStream = new MediaStream();
+    fakeStream.getTracks = () => [{ stop: () => undefined } as unknown as MediaStreamTrack];
     // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
     navigator.mediaDevices = {
       getUserMedia: () => Promise.resolve(fakeStream),
