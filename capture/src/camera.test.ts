@@ -4,11 +4,13 @@ import {
   capturePixelsFromVideo,
   captureFrame,
   describeCameraError,
+  encodeFrameAsJpeg,
   isGetUserMediaSupported,
   mountCameraCheck,
   requestCameraPermission,
   stopCameraStream,
 } from "./camera.js";
+import type { FramePixels } from "./frame_gate.js";
 import type { Gyro } from "./types.js";
 
 describe("describeCameraError", () => {
@@ -228,6 +230,58 @@ describe("capturePixelsFromVideo", () => {
       capturePixelsFromVideo(video);
     }).toThrow(/no dimensions yet/);
   });
+
+  it("reuses one canvas context across repeated captures of the same video -- not a fresh one per call", () => {
+    // TabeenRaoof's PR #137 review: a capture loop calls this on every attempt, not just accepted
+    // ones, and a fresh full-resolution canvas+context per call put real memory pressure on iOS
+    // Safari's strict canvas limits.
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: () => undefined,
+      getImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+    } as unknown as CanvasRenderingContext2D);
+    const video = fakeVideo(640, 480);
+
+    capturePixelsFromVideo(video);
+    capturePixelsFromVideo(video);
+    capturePixelsFromVideo(video);
+
+    expect(getContextSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives two different video elements their own canvas, not a shared one", () => {
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: () => undefined,
+      getImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+    } as unknown as CanvasRenderingContext2D);
+    const videoA = fakeVideo(640, 480);
+    const videoB = fakeVideo(320, 240);
+
+    capturePixelsFromVideo(videoA);
+    capturePixelsFromVideo(videoB);
+
+    expect(getContextSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("resizes the cached canvas when the video's dimensions change, instead of keeping a stale size", () => {
+    const drawImageSpy = vi.fn();
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: drawImageSpy,
+      getImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+    } as unknown as CanvasRenderingContext2D);
+    const video = fakeVideo(640, 480);
+
+    capturePixelsFromVideo(video);
+    Object.defineProperty(video, "videoWidth", { value: 1280, configurable: true });
+    Object.defineProperty(video, "videoHeight", { value: 720, configurable: true });
+    capturePixelsFromVideo(video);
+
+    // getContext called only once total (the same cached canvas handled both calls, the cache
+    // key is the video element, not the dimensions), but drawImage's second call reflects the
+    // new, larger dimensions -- proving the cached canvas was resized, not left stale at 640x480.
+    expect(getContextSpy).toHaveBeenCalledTimes(1);
+    expect(drawImageSpy).toHaveBeenNthCalledWith(1, video, 0, 0, 640, 480);
+    expect(drawImageSpy).toHaveBeenNthCalledWith(2, video, 0, 0, 1280, 720);
+  });
 });
 
 describe("captureFrame", () => {
@@ -274,5 +328,61 @@ describe("stopCameraStream", () => {
     expect(() => {
       stopCameraStream(fakeStream);
     }).not.toThrow();
+  });
+});
+
+describe("encodeFrameAsJpeg", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const pixels: FramePixels = { data: new Uint8ClampedArray([1, 2, 3, 4]), width: 1, height: 1 };
+
+  function stubCanvasToBlob(blob: Blob | null): { putImageDataSpy: ReturnType<typeof vi.fn> } {
+    const putImageDataSpy = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      putImageData: putImageDataSpy,
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (
+      this: HTMLCanvasElement,
+      callback: BlobCallback,
+    ) {
+      callback(blob);
+    });
+    return { putImageDataSpy };
+  }
+
+  it("resolves with the blob toBlob's callback produces, from pixels written via putImageData", async () => {
+    const fakeBlob = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
+    const { putImageDataSpy } = stubCanvasToBlob(fakeBlob);
+
+    const result = await encodeFrameAsJpeg(pixels);
+
+    expect(result).toBe(fakeBlob);
+    expect(putImageDataSpy).toHaveBeenCalledTimes(1);
+    const writtenImageData = putImageDataSpy.mock.calls[0]?.[0] as ImageData;
+    expect(Array.from(writtenImageData.data)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("rejects, rather than resolving undefined, when canvas.toBlob produces no blob", async () => {
+    stubCanvasToBlob(null);
+
+    await expect(encodeFrameAsJpeg(pixels)).rejects.toThrow(/no blob/);
+  });
+
+  it("encodes as image/jpeg at the given quality, or the default when omitted", async () => {
+    const toBlobSpy = vi.fn((callback: BlobCallback) => {
+      callback(new Blob());
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      putImageData: () => undefined,
+    } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(toBlobSpy);
+
+    await encodeFrameAsJpeg(pixels);
+    await encodeFrameAsJpeg(pixels, 0.5);
+
+    expect(toBlobSpy).toHaveBeenNthCalledWith(1, expect.any(Function), "image/jpeg", 0.92);
+    expect(toBlobSpy).toHaveBeenNthCalledWith(2, expect.any(Function), "image/jpeg", 0.5);
   });
 });
