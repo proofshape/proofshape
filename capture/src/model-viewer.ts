@@ -213,7 +213,7 @@ export function mountModelViewer(
   }
 
   const controlsContainer = document.createElement("div");
-  controlsContainer.append(createDownloadLink(result.glb_url), createProvenanceLegend());
+  controlsContainer.append(createDownloadLink(result.glb_url));
   root.append(controlsContainer);
 
   const viewport = document.createElement("div");
@@ -237,9 +237,20 @@ export function mountModelViewer(
         return;
       }
       try {
-        remapModelProvenanceColors(loaded.scene);
+        const provenance = remapModelProvenanceColors(loaded.scene);
+        if (provenance.foundProvenance) {
+          controlsContainer.append(createProvenanceLegend());
+        }
         disposePreview = createThreePreview(viewport, loaded.scene);
-        setStatus(status, "3D model loaded. Drag to orbit; pinch to zoom.", "info");
+        const warning =
+          provenance.unknownVertices > 0
+            ? ` ${String(provenance.unknownVertices)} vertex colour(s) are unknown and shown in magenta.`
+            : "";
+        setStatus(
+          status,
+          "3D model loaded. Drag to orbit; pinch to zoom." + warning,
+          provenance.unknownVertices > 0 ? "error" : "info",
+        );
       } catch (error) {
         setStatus(
           status,
