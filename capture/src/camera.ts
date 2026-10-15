@@ -80,6 +80,44 @@ export interface CapturedFrame {
   readonly gyro: Gyro;
 }
 
+interface VideoCanvas {
+  readonly canvas: HTMLCanvasElement;
+  readonly context: CanvasRenderingContext2D;
+}
+
+// C-09: one canvas+context per video element, not a fresh pair on every capture -- a capture loop
+// calls capturePixelsFromVideo on every attempt (not just accepted ones), and allocating a new
+// full-resolution canvas each time put real memory pressure on iOS Safari's strict canvas limits
+// (TabeenRaoof's PR #137 review). Keyed by the video element itself, not module-level state --
+// this codebase deliberately avoids module-level mutable state that outlives one mount (see
+// gyro.ts's own `listening` flag and AppState's "not a module-level singleton" comment), so each
+// video element's cache is garbage collected naturally once the element is, the same WeakMap
+// pattern overlay.ts's activeDisposalsByContainer already established.
+const canvasesByVideo = new WeakMap<HTMLVideoElement, VideoCanvas>();
+
+function requireVideoCanvas(video: HTMLVideoElement, width: number, height: number): VideoCanvas {
+  const existing = canvasesByVideo.get(video);
+  if (existing) {
+    if (existing.canvas.width !== width || existing.canvas.height !== height) {
+      existing.canvas.width = width;
+      existing.canvas.height = height;
+    }
+    return existing;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  // Every draw here is immediately followed by getImageData -- this hint lets the browser pick a
+  // backing store optimized for that read pattern instead of one optimized for on-screen display.
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    throw new Error("capturePixelsFromVideo: could not get a 2D canvas context.");
+  }
+  const videoCanvas: VideoCanvas = { canvas, context };
+  canvasesByVideo.set(video, videoCanvas);
+  return videoCanvas;
+}
+
 // C-05: draws the video element's current frame into an offscreen canvas and reads it back as
 // pixel data -- a real canvas ImageData structurally satisfies FramePixels (frame_gate.ts's own
 // comment), so no adapter is needed here. Throws on a zero-dimension video (not yet playing)
@@ -92,13 +130,7 @@ export function capturePixelsFromVideo(video: HTMLVideoElement): FramePixels {
       "capturePixelsFromVideo: video has no dimensions yet (videoWidth/videoHeight are 0) -- it isn't playing.",
     );
   }
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("capturePixelsFromVideo: could not get a 2D canvas context.");
-  }
+  const { context } = requireVideoCanvas(video, width, height);
   context.drawImage(video, 0, 0, width, height);
   return context.getImageData(0, 0, width, height);
 }
@@ -109,6 +141,49 @@ export function capturePixelsFromVideo(video: HTMLVideoElement): FramePixels {
 // this function inventing a default.
 export function captureFrame(video: HTMLVideoElement, gyro: Gyro): CapturedFrame {
   return { pixels: capturePixelsFromVideo(video), gyro };
+}
+
+export const DEFAULT_JPEG_QUALITY = 0.92;
+
+// C-09: re-encodes pixels the gate already approved as a JPEG Blob for upload -- deliberately not
+// a second capturePixelsFromVideo call. The live video has moved on by the time a frame clears the
+// gate; sampling it again here would upload a different frame than the one that was actually
+// checked. putImageData (writing known pixels back) rather than drawImage (sampling the video)
+// is what keeps this an encoding step, not a second observation.
+// `async`, not a plain function that returns a `Promise`, specifically so the "no 2D context"
+// guard below throws into a rejected promise like every other failure here, instead of
+// synchronously throwing out of the call itself -- a caller doing `encodeFrameAsJpeg(...).catch()`
+// without its own surrounding `try` would otherwise see this one failure mode escape uncaught
+// (TabeenRaoof's PR #139 review).
+export async function encodeFrameAsJpeg(
+  pixels: FramePixels,
+  quality = DEFAULT_JPEG_QUALITY,
+): Promise<Blob> {
+  const canvas = document.createElement("canvas");
+  canvas.width = pixels.width;
+  canvas.height = pixels.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("encodeFrameAsJpeg: could not get a 2D canvas context.");
+  }
+  // A fresh copy, not pixels.data directly -- ImageData's constructor requires a plain
+  // ArrayBuffer-backed array, which pixels.data (typed only as Uint8ClampedArray) isn't
+  // guaranteed to be, and this also avoids any aliasing between the two.
+  const copy = new Uint8ClampedArray(pixels.data);
+  context.putImageData(new ImageData(copy, pixels.width, pixels.height), 0, 0);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error("encodeFrameAsJpeg: canvas.toBlob produced no blob."));
+        }
+      },
+      "image/jpeg",
+      quality,
+    );
+  });
 }
 
 export const CAMERA_PAGE_HTML = `
