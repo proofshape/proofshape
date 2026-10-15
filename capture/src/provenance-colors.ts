@@ -38,8 +38,13 @@ function channelToByte(value: number): number {
   return Math.round(THREE.MathUtils.clamp(value, 0, 1) * 255);
 }
 
-function byteToChannel(value: number): number {
-  return value / 255;
+function displayRgbToLinearColor(rgb: DisplayRgb): THREE.Color {
+  return new THREE.Color().setRGB(
+    rgb[0] / 255,
+    rgb[1] / 255,
+    rgb[2] / 255,
+    THREE.SRGBColorSpace,
+  );
 }
 
 export function remapModelProvenanceColors(model: THREE.Object3D): void {
@@ -60,18 +65,17 @@ export function remapModelProvenanceColors(model: THREE.Object3D): void {
         channelToByte(color.getY(index)),
         channelToByte(color.getZ(index)),
       ]);
-      color.setXYZ(
-        index,
-        byteToChannel(mapped.rgb[0]),
-        byteToChannel(mapped.rgb[1]),
-        byteToChannel(mapped.rgb[2]),
-      );
+      const linear = displayRgbToLinearColor(mapped.rgb);
+      color.setXYZ(index, linear.r, linear.g, linear.b);
     }
     color.needsUpdate = true;
 
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const material of materials) {
-      if (material instanceof THREE.MeshStandardMaterial || material instanceof THREE.MeshBasicMaterial) {
+      if (
+        material instanceof THREE.MeshStandardMaterial ||
+        material instanceof THREE.MeshBasicMaterial
+      ) {
         material.vertexColors = true;
         material.needsUpdate = true;
       }
