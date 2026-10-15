@@ -22,6 +22,13 @@ that is finite and positive -- an invalid pixel unprojects to the camera centre,
 point, and would corrupt the fit). The voxel grid's top is set from the fitted plane too, so the
 grid itself doesn't repeat R-06's old z=0 assumption and clip the part's base before fusion even
 starts.
+
+R-20/D-045: a pixel VGGT's own confidence is too low to trust is also excluded here, with
+`recon.vggt_runner.confidence_keep_mask` -- the same predicate R-01 applies when building the
+point cloud in `points.ply`, so a pixel left out of the cloud is left out of the fused surface
+too, rather than the two silently disagreeing on which pixels to trust. `fuse_run` reads the
+threshold from the run's own `run.json` by default, so the fused surface always matches the
+cloud that was actually written for that run; passing `min_confidence` explicitly overrides it.
 """
 
 from __future__ import annotations
@@ -46,7 +53,7 @@ from recon.part_segmentation import (
     measure_board_surface,
     segment_part,
 )
-from recon.vggt_runner import unproject_depth_to_world
+from recon.vggt_runner import confidence_keep_mask, unproject_depth_to_world
 
 DEFAULT_VOXEL_SIZE_MM = 2.0
 
@@ -369,9 +376,12 @@ def write_fusion_report(
     total_voxel_count: int,
     vertex_count: int,
     face_count: int,
+    min_confidence: float,
+    min_confidence_source: str,
+    confidence_dropped_pixel_count: int,
 ) -> dict[str, Any]:
     report = {
-        "story": ["R-07", "R-21"],
+        "story": ["R-07", "R-20", "R-21"],
         "source_run_dir": str(reconstruction_run_dir),
         "source_alignment_json": str(alignment_json_path),
         "units": "mm",
@@ -387,6 +397,13 @@ def write_fusion_report(
         "total_voxel_count": total_voxel_count,
         "vertex_count": vertex_count,
         "face_count": face_count,
+        # R-20/D-045: which pixels were trusted, and where that threshold came from -- "run.json"
+        # means it was read from the source run's own recorded min_confidence (the default, so
+        # the fused surface matches points.ply by construction); "override" means fuse_run's
+        # caller passed one explicitly.
+        "min_confidence": min_confidence,
+        "min_confidence_source": min_confidence_source,
+        "confidence_dropped_pixel_count": confidence_dropped_pixel_count,
     }
     path = Path(path)
     path.write_text(
@@ -406,6 +423,7 @@ def fuse_run(
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
     max_part_height_mm: float = DEFAULT_MAX_PART_HEIGHT_MM,
     max_board_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
+    min_confidence: float | None = None,
 ) -> dict[str, Any]:
     """Load R-01 depth/poses and an R-04 alignment, fuse, extract a mesh, and write the outputs.
 
@@ -417,6 +435,13 @@ def fuse_run(
     R-21: the board surface is fit from this run's own valid-depth pixels before segmenting, so
     the height cut (and the voxel grid's z top, below) follow the real board, not z=0.
     `height_threshold_mm` still overrides the measured value when given, same as `segment_run`.
+
+    `min_confidence=None` (the default) reads the threshold the source run itself used
+    (`run.json`'s own `min_confidence`), so the fused surface agrees with `points.ply` by
+    construction (R-20). A run whose `run.json` is missing, or predates this field, is a
+    genuine ambiguity -- falling back to 0.0 would silently fuse pixels the cloud itself
+    excluded -- so it is an explicit error rather than a silent default. Pass `min_confidence`
+    explicitly to override it (e.g. to reproduce a pre-R-20 fusion for comparison).
     """
     reconstruction_run_dir = Path(reconstruction_run_dir)
     alignment_json_path = Path(alignment_json_path)
@@ -431,11 +456,32 @@ def fuse_run(
             "overwriting silently would let outputs from two runs get mixed."
         )
 
+    if min_confidence is None:
+        run_json_path = reconstruction_run_dir / "run.json"
+        if not run_json_path.exists():
+            raise FileNotFoundError(
+                f"{run_json_path} does not exist, so fuse_run cannot tell which confidence "
+                "threshold points.ply was built with. Pass min_confidence explicitly if this "
+                "run predates that field."
+            )
+        run_json = json.loads(run_json_path.read_text(encoding="utf-8"))
+        if "min_confidence" not in run_json:
+            raise ValueError(
+                f"{run_json_path} has no 'min_confidence' field (an older run, before R-20). "
+                "Pass min_confidence explicitly rather than silently assuming 0.0."
+            )
+        resolved_min_confidence = float(run_json["min_confidence"])
+        min_confidence_source = "run.json"
+    else:
+        resolved_min_confidence = float(min_confidence)
+        min_confidence_source = "override"
+
     with np.load(reconstruction_run_dir / "poses.npz") as poses:
         extrinsic = poses["extrinsic"].astype(np.float64)
         intrinsic = poses["intrinsic"].astype(np.float64)
     with np.load(reconstruction_run_dir / "depth.npz") as depth_data:
         depth = depth_data["depth"].astype(np.float64)
+        depth_conf = depth_data["depth_conf"].astype(np.float64)
 
     alignment_json = json.loads(alignment_json_path.read_text(encoding="utf-8"))
     scale = float(alignment_json["scale"])
@@ -464,11 +510,21 @@ def fuse_run(
     # still be non-finite (e.g. NaN depth), so it's excluded here too rather than passed through
     # and never classified as part geometry -- fuse_tsdf already drops invalid-depth pixels on
     # its own, independently of this mask, so their keep value doesn't otherwise matter.
-    keep_flat = np.zeros(flat_points.shape[0], dtype=bool)
-    keep_flat[valid_depth] = segment_part(
+    segmented_flat = np.zeros(flat_points.shape[0], dtype=bool)
+    segmented_flat[valid_depth] = segment_part(
         flat_points[valid_depth], board_surface, height_threshold_mm, footprint_mm
     )
-    keep_mask = keep_flat.reshape(frame_count, height, width)
+    segmented_mask = segmented_flat.reshape(frame_count, height, width)
+
+    # R-20/D-045: a pixel whose own confidence is too low to trust is excluded here too, with
+    # the same predicate R-01's point cloud uses (confidence_keep_mask's own isfinite check
+    # also drops a NaN/inf confidence pixel regardless of threshold), so a pixel left out of
+    # points.ply is left out of the fused surface too -- computed unconditionally, even at
+    # threshold 0.0, rather than skipping it as a "no-op": a once-attempted shortcut there
+    # silently let a NaN/inf-confidence pixel through, which this predicate would not have.
+    confidence_mask = confidence_keep_mask(depth_conf, resolved_min_confidence)
+    keep_mask = segmented_mask & confidence_mask
+    confidence_dropped_pixel_count = int(np.count_nonzero(~confidence_mask))
 
     # The grid follows the fitted (possibly tilted) plane, not z=0 -- otherwise the grid itself
     # would cut off the part's base before fusion even runs. Its top is the plane's highest
@@ -526,12 +582,15 @@ def fuse_run(
         total_voxel_count=total_voxel_count,
         vertex_count=len(vertices_mm),
         face_count=len(faces),
+        min_confidence=resolved_min_confidence,
+        min_confidence_source=min_confidence_source,
+        confidence_dropped_pixel_count=confidence_dropped_pixel_count,
     )
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Fuse R-01 depth into a TSDF volume and extract a mesh (R-07/R-21)."
+        description="Fuse R-01 depth into a TSDF volume and extract a mesh (R-07/R-20/R-21)."
     )
     parser.add_argument("reconstruction_run_dir", type=Path)
     parser.add_argument(
@@ -555,6 +614,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-board-tilt-deg", type=float, default=DEFAULT_MAX_BOARD_TILT_DEG
     )
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=None,
+        help=(
+            "override the confidence threshold read from the run's own run.json "
+            "(default: use whatever points.ply was already built with, D-045)"
+        ),
+    )
     return parser
 
 
@@ -573,14 +641,16 @@ def main(argv: list[str] | None = None) -> int:
             method=args.method,
             height_threshold_mm=args.height_threshold_mm,
             max_board_tilt_deg=args.max_board_tilt_deg,
+            min_confidence=args.min_confidence,
         )
-    except (FileExistsError, ValueError) as exc:
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
         print(f"R-07 TSDF FUSION: FAIL - {exc}", file=sys.stderr)
         return 1
 
     print(
         f"R-07 TSDF FUSION: PASS - {report['method']}, {report['vertex_count']} vertices, "
-        f"{report['face_count']} faces"
+        f"{report['face_count']} faces, min_confidence={report['min_confidence']} "
+        f"({report['min_confidence_source']})"
     )
     print(f"Outputs written to {out_dir}")
     return 0

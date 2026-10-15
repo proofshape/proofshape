@@ -155,9 +155,10 @@ Full detail in each story file.
 | [R-17](R/R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Done | @TabeenRaoof |
 | [R-18](R/R-18.md) | Produce and check TSDF-fused meshes on the golden set | 1 h | R-07 | Done | @dalwalyk |
 | [R-19](R/R-19.md) | Report per-vertex sigma distribution on the golden set | 1 h | R-10 | Done | @mbj1994 |
-| [R-20](R/R-20.md) | Use VGGT's confidence in the point cloud and in fusion | 4 h | R-01, R-07 | Claimed | @TabeenRaoof |
+| [R-20](R/R-20.md) | Use VGGT's confidence in the point cloud and in fusion | 4 h | R-01, R-07 | Done | @TabeenRaoof |
 | [R-21](R/R-21.md) | Measure the height cut from the real board surface | 3 h | R-06 | Done | @TabeenRaoof |
 | [R-22](R/R-22.md) | Find why parts reconstruct smaller than their CAD | 3 h | R-03, R-04 | Claimed | @TabeenRaoof |
+| [R-24](R/R-24.md) | Use VGGT's confidence in provenance's observation count | 3 h | R-20 | Ready | _unclaimed_ |
 
 ---
 
@@ -179,7 +180,7 @@ so this is behind schedule, not early.
 | [C-06](C/C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
 | [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Done | @dalwalyk |
 | [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Claimed | @TabeenRaoof |
-| [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Ready | _unclaimed_ |
+| [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Claimed | @dalwalyk |
 | [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Done | @mbj1994 |
 | [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Done | @mbj1994 |
 | [C-12](C/C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Ready | _unclaimed_ |

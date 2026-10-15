@@ -333,7 +333,20 @@ def run_reconstruction_pipeline(
     stage_timings_s["metric_alignment"] = time.perf_counter() - started
 
     started = time.perf_counter()
-    tsdf_fusion.fuse_run(reconstruction_dir, alignment_path, fusion_dir)
+    try:
+        tsdf_fusion.fuse_run(reconstruction_dir, alignment_path, fusion_dir)
+    except (FileNotFoundError, ValueError) as exc:
+        # R-20: fuse_run reads its confidence threshold from reconstruction_dir's own run.json
+        # by default and raises rather than silently guessing one if it's missing or predates
+        # that field (an R-01 run from before R-20). The frozen contract (D-032) has no
+        # dedicated error code for this -- adding one needs D-031's two-member sprint-boundary
+        # process, not a unilateral change here -- so this reuses metric_alignment_failed, the
+        # closest existing "reconstruction-stage precondition failed" code, but names the real
+        # cause explicitly rather than falling through to run_session's generic terminal-
+        # exception handler, which would report it as an unrelated "Reconstruction failed".
+        raise ReconstructionFailure(
+            "metric_alignment_failed", f"Fusion failed: {exc}"
+        ) from exc
     stage_timings_s["fusion"] = time.perf_counter() - started
 
     started = time.perf_counter()

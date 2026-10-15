@@ -151,6 +151,28 @@ def test_frames_chw_to_hwc_rejects_a_missing_frame_axis():
         vggt_runner.frames_chw_to_hwc(np.zeros((3, 4, 6)))
 
 
+# --- confidence_keep_mask -------------------------------------------------------------------
+
+
+def test_confidence_keep_mask_drops_non_finite_and_below_threshold():
+    confidence = np.array([5.0, 1.0, np.nan, np.inf, 0.999])
+
+    mask = vggt_runner.confidence_keep_mask(confidence, min_confidence=1.0)
+
+    # 5.0 above, 1.0 exactly at (inclusive), NaN and inf never kept (neither is finite), 0.999
+    # just below.
+    np.testing.assert_array_equal(mask, [True, True, False, False, False])
+
+
+def test_confidence_keep_mask_preserves_input_shape():
+    confidence = np.full((2, 3, 4), 2.0)
+
+    mask = vggt_runner.confidence_keep_mask(confidence, min_confidence=1.0)
+
+    assert mask.shape == (2, 3, 4)
+    assert mask.all()
+
+
 # --- select_point_cloud --------------------------------------------------------------------
 
 
@@ -170,6 +192,23 @@ def test_select_point_cloud_drops_non_finite_and_low_confidence():
     # Pixel (0,1) is NaN and pixel (1,0) is below the confidence floor.
     np.testing.assert_array_equal(kept_points, [[1, 2, 3], [7, 8, 9]])
     np.testing.assert_array_equal(kept_colors, [[0, 1, 2], [9, 10, 11]])
+
+
+def test_select_point_cloud_uses_confidence_keep_mask_not_a_reimplementation():
+    # Same predicate as confidence_keep_mask's own test, applied through select_point_cloud, so
+    # the two can never silently drift apart (R-20: the cloud and R-07's fusion must agree on
+    # which pixels are trusted).
+    points = np.ones((1, 1, 5, 3), dtype=np.float32)
+    colors = np.zeros((1, 1, 5, 3), dtype=np.uint8)
+    confidence = np.array([[[5.0, 1.0, np.nan, np.inf, 0.999]]])
+
+    kept_points, _ = vggt_runner.select_point_cloud(
+        points, colors, confidence, min_confidence=1.0
+    )
+
+    assert (
+        len(kept_points) == 2
+    )  # indices 0, 1 -- matches confidence_keep_mask's own test
 
 
 def test_select_point_cloud_rejects_mismatched_dimensions():
@@ -356,6 +395,29 @@ def test_run_on_capture_end_to_end_with_stubbed_model(tmp_path, monkeypatch):
     # on the in-memory dict, not `on_disk` -- run.json is written with sort_keys=True, so its
     # key order is always alphabetical and says nothing about insertion order.
     assert next(iter(run_info["timings"])) == "find_frames_s"
+
+
+def test_main_default_confidence_threshold_reaches_run_json(tmp_path, monkeypatch):
+    # R-20's acceptance criterion: the chosen default (D-045) must reach run.json from the CLI,
+    # not just from a direct run_on_capture call -- the CLI has its own argparse default, which
+    # could silently drift from DEFAULT_MIN_CONFIDENCE if it were hardcoded separately.
+    capture_dir = tmp_path / "s-99"
+    capture_dir.mkdir()
+    (capture_dir / "1.jpg").write_bytes(b"x")
+
+    monkeypatch.setattr(
+        vggt_runner,
+        "run_vggt_model",
+        lambda frame_paths, model_id, device_type: _fake_model_result(1),
+    )
+
+    exit_code = vggt_runner.main(
+        [str(capture_dir), "--out-dir", str(tmp_path / "out"), "--device", "cuda"]
+    )
+
+    assert exit_code == 0
+    on_disk = json.loads((tmp_path / "out" / "run.json").read_text())
+    assert on_disk["min_confidence"] == vggt_runner.DEFAULT_MIN_CONFIDENCE
 
 
 def test_main_prints_the_full_per_stage_table_not_just_the_total(
