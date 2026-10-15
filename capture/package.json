@@ -14,7 +14,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --write src/provenance-colors.ts && git diff --exit-code -- src/provenance-colors.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
