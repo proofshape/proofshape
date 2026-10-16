@@ -311,9 +311,13 @@ def run_reconstruction_pipeline(
         raise failure
 
     started = time.perf_counter()
+    # C-13 / D-049: without an explicit device this defaulted to cuda, so the service could not
+    # reconstruct on the M2 Max at all. Resolved per session, not at import, so the variable is
+    # read from the environment uvicorn was actually started with.
     run_info = reconstruction_runner.run_on_capture(
         capture_dir,
         reconstruction_dir,
+        device_type=reconstruction_runner.resolve_device(),
         board_pose_path=board_dir / "board_poses.npz",
     )
     stage_timings_s["reconstruction"] = time.perf_counter() - started

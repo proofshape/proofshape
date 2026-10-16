@@ -396,6 +396,43 @@ def test_pipeline_maps_fuse_run_failures_to_a_named_fusion_error_not_a_generic_o
     assert "run.json does not exist" in excinfo.value.message
 
 
+@pytest.mark.parametrize(
+    ("env_value", "expected_device"), [(None, "cuda"), ("mps", "mps")]
+)
+def test_pipeline_reconstructs_on_the_device_the_environment_names(
+    tmp_path, monkeypatch, env_value, expected_device
+):
+    # C-13 / D-049: before this, the pipeline never passed a device, so the backend always got
+    # cuda and the service could not run on the M2 Max. Unset must stay cuda (the container).
+    from recon import board_pose, reconstruction_runner
+
+    if env_value is None:
+        monkeypatch.delenv(reconstruction_runner.DEVICE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(reconstruction_runner.DEVICE_ENV, env_value)
+
+    capture_dir = tmp_path / "capture"
+    capture_dir.mkdir()
+    monkeypatch.setattr(
+        board_pose,
+        "estimate_board_poses",
+        lambda capture, out: {"posed_count": 3, "failure_counts": {}},
+    )
+    seen = {}
+
+    def fake_run_on_capture(*args, device_type="unset", **kwargs):
+        seen["device_type"] = device_type
+        # A refusal ends the pipeline right after this stage, so no later stage needs faking.
+        return {"status": "refused", "reason": "test stops here"}
+
+    monkeypatch.setattr(reconstruction_runner, "run_on_capture", fake_run_on_capture)
+
+    with pytest.raises(service.ReconstructionFailure):
+        service.run_reconstruction_pipeline(capture_dir, tmp_path / "artifacts")
+
+    assert seen["device_type"] == expected_device
+
+
 def test_malformed_gyro_is_contract_valid_and_explicitly_not_a_vlm_decision(tmp_path):
     app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
