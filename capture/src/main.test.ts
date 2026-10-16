@@ -49,4 +49,27 @@ describe("main entrypoint", () => {
     expect(mocks.mountAppShell).toHaveBeenCalledWith(root, { baseUrl: "" });
     expect(mocks.mountModelViewer).not.toHaveBeenCalled();
   });
+
+  it("passes a capture link's ?order= through as initialOrderCode (C-13)", async () => {
+    const root = await loadMain("/?order=PO-48213-A");
+
+    expect(mocks.mountAppShell).toHaveBeenCalledWith(root, {
+      baseUrl: "",
+      initialOrderCode: "PO-48213-A",
+    });
+  });
+
+  it("resolves VITE_RECON_BASE_URL/VITE_RECON_TOKEN into baseUrl/authToken (C-13)", async () => {
+    vi.stubEnv("VITE_RECON_BASE_URL", "https://example.lightning.ai/");
+    vi.stubEnv("VITE_RECON_TOKEN", "the-token");
+
+    const root = await loadMain("/");
+
+    expect(mocks.mountAppShell).toHaveBeenCalledWith(root, {
+      baseUrl: "https://example.lightning.ai",
+      authToken: "the-token",
+    });
+
+    vi.unstubAllEnvs();
+  });
 });

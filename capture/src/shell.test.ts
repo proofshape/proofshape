@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { uploadFrame } from "./api.js";
-import { mountAppShell, type AppState } from "./shell.js";
+import { mountAppShell, type AppShellOptions, type AppState } from "./shell.js";
 import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 
@@ -32,7 +32,7 @@ describe("mountAppShell", () => {
     vi.restoreAllMocks();
   });
 
-  function mount(): {
+  function mount(overrides: Partial<AppShellOptions> = {}): {
     state: AppState;
     orderCode: HTMLInputElement;
     button: HTMLButtonElement;
@@ -55,6 +55,7 @@ describe("mountAppShell", () => {
       reconstructionPollIntervalMs: 0,
       reconstructionMaxAttempts: 3,
       modelViewerOptions: { loaderFactory: () => ({ load: () => undefined }) },
+      ...overrides,
     });
     const orderCode = document.getElementById("shell-order-code");
     const button = document.getElementById("shell-start-button");
@@ -289,6 +290,36 @@ describe("mountAppShell", () => {
     // mountCameraCheck already uses for this.
     expect(cameraStatus.textContent).toBe("Camera started.");
     expect(gyroStatus.textContent).toBe("Gyro permission granted.");
+  });
+
+  it("pre-fills the order code from initialOrderCode (C-13: a capture link's ?order=)", () => {
+    const { orderCode } = mount({ initialOrderCode: "PO-48213-A" });
+    expect(orderCode.value).toBe("PO-48213-A");
+  });
+
+  it("leaves the order code blank when initialOrderCode is absent", () => {
+    const { orderCode } = mount();
+    expect(orderCode.value).toBe("");
+  });
+
+  it("sends authToken as a bearer header on the real createSession request (C-13)", async () => {
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const { orderCode, button, state } = mount({ authToken: "the-token" });
+    orderCode.value = "PO-48213-A";
+
+    button.click();
+    await vi.waitFor(() => {
+      if (state.sessionId === null) throw new Error("still pending");
+    });
+
+    const sessionCall = fetchSpy.mock.calls.find(([input]) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      return url.endsWith("/v1/sessions");
+    });
+    expect(sessionCall).toBeDefined();
+    expect(new Headers(sessionCall?.[1]?.headers).get("Authorization")).toBe("Bearer the-token");
   });
 
   it("on a platform with no gyro requestPermission, grants gyro directly with no prompt", async () => {

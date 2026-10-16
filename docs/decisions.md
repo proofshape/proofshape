@@ -663,6 +663,91 @@ patching the three call sites.
 highest decision anywhere was D-045 (on `recon/R-20-confidence-in-fusion`, not yet merged), so
 D-046 was the first free number.
 
+**D-048 · C-13 connects `capture/` to the deployed service with a wildcard-origin CORS policy
+and the bearer token embedded in the client build; the order code is the real access control.**
+(2026-10-15)
+D-042 deliberately deferred this: "the phone app cannot hold a secret, so browser-facing access
+is decided by whichever story first connects capture to the deployed service, not here." Traced
+concretely before deciding: Lightning's `--token-auth` (R-15, `scripts/deploy_recon.py`) gates
+every request at the proxy, including a plain page load (R-15's manual check: POST without the
+token → 401). That rules out serving `capture/`'s static files from the recon container itself
+— a phone's top-level navigation can't attach an `Authorization` header before any JS runs, so
+the page would never load — and it would tie the free static frontend's reachability to the
+paid, on-demand GPU container's uptime.
+
+So `capture/` is served from a separate origin (for C-13 itself, the existing `npm run
+dev:device` LAN-HTTPS pattern C-02/C-03/C-09 already used for phone checks, pointed at the
+deployed base URL instead of the stub; a permanent host like GitHub Pages, named in the original
+proposal, is explicitly deferred to its own future story). `recon/service.py`'s `create_app` adds
+`CORSMiddleware` with `allow_origins=["*"]` and `allow_credentials=False`. The bearer token is
+resolved from a build-time `VITE_RECON_TOKEN` (`capture/src/config.ts`) and attached as
+`Authorization: Bearer <token>` on every outgoing `fetch` (`capture/src/api.ts`) — visible to
+anyone who opens dev tools on the page, not a real secret.
+
+*Why the wildcard origin is deliberate, not an oversight:* CORS only restricts *browser* JS; a
+non-browser caller (`curl`, `scripts/smoke_r14.py`) ignores it entirely. Once the token is
+already public-in-the-bundle, restricting the allowed origin adds no real protection and would
+otherwise have to track whatever LAN IP a tester's phone session happens to use that day. The
+service's real access controls stay what they already were: Lightning's bearer token at the
+proxy, and `create_session`'s check against `known_order_codes` — the order code is what
+actually gates whether a session does real work, which is why it is named as "the access
+control" in C-13's own acceptance criteria.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-047 (on `capture/C-08-next-view-scoring`, not yet merged), so
+D-048 was the first free number.
+*Superseded in part by D-049 (2026-10-15):* C-13 ended up not using Lightning, so this hosting
+choice did not govern C-13's end-to-end check. The code it describes stays, unit-tested, for
+whichever story next connects to Lightning. Two of its premises are open questions, not facts,
+and are recorded as O-005: whether the browser's preflight gets past `--token-auth`, and the
+order code as access control — the deployed `app = create_app()` passes no `known_order_codes`,
+so it accepts any non-empty code.
+
+**D-049 · C-13's end-to-end check runs against `recon.service` on the M2 Max, reached through the
+dev server's `/v1` proxy; Lightning is out of C-13's scope.** (2026-10-15)
+Agreed by the team on 2026-10-15, after C-13's real-phone check hit two walls on Lightning. The
+service image only exists for code already on `main` (D-042), so the branch's own changes could
+never be tested before merging. And the next start never got a ready replica (run `38838190937`,
+no status reported for 30 minutes), with the teamspace's credits in doubt. D-010 already makes
+the M2 Max the development machine, and R-17 ran the whole chain on it over Metal.
+
+So for C-13, `recon.service` runs natively on the Mac — `uvicorn` bound to `127.0.0.1`, not in
+Docker, which has no Metal access (D-012). `PROOFSHAPE_RECON_DEVICE=mps` selects Metal
+(`recon/reconstruction_runner.py`'s `resolve_device`); unset stays `cuda`, so the container is
+unchanged. The phone keeps loading `capture/` from `npm run dev:device` over HTTPS, and
+`PROOFSHAPE_RECON_PROXY` makes that dev server forward `/v1` to the service instead of mounting
+the contract stub (`capture/stub/dev-recon-target.ts`).
+
+*Why a proxy rather than calling the service directly:* the page is HTTPS (Safari only allows the
+camera in a secure context), so the browser blocks `http://<mac>:8000` as mixed content, and
+serving the service over HTTPS too would mean a second self-signed certificate to accept on the
+phone. Through the proxy every request is same-origin: no CORS, no token, one certificate. `xfwd`
+makes the service's existing `public_model_url` return a `glb_url` on the dev server's own
+origin, which the phone can load. The service itself listens only on `127.0.0.1`; the dev server
+is the only way in, and it is on the LAN only while a check is running.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-048 (on `capture/C-13-connect-deployed-service`, this branch), so
+D-049 was the first free number.
+
+**D-050 · When frames carry no EXIF focal length, the service calibrates the camera from the
+board (R-03) and poses the frames with that.** (2026-10-15)
+C-13's first two real-phone sessions failed with 0 board poses although the board was found in
+every frame (16–18 markers each). The capture app takes each frame from the live camera preview
+through a canvas, and a canvas JPEG has no EXIF, so R-02 had no focal length to pose with: every
+frame was `intrinsics_unavailable`. The golden capture never exercised this, because it is
+Camera-app photos with EXIF. `recon/service.py` now runs R-03's `calibrate_from_board` on the
+corners R-02 already recorded, then R-02 again with that K for every frame, into
+`board_pose_calibrated/`, with the fit recorded in `board_calibration.json`. On the first failed
+session's own 19 frames this gave 0.20 px calibration RMS and 18 of 19 frames posed, and the full
+pipeline then completed with a metric result.
+*Why the board rather than another source:* the board is in every frame by design, R-03 already
+calibrates from it with no initial guess, and the frozen contract has no field for the phone to
+send a focal length (changing it is a D-031 contract change). Frames that do carry EXIF never take
+this path. A calibration failure is reported by name, under the existing
+`metric_alignment_failed` code, rather than as the misleading `insufficient_baseline` the phone
+showed before.
+*Checked against D-028 at write time:* D-049 on this branch was the highest decision anywhere, so
+D-050 was the first free number.
+
 ---
 
 ## Open — not yet decided
@@ -682,3 +767,12 @@ re-anchor if the real dates differ.
 
 **O-004 · Whether a formal user study is expected this semester.** An informal one is planned;
 a formal one with IRB approval is future work.
+
+**O-005 · How a browser reaches the Lightning deployment.** (2026-10-15, from D-049)
+The first story that connects `capture/` to Lightning again has to settle three things D-048
+assumed. First, whether `--token-auth` refuses the token-less CORS preflight that any
+`Authorization` header triggers; one `curl -i -X OPTIONS` with an `Origin` and
+`Access-Control-Request-Headers: authorization` against a running deployment answers it. Second,
+whether a token visible in the client bundle is acceptable at all. Third, the order code as the
+access control: the deployed `app = create_app()` sets no `known_order_codes`, so today any
+non-empty code starts a paid GPU run.
