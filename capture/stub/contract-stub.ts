@@ -48,6 +48,11 @@ const RECONSTRUCTION_NO_REFERENCE = loadExample(
 ) as ReconstructionResult;
 const RECONSTRUCTION_404 = loadExample("getReconstruction.response-404") as ErrorDetail;
 const MODEL_FIXTURE_PATH = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "model.glb");
+const PROVENANCE_MODEL_FIXTURE_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "model-provenance.glb",
+);
 
 interface StubSession {
   session_id: string;
@@ -313,8 +318,10 @@ export function createContractStub(): ContractStub {
     sendJson(res, 200, body);
   }
 
-  function handleModel(res: ServerResponse): void {
-    const bytes = readFileSync(MODEL_FIXTURE_PATH);
+  function handleModel(res: ServerResponse, sessionId: string): void {
+    const fixturePath =
+      sessionId === "c12-provenance-check" ? PROVENANCE_MODEL_FIXTURE_PATH : MODEL_FIXTURE_PATH;
+    const bytes = readFileSync(fixturePath);
     res.writeHead(200, {
       "Content-Type": "model/gltf-binary",
       "Content-Length": String(bytes.length),
@@ -357,7 +364,7 @@ export function createContractStub(): ContractStub {
       return;
     }
     if (req.method === "GET" && modelMatch) {
-      handleModel(res);
+      handleModel(res, modelMatch[1] as string);
       return;
     }
 

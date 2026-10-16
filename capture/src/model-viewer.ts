@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { setStatus } from "./camera.js";
+import { createProvenanceLegend, remapModelProvenanceColors } from "./provenance-colors.js";
 import type { ReconstructionResult } from "./types.js";
 
 interface LoadedModel {
@@ -236,8 +237,20 @@ export function mountModelViewer(
         return;
       }
       try {
+        const provenance = remapModelProvenanceColors(loaded.scene);
+        if (provenance.foundProvenance) {
+          controlsContainer.append(createProvenanceLegend());
+        }
         disposePreview = createThreePreview(viewport, loaded.scene);
-        setStatus(status, "3D model loaded. Drag to orbit; pinch to zoom.", "info");
+        const warning =
+          provenance.unknownVertices > 0
+            ? ` ${String(provenance.unknownVertices)} vertex colour(s) are unknown and shown in magenta.`
+            : "";
+        setStatus(
+          status,
+          "3D model loaded. Drag to orbit; pinch to zoom." + warning,
+          provenance.unknownVertices > 0 ? "error" : "info",
+        );
       } catch (error) {
         setStatus(
           status,
