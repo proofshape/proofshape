@@ -663,6 +663,26 @@ patching the three call sites.
 highest decision anywhere was D-045 (on `recon/R-20-confidence-in-fusion`, not yet merged), so
 D-046 was the first free number.
 
+**D-051 · Metric alignment is anchored on lifted ChArUco board geometry, not camera centres.** (2026-10-16)
+R-23 replaces R-04's camera-centre similarity fit with a direct fit from reconstructed ChArUco
+corner observations to the printed board's exact millimetre coordinates. The corners R-02
+already detects are rescaled into R-01's processed pixel frame, lifted through R-01 depth and
+camera intrinsics/extrinsics, and solved with the existing Umeyama `solve_similarity`. R-22's
+board-scale diagnostic reuses the same lifting helper rather than carrying a second copy.
+
+*Why:* R-22 measured every golden reconstruction 4–9% small and found the error tracked the focal
+ratio between the board-pose and VGGT cameras. Camera-centre distance depends on the focal length
+assumed by the pose source; the physical board dimensions do not. A synthetic regression test
+makes the legacy centre fit recover a deliberately wrong 0.9 scale while the board anchor
+recovers 1.0 from the same reconstruction. Fewer than 30 usable lifted corners is an explicit
+error; there is no fallback to camera centres.
+
+The `metric_alignment.json` transform keys and convention stay unchanged, so R-06, R-07 and
+R-09 continue consuming the same scale/rotation/translation representation.
+
+*Checked against D-028 at write time:* `main` currently ends at D-046, while the open C-13
+branch has reserved D-047 through D-050. D-051 is the next free decision number.
+
 ---
 
 ## Open — not yet decided
