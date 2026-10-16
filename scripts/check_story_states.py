@@ -40,12 +40,17 @@ INDEX = STORIES_DIR / "README.md"
 ROW_RE = re.compile(
     r"^\|\s*\[([A-Z]-\d\d)\]\(([^)]+\.md)\)\s*\|"  # | [ID](path/to/ID.md) |
     r"[^|\n]*\|"  # title
-    r"\s*[\d.]+\s*h\s*\|"  # estimate
+    r"\s*(?:[\d.]+\s*h|—)\s*\|"  # estimate: "3 h", or "—" if never estimated (D-052)
     r"\s*([^|\n]*?)\s*\|"  # depends-on
     r"\s*(\w[\w ]*?)\s*\|"  # state
     r"\s*([^|\n]*?)\s*\|\s*$",  # owner
     re.MULTILINE,
 )
+# The estimate's "—" is the em dash (U+2014) only, and the group is non-capturing so the row
+# still unpacks into the same five fields. A past story recorded after the fact had no estimate,
+# and writing one in afterwards would be a made-up number (D-052, D-033). Anything else that
+# isn't "<number> h", a hyphen, a blank, "TBD", still fails to parse and is reported below,
+# so a typo can't quietly turn the estimate column into a wildcard.
 # The link target is read as-is rather than assumed to be "<ID>.md" — stories live under
 # stories/<lane-letter>/<ID>.md (e.g. stories/F/F-01.md), and this script trusts whatever path
 # the index actually links to instead of reconstructing one that could drift from reality.
@@ -173,8 +178,8 @@ def main():
     for sid in unparsed_rows(index_text, rows):
         problems.append(
             f"{sid}: its row in stories/README.md doesn't match the expected "
-            "| ID | Story | Est | Depends on | State | Owner | layout, so none of the other "
-            "checks can see it"
+            '| ID | Story | Est | Depends on | State | Owner | layout (Est is "3 h", or "—" '
+            "for past work never estimated), so none of the other checks can see it"
         )
 
     for sid, info in rows.items():
