@@ -1,8 +1,9 @@
 """R-04: align an arbitrary-scale reconstruction to the ChArUco board frame.
 
-R-01 and R-02 both store camera-from-world extrinsics. R-04 converts those
-extrinsics to camera centres, pairs them by frame name, and solves the
-similarity transform from the R-01 frame to the metric board frame.
+R-04 originally aligned R-01 and R-02 camera centres. R-23 replaces that scale-sensitive
+anchor with the printed ChArUco board itself: R-02's detected corners are lifted through R-01
+depth/cameras, then fit directly to the board's exact millimetre geometry. The written
+scale/rotation/translation convention is unchanged for downstream consumers.
 """
 
 from __future__ import annotations
@@ -14,8 +15,12 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from scipy.ndimage import map_coordinates
+
+from recon.board_pose import make_board
 
 MIN_ALIGNMENT_FRAMES = 3
+MIN_BOARD_CORNER_OBSERVATIONS = 30
 
 
 def validate_known_size(
@@ -47,6 +52,25 @@ class AlignmentResult:
     frame_names: list[str]
     reconstruction_centres: np.ndarray
     board_centres: np.ndarray
+    residuals_mm: np.ndarray
+    rms_residual_mm: float
+
+    def transform_points(self, points: np.ndarray) -> np.ndarray:
+        """Map (N, 3) reconstruction-frame points into board-frame millimetres."""
+        return apply_similarity_transform(
+            points, self.scale, self.rotation, self.translation
+        )
+
+
+@dataclass(frozen=True)
+class BoardAlignmentResult:
+    """R-23 similarity solved from reconstructed board corners to their known mm geometry."""
+
+    scale: float
+    rotation: np.ndarray
+    translation: np.ndarray
+    observation_count: int
+    frame_count: int
     residuals_mm: np.ndarray
     rms_residual_mm: float
 
@@ -207,6 +231,186 @@ def solve_similarity(
     return scale, rotation, translation
 
 
+def lift_board_corner_observations(
+    frame_names: list[str],
+    reconstruction_extrinsic: np.ndarray,
+    reconstruction_intrinsic: np.ndarray,
+    depth: np.ndarray,
+    processed_size_hw: tuple[int, int],
+    board_frame_names: list[str],
+    board_image_size_hw: np.ndarray,
+    corner_frame_index: np.ndarray,
+    corner_id: np.ndarray,
+    corner_px: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Lift R-02 ChArUco detections through R-01 depth/cameras into reconstruction space.
+
+    The returned source points are in R-01's arbitrary reconstruction frame; targets are the
+    exact D-034 board-corner coordinates in millimetres.  This is the shared primitive used by
+    R-23 alignment and R-22's board-ruler diagnostic, so those two paths cannot drift apart.
+    """
+    names = [str(name) for name in frame_names]
+    if len(set(names)) != len(names):
+        raise ValueError("Frame names must be unique in the reconstruction output.")
+    board_names = [str(name) for name in board_frame_names]
+    if len(set(board_names)) != len(board_names):
+        raise ValueError("Frame names must be unique in the board pose output.")
+
+    reconstruction_extrinsic = np.asarray(reconstruction_extrinsic, dtype=np.float64)
+    reconstruction_intrinsic = np.asarray(reconstruction_intrinsic, dtype=np.float64)
+    depth = np.asarray(depth, dtype=np.float64)
+    board_image_size_hw = np.asarray(board_image_size_hw)
+    corner_frame_index = np.asarray(corner_frame_index)
+    corner_id = np.asarray(corner_id)
+    corner_px = np.asarray(corner_px, dtype=np.float64)
+
+    frame_count = len(names)
+    if reconstruction_extrinsic.shape != (frame_count, 3, 4):
+        raise ValueError("reconstruction_extrinsic must have shape (S,3,4).")
+    if reconstruction_intrinsic.shape != (frame_count, 3, 3):
+        raise ValueError("reconstruction_intrinsic must have shape (S,3,3).")
+    if depth.ndim != 3 or depth.shape[0] != frame_count:
+        raise ValueError("depth must have shape (S,H,W) with one image per reconstruction frame.")
+    if board_image_size_hw.shape != (len(board_names), 2):
+        raise ValueError("board_image_size_hw must have shape (S2,2).")
+    if corner_px.ndim != 2 or corner_px.shape[1] != 2:
+        raise ValueError("corner_px must have shape (N,2).")
+    if not (len(corner_frame_index) == len(corner_id) == len(corner_px)):
+        raise ValueError("corner_frame_index, corner_id and corner_px must have equal length.")
+
+    processed_height, processed_width = processed_size_hw
+    if (processed_height, processed_width) != tuple(depth.shape[1:]):
+        raise ValueError(
+            "processed_size_hw must match depth image dimensions; got "
+            f"{processed_size_hw} versus {tuple(depth.shape[1:])}."
+        )
+
+    nominal_corners = np.asarray(make_board().getChessboardCorners(), dtype=np.float64)
+    frame_index_by_name = {name: index for index, name in enumerate(names)}
+    observations_by_frame: dict[int, list[int]] = {}
+    for row in range(len(corner_id)):
+        board_frame_index = int(corner_frame_index[row])
+        if board_frame_index < 0 or board_frame_index >= len(board_names):
+            raise ValueError("corner_frame_index contains an out-of-range board frame index.")
+        cid = int(corner_id[row])
+        if cid < 0 or cid >= len(nominal_corners):
+            raise ValueError("corner_id contains an out-of-range ChArUco corner id.")
+        reconstruction_index = frame_index_by_name.get(board_names[board_frame_index])
+        if reconstruction_index is not None:
+            observations_by_frame.setdefault(reconstruction_index, []).append(row)
+
+    source_chunks: list[np.ndarray] = []
+    target_chunks: list[np.ndarray] = []
+    frame_chunks: list[np.ndarray] = []
+
+    for frame_index, rows in observations_by_frame.items():
+        row_indices = np.asarray(rows, dtype=np.int64)
+        board_frame_index = int(corner_frame_index[row_indices[0]])
+        full_height, full_width = board_image_size_hw[board_frame_index]
+        if full_height <= 0 or full_width <= 0:
+            raise ValueError("board image dimensions must be positive.")
+
+        pixels_full_res = corner_px[row_indices]
+        u = (pixels_full_res[:, 0] + 0.5) * processed_width / full_width - 0.5
+        v = (pixels_full_res[:, 1] + 0.5) * processed_height / full_height - 0.5
+        in_bounds = (
+            (u >= 0)
+            & (u <= processed_width - 1)
+            & (v >= 0)
+            & (v <= processed_height - 1)
+        )
+        if not in_bounds.any():
+            continue
+
+        selected_rows = row_indices[in_bounds]
+        selected_u = u[in_bounds]
+        selected_v = v[in_bounds]
+        coordinates = np.stack([selected_v, selected_u])
+        depth_values = map_coordinates(
+            depth[frame_index], coordinates, order=1, mode="nearest"
+        )
+        usable = np.isfinite(depth_values) & (depth_values > 0)
+        if not usable.any():
+            continue
+
+        selected_rows = selected_rows[usable]
+        selected_u = selected_u[usable]
+        selected_v = selected_v[usable]
+        depth_values = depth_values[usable]
+
+        intrinsic = reconstruction_intrinsic[frame_index]
+        extrinsic = reconstruction_extrinsic[frame_index]
+        if not np.isfinite(intrinsic).all() or not np.isfinite(extrinsic).all():
+            continue
+        inverse_intrinsic = np.linalg.inv(intrinsic)
+        pixels_homogeneous = np.stack(
+            [selected_u, selected_v, np.ones(len(selected_u))], axis=1
+        )
+        rays = pixels_homogeneous @ inverse_intrinsic.T
+        camera_points = rays * depth_values[:, None]
+        world_points = (camera_points - extrinsic[:, 3]) @ extrinsic[:, :3]
+
+        source_chunks.append(world_points)
+        target_chunks.append(nominal_corners[corner_id[selected_rows].astype(int)])
+        frame_chunks.append(np.full(len(world_points), frame_index, dtype=np.int64))
+
+    if not source_chunks:
+        raise ValueError(
+            "No usable board corner observations could be lifted through reconstruction depth."
+        )
+
+    source = np.concatenate(source_chunks)
+    target = np.concatenate(target_chunks)
+    frame_of_point = np.concatenate(frame_chunks)
+    if len(source) < MIN_BOARD_CORNER_OBSERVATIONS:
+        raise ValueError(
+            f"Only {len(source)} usable board corner observations; need at least "
+            f"{MIN_BOARD_CORNER_OBSERVATIONS}."
+        )
+    if not np.isfinite(source).all() or not np.isfinite(target).all():
+        raise ValueError("Lifted and nominal board corners must be finite.")
+    return source, target, frame_of_point
+
+
+def align_board_geometry(
+    frame_names: list[str],
+    reconstruction_extrinsic: np.ndarray,
+    reconstruction_intrinsic: np.ndarray,
+    depth: np.ndarray,
+    processed_size_hw: tuple[int, int],
+    board_frame_names: list[str],
+    board_image_size_hw: np.ndarray,
+    corner_frame_index: np.ndarray,
+    corner_id: np.ndarray,
+    corner_px: np.ndarray,
+) -> BoardAlignmentResult:
+    """Solve reconstruction -> board-mm similarity directly from the in-scene printed board."""
+    source, target, frame_of_point = lift_board_corner_observations(
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+    )
+    scale, rotation, translation = solve_similarity(source, target)
+    predicted = scale * (source @ rotation.T) + translation
+    residuals = np.linalg.norm(predicted - target, axis=1)
+    return BoardAlignmentResult(
+        scale=scale,
+        rotation=rotation,
+        translation=translation,
+        observation_count=len(source),
+        frame_count=len(np.unique(frame_of_point)),
+        residuals_mm=residuals,
+        rms_residual_mm=float(np.sqrt(np.mean(residuals**2))),
+    )
+
+
 def align_camera_centres(
     frame_names: list[str],
     reconstruction_extrinsic: np.ndarray,
@@ -273,48 +477,97 @@ def align_camera_centres(
 
 def load_and_align(
     reconstruction_run_dir: Path, board_pose_dir: Path
-) -> AlignmentResult:
-    """Load R-01/R-02 outputs and align their paired camera centres."""
+) -> BoardAlignmentResult:
+    """Load R-01/R-02 outputs and anchor the metric transform on the board itself."""
     reconstruction_run_dir = Path(reconstruction_run_dir)
     board_pose_dir = Path(board_pose_dir)
-    with np.load(reconstruction_run_dir / "poses.npz") as reconstruction:
+
+    run_path = reconstruction_run_dir / "run.json"
+    poses_path = reconstruction_run_dir / "poses.npz"
+    depth_path = reconstruction_run_dir / "depth.npz"
+    board_path = board_pose_dir / "board_poses.npz"
+    for path in (run_path, poses_path, depth_path, board_path):
+        if not path.is_file():
+            raise FileNotFoundError(f"{path} is required for board-anchored metric alignment.")
+
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    processed_size_hw = tuple(int(value) for value in run["processed_image_size_hw"])
+    with np.load(poses_path) as reconstruction:
         reconstruction_names = [str(name) for name in reconstruction["frame_names"]]
         reconstruction_extrinsic = reconstruction["extrinsic"]
-    with np.load(board_pose_dir / "board_poses.npz") as board:
-        required = ("frame_names", "extrinsic")
+        reconstruction_intrinsic = reconstruction["intrinsic"]
+    with np.load(depth_path) as depth_data:
+        depth = depth_data["depth"]
+    with np.load(board_path) as board:
+        required = (
+            "frame_names",
+            "image_size_hw",
+            "corner_frame_index",
+            "corner_id",
+            "corner_px",
+        )
         for key in required:
             if key not in board:
-                raise ValueError(
-                    f"{board_pose_dir / 'board_poses.npz'} is missing {key}"
-                )
+                raise ValueError(f"{board_path} is missing {key}")
         board_names = [str(name) for name in board["frame_names"]]
-        board_extrinsic = board["extrinsic"]
-        found = board.get("pose_found", None)
-    return align_camera_centres(
+        board_image_size_hw = board["image_size_hw"]
+        corner_frame_index = board["corner_frame_index"]
+        corner_id = board["corner_id"]
+        corner_px = board["corner_px"]
+
+    return align_board_geometry(
         reconstruction_names,
         reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
         board_names,
-        board_extrinsic,
-        found,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
     )
 
 
-def write_alignment(path: Path, result: AlignmentResult) -> dict[str, Any]:
-    """Write a JSON report with the transform and every per-frame residual."""
-    report = {
+def write_alignment(
+    path: Path, result: AlignmentResult | BoardAlignmentResult
+) -> dict[str, Any]:
+    """Write the similarity transform without changing downstream scale/rotation/translation keys."""
+    report: dict[str, Any] = {
         "story": "R-04",
         "source_frame": "R-01 reconstruction frame (arbitrary scale)",
         "target_frame": "R-02 ChArUco board frame (millimetres)",
         "scale": result.scale,
         "rotation": result.rotation.tolist(),
         "translation_mm": result.translation.tolist(),
-        "paired_frame_count": len(result.frame_names),
         "rms_residual_mm": result.rms_residual_mm,
-        "per_frame_residual_mm": dict(
-            zip(result.frame_names, result.residuals_mm.tolist(), strict=True)
-        ),
-        "note": "Residuals measure camera-centre alignment self-consistency, not object accuracy.",
     }
+    if isinstance(result, BoardAlignmentResult):
+        report.update(
+            {
+                "alignment_anchor": "in-scene ChArUco board geometry (R-23)",
+                "paired_frame_count": result.frame_count,
+                "board_corner_observation_count": result.observation_count,
+                "note": (
+                    "R-23 anchors the similarity directly on lifted ChArUco corners and their "
+                    "known millimetre geometry, independent of board-pose camera-centre scale."
+                ),
+            }
+        )
+    else:
+        report.update(
+            {
+                "alignment_anchor": "camera centres (legacy R-04)",
+                "paired_frame_count": len(result.frame_names),
+                "per_frame_residual_mm": dict(
+                    zip(result.frame_names, result.residuals_mm.tolist(), strict=True)
+                ),
+                "note": (
+                    "Residuals measure camera-centre alignment self-consistency, not object "
+                    "accuracy."
+                ),
+            }
+        )
     path = Path(path)
     path.write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -338,7 +591,8 @@ def main(argv: list[str] | None = None) -> int:
     out = args.out or args.reconstruction_run_dir / "metric_alignment.json"
     write_alignment(out, result)
     print(
-        f"R-04 ALIGNMENT: PASS - {len(result.frame_names)} frames, "
+        f"R-04 ALIGNMENT: PASS - {result.frame_count} board frames, "
+        f"{result.observation_count} corner observations, "
         f"RMS residual={result.rms_residual_mm:.3f} mm"
     )
     return 0

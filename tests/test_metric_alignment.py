@@ -3,7 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from recon.board_pose import make_board
 from recon.metric_alignment import (
+    align_board_geometry,
     align_camera_centres,
     apply_similarity_transform,
     apply_similarity_transform_to_extrinsic,
@@ -93,6 +95,144 @@ def test_align_rejects_duplicate_board_frame_names() -> None:
             _extrinsics_from_centres(source),
             board_names,
             _extrinsics_from_centres(board_target),
+        )
+
+
+def _synthetic_board_alignment_inputs(
+    corner_ids: range = range(12),
+) -> tuple[
+    list[str],
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    tuple[int, int],
+    list[str],
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """Three straight-down cameras whose lifted ChArUco corners are exact board coordinates."""
+    nominal = make_board().getChessboardCorners()
+    corner_ids_list = list(corner_ids)
+    frame_names = ["a.jpg", "b.jpg", "c.jpg"]
+    height = width = 400
+    focal = 1000.0
+    principal = 150.0
+    distance = 1000.0
+    intrinsic_single = np.array(
+        [[focal, 0.0, principal], [0.0, focal, principal], [0.0, 0.0, 1.0]]
+    )
+    reconstruction_intrinsic = np.tile(intrinsic_single[None], (3, 1, 1))
+
+    # x_cam = x_world + t. Different x/y translations give non-collinear camera centres while
+    # every board point remains on the same z=distance plane, so one constant depth map per frame
+    # is sufficient for exact synthetic lifting.
+    translations = np.array(
+        [[0.0, 0.0, distance], [80.0, 20.0, distance], [20.0, 100.0, distance]]
+    )
+    reconstruction_extrinsic = np.zeros((3, 3, 4), dtype=np.float64)
+    reconstruction_extrinsic[:, :, :3] = np.eye(3)
+    reconstruction_extrinsic[:, :, 3] = translations
+    depth = np.full((3, height, width), distance, dtype=np.float64)
+
+    corner_frame_index: list[int] = []
+    corner_id: list[int] = []
+    corner_px: list[list[float]] = []
+    for frame_index, translation in enumerate(translations):
+        for cid in corner_ids_list:
+            x, y, _z = nominal[cid]
+            u = focal * (x + translation[0]) / distance + principal
+            v = focal * (y + translation[1]) / distance + principal
+            corner_frame_index.append(frame_index)
+            corner_id.append(cid)
+            corner_px.append([u, v])
+
+    return (
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        (height, width),
+        frame_names.copy(),
+        np.tile(np.array([[height, width]]), (3, 1)),
+        np.asarray(corner_frame_index),
+        np.asarray(corner_id),
+        np.asarray(corner_px),
+    )
+
+
+def test_board_anchor_ignores_camera_centre_scale_error() -> None:
+    (
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+    ) = _synthetic_board_alignment_inputs()
+
+    reconstruction_centres = camera_centres(reconstruction_extrinsic)
+    # Model the R-22 failure mechanism: board-pose camera centres use a focal assumption 10%
+    # smaller than the reconstruction source, so fitting centres alone shrinks the whole scene.
+    wrong_board_centres = 0.9 * reconstruction_centres
+    legacy = align_camera_centres(
+        frame_names,
+        reconstruction_extrinsic,
+        board_frame_names,
+        _extrinsics_from_centres(wrong_board_centres),
+    )
+    assert legacy.scale == pytest.approx(0.9)
+
+    anchored = align_board_geometry(
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+    )
+
+    assert anchored.scale == pytest.approx(1.0, abs=1e-6)
+    assert anchored.observation_count == 36
+    assert anchored.frame_count == 3
+    assert anchored.rms_residual_mm == pytest.approx(0.0, abs=1e-6)
+
+
+def test_board_anchor_rejects_too_few_usable_corners() -> None:
+    (
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+    ) = _synthetic_board_alignment_inputs(corner_ids=range(2))
+
+    with pytest.raises(ValueError, match="usable board corner observations"):
+        align_board_geometry(
+            frame_names,
+            reconstruction_extrinsic,
+            reconstruction_intrinsic,
+            depth,
+            processed_size_hw,
+            board_frame_names,
+            board_image_size_hw,
+            corner_frame_index,
+            corner_id,
+            corner_px,
         )
 
 
