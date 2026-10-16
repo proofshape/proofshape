@@ -10,14 +10,11 @@ Two independent measurements, both against the same board-frame point cloud R-04
 
   - ``measure_board_scale``: the board itself is an in-scene ruler (D-034's printed ChArUco
     pattern has an exact, known pitch). Every corner R-02 already detected is lifted through
-    VGGT's own depth and camera (R-01), passed through R-04's transform, and fit against the
-    board's true geometry with the same Umeyama solve R-04 uses (``metric_alignment.
-    solve_similarity``). If the *board* reconstructs at the wrong size, the bug is upstream of
-    the part -- in R-01's depth/intrinsics or R-04's alignment, not in segmentation or fusion.
-    Also reports the ratio between the camera intrinsics R-02's board poses were actually solved
-    with and VGGT's own predicted intrinsics: R-04 fits camera centres, and a camera's distance
-    from the scene scales with the focal length assumed for it, so a focal-length mismatch
-    between the two pose sources is a direct, testable mechanism for a scene-wide scale error.
+    VGGT's own depth and camera (R-01), passed through R-04/R-23's transform, and fit against
+    the board's true geometry with the same Umeyama solve the alignment uses. If the *board*
+    reconstructs at the wrong size, the bug is upstream of the part -- in R-01's depth/intrinsics
+    or the metric alignment, not in segmentation or fusion. The report retains R-22's focal-ratio
+    measurement as a historical diagnostic for the camera-centre scale bug R-23 replaces.
   - ``measure_prism``: an extruded-prism CAD part (read from a simple ASCII STL -- see
     ``prism_from_cad`` for the exact shape this supports) located in the board-frame cloud and
     measured independently: height from the top-face point cluster, each footprint edge's length
@@ -842,9 +839,9 @@ def build_report(
                 "through R-04's transform. scale < 1 means the reconstruction is smaller than "
                 "true size. focal_ratio_board_over_vggt is the median ratio between the K R-02's "
                 "board poses were solved with and VGGT's own predicted K (rescaled to the same "
-                "pixel frame): R-04 aligns camera centres, so this ratio predicts most of the "
-                "scale error if a focal-length mismatch between the two pose sources is the "
-                "cause. Not a tolerance or accuracy claim (D-003)."
+                "pixel frame). R-22 used that ratio to diagnose the old camera-centre anchor; "
+                "R-23 no longer uses it to set metric scale. Not a tolerance or accuracy claim "
+                "(D-003)."
             ),
         },
     }
