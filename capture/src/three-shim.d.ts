@@ -48,7 +48,20 @@ declare module "three" {
     constructor(color?: number, intensity?: number);
   }
 
+  export class BufferAttribute {
+    itemSize: number;
+    count: number;
+    needsUpdate: boolean;
+    constructor(array: ArrayLike<number>, itemSize: number, normalized?: boolean);
+    getX(index: number): number;
+    getY(index: number): number;
+    getZ(index: number): number;
+    setXYZ(index: number, x: number, y: number, z: number): this;
+  }
+
   export class BufferGeometry {
+    setAttribute(name: string, attribute: BufferAttribute): this;
+    getAttribute(name: string): BufferAttribute | undefined;
     dispose(): void;
   }
 
@@ -57,12 +70,22 @@ declare module "three" {
   }
 
   export class Material {
+    vertexColors: boolean;
+    needsUpdate: boolean;
     dispose(): void;
   }
 
+  export class MeshStandardMaterial extends Material {
+    metalness: number;
+    roughness: number;
+    constructor(parameters?: { vertexColors?: boolean; metalness?: number; roughness?: number });
+  }
+
   export class Mesh extends Object3D {
+    readonly isMesh: true;
     geometry: BufferGeometry;
     material: Material | Material[];
+    constructor(geometry?: BufferGeometry, material?: Material | Material[]);
   }
 
   export class WebGLRenderer {
