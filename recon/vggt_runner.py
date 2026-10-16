@@ -144,15 +144,57 @@ def confidence_keep_mask(confidence: np.ndarray, min_confidence: float) -> np.nd
 
     A pixel is kept when its confidence is finite and at least ``min_confidence``. This is the
     one predicate the whole pipeline uses to decide "do we trust this pixel's depth" --
-    ``select_point_cloud`` below applies it when building R-01's point cloud, and R-07's
+    ``select_point_cloud`` below applies it when building R-01's point cloud, R-07's
     ``recon.tsdf_fusion.fuse_run`` applies it again, on the same ``depth_conf`` array, when
-    deciding which pixels may update the TSDF. Sharing one function means a pixel dropped from
-    the cloud is dropped from the fused surface too (R-20's acceptance criteria), rather than the
-    two independently reimplementing "finite and above threshold" and risking them drifting apart
-    (the same reasoning as the PLY read/write pair sharing one fixed layout, above).
+    deciding which pixels may update the TSDF, and R-09's ``recon.provenance.provenance_run``
+    applies it a third time when deciding which pixels may count as a frame observing a vertex
+    (R-24). Sharing one function means a pixel dropped from the cloud is dropped from the fused
+    surface and from the observation count too, rather than three call sites independently
+    reimplementing "finite and above threshold" and risking them drifting apart (the same
+    reasoning as the PLY read/write pair sharing one fixed layout, above).
     """
     confidence = np.asarray(confidence)
     return np.isfinite(confidence) & (confidence >= min_confidence)
+
+
+def resolve_min_confidence(
+    reconstruction_run_dir: Path, min_confidence: float | None
+) -> tuple[float, str]:
+    """Decide which confidence threshold a downstream stage applies to a run's ``depth_conf``.
+
+    Returns ``(threshold, source)``. ``min_confidence=None`` reads the threshold the run itself
+    was built with -- ``run.json``'s own ``min_confidence``, which every backend writes -- and
+    reports the source as ``"run.json"``. That is the default for both R-07's fusion and R-09's
+    provenance, so each agrees with ``points.ply`` (and with each other) by construction, not by
+    two callers happening to pass the same number. An explicit value overrides it, reported as
+    ``"override"`` (e.g. to apply D-045's threshold to a run recorded before it existed).
+
+    Shared rather than inlined in each caller for the same reason ``confidence_keep_mask`` is:
+    R-20 wrote this logic inside ``fuse_run``, and R-24 needed the identical rule in
+    ``provenance_run`` -- two copies of "where does the threshold come from" is exactly how
+    fusion and provenance could quietly start trusting different pixels.
+
+    A missing ``run.json``, or one that predates the field, is a genuine ambiguity, not a reason
+    to assume 0.0: silently trusting every pixel would let a stage accept depth the cloud itself
+    excluded. Both are explicit errors, and the caller must pass ``min_confidence`` to proceed.
+    """
+    if min_confidence is not None:
+        return float(min_confidence), "override"
+
+    run_json_path = Path(reconstruction_run_dir) / "run.json"
+    if not run_json_path.exists():
+        raise FileNotFoundError(
+            f"{run_json_path} does not exist, so there is no record of which confidence "
+            "threshold points.ply was built with. Pass min_confidence explicitly if this run "
+            "predates that field."
+        )
+    run_json = json.loads(run_json_path.read_text(encoding="utf-8"))
+    if "min_confidence" not in run_json:
+        raise ValueError(
+            f"{run_json_path} has no 'min_confidence' field (an older run, before R-20). "
+            "Pass min_confidence explicitly rather than silently assuming 0.0."
+        )
+    return float(run_json["min_confidence"]), "run.json"
 
 
 def select_point_cloud(

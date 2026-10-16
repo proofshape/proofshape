@@ -159,7 +159,7 @@ Full detail in each story file.
 | [R-21](R/R-21.md) | Measure the height cut from the real board surface | 3 h | R-06 | Done | @TabeenRaoof |
 | [R-22](R/R-22.md) | Find why parts reconstruct smaller than their CAD | 3 h | R-03, R-04 | Done | @TabeenRaoof |
 | [R-23](R/R-23.md) | Anchor R-04's metric scale on the board in the scene | 5 h | R-04, R-22 | Ready | _unclaimed_ |
-| [R-24](R/R-24.md) | Use VGGT's confidence in provenance's observation count | 3 h | R-20 | Claimed | @TabeenRaoof |
+| [R-24](R/R-24.md) | Use VGGT's confidence in provenance's observation count | 3 h | R-20 | Done | @TabeenRaoof |
 
 ---
 
@@ -181,11 +181,11 @@ so this is behind schedule, not early.
 | [C-06](C/C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
 | [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Done | @dalwalyk |
 | [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Claimed | @TabeenRaoof |
-| [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Claimed | @dalwalyk |
+| [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Done | @dalwalyk |
 | [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Done | @mbj1994 |
 | [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Done | @mbj1994 |
 | [C-12](C/C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Done | @mbj1994 |
-| [C-13](C/C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Blocked | _unclaimed_ |
+| [C-13](C/C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Claimed | @dalwalyk |
 
 ---
 
