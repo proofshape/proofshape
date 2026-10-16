@@ -152,14 +152,16 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // only if finishSession itself fails (so a retry is possible); left `true` forever once it
   // actually succeeds, since there's nothing left in this session to capture into or finish again.
   let sessionFinishing = false;
-  let disposeModelViewer = mountModelViewer(
-    modelViewer,
-    { status: "pending" },
-    options.modelViewerOptions,
-  );
+  // C-13: the deployed service's glb_url is behind the same bearer-token gate as every other
+  // route (D-042/D-048) -- the model viewer needs authToken too, not just the session calls.
+  const modelViewerOptions: ModelViewerOptions = {
+    ...options.modelViewerOptions,
+    ...(options.authToken !== undefined ? { authToken: options.authToken } : {}),
+  };
+  let disposeModelViewer = mountModelViewer(modelViewer, { status: "pending" }, modelViewerOptions);
   function remountModelViewer(result: ModelViewerState): void {
     disposeModelViewer();
-    disposeModelViewer = mountModelViewer(modelViewer, result, options.modelViewerOptions);
+    disposeModelViewer = mountModelViewer(modelViewer, result, modelViewerOptions);
   }
 
   function startListeningForGyro(): void {

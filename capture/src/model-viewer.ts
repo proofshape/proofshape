@@ -15,10 +15,16 @@ export interface ModelLoader {
     onProgress: ((event: ProgressEvent) => void) | undefined,
     onError: (error: unknown) => void,
   ): void;
+  // C-13: three.js's real GLTFLoader has this (it propagates to its internal file/texture
+  // loaders); optional so the mocked ModelLoader in tests doesn't have to implement it.
+  setRequestHeader?(headers: Record<string, string>): void;
 }
 
 export interface ModelViewerOptions {
   loaderFactory?: () => ModelLoader;
+  // C-13: the deployed service's glb_url is behind Lightning's bearer-token gate (D-042/D-048)
+  // just like every other route -- a plain `loader.load(url)`/`<a href>` would 401.
+  authToken?: string;
 }
 
 interface ModelViewerUnavailable {
@@ -32,13 +38,42 @@ function describeLoadError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "unknown loading error";
 }
 
-function createDownloadLink(url: string): HTMLAnchorElement {
+// C-13: `href` is omitted (not set to the raw URL) when a token is required -- a plain
+// navigation/download can't attach an Authorization header, so clicking it before the
+// authenticated blob below is ready would just 401 against the real deployed service.
+function createDownloadLink(href: string | undefined): HTMLAnchorElement {
   const link = document.createElement("a");
-  link.href = url;
+  if (href !== undefined) {
+    link.href = href;
+  }
   link.download = "proofshape-model.glb";
   link.textContent = "Download GLB";
   link.setAttribute("aria-label", "Download reconstructed GLB model");
   return link;
+}
+
+// C-13: fetches the GLB with the bearer token attached and points the link at an object URL,
+// since <a href> itself can never carry a header. Revoked by the caller on dispose.
+async function attachAuthenticatedDownload(
+  link: HTMLAnchorElement,
+  url: string,
+  authToken: string,
+): Promise<string | undefined> {
+  try {
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${authToken}` } });
+    if (!response.ok) {
+      throw new Error(`download request failed with status ${String(response.status)}`);
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+    return objectUrl;
+  } catch (error) {
+    link.removeAttribute("href");
+    link.setAttribute("aria-disabled", "true");
+    link.textContent = `Download GLB unavailable (${describeLoadError(error)})`;
+    return undefined;
+  }
 }
 
 function viewportSize(viewport: HTMLElement): { width: number; height: number } {
@@ -212,8 +247,20 @@ export function mountModelViewer(
   }
 
   const controlsContainer = document.createElement("div");
-  controlsContainer.append(createDownloadLink(result.glb_url));
+  const downloadLink = createDownloadLink(
+    options.authToken === undefined ? result.glb_url : undefined,
+  );
+  controlsContainer.append(downloadLink);
   root.append(controlsContainer);
+
+  let downloadObjectUrl: string | undefined;
+  if (options.authToken !== undefined) {
+    void attachAuthenticatedDownload(downloadLink, result.glb_url, options.authToken).then(
+      (objectUrl) => {
+        downloadObjectUrl = objectUrl;
+      },
+    );
+  }
 
   const viewport = document.createElement("div");
   viewport.setAttribute("aria-label", "3D reconstruction viewer");
@@ -226,6 +273,9 @@ export function mountModelViewer(
   setStatus(status, "Loading 3D model…", "info");
 
   const loader = options.loaderFactory?.() ?? new GLTFLoader();
+  if (options.authToken !== undefined) {
+    loader.setRequestHeader?.({ Authorization: `Bearer ${options.authToken}` });
+  }
   let disposed = false;
   let disposePreview: (() => void) | null = null;
 
@@ -266,5 +316,8 @@ export function mountModelViewer(
   return () => {
     disposed = true;
     disposePreview?.();
+    if (downloadObjectUrl !== undefined) {
+      URL.revokeObjectURL(downloadObjectUrl);
+    }
   };
 }

@@ -97,6 +97,9 @@ declare module "three/addons/loaders/GLTFLoader.js" {
       onProgress?: (event: ProgressEvent) => void,
       onError?: (error: unknown) => void,
     ): void;
+    // C-13: inherited from three's base Loader class -- propagates to GLTFLoader's internal
+    // file/texture loaders, confirmed against the installed node_modules/three source.
+    setRequestHeader(headers: Record<string, string>): void;
   }
 }
 

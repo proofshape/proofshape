@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountModelViewer, type ModelLoader } from "./model-viewer.js";
 import type { ReconstructionResult } from "./types.js";
 
@@ -70,6 +70,73 @@ describe("mountModelViewer", () => {
     expect(target.textContent).toContain("3D preview could not load");
     expect(target.textContent).toContain("Download GLB is still available");
     expect(target.querySelector("a")?.getAttribute("href")).toBe(glbUrl);
+  });
+
+  // C-13: the deployed service's glb_url is behind the same bearer-token gate as every other
+  // route; a plain loader.load(url)/<a href> would 401 against it.
+  describe("authToken (C-13)", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("sets the loader's request header and omits the raw href up front", () => {
+      const setRequestHeader = vi.fn();
+      const load = vi.fn();
+      const loaderFactory = vi.fn((): ModelLoader => ({ load, setRequestHeader }));
+      const glbUrl = "https://example.test/reconstruction/model.glb";
+      const target = makeRoot();
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(new Blob(["glb bytes"]), { status: 200 }),
+      );
+
+      mountModelViewer(target, complete(glbUrl), { loaderFactory, authToken: "the-token" });
+
+      expect(setRequestHeader).toHaveBeenCalledWith({ Authorization: "Bearer the-token" });
+      expect(load.mock.calls[0]?.[0]).toBe(glbUrl);
+      // Not set to the raw (token-gated) URL -- that would 401 on a plain click before the
+      // authenticated fetch below finishes.
+      expect(target.querySelector("a")?.getAttribute("href")).toBeNull();
+    });
+
+    it("fetches the GLB with the bearer token and points the download link at the result", async () => {
+      const loaderFactory = (): ModelLoader => ({ load: vi.fn() });
+      const glbUrl = "https://example.test/reconstruction/model.glb";
+      const target = makeRoot();
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response(new Blob(["glb bytes"]), { status: 200 }));
+
+      mountModelViewer(target, complete(glbUrl), { loaderFactory, authToken: "the-token" });
+      await vi.waitFor(() => {
+        if (target.querySelector("a")?.getAttribute("href") === null) {
+          throw new Error("still pending");
+        }
+      });
+
+      expect(fetchSpy).toHaveBeenCalledWith(glbUrl, {
+        headers: { Authorization: "Bearer the-token" },
+      });
+      const href = target.querySelector("a")?.getAttribute("href");
+      expect(href).toMatch(/^blob:/);
+    });
+
+    it("disables the download link, without crashing, when the authenticated fetch fails", async () => {
+      const loaderFactory = (): ModelLoader => ({ load: vi.fn() });
+      const glbUrl = "https://example.test/reconstruction/model.glb";
+      const target = makeRoot();
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 401 }));
+
+      mountModelViewer(target, complete(glbUrl), { loaderFactory, authToken: "the-token" });
+      const link = target.querySelector("a");
+      await vi.waitFor(() => {
+        if (link?.getAttribute("aria-disabled") !== "true") {
+          throw new Error("still pending");
+        }
+      });
+
+      expect(link?.getAttribute("href")).toBeNull();
+      expect(link?.textContent).toContain("Download GLB unavailable");
+    });
   });
 
   it("renders an explicit unavailable state without constructing a loader", () => {
