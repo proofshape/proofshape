@@ -105,7 +105,8 @@ Notes: forced fp16 — bf16 runs at half speed on Apple Silicon.
 
 Applies to every story, unchanged from the plan: merged to `main`, runs on a second member's machine from a clean checkout, has one automated test or one written manual check, reviewed and approved by one other member, and demonstrated at the sprint boundary.
 
-Acceptance criteria are per story. The definition of done is not.
+Acceptance criteria are per story. The definition of done is not, except that P stories (the
+planning lane) adapt it for documents, which can't be unit-tested: see D-052.
 
 ---
 
@@ -232,6 +233,25 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
+| [P-01](P/P-01.md) | Proposal and proposal deck | — | nothing | Done | @TabeenRaoof; @dalwalyk; @mbj1994 |
+| [P-02](P/P-02.md) | Sprint plan | — | nothing | Done | @TabeenRaoof |
+| [P-03](P/P-03.md) | Initial backlog | — | nothing | Done | @TabeenRaoof |
+| [P-04](P/P-04.md) | Decisions log and working agreements | — | nothing | Done | @TabeenRaoof |
+| [P-05](P/P-05.md) | Make the definition of done checkable: PR template and state checker | — | nothing | Done | @TabeenRaoof |
+| [P-06](P/P-06.md) | Check every branch before taking a decision number | — | nothing | Done | @TabeenRaoof |
+| [P-07](P/P-07.md) | Tests are written during implementation | — | nothing | Done | @TabeenRaoof |
+| [P-08](P/P-08.md) | Agent entry point and measured hours; restore decisions a merge dropped | — | nothing | Done | @TabeenRaoof |
+| [P-09](P/P-09.md) | Claims shown in the backlog index and enforced | — | nothing | Done | @TabeenRaoof |
+| [P-10](P/P-10.md) | Set Done before merge, not after | — | nothing | Done | @TabeenRaoof |
+| [P-11](P/P-11.md) | Story files in one subfolder per lane | — | nothing | Done | @TabeenRaoof |
+| [P-12](P/P-12.md) | Write up the thin capture thread | — | nothing | Done | @TabeenRaoof |
+| [P-13](P/P-13.md) | Reconciliations and record corrections on others' stories | — | nothing | Done | @TabeenRaoof |
+| [P-14](P/P-14.md) | Close-out audit of every R story | — | nothing | Done | @dalwalyk |
+| [P-15](P/P-15.md) | Operating manual, first version | — | nothing | Done | @TabeenRaoof |
+| [P-16](P/P-16.md) | README brought out of skeleton state | — | nothing | Done | @TabeenRaoof |
+| [P-17](P/P-17.md) | Operating manual refresh | — | nothing | In review | @TabeenRaoof |
+| [P-18](P/P-18.md) | 18 Sept progress review: deck and generator | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-19](P/P-19.md) | 2 Oct progress review | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-20](P/P-20.md) | Midterm presentation deck | 3 h | nothing | Claimed | @TabeenRaoof |
 | [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
 | [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Claimed | @TabeenRaoof |
