@@ -1062,3 +1062,15 @@ next touches `service.py`'s pipeline. Two process notes:
   unaffected.
 - On macOS, `pytest tests/test_vggt_runner.py tests/test_tsdf_fusion.py`, in that order, segfaults
   natively. That is pre-existing; the full suite passes.
+
+
+
+## 2026-10-16 — F-01, R-13 and R-15 actual hours recorded
+
+**Who:** @TabeenRaoof, owner of all three.
+**What changed:** the three completion records had been closed as `<n> h actual` because only the
+owner could supply the number. Now filled in by the owner: F-01 2 h (est 2), R-13 3.5 h (est 3),
+R-15 5 h (est 4). The "left blank" notes in R-13 and R-15 now say who filled them in and when;
+the earlier entries here that say "left blank" stay as they were.
+**Next:** three Done stories still show `<n> h actual` for their owners to fill in: F-04 and R-01
+(@dalwalyk), and R-03 (@mbj1994).
