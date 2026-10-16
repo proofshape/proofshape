@@ -1,8 +1,9 @@
 """R-04: align an arbitrary-scale reconstruction to the ChArUco board frame.
 
-R-01 and R-02 both store camera-from-world extrinsics. R-04 converts those
-extrinsics to camera centres, pairs them by frame name, and solves the
-similarity transform from the R-01 frame to the metric board frame.
+R-04 originally aligned R-01 and R-02 camera centres. R-23 replaces that scale-sensitive
+anchor with the printed ChArUco board itself: R-02's detected corners are lifted through R-01
+depth/cameras, then fit directly to the board's exact millimetre geometry. The written
+scale/rotation/translation convention is unchanged for downstream consumers.
 """
 
 from __future__ import annotations
