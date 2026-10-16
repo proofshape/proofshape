@@ -21,6 +21,7 @@ grows past that, split it.
 | **G** | Ground truth — printing, calipers, calibration |
 | **A** | Generative AI — agent, completion, VLM, spec parser |
 | **X** | Cross-cutting — integration points, demo |
+| **P** | Planning — proposal, sprint plan, backlog, process rules, documents, reviews and reports |
 
 The number is just the order we wrote them down. **`R-04` is not more important than `R-12`, and
 it is not "step 4"** — read the **Depends on** line to know what actually has to come first.
@@ -206,6 +207,34 @@ Two consequences worth acting on:
 **The September 25 milestone is tight.** A working endpoint needs about 40 hours of that chain, which is roughly four and a half weeks from a September 3 start. That lands in early October, not late September. The milestone is reachable if the chain never stalls, and it is the first thing to slip if it does. We are leaving the date as it stands for now and will revisit at the second sprint boundary with real velocity numbers rather than estimates.
 
 The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16, R-17, R-18, R-19 — are where the other two people work while the chain advances. There is enough of that work to keep everyone busy, which is the point of laying the backlog out this way.
+
+---
+
+## Planning lane
+
+The work that keeps the project steerable but belongs to no single story: the proposal and the
+sprint plan, the decisions and process rules, writing and splitting stories, keeping documents
+such as the manual in step with `main`, audits and reconciliations across stories, and the class
+reviews and reports. Until D-052 none of it had a story, so none of it had actual hours.
+
+**The boundary.** Anything done inside a story's own pull request — its claim, its `Done` state
+and completion record, its progress-log entry, the follow-up stories it files — stays in that
+story's hours. P is for what no single story owns, plus work on someone else's story after it
+merged (a late close-out, a reconciliation, a record correction), since its owner's actual never
+included it.
+
+**Past work.** Most of these stories record work done before the lane existed. They are `Done`,
+with their evidence in the notes, and `<n> h actual` until the owner fills in a real figure
+(D-033). Where no estimate existed before the work, Est is `—` rather than a number made up
+afterwards; the class reviews use the sprint plan's 2.5 h per review. Full rules in D-052.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [P-20](P/P-20.md) | Midterm presentation deck | 3 h | nothing | Claimed | @TabeenRaoof |
+| [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Claimed | @TabeenRaoof |
+| [P-23](P/P-23.md) | Refresh the sprint plan and point the rules at D-052 | 2 h | nothing | Ready | _unclaimed_ |
 
 ---
 
