@@ -1,6 +1,6 @@
 # <ID> · <Title>
 
-**Area:** recon | capture | inspect · **Tier:** 1 | 2 | 3 · **Estimate:** <n> h
+**Area:** recon | capture | inspect | planning · **Tier:** 1 | 2 | 3 (— for planning) · **Estimate:** <n> h
 **Depends on:** <IDs, or "nothing">
 **State:** Blocked | Ready | Claimed | In review | Done
 **Owner:** _unclaimed_

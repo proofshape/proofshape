@@ -233,6 +233,7 @@ Full detail in each story file.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [P-20](P/P-20.md) | Midterm presentation deck | 3 h | nothing | Claimed | @TabeenRaoof |
+| [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
 | [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Claimed | @TabeenRaoof |
 | [P-23](P/P-23.md) | Refresh the sprint plan and point the rules at D-052 | 2 h | nothing | Ready | _unclaimed_ |
 

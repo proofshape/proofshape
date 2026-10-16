@@ -18,7 +18,7 @@ review. Terms that carry a specific meaning here are marked **(ProofShape term)*
 | **Deviation heatmap** | The 3D model coloured by signed distance to the CAD surface. Positive is extra material, negative is missing. Unobserved regions stay grey rather than neutral. |
 | **Pass / Fail / Rescan / Unverifiable** | The four verdicts. Unverifiable is declared at intake, before any photo, when a tolerance sits below σ_floor for the required reference tier. |
 | **Tier** | How essential a feature is. Tier 1 must work, Tier 2 should, Tier 3 if there is time. |
-| **Lane** | A directory in the repository: `/recon`, `/capture`, `/inspect`. A place, not a person — see D-020. |
+| **Lane** | A directory in the repository: `/recon`, `/capture`, `/inspect`. A place, not a person — see D-020. The P (Planning) lane's place is the planning documents: `docs/`, `submissions/`, `stories/` (D-052). |
 | **The chain** **(ProofShape term)** | The longest run of dependent stories, about 42 hours. It advances at one person's pace no matter how many people are free, and it is what actually sets the finish date. |
 | **Integration point (I1–I4)** | A scheduled day when all other work stops and the three parts are wired together and proven. |
 | **Review (R1–R7)** | The biweekly progress presentation to the class. A graded deliverable. |
