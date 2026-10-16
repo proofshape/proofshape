@@ -695,6 +695,38 @@ control" in C-13's own acceptance criteria.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-047 (on `capture/C-08-next-view-scoring`, not yet merged), so
 D-048 was the first free number.
+*Superseded in part by D-049 (2026-10-15):* C-13 ended up not using Lightning, so this hosting
+choice did not govern C-13's end-to-end check. The code it describes stays, unit-tested, for
+whichever story next connects to Lightning. Two of its premises are open questions, not facts,
+and are recorded as O-005: whether the browser's preflight gets past `--token-auth`, and the
+order code as access control — the deployed `app = create_app()` passes no `known_order_codes`,
+so it accepts any non-empty code.
+
+**D-049 · C-13's end-to-end check runs against `recon.service` on the M2 Max, reached through the
+dev server's `/v1` proxy; Lightning is out of C-13's scope.** (2026-10-15)
+Agreed by the team on 2026-10-15, after C-13's real-phone check hit two walls on Lightning. The
+service image only exists for code already on `main` (D-042), so the branch's own changes could
+never be tested before merging. And the next start never got a ready replica (run `38838190937`,
+no status reported for 30 minutes), with the teamspace's credits in doubt. D-010 already makes
+the M2 Max the development machine, and R-17 ran the whole chain on it over Metal.
+
+So for C-13, `recon.service` runs natively on the Mac — `uvicorn` bound to `127.0.0.1`, not in
+Docker, which has no Metal access (D-012). `PROOFSHAPE_RECON_DEVICE=mps` selects Metal
+(`recon/reconstruction_runner.py`'s `resolve_device`); unset stays `cuda`, so the container is
+unchanged. The phone keeps loading `capture/` from `npm run dev:device` over HTTPS, and
+`PROOFSHAPE_RECON_PROXY` makes that dev server forward `/v1` to the service instead of mounting
+the contract stub (`capture/stub/dev-recon-target.ts`).
+
+*Why a proxy rather than calling the service directly:* the page is HTTPS (Safari only allows the
+camera in a secure context), so the browser blocks `http://<mac>:8000` as mixed content, and
+serving the service over HTTPS too would mean a second self-signed certificate to accept on the
+phone. Through the proxy every request is same-origin: no CORS, no token, one certificate. `xfwd`
+makes the service's existing `public_model_url` return a `glb_url` on the dev server's own
+origin, which the phone can load. The service itself listens only on `127.0.0.1`; the dev server
+is the only way in, and it is on the LAN only while a check is running.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-048 (on `capture/C-13-connect-deployed-service`, this branch), so
+D-049 was the first free number.
 
 ---
 
@@ -715,3 +747,12 @@ re-anchor if the real dates differ.
 
 **O-004 · Whether a formal user study is expected this semester.** An informal one is planned;
 a formal one with IRB approval is future work.
+
+**O-005 · How a browser reaches the Lightning deployment.** (2026-10-15, from D-049)
+The first story that connects `capture/` to Lightning again has to settle three things D-048
+assumed. First, whether `--token-auth` refuses the token-less CORS preflight that any
+`Authorization` header triggers; one `curl -i -X OPTIONS` with an `Origin` and
+`Access-Control-Request-Headers: authorization` against a running deployment answers it. Second,
+whether a token visible in the client bundle is acceptable at all. Third, the order code as the
+access control: the deployed `app = create_app()` sets no `known_order_codes`, so today any
+non-empty code starts a paid GPU run.

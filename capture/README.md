@@ -50,26 +50,40 @@ no longer needed.
 See `docs/decisions.md` D-040 (tooling choice) and D-041 (how `gyro` travels inside the
 multipart `uploadFrame` request) for the reasoning behind this setup.
 
-## Pointing at the deployed service (C-13)
+## Running a real session against the recon service on the Mac (C-13)
 
-By default (`VITE_RECON_BASE_URL`/`VITE_RECON_TOKEN` unset), every command above talks to the
-local contract stub. To instead talk to the real deployed recon service (R-15's runbook,
-`recon/README.md`), set both at build/dev time:
+By default every command above talks to the in-process contract stub. C-13's end-to-end check
+instead runs the real `recon.service` natively on the M2 Max and points the dev server's `/v1` at
+it (`docs/decisions.md` D-049). Two terminals, both from a clean checkout with the Python and
+capture environments set up:
 
+```bash
+# 1. repo root, Python venv active: the service, on Metal, reachable only from this Mac
+PROOFSHAPE_RECON_DEVICE=mps uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1
+
+# 2. capture/: the phone-facing HTTPS dev server, forwarding /v1 to that service
+PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device
 ```
-VITE_RECON_BASE_URL=https://…lightning…   # the run summary from `deploy-recon.yml`'s start
-VITE_RECON_TOKEN=…                        # PROOFSHAPE_ENDPOINT_TOKEN, from the password manager
-npm run dev:device                        # same LAN-HTTPS pattern C-02/C-03/C-09 already used
-```
 
-`VITE_RECON_TOKEN` is attached as `Authorization: Bearer <token>` on every outgoing request
-(`src/api.ts`) — it ends up in the built JS, visible to anyone who opens dev tools on the page.
-That's a deliberate, recorded trade-off, not an oversight: see `docs/decisions.md` D-048. The
-order code (checked server-side in `recon/service.py`'s `create_session`) is what actually gates
-whether a session does real work.
+Open the printed `https://<LAN-IP>:5173/?order=PO-TEST` on the phone (same Wi-Fi, accept the
+certificate once). `?order=` pre-fills the order code. Both variables go on the same line as the
+command, as above, or are `export`ed first; a plain `NAME=value` line on its own is not seen by
+the process started on the next line.
 
-A capture link can pre-fill the order code so a supplier doesn't type one in:
-`https://…?order=PO-48213-A`.
+- `PROOFSHAPE_RECON_DEVICE` (`cuda` by default, `mps` on the Mac) picks the torch device the
+  service reconstructs on.
+- `PROOFSHAPE_RECON_PROXY` takes the service's origin only. When it is set, the contract stub is
+  not mounted at all, and the `?viewer-demo=` links, which need the stub's canned GLBs, will 404.
+  A malformed value stops the dev server at start-up rather than quietly falling back to the stub.
+- Stop both with Ctrl-C when the check is done. The service only listens on `127.0.0.1`, but the
+  dev server is on the LAN for as long as it runs, and the service accepts any non-empty order
+  code.
 
-**Remember to stop the deployment when done** (`recon/README.md`'s R-15 runbook) — it bills a
-GPU for as long as it's running, and nothing else stops it.
+### Lightning (not used by C-13)
+
+`VITE_RECON_BASE_URL` and `VITE_RECON_TOKEN` point a build at a remote service instead, with
+`Authorization: Bearer <token>` on every request (`src/api.ts`). The token ends up in the built
+JS, visible to anyone who opens dev tools on the page (D-048). This path has never run against
+Lightning; what is still unknown about it is recorded as O-005 in `docs/decisions.md`. If you use
+it, set both on the command line or export them, and stop the deployment afterwards
+(`recon/README.md`, R-15 runbook): it bills a GPU until `stop` runs.
