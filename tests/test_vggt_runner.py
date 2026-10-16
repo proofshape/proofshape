@@ -173,6 +173,48 @@ def test_confidence_keep_mask_preserves_input_shape():
     assert mask.all()
 
 
+# --- resolve_min_confidence -----------------------------------------------------------------
+# R-24: the threshold-source rule R-20 wrote inside fuse_run, now shared with provenance_run.
+# fuse_run's own tests still cover it end to end; these pin the helper's contract directly.
+
+
+def test_resolve_min_confidence_reads_the_runs_own_run_json_by_default(tmp_path):
+    (tmp_path / "run.json").write_text(json.dumps({"min_confidence": 1.0001}))
+
+    threshold, source = vggt_runner.resolve_min_confidence(tmp_path, None)
+
+    assert threshold == 1.0001
+    assert source == "run.json"
+
+
+def test_resolve_min_confidence_explicit_value_overrides_run_json(tmp_path):
+    (tmp_path / "run.json").write_text(json.dumps({"min_confidence": 1.0001}))
+
+    threshold, source = vggt_runner.resolve_min_confidence(tmp_path, 0.0)
+
+    # 0.0 is a real override, not "unset" -- a falsy-check bug would read run.json instead.
+    assert threshold == 0.0
+    assert source == "override"
+
+
+def test_resolve_min_confidence_override_does_not_need_run_json_at_all(tmp_path):
+    threshold, source = vggt_runner.resolve_min_confidence(tmp_path, 2.5)
+
+    assert (threshold, source) == (2.5, "override")
+
+
+def test_resolve_min_confidence_raises_when_run_json_is_missing(tmp_path):
+    with pytest.raises(FileNotFoundError, match="run.json"):
+        vggt_runner.resolve_min_confidence(tmp_path, None)
+
+
+def test_resolve_min_confidence_raises_when_run_json_predates_the_field(tmp_path):
+    (tmp_path / "run.json").write_text(json.dumps({"story": "R-01"}))
+
+    with pytest.raises(ValueError, match="min_confidence"):
+        vggt_runner.resolve_min_confidence(tmp_path, None)
+
+
 # --- select_point_cloud --------------------------------------------------------------------
 
 

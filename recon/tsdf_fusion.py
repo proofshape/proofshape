@@ -53,7 +53,11 @@ from recon.part_segmentation import (
     measure_board_surface,
     segment_part,
 )
-from recon.vggt_runner import confidence_keep_mask, unproject_depth_to_world
+from recon.vggt_runner import (
+    confidence_keep_mask,
+    resolve_min_confidence,
+    unproject_depth_to_world,
+)
 
 DEFAULT_VOXEL_SIZE_MM = 2.0
 
@@ -456,25 +460,11 @@ def fuse_run(
             "overwriting silently would let outputs from two runs get mixed."
         )
 
-    if min_confidence is None:
-        run_json_path = reconstruction_run_dir / "run.json"
-        if not run_json_path.exists():
-            raise FileNotFoundError(
-                f"{run_json_path} does not exist, so fuse_run cannot tell which confidence "
-                "threshold points.ply was built with. Pass min_confidence explicitly if this "
-                "run predates that field."
-            )
-        run_json = json.loads(run_json_path.read_text(encoding="utf-8"))
-        if "min_confidence" not in run_json:
-            raise ValueError(
-                f"{run_json_path} has no 'min_confidence' field (an older run, before R-20). "
-                "Pass min_confidence explicitly rather than silently assuming 0.0."
-            )
-        resolved_min_confidence = float(run_json["min_confidence"])
-        min_confidence_source = "run.json"
-    else:
-        resolved_min_confidence = float(min_confidence)
-        min_confidence_source = "override"
+    # R-24 moved this rule into a shared helper so R-09's provenance resolves its threshold the
+    # identical way -- see resolve_min_confidence's docstring.
+    resolved_min_confidence, min_confidence_source = resolve_min_confidence(
+        reconstruction_run_dir, min_confidence
+    )
 
     with np.load(reconstruction_run_dir / "poses.npz") as poses:
         extrinsic = poses["extrinsic"].astype(np.float64)
