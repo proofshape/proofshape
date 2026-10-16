@@ -25,6 +25,11 @@ describe("mountAppShell", () => {
     // @ts-expect-error -- test-only cleanup of a property this file itself may have set.
     delete navigator.mediaDevices;
     vi.unstubAllGlobals();
+    // C-09: vi.spyOn calls (canvas context/toBlob, fetch) were never restored between tests here
+    // -- harmless while nothing spied on a shared prototype method with per-test return values,
+    // but stubCanvasContext's HTMLCanvasElement.prototype.getContext/toBlob spies do exactly
+    // that, and an unrestored one from an earlier test silently won the next test's calls.
+    vi.restoreAllMocks();
   });
 
   function mount(): {
@@ -152,21 +157,60 @@ describe("mountAppShell", () => {
   // happy-dom's canvas has no real 2D rendering, so capturePixelsFromVideo's drawImage/getImageData
   // calls need a stub -- this is what "a fake video element" in C-05's own Tests section maps to
   // on the <canvas> side. Returns the drawImage spy and the pixel data captureFrame will read back.
-  function stubCanvasContext(): {
+  // A real checkerboard, not a 1x1 flat fixture -- C-09 actually runs the captured pixels through
+  // C-06's gate now, and a 1x1 image has no interior pixels at all (checkBlur's variance is 0,
+  // always below the threshold). 60/200 (not 0/255) keeps every pixel away from checkExposure's
+  // clip bounds, while every interior pixel's four neighbors are the opposite checker value, so
+  // the Laplacian response is a constant +-560 -- comfortably above DEFAULT_BLUR_VARIANCE_THRESHOLD.
+  function sharpWellExposedImageData(width = 4, height = 4): ImageData {
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const value = (x + y) % 2 === 0 ? 60 : 200;
+        const offset = (y * width + x) * 4;
+        data[offset] = value;
+        data[offset + 1] = value;
+        data[offset + 2] = value;
+        data[offset + 3] = 255;
+      }
+    }
+    return { data, width, height } as ImageData;
+  }
+
+  // Stubs both capturePixelsFromVideo's canvas (drawImage/getImageData) and encodeFrameAsJpeg's
+  // (putImageData/toBlob) -- a capture that clears the gate now goes on to actually encode and
+  // upload, so both need to be in place, not just the capture half C-05's own tests needed.
+  // toBlob hands back real JPEG-magic-byte bytes, since the real contract stub (not a mock)
+  // checks for them before accepting an upload.
+  function stubCanvasContext(imageData: ImageData = sharpWellExposedImageData()): {
     drawImageSpy: ReturnType<typeof vi.fn>;
     imageData: ImageData;
+    // capturePixelsFromVideo caches one canvas+context per video element (C-09's own memory-
+    // pressure fix), so getContext is only ever called once per video -- a second
+    // stubCanvasContext() call wouldn't be consulted again. This mutates what the *already
+    // cached* context's getImageData returns, so a test can still simulate a later capture
+    // seeing different pixels (e.g. a resolution change) without fighting that cache.
+    setImageData: (next: ImageData) => void;
   } {
     const drawImageSpy = vi.fn();
-    const imageData = {
-      data: new Uint8ClampedArray([1, 2, 3, 4]),
-      width: 1,
-      height: 1,
-    } as ImageData;
+    let currentImageData = imageData;
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
       drawImage: drawImageSpy,
-      getImageData: () => imageData,
+      getImageData: () => currentImageData,
+      putImageData: () => undefined,
     } as unknown as CanvasRenderingContext2D);
-    return { drawImageSpy, imageData };
+    vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (
+      callback: BlobCallback,
+    ) {
+      callback(new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
+    });
+    return {
+      drawImageSpy,
+      imageData,
+      setImageData: (next: ImageData) => {
+        currentImageData = next;
+      },
+    };
   }
 
   function setVideoDimensions(video: HTMLVideoElement, width: number, height: number): void {
@@ -340,7 +384,10 @@ describe("mountAppShell", () => {
 
     expect(state.sessionId).toBeNull();
     expect(sessionStatus.textContent).toMatch(/Could not start session/);
-    expect(state.cameraGranted).toBe(true);
+    // C-09: cameraGranted means "there's a usable camera right now," not just "permission was
+    // granted at some point" -- consistent with releaseCamera()'s own semantics. No session means
+    // the just-granted stream is stopped immediately, so this is false, not true.
+    expect(state.cameraGranted).toBe(false);
     expect(state.gyroGranted).toBe(true);
     expect(button.disabled).toBe(false);
   });
@@ -369,8 +416,13 @@ describe("mountAppShell", () => {
 
     expect(state.sessionId).toBeNull();
     expect(sessionStatus.textContent).toMatch(/Could not start session/);
-    expect(state.cameraGranted).toBe(true);
-    expect(cameraStatus.textContent).toBe("Camera started.");
+    // C-09: no session means nothing to capture into -- the just-granted stream is stopped
+    // immediately rather than left attached to the preview (TabeenRaoof's PR #137 review, item 2),
+    // and cameraGranted goes back to false, consistent with every other "stopped without ever
+    // being usable" path (TabeenRaoof's PR #139 review).
+    expect(state.cameraGranted).toBe(false);
+    expect(cameraStatus.textContent).toMatch(/no session is active/);
+    expect(state.cameraStream).toBeNull();
     expect(state.gyroGranted).toBe(true);
     expect(button.disabled).toBe(false);
   });
@@ -530,12 +582,15 @@ describe("mountAppShell", () => {
 
     expect(state.cameraStream).not.toBeNull();
     expect(trackStopSpy).not.toHaveBeenCalled();
+    // Capture also needs a real gyro reading now, not just a playing camera (TabeenRaoof's PR
+    // #137 review, item 6) -- without this, the button would never enable.
+    dispatchOrientation(1, 2, 3);
     await vi.waitFor(() => {
       if (captureButton.disabled) throw new Error("still disabled");
     });
   });
 
-  it("captures a frame paired with the live gyro reading, without restarting the stream", async () => {
+  it("captures a frame paired with the live gyro reading, gates it, and uploads it without restarting the stream", async () => {
     const mounted = await startSuccessfulSession();
     const { imageData } = stubCanvasContext();
     setVideoDimensions(mounted.cameraPreview, 640, 480);
@@ -550,17 +605,38 @@ describe("mountAppShell", () => {
       pixels: imageData,
       gyro: { alpha: 12.3, beta: -45.6, gamma: 78.9 },
     });
-    expect(mounted.captureStatus.textContent).toMatch(/captured/i);
+    await vi.waitFor(() => {
+      if (mounted.captureStatus.textContent === "Uploading…") throw new Error("still uploading");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(/accepted/i);
   });
 
-  it("shows an error and does not capture when there is no gyro reading yet", async () => {
+  it("captures stay available but never enable without a real gyro reading, even with the camera playing", async () => {
+    // Before this fix, capture enabled on a playing camera alone -- with gyro denied (or no
+    // sensor ever firing an event), tapping it could only ever show "No gyro reading yet," which
+    // is misleading for a permanent state, not the transient one it's meant to describe
+    // (TabeenRaoof's PR #137 review, item 6). The button itself now simply never enables.
+    stubGrantedCamera();
+    stubGyroPermission("denied");
+    const { orderCode, button, cameraStatus, captureButton } = mount();
+    orderCode.value = "PO-48213-A";
+
+    button.click();
+    await vi.waitFor(() => {
+      if (cameraStatus.textContent !== "Camera started.") throw new Error("still pending");
+    });
+
+    expect(captureButton.disabled).toBe(true);
+  });
+
+  it("the no-gyro-reading guard inside the click handler still fires as defense in depth", async () => {
+    // The button being disabled is the primary guard (test above); this proves the handler's own
+    // internal check still holds too, for whatever bypasses the disabled attribute.
     const mounted = await startSuccessfulSession();
     stubCanvasContext();
     setVideoDimensions(mounted.cameraPreview, 640, 480);
-    await vi.waitFor(() => {
-      if (mounted.captureButton.disabled) throw new Error("still disabled");
-    });
 
+    mounted.captureButton.disabled = false;
     mounted.captureButton.click();
 
     expect(mounted.state.lastCapturedFrame).toBeNull();
@@ -601,9 +677,13 @@ describe("mountAppShell", () => {
     expect(mounted.state.cameraStream).not.toBeNull();
   });
 
-  it("stops the first stream's tracks before a second Start overwrites it -- the leak TabeenRaoof's PR #134 review caught", async () => {
-    // getUserMedia resolves with a distinct stream (and spy) each call, so this can tell the
-    // first stream's tracks were actually stopped, not just that state now points at the second.
+  it("a failed session stops the just-granted stream immediately, rather than leaving it live for a retry to leak", async () => {
+    // Before C-09's item-2 fix, a failed session left the granted stream attached and running
+    // (nothing to capture into, no way to reach Finish); a second Start then overwrote
+    // state.cameraStream with a fresh stream, leaking the first one's tracks forever
+    // (TabeenRaoof's PR #134 and #137 reviews -- #134 added the overwrite-releases-the-old-one
+    // defense below; #137 pointed out the failed-session case still never reached it, since the
+    // stream was never assigned to state.cameraStream in the first place).
     const streamStopSpies: ReturnType<typeof vi.fn>[] = [];
     // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
     navigator.mediaDevices = {
@@ -616,21 +696,65 @@ describe("mountAppShell", () => {
       },
     };
     stubGyroPermission("granted");
-    const { state, orderCode, button, gyroStatus } = mount();
-    orderCode.value = "PO-NOT-REAL"; // fails session creation -> button re-enabled, Start again
+    const { state, orderCode, button, gyroStatus, cameraStatus } = mount();
+    orderCode.value = "PO-NOT-REAL"; // fails session creation
 
     button.click();
     await vi.waitFor(() => {
-      if (gyroStatus.textContent === "") throw new Error("still pending");
+      if (gyroStatus.textContent === "" || cameraStatus.textContent === "") {
+        throw new Error("still pending");
+      }
     });
-    const firstStream = state.cameraStream;
-    expect(firstStream).not.toBeNull();
-    expect(streamStopSpies[0]).not.toHaveBeenCalled();
+
+    expect(state.cameraStream).toBeNull();
+    expect(streamStopSpies).toHaveLength(1);
+    expect(streamStopSpies[0]).toHaveBeenCalledTimes(1);
 
     orderCode.value = "PO-48213-A"; // a real order code this time
     button.click();
     await vi.waitFor(() => {
-      if (state.cameraStream === firstStream) throw new Error("still the first stream");
+      if (state.cameraStream === null) throw new Error("still pending");
+    });
+
+    // The retry's own stream is live, not also stopped.
+    expect(streamStopSpies).toHaveLength(2);
+    expect(streamStopSpies[1]).not.toHaveBeenCalled();
+  });
+
+  it("releaseCamera still stops a stream a new grant is about to replace, as defense in depth", async () => {
+    // With item 2 fixed, a failed session never lets a stream reach state.cameraStream at all,
+    // so the two-real-Start-clicks path that originally caught this (PR #134) can no longer
+    // happen through the UI -- startButton stays disabled once a session succeeds. This proves
+    // the release-before-replace guard in the camera-grant branch still holds regardless, by
+    // invoking it directly the way a future retry path might.
+    const streamStopSpies: ReturnType<typeof vi.fn>[] = [];
+    // @ts-expect-error -- happy-dom has no navigator.mediaDevices of its own to extend.
+    navigator.mediaDevices = {
+      getUserMedia: () => {
+        const spy = vi.fn();
+        streamStopSpies.push(spy);
+        const stream = new MediaStream();
+        stream.getTracks = () => [{ stop: spy } as unknown as MediaStreamTrack];
+        return Promise.resolve(stream);
+      },
+    };
+    stubGyroPermission("granted");
+    const { state, orderCode, button } = mount();
+    orderCode.value = "PO-48213-A";
+
+    button.click();
+    await vi.waitFor(() => {
+      if (state.cameraStream === null) throw new Error("still pending");
+    });
+    const firstStream = state.cameraStream;
+    expect(streamStopSpies[0]).not.toHaveBeenCalled();
+
+    button.disabled = false; // bypass -- startButton.disabled correctly blocks this in real use
+    button.click();
+    await vi.waitFor(() => {
+      if (state.cameraStream === firstStream || state.cameraStream === null) {
+        throw new Error("still pending");
+      }
     });
 
     expect(streamStopSpies).toHaveLength(2);
@@ -742,5 +866,403 @@ describe("mountAppShell", () => {
     expect(captureButton.disabled).toBe(true);
     expect(state.cameraStream).toBeNull();
     expect(document.getElementById("shell-capture-status")?.textContent).toBe(captureStatusBefore);
+  });
+
+  // C-09: the overlay is remounted into #shell-gyro-overlay on every Start click (fresh coverage
+  // tracking per session), so its covered-count element is queried fresh each time rather than
+  // cached at mount() time, which would go stale after a remount.
+  function coveredCountText(): string | null {
+    return document.querySelector("#shell-gyro-overlay .gyro-overlay-count")?.textContent ?? null;
+  }
+
+  function overlayStatusText(): string | null {
+    return document.querySelector("#shell-gyro-overlay .gyro-overlay-status")?.textContent ?? null;
+  }
+
+  async function captureAndWaitForStatus(
+    mounted: Awaited<ReturnType<typeof startSuccessfulSession>>,
+    match: RegExp,
+  ): Promise<void> {
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!match.test(mounted.captureStatus.textContent)) {
+        throw new Error(`still waiting for captureStatus to match ${String(match)}`);
+      }
+    });
+  }
+
+  it("a gate rejection for blur never calls uploadFrame", async () => {
+    const mounted = await startSuccessfulSession();
+    // Flat/uniform -- zero interior-pixel contrast, so the Laplacian variance is exactly 0.
+    const flat = sharpWellExposedImageData();
+    flat.data.fill(128);
+    stubCanvasContext(flat);
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await captureAndWaitForStatus(mounted, /blur/i);
+
+    expect(
+      fetchSpy.mock.calls.some(([url]) => typeof url === "string" && url.includes("/frames")),
+    ).toBe(false);
+    expect(coveredCountText()).toMatch(/^Covered: 0\//);
+  });
+
+  it("a gate rejection for exposure never calls uploadFrame", async () => {
+    const mounted = await startSuccessfulSession();
+    // Sharp (strong contrast -> clears the blur check) but every pixel is clipped (0 or 255).
+    const clipped = sharpWellExposedImageData();
+    for (let i = 0; i < clipped.data.length; i += 4) {
+      const value = (i / 4) % 2 === 0 ? 0 : 255;
+      clipped.data[i] = value;
+      clipped.data[i + 1] = value;
+      clipped.data[i + 2] = value;
+      clipped.data[i + 3] = 255;
+    }
+    stubCanvasContext(clipped);
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await captureAndWaitForStatus(mounted, /clipped/i);
+
+    expect(
+      fetchSpy.mock.calls.some(([url]) => typeof url === "string" && url.includes("/frames")),
+    ).toBe(false);
+  });
+
+  it("a gate rejection for duplicate never calls uploadFrame, and only the first capture uploads", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    // First capture: passes the gate, uploads, accepted.
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    // Second capture: identical pixels and gyro reading -- both gate signals agree nothing moved.
+    await captureAndWaitForStatus(mounted, /duplicate/i);
+
+    expect(
+      fetchSpy.mock.calls.some(([url]) => typeof url === "string" && url.includes("/frames")),
+    ).toBe(false);
+  });
+
+  it("a 202 marks exactly one orbit slot covered and advances the arrow", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    expect(coveredCountText()).toMatch(/^Covered: 0\//);
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+  });
+
+  it("a 422 shows the server's reason and does not mark any slot covered", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    stub.rejectNextFrame();
+
+    await captureAndWaitForStatus(mounted, /rejected/i);
+
+    expect(coveredCountText()).toMatch(/^Covered: 0\//);
+  });
+
+  it("finishSession shows the too_few_frames message before any frame is accepted, and succeeds after one", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (mounted.finishStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(mounted.finishStatus.textContent).toMatch(/not enough frames/i);
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.startsWith("Session finished")) {
+        throw new Error("still pending");
+      }
+    });
+
+    expect(mounted.finishStatus.textContent).toMatch(/^Session finished: sess_/);
+  });
+
+  // Holds any fetch whose URL contains urlSubstring pending until resolve() is called, passing
+  // every other fetch through to the real implementation (the contract stub itself) -- lets
+  // these tests observe button state *while* a specific request is genuinely still in flight.
+  function pendingFetchMatching(urlSubstring: string): {
+    fetchSpy: ReturnType<typeof vi.fn>;
+    resolve: (status: number, body: unknown) => void;
+  } {
+    const realFetch = globalThis.fetch.bind(globalThis);
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const fetchSpy = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes(urlSubstring)) {
+        return new Promise<Response>((resolve) => {
+          resolveResponse = resolve;
+        });
+      }
+      return realFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    return {
+      fetchSpy,
+      resolve: (status: number, body: unknown) => {
+        resolveResponse?.(
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      },
+    };
+  }
+
+  // Holds any POST to .../frames pending until resolve() is called, passing every other fetch
+  // through to the real implementation (the contract stub itself, for session/finish/etc) --
+  // lets these tests observe button state *while* an upload is genuinely still in flight.
+  function pendingFramesFetch(): ReturnType<typeof pendingFetchMatching> {
+    return pendingFetchMatching("/frames");
+  }
+
+  // Same, for .../finish -- lets these tests observe button state while finishSession is
+  // genuinely still in flight.
+  function pendingFinishFetch(): ReturnType<typeof pendingFetchMatching> {
+    return pendingFetchMatching("/finish");
+  }
+
+  it("capture is disabled the moment Finish is clicked, and stays disabled after a stale completion -- the reverse race TabeenRaoof's second-pass review caught", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("test setup: session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const { fetchSpy, resolve } = pendingFinishFetch();
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (fetchSpy.mock.calls.length === 0) throw new Error("finish fetch not called yet");
+    });
+
+    // The window the original bug left open: before finishSession even resolves, Capture must
+    // already be disabled, not just Finish.
+    expect(mounted.captureButton.disabled).toBe(true);
+
+    mounted.captureButton.disabled = false; // bypass -- proves the handler's own guard too
+    mounted.captureButton.click();
+    expect(mounted.captureStatus.textContent).toMatch(/session is finishing/i);
+
+    resolve(202, {
+      session_id: mounted.state.sessionId,
+      order_code: "PO-48213-A",
+      status: "finished",
+    });
+    await vi.waitFor(() => {
+      if (mounted.finishStatus.textContent === "") throw new Error("still pending");
+    });
+
+    // Still disabled afterward -- nothing (e.g. a lagging, unrelated state change) should
+    // re-enable either button on a session that has already finished.
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+  });
+
+  it("capture stays disabled for the whole upload, even as new gyro readings arrive mid-upload -- the overlapping-upload regression TabeenRaoof's PR #139 review caught", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    const { fetchSpy, resolve } = pendingFramesFetch();
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (mounted.captureStatus.textContent !== "Uploading…") throw new Error("still pending");
+    });
+    expect(mounted.captureButton.disabled).toBe(true);
+
+    // The real trigger: a gyro reading (the listener fires ~60/s on a phone) arriving while the
+    // upload is still in flight must not re-enable the button.
+    dispatchOrientation(1, 45, 0);
+    expect(mounted.captureButton.disabled).toBe(true);
+
+    // Wait for the /frames request to actually be in flight before resolving it -- encodeFrameAsJpeg
+    // takes at least one microtask, so resolving too early would resolve nothing (resolveResponse
+    // not yet assigned) and the test would hang on the next waitFor instead of proving anything.
+    await vi.waitFor(() => {
+      if (fetchSpy.mock.calls.length === 0) throw new Error("fetch not called yet");
+    });
+    resolve(202, { accepted: true, frame_index: 0 });
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    const framesCalls = fetchSpy.mock.calls.filter(([url]) => {
+      const u = typeof url === "string" ? url : String(url);
+      return u.includes("/frames");
+    });
+    expect(framesCalls).toHaveLength(1);
+  });
+
+  it("Finish is disabled while an upload is in flight, and refuses to run even if the disabled attribute is bypassed", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    const { fetchSpy, resolve } = pendingFramesFetch();
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (mounted.captureStatus.textContent !== "Uploading…") throw new Error("still pending");
+    });
+    expect(mounted.finishButton.disabled).toBe(true);
+
+    mounted.finishButton.disabled = false; // bypass -- proves the handler's own internal guard too
+    mounted.finishButton.click();
+    expect(mounted.finishStatus.textContent).toMatch(/upload is still in progress/i);
+
+    await vi.waitFor(() => {
+      if (fetchSpy.mock.calls.length === 0) throw new Error("fetch not called yet");
+    });
+    resolve(202, { accepted: true, frame_index: 0 });
+    await vi.waitFor(() => {
+      if (mounted.finishButton.disabled) throw new Error("still disabled");
+    });
+  });
+
+  it("a resolution change mid-session (e.g. the phone rotating) doesn't throw or brick capture for the rest of the session", async () => {
+    const mounted = await startSuccessfulSession();
+    const { setImageData } = stubCanvasContext(sharpWellExposedImageData(4, 4));
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    // iOS swaps videoWidth/videoHeight on rotation -- a differently-sized frame at the same spot.
+    setImageData(sharpWellExposedImageData(4, 6));
+
+    expect(() => {
+      mounted.captureButton.click();
+    }).not.toThrow();
+    await vi.waitFor(() => {
+      if (mounted.captureStatus.textContent === "Uploading…") throw new Error("still uploading");
+    });
+
+    expect(mounted.captureStatus.textContent).toMatch(/accepted/i);
+  });
+
+  it("a 202 marks the specific orbit slot the gyro reading falls in, not an adjacent one", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    // Anchors azimuth at 0 and covers slot 0 (azimuth 0, elevation 45 -- DEFAULT_ORBIT's first
+    // mid-elevation slot).
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+
+    // Slot 1 (azimuth 45, same elevation) is the lowest-index uncovered slot only if slot 0 --
+    // not some adjacent slot -- was the one actually marked covered. Moving the live reading
+    // exactly there should read "on target."
+    dispatchOrientation(45, 45, 0);
+    await vi.waitFor(() => {
+      if (!overlayStatusText()?.match(/on target/i)) throw new Error("not on target yet");
+    });
+  });
+
+  it("rolls back the gate's duplicate anchor when an upload is rejected, so a retry from the same spot isn't gate-rejected as a duplicate of itself", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext(sharpWellExposedImageData(4, 4));
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    // A different position (90 deg away -- well outside checkDuplicate's gyro threshold against
+    // frame 1), so this passes the local gate on its own merits, but the server rejects it.
+    dispatchOrientation(90, 45, 0);
+    stub.rejectNextFrame();
+    await captureAndWaitForStatus(mounted, /rejected/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    // Retrying the exact same shot (same pixels, same gyro as the rejected attempt): without the
+    // rollback, lastAcceptedForGate would still point at that rejected attempt's own data, so
+    // this identical retry would be gate-rejected as a duplicate of itself and never reach the
+    // network at all.
+    await captureAndWaitForStatus(mounted, /accepted/i);
+  });
+
+  it("disposes the gyro overlay's listener once the session finishes, so stale guidance doesn't keep reacting to new readings", async () => {
+    const mounted = await startSuccessfulSession();
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (mounted.finishStatus.textContent === "") throw new Error("still pending");
+    });
+    const statusAfterFinish = overlayStatusText();
+
+    // If the listener were still live, a new reading would very likely change the arrow's status
+    // (e.g. between "on target" and "move toward the next position").
+    dispatchOrientation(123, 7, 55);
+    await Promise.resolve();
+
+    expect(overlayStatusText()).toBe(statusAfterFinish);
   });
 });

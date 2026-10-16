@@ -30,6 +30,7 @@ describe("mountModelViewer", () => {
     const download = target.querySelector("a");
     expect(download?.getAttribute("href")).toBe(glbUrl);
     expect(download?.textContent).toBe("Download GLB");
+    expect(target.querySelector('[aria-label="3D model provenance legend"]')).toBeNull();
   });
 
   it("shows a failed-reconstruction fallback without constructing a loader", () => {
@@ -70,6 +71,7 @@ describe("mountModelViewer", () => {
     expect(target.textContent).toContain("3D preview could not load");
     expect(target.textContent).toContain("Download GLB is still available");
     expect(target.querySelector("a")?.getAttribute("href")).toBe(glbUrl);
+    expect(target.querySelector('[aria-label="3D model provenance legend"]')).toBeNull();
   });
 
   it("renders an explicit unavailable state without constructing a loader", () => {

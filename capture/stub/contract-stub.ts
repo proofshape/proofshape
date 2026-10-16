@@ -48,6 +48,11 @@ const RECONSTRUCTION_NO_REFERENCE = loadExample(
 ) as ReconstructionResult;
 const RECONSTRUCTION_404 = loadExample("getReconstruction.response-404") as ErrorDetail;
 const MODEL_FIXTURE_PATH = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "model.glb");
+const PROVENANCE_MODEL_FIXTURE_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "model-provenance.glb",
+);
 
 interface StubSession {
   session_id: string;
@@ -99,6 +104,14 @@ export function createContractStub(): ContractStub {
     const body = chunks.length > 0 ? Buffer.concat(chunks) : null;
     const headers = new Headers();
     for (const [key, value] of Object.entries(req.headers)) {
+      // HTTP/2 pseudo-headers (:method, :path, :authority, :scheme) aren't valid WHATWG Headers
+      // names -- Headers.set throws on them. Vite's dev server negotiates HTTP/2 whenever
+      // basicSsl is active (resolveHttpServer uses http2.createSecureServer with
+      // allowHTTP1:true), which is exactly what `npm run dev:device` serves to a phone -- without
+      // this, createSession and uploadFrame 500 under HTTP/2 (C-09).
+      if (key.startsWith(":")) {
+        continue;
+      }
       if (typeof value === "string") {
         headers.set(key, value);
       } else if (Array.isArray(value)) {
@@ -289,7 +302,12 @@ export function createContractStub(): ContractStub {
       return;
     }
 
-    const host = req.headers.host ?? "127.0.0.1";
+    // HTTP/2 never sends a Host header -- the authority lives in the :authority pseudo-header
+    // instead. Falling back to it is what keeps glb_url naming the phone's actual host instead of
+    // 127.0.0.1 (itself, from the phone's own point of view) under dev:device (C-09).
+    const authority = req.headers[":authority"];
+    const host =
+      req.headers.host ?? (Array.isArray(authority) ? authority[0] : authority) ?? "127.0.0.1";
     const canned = reconstructionNoReference
       ? RECONSTRUCTION_NO_REFERENCE
       : RECONSTRUCTION_COMPLETE;
@@ -300,8 +318,10 @@ export function createContractStub(): ContractStub {
     sendJson(res, 200, body);
   }
 
-  function handleModel(res: ServerResponse): void {
-    const bytes = readFileSync(MODEL_FIXTURE_PATH);
+  function handleModel(res: ServerResponse, sessionId: string): void {
+    const fixturePath =
+      sessionId === "c12-provenance-check" ? PROVENANCE_MODEL_FIXTURE_PATH : MODEL_FIXTURE_PATH;
+    const bytes = readFileSync(fixturePath);
     res.writeHead(200, {
       "Content-Type": "model/gltf-binary",
       "Content-Length": String(bytes.length),
@@ -344,7 +364,7 @@ export function createContractStub(): ContractStub {
       return;
     }
     if (req.method === "GET" && modelMatch) {
-      handleModel(res);
+      handleModel(res, modelMatch[1] as string);
       return;
     }
 

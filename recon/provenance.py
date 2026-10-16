@@ -16,6 +16,15 @@ Unobserved, per `submissions/2026-09-05-proposal.md`'s own "drawn gray" conventi
 
 R-09 depends only on R-07, not R-08 -- both are R-07's siblings, not each other's prerequisite --
 so `provenance_run` accepts either R-07's raw `mesh.ply` or R-08's cleaned `mesh_clean.glb`.
+
+R-24: a frame can only observe a vertex through a pixel VGGT's own confidence trusts, decided by
+`recon.vggt_runner.confidence_keep_mask` -- the same predicate, at the same threshold (read from
+the run's own `run.json` by default, via the same `resolve_min_confidence` helper as `fuse_run`),
+that R-01 uses to build `points.ply` and R-07 uses to decide which pixels may be fused (R-20,
+D-045). Before this, a pixel already excluded from the cloud and from the fused surface could
+still count toward a vertex's two observing frames, so a vertex built from zero trusted pixels at
+that spot could be labelled Observed -- the hard rule's own mechanism accepting evidence the rest
+of the pipeline had decided not to trust.
 """
 
 from __future__ import annotations
@@ -35,6 +44,7 @@ from recon.metric_alignment import (
     project_points_to_camera,
 )
 from recon.tsdf_fusion import read_mesh_ply
+from recon.vggt_runner import confidence_keep_mask, resolve_min_confidence
 
 # Neither number has been measured; both are configurable, documented assumptions, same as every
 # prior story's unmeasured defaults (R-06's height threshold, R-07's voxel size, R-08's triangle
@@ -55,15 +65,24 @@ def compute_observations(
     intrinsic: np.ndarray,
     depth_mm: np.ndarray,
     tolerance_mm: float = DEFAULT_DEPTH_CONSISTENCY_TOLERANCE_MM,
+    *,
+    trusted_pixel_mask: np.ndarray,
 ) -> dict[str, np.ndarray]:
     """For every (vertex, frame) pair where that frame actually observes that vertex, record it.
 
-    "Observes" means: in front of the camera, projects inside the frame's image, and its
-    camera-space depth is within `tolerance_mm` of that frame's *measured* depth at the landed
-    pixel -- the occlusion check. Returns a flat table (one row per observation), not a per-vertex
-    structure, since R-10 (per-vertex uncertainty) needs exactly this -- `measured_depth_mm` minus
-    `z_cam_mm` is the depth residual its sigma computation needs -- so it's persisted as-is rather
-    than summarized away.
+    "Observes" means: in front of the camera, projects inside the frame's image, lands on a pixel
+    `trusted_pixel_mask` marks True, and its camera-space depth is within `tolerance_mm` of that
+    frame's *measured* depth at that pixel -- the occlusion check. Returns a flat table (one row
+    per observation), not a per-vertex structure, since R-10 (per-vertex uncertainty) needs exactly
+    this -- `measured_depth_mm` minus `z_cam_mm` is the depth residual its sigma computation needs
+    -- so it's persisted as-is rather than summarized away.
+
+    `trusted_pixel_mask` is (S,H,W) boolean, `recon.vggt_runner.confidence_keep_mask`'s output
+    (R-24). A pixel the rest of the pipeline refused to trust -- dropped from `points.ply`, never
+    fused into the mesh -- must not be able to vouch for a vertex here either, or the hard rule's
+    own mechanism would accept evidence everything upstream already rejected. It is required, not
+    defaulted to "trust everything," so no caller can skip that check by forgetting to pass it; a
+    caller that genuinely wants no confidence filtering passes an all-True mask and says so.
     """
     vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
     if vertices_mm.ndim != 2 or vertices_mm.shape[1] != 3:
@@ -84,6 +103,20 @@ def compute_observations(
         )
     if not np.isfinite(tolerance_mm) or tolerance_mm <= 0:
         raise ValueError("tolerance_mm must be a positive, finite number.")
+    trusted_pixel_mask = np.asarray(trusted_pixel_mask)
+    # Rejected rather than coerced with astype(bool): passing the raw depth_conf array here by
+    # mistake would coerce every nonzero confidence -- including VGGT's untrusted floor of 1.0 --
+    # to True, silently trusting exactly the pixels this mask exists to exclude.
+    if trusted_pixel_mask.dtype != np.bool_:
+        raise ValueError(
+            "trusted_pixel_mask must be a boolean array (confidence_keep_mask's output), got "
+            f"dtype {trusted_pixel_mask.dtype}"
+        )
+    if trusted_pixel_mask.shape != depth_mm.shape:
+        raise ValueError(
+            f"trusted_pixel_mask must match depth_mm's shape {depth_mm.shape}, got "
+            f"{trusted_pixel_mask.shape}"
+        )
 
     vertex_indices: list[np.ndarray] = []
     frame_indices: list[np.ndarray] = []
@@ -114,7 +147,13 @@ def compute_observations(
 
         measured_depth = depth_mm[frame_index, clamped_v, clamped_u]
         has_depth = in_bounds & np.isfinite(measured_depth) & (measured_depth > 0.0)
-        depth_consistent = has_depth & (np.abs(measured_depth - z_cam) <= tolerance_mm)
+        # R-24: looked up at the same clamped pixel as measured_depth, so "trusted" always
+        # refers to the exact depth sample being compared, never a neighbour. Out-of-bounds
+        # vertices read pixel (0,0) here, but in_bounds (inside has_depth) already excludes them.
+        pixel_trusted = trusted_pixel_mask[frame_index, clamped_v, clamped_u]
+        depth_consistent = (
+            has_depth & pixel_trusted & (np.abs(measured_depth - z_cam) <= tolerance_mm)
+        )
 
         observed_here = all_vertex_indices[depth_consistent]
         if len(observed_here) == 0:
@@ -279,6 +318,11 @@ def write_provenance_report(
     face_labels: np.ndarray,
     min_triangulation_angle_deg: float,
     depth_consistency_tolerance_mm: float,
+    *,
+    min_confidence: float,
+    min_confidence_source: str,
+    confidence_dropped_pixel_count: int,
+    observation_count: int,
 ) -> dict[str, Any]:
     observed_vertex_count = int(np.count_nonzero(vertex_labels == LABEL_OBSERVED))
     observed_face_count = int(np.count_nonzero(face_labels == LABEL_OBSERVED))
@@ -288,6 +332,15 @@ def write_provenance_report(
         "source_mesh": str(mesh_path),
         "min_triangulation_angle_deg": min_triangulation_angle_deg,
         "depth_consistency_tolerance_mm": depth_consistency_tolerance_mm,
+        # R-24: which pixels were trusted to vouch for a vertex, and where that threshold came
+        # from -- the same three fields, with the same meanings, as R-07's tsdf_fusion.json, so
+        # the two reports can be compared side by side to confirm fusion and provenance agreed.
+        "min_confidence": min_confidence,
+        "min_confidence_source": min_confidence_source,
+        "confidence_dropped_pixel_count": confidence_dropped_pixel_count,
+        # Rows in observations.npz. Comparing it between a run at threshold 0 and one at the real
+        # threshold, on the same mesh, is how many (vertex, frame) observations confidence removed.
+        "observation_count": observation_count,
         "vertex_count": len(vertex_labels),
         "observed_vertex_count": observed_vertex_count,
         "unobserved_vertex_count": len(vertex_labels) - observed_vertex_count,
@@ -323,9 +376,17 @@ def provenance_run(
     out_dir: Path,
     min_triangulation_angle_deg: float = DEFAULT_MIN_TRIANGULATION_ANGLE_DEG,
     depth_consistency_tolerance_mm: float = DEFAULT_DEPTH_CONSISTENCY_TOLERANCE_MM,
+    min_confidence: float | None = None,
 ) -> dict[str, Any]:
     """Load a mesh (R-07's `.ply` or R-08's `.glb`) plus R-01/R-04 output, label every vertex,
-    and write a colored GLB, a JSON report, and the raw observations table."""
+    and write a colored GLB, a JSON report, and the raw observations table.
+
+    R-24: `min_confidence=None` (the default) uses the threshold the source run itself was built
+    with (`run.json`'s own `min_confidence`), resolved by the same helper R-07's `fuse_run` uses,
+    so in the pipeline provenance trusts exactly the pixels fusion did. A `run.json` that is
+    missing or predates that field is an explicit error, never a silent 0.0. Pass `min_confidence`
+    explicitly to override it -- e.g. 0.0 to reproduce pre-R-24 labelling for comparison.
+    """
     mesh_path = Path(mesh_path)
     reconstruction_run_dir = Path(reconstruction_run_dir)
     alignment_json_path = Path(alignment_json_path)
@@ -336,6 +397,11 @@ def provenance_run(
             "overwriting silently would let outputs from two runs get mixed."
         )
 
+    # Resolved before any mesh or depth loading, so an ambiguous run fails fast and cheaply.
+    resolved_min_confidence, min_confidence_source = resolve_min_confidence(
+        reconstruction_run_dir, min_confidence
+    )
+
     vertices_mm, faces = _read_mesh(mesh_path)
 
     with np.load(reconstruction_run_dir / "poses.npz") as poses:
@@ -343,6 +409,13 @@ def provenance_run(
         intrinsic = poses["intrinsic"].astype(np.float64)
     with np.load(reconstruction_run_dir / "depth.npz") as depth_data:
         depth = depth_data["depth"].astype(np.float64)
+        depth_conf = depth_data["depth_conf"].astype(np.float64)
+
+    # Built unconditionally, even at threshold 0.0, rather than skipped as a "no-op": R-20's
+    # review (PR #128) found that shortcut in fuse_run let NaN/inf-confidence pixels through,
+    # which confidence_keep_mask's own isfinite check excludes at every threshold.
+    trusted_pixel_mask = confidence_keep_mask(depth_conf, resolved_min_confidence)
+    confidence_dropped_pixel_count = int(np.count_nonzero(~trusted_pixel_mask))
 
     alignment_json = json.loads(alignment_json_path.read_text(encoding="utf-8"))
     scale = float(alignment_json["scale"])
@@ -361,6 +434,7 @@ def provenance_run(
         intrinsic,
         depth_mm,
         depth_consistency_tolerance_mm,
+        trusted_pixel_mask=trusted_pixel_mask,
     )
     vertex_results = label_vertices(
         len(vertices_mm),
@@ -387,6 +461,10 @@ def provenance_run(
         face_labels,
         min_triangulation_angle_deg,
         depth_consistency_tolerance_mm,
+        min_confidence=resolved_min_confidence,
+        min_confidence_source=min_confidence_source,
+        confidence_dropped_pixel_count=confidence_dropped_pixel_count,
+        observation_count=len(observations["vertex_index"]),
     )
 
 
@@ -409,6 +487,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_MIN_TRIANGULATION_ANGLE_DEG,
     )
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=None,
+        help=(
+            "override the confidence threshold read from the run's own run.json "
+            "(default: use whatever points.ply was already built with, D-045 / R-24)"
+        ),
+    )
     return parser
 
 
@@ -425,14 +512,19 @@ def main(argv: list[str] | None = None) -> int:
             alignment_json,
             out_dir,
             min_triangulation_angle_deg=args.min_triangulation_angle_deg,
+            min_confidence=args.min_confidence,
         )
-    except FileExistsError as exc:
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        # R-24: a run.json that is missing or predates min_confidence now stops provenance too
+        # (FileNotFoundError/ValueError from resolve_min_confidence) -- reported as a named FAIL,
+        # same as fuse_run's CLI, rather than an unexplained traceback.
         print(f"R-09 PROVENANCE: FAIL - {exc}", file=sys.stderr)
         return 1
 
     print(
         f"R-09 PROVENANCE: PASS - {report['observed_vertex_count']}/{report['vertex_count']} "
-        f"vertices Observed ({report['observed_fraction'] * 100:.1f}% of surface)"
+        f"vertices Observed ({report['observed_fraction'] * 100:.1f}% of surface), "
+        f"min_confidence={report['min_confidence']} ({report['min_confidence_source']})"
     )
     print(f"Outputs written to {out_dir}")
     return 0
