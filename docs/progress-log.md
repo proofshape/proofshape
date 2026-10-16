@@ -1074,3 +1074,21 @@ R-15 5 h (est 4). The "left blank" notes in R-13 and R-15 now say who filled the
 the earlier entries here that say "left blank" stay as they were.
 **Next:** three Done stories still show `<n> h actual` for their owners to fill in: F-04 and R-01
 (@dalwalyk), and R-03 (@mbj1994).
+
+
+
+## 2026-10-16 — P-22 planning lane: planning work gets stories (D-052)
+
+**Who:** @TabeenRaoof (PR #153).
+**What changed:** a P (Planning) lane, so planning, backlog, document and review work gets stories
+and actual hours the way code does. D-052 sets the boundary: a story's own claim, close-out,
+log entry and follow-up stories stay in that story's hours; P takes the work no single story owns,
+plus work on someone else's story after it merged. `check_story_states.py` now accepts `—` as the
+estimate for past work that never had one, and still rejects anything else that isn't `<number> h`.
+**Result:** 23 P stories. P-01..P-19 record past work, from the 2026-09-05 proposal to the 2 Oct
+review: 18 `Done`, plus P-17 (the manual refresh, #149) `In review`. P-20 and P-21 (midterm deck
+and report) are claimed, P-22 is this PR, and P-23 (refresh the sprint plan) is Ready. Every past
+actual is `<n> h actual` until its owner fills it in. Full suite 408 passed, 1 skipped; the two new
+checker tests failed before the pattern changed.
+**Next:** owners fill in their hours, and @dalwalyk and @mbj1994 confirm or remove their names on
+P-01, P-14 and P-21. #149 carries P-17's `Done` commit before it merges. P-23 is up for grabs.

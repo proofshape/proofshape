@@ -254,7 +254,7 @@ Full detail in each story file.
 | [P-19](P/P-19.md) | 2 Oct progress review | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-20](P/P-20.md) | Midterm presentation deck | 3 h | nothing | Claimed | @TabeenRaoof |
 | [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
-| [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Claimed | @TabeenRaoof |
+| [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
 | [P-23](P/P-23.md) | Refresh the sprint plan and point the rules at D-052 | 2 h | nothing | Ready | _unclaimed_ |
 
 ---
