@@ -1021,3 +1021,44 @@ with the bottom cut off, making its before/after comparison against R-18 more te
 **What changed:** C-11 added the interactive Three.js GLB viewer, wired it to completed reconstruction results, preserved raw GLB download access, and added explicit failed/missing-URL/load-error states. The real iPhone Safari device check confirmed rendering, one-finger orbit, pinch zoom, and GLB retrieval.
 **Result:** TypeScript, pytest, and ruff CI passed on the reviewed head; the second-member clean checkout passed typecheck, lint, format check, tests, and dev startup. C-11 is Done at 5 h actual against a 3 h estimate.
 **Next:** C-12 is Ready. The separate HTTP/2 contract-stub issue found during device verification is tracked outside C-11 and did not block this merge.
+
+
+
+## 2026-10-15 — R-24 provenance counts only confidence-trusted observations (PR #143)
+
+**Who:** @TabeenRaoof, reviewed and approved by @dalwalyk (including a clean-checkout run).
+**What changed:** R-09's `compute_observations` let any depth-consistent pixel count as a frame
+observing a vertex, including pixels R-20 had already dropped from `points.ply` and from fusion
+for sitting at VGGT's confidence floor. So the hard rule's own mechanism could accept evidence the
+rest of the pipeline had rejected. It now requires a boolean trusted-pixel mask
+(`confidence_keep_mask`'s output, no "trust everything" default), and `provenance_run` resolves
+the threshold the same way `fuse_run` does. The default is the run's own `run.json`, and an
+explicit `min_confidence` (CLI `--min-confidence`) overrides it. That rule moved out of `fuse_run`
+into a shared `recon.vggt_runner.resolve_min_confidence`, so the two stages can't drift apart.
+`provenance.json` now records the threshold, its source, the dropped-pixel count and the
+observation count.
+**Result:** 16 new tests; removing the trust check makes 4 of them fail. Full suite 404 passed,
+1 skipped. Golden-set rerun on all five objects, re-fused on current code, R-08-cleaned, and
+labelled at 0.0 vs 1.0001 on the same mesh: confidence removed 2.8–4.5% of observations, and
+`observed_fraction` fell 0–0.54 points (s-03 most: 39.76% → 39.22%). It always moved toward
+Unobserved, never up. These are the first real-data `observed_fraction` figures recorded; neither
+R-09 nor R-20 had any. R-10 sigma moved by ≤0.02 mm. R-19's finding still holds (3.0 mm downgrades
+3.8–8.5%, neither everything nor nothing), but its per-object numbers describe the pre-R-20/R-21
+pipeline, so a dated pointer was added to R-19's notes. R-24 closed at 0.9 h actual against a 3 h
+estimate.
+**Concluded:** fusion and provenance now trust the same pixels by construction. On today's meshes
+the effect is small, consistent with those meshes already being fused from trusted pixels only.
+The reviewer raised three non-blocking points, left for a later change rather than pushed after
+approval:
+- `service.py` has no error handling around `provenance_run` for the `run.json` errors `fuse_run`
+  already maps. This can't happen today, because fusion reads the same file first.
+- The three confidence report fields are built separately in provenance and fusion.
+- `depth_conf` is upcast to float64 where float32 would do.
+
+**Next:** none of the three needs its own story. The first is worth picking up by whichever story
+next touches `service.py`'s pipeline. Two process notes:
+- The venv's editable install points `recon` at the main checkout, so a script run from a git
+  worktree silently imports the main checkout's code. `python -m pytest` from the worktree is
+  unaffected.
+- On macOS, `pytest tests/test_vggt_runner.py tests/test_tsdf_fusion.py`, in that order, segfaults
+  natively. That is pre-existing; the full suite passes.
