@@ -1062,3 +1062,25 @@ next touches `service.py`'s pipeline. Two process notes:
   unaffected.
 - On macOS, `pytest tests/test_vggt_runner.py tests/test_tsdf_fusion.py`, in that order, segfaults
   natively. That is pre-existing; the full suite passes.
+
+## 2026-10-15 — C-12 observed/unobserved colouring reviewed and merged (PR #142)
+
+**Who:** @mbj1994, reviewed by @TabeenRaoof (changes requested on `775519b`, approved on
+`460b4ba`), merged by @mbj1994.
+**What changed:** the viewer remaps `recon/provenance.py`'s baked white/grey vertex colours to a
+display palette, with a legend (Observed, Unobserved, reserved Inferred, Unknown) and a test that
+fails if the TypeScript source colours drift from the Python constants.
+**Result:** the first round had three blockers. `write_glb` emits no material, so GLTFLoader's
+default `metalness: 1` would render the palette near-black away from the key light. The in-place
+remap turned a shared geometry entirely magenta (reproduced with three 0.180). And the buffer-level
+remap had no tests. All three were fixed in the second round, plus the should-fix items: the
+legend now shows only for provenance models, unknown vertices raise a status warning, and Observed
+moved to a blue that colour-blind viewers can tell from Inferred's orange. The real-iPhone
+legibility check passed, and CI was green on the merged head. Two non-blocking notes stayed on the
+approval: the legend is still added if WebGL fails to start, and no viewer test drives a
+successful load.
+**Concluded:** the metalness problem only showed up by reading GLTFLoader's default material and
+the shader, not the colour maths. The device check used a flat 4-vertex fixture, so the first
+real reconstruction in this viewer was C-13's phone session on order 600.
+**Next:** nothing blocked on C-12. The two non-blocking notes are small enough to pick up with the
+next viewer change.
