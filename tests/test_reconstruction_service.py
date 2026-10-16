@@ -433,6 +433,102 @@ def test_pipeline_reconstructs_on_the_device_the_environment_names(
     assert seen["device_type"] == expected_device
 
 
+def test_missing_focal_length_is_reported_as_such_not_as_insufficient_baseline():
+    # C-13: the phone was told "insufficient_baseline ... found 0" (advice: move further between
+    # shots) when the real cause was frames with no EXIF focal length.
+    failure = service._classify_board_failure(
+        {"posed_count": 0, "failure_counts": {"intrinsics_unavailable": 19}}
+    )
+
+    assert failure is not None
+    assert failure.code == "metric_alignment_failed"
+    assert "focal length" in failure.message
+    assert "EXIF" in failure.message
+
+
+def test_board_calibration_is_skipped_when_frames_had_a_focal_length(
+    tmp_path, monkeypatch
+):
+    from recon import camera_intrinsics
+
+    def fail_calibration(*args, **kwargs):
+        raise AssertionError(
+            "calibration must not run for frames R-02 could already pose"
+        )
+
+    monkeypatch.setattr(camera_intrinsics, "load_board_session", fail_calibration)
+    report = {"posed_count": 30, "failure_counts": {}}
+
+    board_dir, returned = service._pose_board_with_session_intrinsics(
+        tmp_path / "capture", tmp_path, tmp_path / "board_pose", report
+    )
+
+    assert board_dir == tmp_path / "board_pose"
+    assert returned is report
+
+
+def test_failed_board_calibration_is_a_named_failure_not_a_crash(tmp_path, monkeypatch):
+    from recon import camera_intrinsics
+
+    monkeypatch.setattr(camera_intrinsics, "load_board_session", lambda path: object())
+
+    def fail(session):
+        raise camera_intrinsics.CalibrationFailure("too few non-collinear views")
+
+    monkeypatch.setattr(camera_intrinsics, "calibrate_from_board", fail)
+
+    with pytest.raises(service.ReconstructionFailure) as excinfo:
+        service._pose_board_with_session_intrinsics(
+            tmp_path / "capture",
+            tmp_path,
+            tmp_path / "board_pose",
+            {"posed_count": 0, "failure_counts": {"intrinsics_unavailable": 4}},
+        )
+
+    assert excinfo.value.code == "metric_alignment_failed"
+    assert "no EXIF focal length" in excinfo.value.message
+    assert "too few non-collinear views" in excinfo.value.message
+
+
+def test_pipeline_reads_the_calibrated_board_poses_downstream(tmp_path, monkeypatch):
+    # After calibration, R-02's poses live in a new folder (R-02 never overwrites its outputs);
+    # the backend must be handed that folder's poses, not the uncalibrated ones.
+    from recon import board_pose, reconstruction_runner
+
+    capture_dir = tmp_path / "capture"
+    capture_dir.mkdir()
+    artifact_dir = tmp_path / "artifacts"
+    calibrated_dir = artifact_dir / service.CALIBRATED_BOARD_DIR_NAME
+    monkeypatch.setattr(
+        board_pose,
+        "estimate_board_poses",
+        lambda capture, out: {
+            "posed_count": 0,
+            "failure_counts": {"intrinsics_unavailable": 5},
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "_pose_board_with_session_intrinsics",
+        lambda capture, artifacts, board_dir, report: (
+            calibrated_dir,
+            {"posed_count": 5, "failure_counts": {}},
+        ),
+    )
+    seen = {}
+
+    def fake_run_on_capture(*args, board_pose_path=None, **kwargs):
+        seen["board_pose_path"] = board_pose_path
+        return {"status": "refused", "reason": "test stops here"}
+
+    monkeypatch.setattr(reconstruction_runner, "run_on_capture", fake_run_on_capture)
+
+    with pytest.raises(service.ReconstructionFailure):
+        service.run_reconstruction_pipeline(capture_dir, artifact_dir)
+
+    assert seen["board_pose_path"] == calibrated_dir / "board_poses.npz"
+
+
 def test_malformed_gyro_is_contract_valid_and_explicitly_not_a_vlm_decision(tmp_path):
     app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:

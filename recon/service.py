@@ -253,6 +253,16 @@ def _classify_board_failure(
         return None
 
     failures = board_report.get("failure_counts", {})
+    # C-13: without this case, frames that had a board but no focal length fell through to
+    # insufficient_baseline ("found 0"), whose advice -- move further between shots -- is wrong.
+    # The frozen contract has no intrinsics code (D-031), so it reports as metric_alignment_failed
+    # with the real reason. _pose_board_with_session_intrinsics normally removes this case first.
+    if failures.get("intrinsics_unavailable", 0):
+        return ReconstructionFailure(
+            "metric_alignment_failed",
+            "No camera focal length was available to compute board poses: the frames carry no "
+            f"EXIF focal length, and only {posed_count} frame(s) could be posed without it.",
+        )
     if posed_count == 0 and failures.get("board_not_detected", 0):
         return ReconstructionFailure(
             "board_not_detected",
@@ -268,6 +278,67 @@ def _classify_board_failure(
         "insufficient_baseline",
         f"Metric alignment needs at least 3 usable board poses; found {posed_count}.",
     )
+
+
+CALIBRATED_BOARD_DIR_NAME = "board_pose_calibrated"
+BOARD_CALIBRATION_RECORD = "board_calibration.json"
+
+
+def _pose_board_with_session_intrinsics(
+    capture_dir: Path,
+    artifact_dir: Path,
+    board_dir: Path,
+    board_report: dict[str, Any],
+) -> tuple[Path, dict[str, Any]]:
+    """Give frames with no EXIF focal length a camera model calibrated from the board itself.
+
+    C-13's first real-phone sessions failed with 0 poses although the board was found in every
+    frame. The capture app draws each frame from the live camera preview onto a canvas, and a
+    canvas JPEG carries no EXIF at all, so R-02 had no focal length to turn detected corners into
+    a pose (every frame: intrinsics_unavailable). The golden capture never hit this: those are
+    Camera-app photos with EXIF. R-03 already calibrates intrinsics from the corners R-02 records,
+    and needs no initial guess for a planar board, so calibrate from this session's own corners
+    and run R-02 again with that K for every frame.
+
+    Returns the board-pose folder downstream stages must read (a new one when calibration ran,
+    because R-02 refuses to overwrite its outputs) and that folder's report.
+    """
+    from recon import board_pose, camera_intrinsics
+
+    if not board_report.get("failure_counts", {}).get("intrinsics_unavailable", 0):
+        return board_dir, board_report
+
+    try:
+        calibration = camera_intrinsics.calibrate_from_board(
+            camera_intrinsics.load_board_session(board_dir)
+        )
+    except camera_intrinsics.CalibrationFailure as exc:
+        raise ReconstructionFailure(
+            "metric_alignment_failed",
+            "The frames carry no EXIF focal length, and calibrating the camera from the "
+            f"reference board failed: {exc}",
+        ) from exc
+
+    calibrated_dir = artifact_dir / CALIBRATED_BOARD_DIR_NAME
+    calibrated_report = board_pose.estimate_board_poses(
+        capture_dir, calibrated_dir, intrinsic_override=calibration.intrinsic
+    )
+    # Kept beside the two board-pose folders so a reviewer can see which K the metric result
+    # actually rests on, and how well it fit, without rerunning anything.
+    record = {
+        "reason": "frames carry no EXIF 35 mm equivalent focal length",
+        "source": calibration.source,
+        "reprojection_rms_px": calibration.reprojection_rms_px,
+        "calibration_view_count": len(calibration.per_view_frame_names),
+        "intrinsic": calibration.intrinsic.tolist(),
+        "distortion": calibration.distortion.ravel().tolist(),
+        "posed_count_before": int(board_report.get("posed_count", 0)),
+        "posed_count_after": int(calibrated_report.get("posed_count", 0)),
+    }
+    (artifact_dir / BOARD_CALIBRATION_RECORD).write_text(
+        json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return calibrated_dir, calibrated_report
 
 
 def _map_alignment_error(exc: Exception) -> ReconstructionFailure:
@@ -306,6 +377,13 @@ def run_reconstruction_pipeline(
     started = time.perf_counter()
     board_report = board_pose.estimate_board_poses(capture_dir, board_dir)
     stage_timings_s["board_detection"] = time.perf_counter() - started
+    started = time.perf_counter()
+    posed_board_dir, board_report = _pose_board_with_session_intrinsics(
+        capture_dir, artifact_dir, board_dir, board_report
+    )
+    if posed_board_dir != board_dir:
+        stage_timings_s["board_calibration"] = time.perf_counter() - started
+        board_dir = posed_board_dir
     failure = _classify_board_failure(board_report)
     if failure is not None:
         raise failure

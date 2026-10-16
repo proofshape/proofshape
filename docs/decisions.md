@@ -728,6 +728,26 @@ is the only way in, and it is on the LAN only while a check is running.
 highest decision anywhere was D-048 (on `capture/C-13-connect-deployed-service`, this branch), so
 D-049 was the first free number.
 
+**D-050 · When frames carry no EXIF focal length, the service calibrates the camera from the
+board (R-03) and poses the frames with that.** (2026-10-15)
+C-13's first two real-phone sessions failed with 0 board poses although the board was found in
+every frame (16–18 markers each). The capture app takes each frame from the live camera preview
+through a canvas, and a canvas JPEG has no EXIF, so R-02 had no focal length to pose with: every
+frame was `intrinsics_unavailable`. The golden capture never exercised this, because it is
+Camera-app photos with EXIF. `recon/service.py` now runs R-03's `calibrate_from_board` on the
+corners R-02 already recorded, then R-02 again with that K for every frame, into
+`board_pose_calibrated/`, with the fit recorded in `board_calibration.json`. On the first failed
+session's own 19 frames this gave 0.20 px calibration RMS and 18 of 19 frames posed, and the full
+pipeline then completed with a metric result.
+*Why the board rather than another source:* the board is in every frame by design, R-03 already
+calibrates from it with no initial guess, and the frozen contract has no field for the phone to
+send a focal length (changing it is a D-031 contract change). Frames that do carry EXIF never take
+this path. A calibration failure is reported by name, under the existing
+`metric_alignment_failed` code, rather than as the misleading `insufficient_baseline` the phone
+showed before.
+*Checked against D-028 at write time:* D-049 on this branch was the highest decision anywhere, so
+D-050 was the first free number.
+
 ---
 
 ## Open — not yet decided
