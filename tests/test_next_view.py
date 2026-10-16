@@ -223,6 +223,8 @@ def test_overrides_are_honoured():
         ({"radius_steps": 0}, "radius_steps"),
         # One sample can't cover a 250-400 mm range; dropping half of it silently is refused.
         ({"radius_steps": 1}, "radius_steps=1"),
+        # The mirror case (PR #144 review): several steps over one radius would only duplicate.
+        ({"min_radius_mm": 300.0, "max_radius_mm": 300.0}, "radius_steps > 1"),
         ({"max_angle_from_vertical_deg": 90.0}, "max_angle_from_vertical_deg"),
         ({"max_angle_from_vertical_deg": -1.0}, "max_angle_from_vertical_deg"),
         ({"polar_step_deg": 0.0}, "polar_step_deg"),
@@ -411,6 +413,45 @@ def test_a_fully_observed_mesh_scores_zero_everywhere():
     assert all(view["head_on_sum"] == 0.0 for view in ranked)
     # Every candidate ties, so the order falls through to candidate index.
     assert [view["candidate_index"] for view in ranked] == list(range(147))
+
+
+def test_explicit_centre_and_look_at_skip_the_default_computation(monkeypatch):
+    # PR #144 review: next_view_run always passes both, so working out the defaults anyway was
+    # wasted work. Any call to the default helper now fails the test.
+    vertices, faces, labels = _box_with_unobserved_plus_x_face()
+
+    def must_not_be_called(_vertices_mm):
+        raise AssertionError("defaults computed although both were given")
+
+    monkeypatch.setattr(
+        next_view, "part_hemisphere_centre_and_target", must_not_be_called
+    )
+
+    ranked = next_view.score_next_views(
+        vertices,
+        faces,
+        labels,
+        hemisphere_centre_mm=np.zeros(3),
+        look_at_mm=np.array([0.0, 0.0, -15.0]),
+    )
+
+    assert ranked[0]["azimuth_deg"] == 0.0
+
+
+def test_overriding_only_the_look_at_point_keeps_the_default_centre():
+    # A part sitting mid-board: the default centre is its footprint centre at its base.
+    vertices, faces = _subdivided_box((50.0, 110.0), (30.0, 70.0), (-30.0, 0.0))
+    labels = _labels_with_unobserved(len(vertices), np.zeros(len(vertices), bool))
+    look_at = np.array([1.0, 2.0, -3.0])
+
+    ranked = next_view.score_next_views(vertices, faces, labels, look_at_mm=look_at)
+
+    straight_down = [view for view in ranked if view["angle_from_vertical_deg"] == 0.0]
+    for view in straight_down:
+        np.testing.assert_allclose(
+            view["position_mm"], [80.0, 50.0, -view["radius_mm"]]
+        )
+    assert all(view["look_at_mm"] == look_at.tolist() for view in ranked)
 
 
 # --- score_candidate_views: reuse of R-10, winding, occlusion, validation ------------------------

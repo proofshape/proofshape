@@ -186,6 +186,13 @@ def generate_candidate_views(
             "radius_steps=1 only makes sense when min_radius_mm == max_radius_mm; "
             "use radius_steps >= 2 to sample a range."
         )
+    if radius_steps > 1 and max_radius_mm == min_radius_mm:
+        # The mirror of the check above (PR #144 review): several samples of a single radius are
+        # exact duplicate candidates, which would only ever tie with each other and pad the ranking.
+        raise ValueError(
+            "radius_steps > 1 needs min_radius_mm < max_radius_mm; with equal radii every extra "
+            "step would duplicate the same candidates. Use radius_steps=1 for a single radius."
+        )
     # Strictly below 90: at 90 degrees the camera would sit level with the board, where the board
     # really could occlude the part -- and this module deliberately leaves the board out of the
     # scene on the grounds that it can't (see the module docstring).
@@ -449,13 +456,16 @@ def score_next_views(
     footprint-centred values; pass either to override it.
     """
     vertices_mm, faces = _validate_mesh(vertices_mm, faces)
-    default_centre_mm, default_look_at_mm = part_hemisphere_centre_and_target(
-        vertices_mm
-    )
-    if hemisphere_centre_mm is None:
-        hemisphere_centre_mm = default_centre_mm
-    if look_at_mm is None:
-        look_at_mm = default_look_at_mm
+    # Only work out the defaults when a caller actually needs one (PR #144 review): next_view_run
+    # always passes both, having already computed them for its report.
+    if hemisphere_centre_mm is None or look_at_mm is None:
+        default_centre_mm, default_look_at_mm = part_hemisphere_centre_and_target(
+            vertices_mm
+        )
+        if hemisphere_centre_mm is None:
+            hemisphere_centre_mm = default_centre_mm
+        if look_at_mm is None:
+            look_at_mm = default_look_at_mm
 
     candidates = generate_candidate_views(
         hemisphere_centre_mm,
