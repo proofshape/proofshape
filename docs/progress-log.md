@@ -1065,6 +1065,32 @@ next touches `service.py`'s pipeline. Two process notes:
 
 
 
+## 2026-10-15 — C-12 observed/unobserved colouring (reviewed)
+
+**Who:** @mbj1994 (PR #142), reviewed by @TabeenRaoof; changes requested.
+**What changed:** nothing merged yet. The PR remaps `recon/provenance.py`'s baked white/grey
+vertex colours to a display palette. It adds a legend with a reserved Inferred slot, plus a
+drift-guard test against the Python constants. Codex's colour-space comment was already fixed in
+0ef1ba6.
+**Result:** CI (pytest, typescript, ruff) green on head 775519b; 12 inline comments, three
+blocking:
+- `write_glb` emits no material, so GLTFLoader's default `metalness: 1` likely renders the palette
+  near-black on faces away from the key light. This comes from reading three r180 and GLTFLoader;
+  nobody has seen it on a device yet.
+- The in-place remap is not idempotent: a geometry shared by two meshes turns entirely magenta.
+  Reproduced with three 0.180.
+- `remapModelProvenanceColors` has no tests.
+
+The story's required one-line legibility addition to C-11's device check is also missing.
+**Concluded:** the colour mapping and the drift guard are correct. The rendering path around them
+has not been checked on a device, so the palette can't be called legible until the device check
+the story already asks for is run.
+**Next:** the author addresses the blocking comments, runs the device check, and re-requests
+review. C-12 already shows Done on its branch (D-038); its actual hours need updating to include
+the extra work.
+
+
+
 ## 2026-10-16 — F-01, R-13 and R-15 actual hours recorded
 
 **Who:** @TabeenRaoof, owner of all three.
