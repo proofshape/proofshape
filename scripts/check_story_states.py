@@ -40,7 +40,7 @@ INDEX = STORIES_DIR / "README.md"
 ROW_RE = re.compile(
     r"^\|\s*\[([A-Z]-\d\d)\]\(([^)]+\.md)\)\s*\|"  # | [ID](path/to/ID.md) |
     r"[^|\n]*\|"  # title
-    r"\s*(?:[\d.]+\s*h|—)\s*\|"  # estimate: "3 h", or "—" if never estimated (D-052)
+    r"\s*(?:\d+(?:\.\d+)?\s*h|—)\s*\|"  # estimate: "3 h", "2.5 h", or "—" (D-052)
     r"\s*([^|\n]*?)\s*\|"  # depends-on
     r"\s*(\w[\w ]*?)\s*\|"  # state
     r"\s*([^|\n]*?)\s*\|\s*$",  # owner
@@ -50,7 +50,9 @@ ROW_RE = re.compile(
 # still unpacks into the same five fields. A past story recorded after the fact had no estimate,
 # and writing one in afterwards would be a made-up number (D-052, D-033). Anything else that
 # isn't "<number> h", a hyphen, a blank, "TBD", still fails to parse and is reported below,
-# so a typo can't quietly turn the estimate column into a wildcard.
+# so a typo can't quietly turn the estimate column into a wildcard. "<number>" needs at least
+# one digit before any decimal point: the original `[\d.]+` also read ".. h" and ". h" as
+# estimates, because it allowed dots on their own (found reviewing #153).
 # The link target is read as-is rather than assumed to be "<ID>.md" — stories live under
 # stories/<lane-letter>/<ID>.md (e.g. stories/F/F-01.md), and this script trusts whatever path
 # the index actually links to instead of reconstructing one that could drift from reality.

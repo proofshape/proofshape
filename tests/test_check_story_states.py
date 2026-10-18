@@ -324,12 +324,14 @@ def test_story_never_estimated_is_read_not_skipped(css, capsys):
     assert rows["P-01"]["index_owner"] == owners
 
 
-@pytest.mark.parametrize("estimate", ["-", "", "TBD"])
+@pytest.mark.parametrize("estimate", ["-", "", "TBD", ".. h", ". h"])
 def test_estimate_that_is_neither_hours_nor_the_dash_is_still_unreadable(
     css, capsys, estimate
 ):
     """Only "—" means never estimated. Loosening the pattern for it must not turn the
     estimate cell into a wildcard: a hyphen, a blank or a placeholder still fails loudly.
+    So does an hours figure with no digit in it (".. h", ". h"), which the original
+    `[\\d.]+` accepted because it allows dots alone (found reviewing #153).
     """
     _write_story(css, "F-01", "Done")
     _write_story(css, "P-01", "Done")
@@ -343,6 +345,24 @@ def test_estimate_that_is_neither_hours_nor_the_dash_is_still_unreadable(
 
     assert exit_code == 1
     assert "P-01: its row in stories/README.md doesn't match" in out
+
+
+@pytest.mark.parametrize("estimate", ["2.5 h", "10 h", "3h"])
+def test_estimate_in_hours_is_read_including_decimals(css, capsys, estimate):
+    """Requiring a digit must not reject a real estimate: the index already has "2.5 h"
+    rows (P-18, P-19), and the old pattern also read "3h" without a space.
+    """
+    _write_story(css, "F-01", "Done")
+    _write_story(css, "P-01", "Done")
+    _write_index(css, [("F-01", "nothing", "Done")])
+    with css.INDEX.open("a", encoding="utf-8") as index:
+        index.write(
+            f"| [P-01](P-01.md) | a test story | {estimate} | nothing | Done | @member |\n"
+        )
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 0, out
 
 
 def test_lane_subfolder_layout_is_supported(css, monkeypatch):

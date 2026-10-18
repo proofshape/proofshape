@@ -90,7 +90,7 @@ they do.
 | **Ready** | Dependencies are done and nobody has claimed it. Anyone can take it. Owner is `_unclaimed_`. |
 | **Claimed** | Someone has put their `@github-handle` on it, in the story file and in this index, before starting. |
 | **In review** | Pull request open, waiting on one approval. |
-| **Done** | Merged, and the completion record below is filled in. The one exception: a P story recording past work may show `<n> h actual` until its owner supplies a measured figure (D-052). |
+| **Done** | Merged, and the completion record below is filled in. P stories have one exception here, stated in `AGENTS.md`'s definition of done (D-052). |
 
 ### Completion record
 
@@ -106,9 +106,7 @@ Notes: forced fp16 — bf16 runs at half speed on Apple Silicon.
 Applies to every story, unchanged from the plan: merged to `main`, runs on a second member's machine from a clean checkout, has one automated test or one written manual check, reviewed and approved by one other member, and demonstrated at the sprint boundary.
 
 Acceptance criteria are per story. The definition of done is not, apart from two exceptions for
-P stories (the planning lane, D-052): a document gets a written check, since it can't be
-unit-tested, and past work recorded after the fact may show `<n> h actual` until its owner
-supplies a measured figure. `AGENTS.md`'s definition of done states both.
+P stories (the planning lane), set by D-052 and stated in `AGENTS.md`'s definition of done.
 
 ---
 

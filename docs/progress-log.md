@@ -1156,15 +1156,21 @@ plus work on someone else's story after it merged. `check_story_states.py` now a
 estimate for past work that never had one, and still rejects anything else that isn't `<number> h`.
 **Result:** 23 P stories. P-01..P-19 record past work, from the 2026-09-05 proposal to the 2 Oct
 review: 18 `Done`, plus P-17 (the manual refresh, #149) `In review`. P-20 and P-21 (midterm deck
-and report) are claimed, P-22 is this PR, and P-23 (refresh the sprint plan) is Ready. Every past
+and report) are claimed, P-22 is this PR, and P-23 (refresh the sprint plan) is Blocked until
+P-17 is `Done`, since its manual pointer waits for #149. Every past
 actual is `<n> h actual` until its owner fills it in. P-22 itself closed at 1 h actual (est 3).
-Full suite 467 passed, 0 skipped after merging `main`. Of the four new checker test cases, the
-`—` one failed before the pattern changed. The other three check that `-`, a blank and `TBD` are
-still rejected. They passed before and after, because they guard against loosening the pattern
-too far.
+Full suite 472 passed, 0 skipped after merging `main`. The checker has nine new test cases.
+Three failed before their fix: `—` read as an estimate, and `.. h` and `. h` rejected. The other
+six are guards that passed before and after: `-`, a blank and `TBD` are still rejected, and
+`2.5 h`, `10 h` and `3h` are still read.
 **Review:** @mbj1994 requested changes. P-22's actual hours were filled in. `AGENTS.md`'s
 definition of done now points to D-052 in this PR instead of waiting for P-23. @mbj1994 confirmed
 their own name on P-01 and P-21. Also fixed: P-20's estimate became `—`, because it was set two
 days into the work, and D-052's D-028 note was rechecked after D-047 merged.
+@dalwalyk then requested changes (2026-10-18). This entry had called P-23 Ready when the index
+says Blocked, and the story template gave no cue for `—`; both are fixed. A follow-up comment
+found that the estimate pattern read `.. h` as an estimate, a gap since before this PR. The
+pattern now needs a digit, with tests. `stories/README.md` now points to `AGENTS.md` for the two
+P-lane exceptions rather than restating them.
 **Next:** owners fill in their hours, and @dalwalyk confirms or removes their name on P-01, P-14
-and P-21. #149 carries P-17's `Done` commit before it merges. P-23 is up for grabs.
+and P-21. #149 carries P-17's `Done` commit before it merges, which unblocks P-23.
