@@ -21,6 +21,7 @@ grows past that, split it.
 | **G** | Ground truth — printing, calipers, calibration |
 | **A** | Generative AI — agent, completion, VLM, spec parser |
 | **X** | Cross-cutting — integration points, demo |
+| **P** | Planning — proposal, sprint plan, backlog, process rules, documents, reviews and reports |
 
 The number is just the order we wrote them down. **`R-04` is not more important than `R-12`, and
 it is not "step 4"** — read the **Depends on** line to know what actually has to come first.
@@ -89,7 +90,7 @@ they do.
 | **Ready** | Dependencies are done and nobody has claimed it. Anyone can take it. Owner is `_unclaimed_`. |
 | **Claimed** | Someone has put their `@github-handle` on it, in the story file and in this index, before starting. |
 | **In review** | Pull request open, waiting on one approval. |
-| **Done** | Merged, and the completion record below is filled in. |
+| **Done** | Merged, and the completion record below is filled in. P stories have one exception here, stated in `AGENTS.md`'s definition of done (D-052). |
 
 ### Completion record
 
@@ -104,7 +105,8 @@ Notes: forced fp16 — bf16 runs at half speed on Apple Silicon.
 
 Applies to every story, unchanged from the plan: merged to `main`, runs on a second member's machine from a clean checkout, has one automated test or one written manual check, reviewed and approved by one other member, and demonstrated at the sprint boundary.
 
-Acceptance criteria are per story. The definition of done is not.
+Acceptance criteria are per story. The definition of done is not, apart from two exceptions for
+P stories (the planning lane), set by D-052 and stated in `AGENTS.md`'s definition of done.
 
 ---
 
@@ -206,6 +208,54 @@ Two consequences worth acting on:
 **The September 25 milestone is tight.** A working endpoint needs about 40 hours of that chain, which is roughly four and a half weeks from a September 3 start. That lands in early October, not late September. The milestone is reachable if the chain never stalls, and it is the first thing to slip if it does. We are leaving the date as it stands for now and will revisit at the second sprint boundary with real velocity numbers rather than estimates.
 
 The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16, R-17, R-18, R-19 — are where the other two people work while the chain advances. There is enough of that work to keep everyone busy, which is the point of laying the backlog out this way.
+
+---
+
+## Planning lane
+
+The work that keeps the project steerable but belongs to no single story: the proposal and the
+sprint plan, the decisions and process rules, writing and splitting stories, keeping documents
+such as the manual in step with `main`, audits and reconciliations across stories, and the class
+reviews and reports. Until D-052 none of it had a story, so none of it had actual hours.
+
+**The boundary.** Anything done inside a story's own pull request — its claim, its `Done` state
+and completion record, its progress-log entry, the follow-up stories it files — stays in that
+story's hours. P is for what no single story owns, plus work on someone else's story after it
+merged (a late close-out, a reconciliation, a record correction), since its owner's actual never
+included it.
+
+**Past work.** Most of these stories record work done before the lane existed. They are `Done`,
+with their evidence in the notes, and `<n> h actual` until the owner fills in a real figure
+(D-033). Where no estimate existed before the work, Est is `—` rather than a number made up
+afterwards; the class reviews use the sprint plan's 2.5 h per review. Full rules in D-052.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [P-01](P/P-01.md) | Proposal and proposal deck | — | nothing | Done | @TabeenRaoof; @dalwalyk; @mbj1994 |
+| [P-02](P/P-02.md) | Sprint plan | — | nothing | Done | @TabeenRaoof |
+| [P-03](P/P-03.md) | Initial backlog | — | nothing | Done | @TabeenRaoof |
+| [P-04](P/P-04.md) | Decisions log and working agreements | — | nothing | Done | @TabeenRaoof |
+| [P-05](P/P-05.md) | Make the definition of done checkable: PR template and state checker | — | nothing | Done | @TabeenRaoof |
+| [P-06](P/P-06.md) | Check every branch before taking a decision number | — | nothing | Done | @TabeenRaoof |
+| [P-07](P/P-07.md) | Tests are written during implementation | — | nothing | Done | @TabeenRaoof |
+| [P-08](P/P-08.md) | Agent entry point and measured hours; restore decisions a merge dropped | — | nothing | Done | @TabeenRaoof |
+| [P-09](P/P-09.md) | Claims shown in the backlog index and enforced | — | nothing | Done | @TabeenRaoof |
+| [P-10](P/P-10.md) | Set Done before merge, not after | — | nothing | Done | @TabeenRaoof |
+| [P-11](P/P-11.md) | Story files in one subfolder per lane | — | nothing | Done | @TabeenRaoof |
+| [P-12](P/P-12.md) | Write up the thin capture thread | — | nothing | Done | @TabeenRaoof |
+| [P-13](P/P-13.md) | Reconciliations and record corrections on others' stories | — | nothing | Done | @TabeenRaoof |
+| [P-14](P/P-14.md) | Close-out audit of every R story | — | nothing | Done | @dalwalyk |
+| [P-15](P/P-15.md) | Operating manual, first version | — | nothing | Done | @TabeenRaoof |
+| [P-16](P/P-16.md) | README brought out of skeleton state | — | nothing | Done | @TabeenRaoof |
+| [P-17](P/P-17.md) | Operating manual refresh | — | nothing | In review | @TabeenRaoof |
+| [P-18](P/P-18.md) | 18 Sept progress review: deck and generator | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-19](P/P-19.md) | 2 Oct progress review | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-20](P/P-20.md) | Midterm presentation deck | — | nothing | Claimed | @TabeenRaoof |
+| [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
+| [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
+| [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Blocked | _unclaimed_ |
 
 ---
 

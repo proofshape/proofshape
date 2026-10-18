@@ -690,6 +690,57 @@ That doesn't fit a 4-hour story, and it departs from the pinned stack.
 highest decision anywhere was D-046 (on `main` and every open branch), so D-047 was the first
 free number.
 
+**D-052 · Planning work gets stories too, in a P lane; past work is recorded as it was.**
+(2026-10-16)
+A new lane, **P — Planning**, holds the work that belongs to no single story: the proposal and
+the sprint plan, decisions and process rules, writing and splitting stories, keeping documents
+such as `docs/manual.md` in step with `main`, audits and reconciliations across stories, and the
+class reviews and reports. Its place is the planning documents (`docs/`, `submissions/`,
+`stories/` and the process files at the root), so D-020 still holds: a lane is a place, and anyone
+picks up a P story. Branch names use `planning/`. Tier is `—`, because the delivery tiers
+(D-001) apply to product features, not to documents.
+- **The boundary.** Anything done inside a story's own pull request stays in that story's hours:
+  its claim, its `Done` state and completion record, its progress-log entry, and any follow-up
+  stories it files. P takes only what no single story owns, plus work on someone else's story
+  after its pull request merged (a late close-out, a reconciliation, a record correction),
+  because that owner's actual hours never include it.
+- **Past work** becomes `Done` stories, owned by the handles git shows did the work; teammates
+  confirm, correct or remove their names in review. Where no estimate existed before the work,
+  Est is `—`, never a number made up afterwards. `check_story_states.py` accepts `—` there, and
+  nothing else that isn't `<number> h`. Actual hours stay `<n> h actual` until the owner gives a
+  real figure (D-033), and a figure reconstructed from memory says so. A co-owned story records
+  total person-hours, with each person's share in its notes where known. Work pushed straight
+  to `main` before branch protection existed (root commit `88d4ad6`) had no pull request. Its
+  record says so, and the pull request that adds the story is its first review.
+- **Claims that predate the lane** (P-20, P-21, P-22) land with it. They could not reach `main`
+  before the lane existed there (D-037).
+- **Definition of done for P.** Merged through a pull request and approved by one other member,
+  as always. A document can't be unit-tested, so its written check is the reviewer reading it
+  against the story's acceptance criteria. Code inside a P story keeps the normal rules: tests
+  written alongside it (D-029), and a run on a second member's machine.
+- **Budget.** Class review and report stories count against the sprint plan's 18 h `Reviews`
+  row. Stand-ups and boundary calls are ceremony overhead, already inside the weekly hours, and
+  get no story. Nothing else P covers had a budget line; recording it is how we find out what it
+  costs.
+
+*Why:* only code stories carried actual hours. Every hours total therefore left out the
+proposal, the plan, the process rules, the backlog write-ups, the documents and the reviews, and
+no estimate for that work could ever be checked. Recording it in pull request descriptions
+instead would have kept it out of the index, out of the checker and out of the completion records
+everyone already reads, so it uses the same story machinery as everything else.
+*Not decided here:* whether time spent reviewing others' pull requests is recorded anywhere. The
+sprint plan (§8) already counts review time inside each lane's estimates, and a review is not a
+deliverable with one owner, so it gets no P story.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. D-047
+(`capture/C-08-next-view-scoring`, #144), D-048–D-050 (`capture/C-13-connect-deployed-service`,
+#146) and D-051 (`recon/R-23-board-scale-anchor`, #152) are held on open branches, so D-052 was
+the first free number. Whichever of these merges after another will need its decisions
+reconciled together, not one at a time.
+*Rechecked 2026-10-17:* #144 has since merged, so D-047 now sits just above this entry.
+D-048–D-050 (#146) and D-051 (#152) are still on open branches, and nothing else on `origin`
+goes past D-047. When those two merge after this one, their entries land below D-052, out of
+numeric order; that is expected, not a lost or duplicated number.
+
 ---
 
 ## Open — not yet decided
