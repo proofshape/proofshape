@@ -123,7 +123,8 @@ Ready, whatever the index says.
 
 ## Definition of done
 
-Every story, without exception:
+Every story, without exception. For the P (Planning) lane, whose stories are documents rather
+than code and include past work recorded after the fact, D-052 says how each item below applies:
 
 - Merged to `main` through a pull request.
 - Reviewed and approved by one other team member.
@@ -168,7 +169,8 @@ Every story, without exception:
     existing approval and a fresh one is needed on this final commit — don't merge on a stale
     approval that predates it.
 
-Acceptance criteria are per story. The definition of done is not — it is the same every time.
+Acceptance criteria are per story. The definition of done is not — it is the same every time,
+with P stories reading it through D-052.
 
 Every pull request carries this list as a checklist (`.github/PULL_REQUEST_TEMPLATE.md`). Tick
 each item before merging — the state/index item specifically has been missed twice already.

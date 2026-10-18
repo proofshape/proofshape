@@ -736,6 +736,10 @@ deliverable with one owner, so it gets no P story.
 #146) and D-051 (`recon/R-23-board-scale-anchor`, #152) are held on open branches, so D-052 was
 the first free number. Whichever of these merges after another will need its decisions
 reconciled together, not one at a time.
+*Rechecked 2026-10-17:* #144 has since merged, so D-047 now sits just above this entry.
+D-048–D-050 (#146) and D-051 (#152) are still on open branches, and nothing else on `origin`
+goes past D-047. When those two merge after this one, their entries land below D-052, out of
+numeric order; that is expected, not a lost or duplicated number.
 
 ---
 

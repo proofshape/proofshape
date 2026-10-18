@@ -1157,7 +1157,14 @@ estimate for past work that never had one, and still rejects anything else that 
 **Result:** 23 P stories. P-01..P-19 record past work, from the 2026-09-05 proposal to the 2 Oct
 review: 18 `Done`, plus P-17 (the manual refresh, #149) `In review`. P-20 and P-21 (midterm deck
 and report) are claimed, P-22 is this PR, and P-23 (refresh the sprint plan) is Ready. Every past
-actual is `<n> h actual` until its owner fills it in. Full suite 408 passed, 1 skipped; the two new
-checker tests failed before the pattern changed.
-**Next:** owners fill in their hours, and @dalwalyk and @mbj1994 confirm or remove their names on
-P-01, P-14 and P-21. #149 carries P-17's `Done` commit before it merges. P-23 is up for grabs.
+actual is `<n> h actual` until its owner fills it in. P-22 itself closed at 1 h actual (est 3).
+Full suite 467 passed, 0 skipped after merging `main`. Of the four new checker test cases, the
+`—` one failed before the pattern changed. The other three check that `-`, a blank and `TBD` are
+still rejected. They passed before and after, because they guard against loosening the pattern
+too far.
+**Review:** @mbj1994 requested changes. P-22's actual hours were filled in. `AGENTS.md`'s
+definition of done now points to D-052 in this PR instead of waiting for P-23. @mbj1994 confirmed
+their own name on P-01 and P-21. Also fixed: P-20's estimate became `—`, because it was set two
+days into the work, and D-052's D-028 note was rechecked after D-047 merged.
+**Next:** owners fill in their hours, and @dalwalyk confirms or removes their name on P-01, P-14
+and P-21. #149 carries P-17's `Done` commit before it merges. P-23 is up for grabs.
