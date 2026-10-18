@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 
 import numpy as np
 import pytest
@@ -241,18 +242,14 @@ def test_write_mesh_ply_rejects_non_triangle_faces():
         tsdf_fusion.write_mesh_ply("unused.ply", np.zeros((3, 3)), np.zeros((1, 4)))
 
 
-# --- extract_mesh_poisson (Open3D not in requirements.txt -- see module docstring) --------------
+# --- extract_mesh_poisson (Open3D lazily imported -- see its docstring) ---------------------------
 
 
-def test_extract_mesh_poisson_without_open3d_raises_helpful_error():
-    try:
-        import open3d  # noqa: F401
-    except ImportError:
-        pass
-    else:
-        pytest.skip(
-            "open3d is installed in this environment; can't test the not-installed path"
-        )
+def test_extract_mesh_poisson_without_open3d_raises_helpful_error(monkeypatch):
+    # Open3D is installed everywhere now (C-08, D-047), so simulate its absence: a None entry in
+    # sys.modules makes `import open3d` raise ImportError. Skipping whenever it's installed, as
+    # this test used to, would mean it never runs in CI at all.
+    monkeypatch.setitem(sys.modules, "open3d", None)
 
     with pytest.raises(ImportError, match="Open3D"):
         tsdf_fusion.extract_mesh_poisson(np.zeros((1, 3)))

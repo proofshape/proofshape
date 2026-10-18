@@ -663,6 +663,33 @@ patching the three call sites.
 highest decision anywhere was D-045 (on `recon/R-20-confidence-in-fusion`, not yet merged), so
 D-046 was the first free number.
 
+**D-047 · Open3D is a pinned `requirements.txt` dependency.** (2026-10-15)
+`open3d==0.18.0` is now in `requirements.txt`, the CPU/laptop-and-CI set, so CI, laptops and the
+recon image all install it. C-08's next-view scoring uses Open3D's `RaycastingScene`, which is
+what the proposal's pinned stack names for "visibility and next view". `recon/next_view.py`
+imports Open3D at module level, as R-08 does with its real dependencies. R-07's Poisson fallback
+keeps its lazy import, which still works.
+*Why:* C-08's story says outright that tests skipping in CI don't count toward the definition of
+done, and an optional Open3D is precisely what makes them skip. It is CPU-only use, and
+`requirements.txt` exists for CPU dependencies. The separate requirements files (GPU, COLMAP)
+hold things that must *not* be installed on CPU, macOS or CI, which is the opposite case.
+0.18.0 is the version verified on macOS ARM64 with numpy 1.26.4 (VGGT needs numpy<2):
+`RaycastingScene` works there, and `pip check` is clean. R-20's macOS crash is inside Open3D's
+Poisson reconstruction, not its raycaster.
+*Cost, accepted:* the Linux wheel is ~400 MB and pulls dash, flask, pandas and scikit-learn, so CI
+installs are slower and the recon image is bigger. Two side effects: R-07's Poisson success-path
+test now runs in CI instead of skipping, and R-07's "Open3D not installed" test now fakes the
+missing import rather than skipping whenever Open3D is present.
+*Alternatives considered:* a separate `requirements-open3d.txt` installed by CI and the bootstrap
+script but not the image. It works, but it's one more file to keep in sync, for an image size
+the service will likely need anyway once rescan guidance runs there. `open3d-cpu` (~100 MB) only
+ships Linux wheels, so it would need platform markers and two package names for one import. A
+pure-numpy raycaster would need its own BVH or z-buffer to be fast enough on golden-size meshes.
+That doesn't fit a 4-hour story, and it departs from the pinned stack.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-046 (on `main` and every open branch), so D-047 was the first
+free number.
+
 **D-052 · Planning work gets stories too, in a P lane; past work is recorded as it was.**
 (2026-10-16)
 A new lane, **P — Planning**, holds the work that belongs to no single story: the proposal and
