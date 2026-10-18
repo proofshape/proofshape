@@ -1177,3 +1177,26 @@ only for P stories; a `—` elsewhere is now reported. And this entry's dates di
 P-22's record, because a UTC date had slipped in. All dates are now 2026-10-17, local time.
 **Next:** owners fill in their hours, and @dalwalyk confirms or removes their name on P-01, P-14
 and P-21. #149 carries P-17's `Done` commit before it merges, which unblocks P-23.
+
+
+
+## 2026-10-17 — P-17 operating manual refresh (PR #149)
+
+**Who:** @TabeenRaoof. Reviewed by @dalwalyk and @mbj1994.
+**What changed:** `docs/manual.md` had not changed since 2026-09-25. Each section's status now
+matches `main`, with a new **In review** status for work that exists only in an open pull request
+(today, C-13 in #146). Supplier capture (§5) and the result viewer (§8.1) are Works now against
+the mock service. A new §0 says which README to use to run the app or the service. §9 lists the
+codes the phone and the service actually return today, including that `vlm_veto` currently means
+a malformed upload. §7 and §10 state the measured 4–9% scale error (R-22) and say not to read
+dimensions off a model until R-23 lands. `AGENTS.md`'s repo map now lists the manual.
+**Review:** both reviewers requested changes on the first version, and all three findings were
+fixed. §9 gained `session_not_found` and `session_already_finished`. Its order-code row no
+longer says only the mock checks codes, since the real service rejects a blank one. §5 no longer
+calls C-08 In review after #144 merged. @dalwalyk re-checked the technical claims against the
+code and approved. @mbj1994's change request was dismissed as addressed, since one approval is
+enough. Not done: @dalwalyk's suggestion to add a manual line to the PR template.
+**Result:** P-17 closed at 1 h actual (no estimate, D-052). Docs only; full suite 475 passed on
+the merged branch. P-23 moved from Blocked to Ready.
+**Next:** when #146 (C-13) merges, it flips the manual's eight **In review (C-13, PR #146)**
+lines to Works now. P-23 (refresh the sprint plan; point the manual at D-052) is up for grabs.

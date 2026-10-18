@@ -199,6 +199,8 @@ docs/
   glossary.md            — project vocabulary
   sprint-plan.md         — schedule, capacity, lanes, reviews, repository process
   progress-log.md        — running chronological journal, newest at the bottom
+  manual.md              — operating manual for the buyer and supplier; a story that changes
+                           what a user can do updates its section in the same pull request
   story-template.md      — template for a new story file
   archive/               — superseded drafts, kept for their reasoning
 
