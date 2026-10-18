@@ -123,8 +123,17 @@ Ready, whatever the index says.
 
 ## Definition of done
 
-Every story, without exception. For the P (Planning) lane, whose stories are documents rather
-than code and include past work recorded after the fact, D-052 says how each item below applies:
+Every story. The only exceptions are two for the P (Planning) lane, set by D-052:
+
+- **A document can't be unit-tested.** A P story whose output is a document meets the testing
+  item below with a written check: the reviewer reads it against the story's acceptance criteria.
+  Code inside a P story (a script, a checker) keeps every item unchanged, tests and the
+  second-member run included.
+- **Past work recorded after the fact** (a P story written for work finished before the lane
+  existed) may be `Done` with `<n> h actual` until its owner supplies a measured figure. Work done
+  after its story was claimed never may: it closes with a real, measured actual, as below.
+
+Everything else applies to P stories exactly as written:
 
 - Merged to `main` through a pull request.
 - Reviewed and approved by one other team member.
@@ -170,7 +179,7 @@ than code and include past work recorded after the fact, D-052 says how each ite
     approval that predates it.
 
 Acceptance criteria are per story. The definition of done is not — it is the same every time,
-with P stories reading it through D-052.
+apart from the two P-lane exceptions above (D-052).
 
 Every pull request carries this list as a checklist (`.github/PULL_REQUEST_TEMPLATE.md`). Tick
 each item before merging — the state/index item specifically has been missed twice already.

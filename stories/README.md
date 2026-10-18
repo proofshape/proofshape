@@ -90,7 +90,7 @@ they do.
 | **Ready** | Dependencies are done and nobody has claimed it. Anyone can take it. Owner is `_unclaimed_`. |
 | **Claimed** | Someone has put their `@github-handle` on it, in the story file and in this index, before starting. |
 | **In review** | Pull request open, waiting on one approval. |
-| **Done** | Merged, and the completion record below is filled in. |
+| **Done** | Merged, and the completion record below is filled in. The one exception: a P story recording past work may show `<n> h actual` until its owner supplies a measured figure (D-052). |
 
 ### Completion record
 
@@ -105,8 +105,10 @@ Notes: forced fp16 — bf16 runs at half speed on Apple Silicon.
 
 Applies to every story, unchanged from the plan: merged to `main`, runs on a second member's machine from a clean checkout, has one automated test or one written manual check, reviewed and approved by one other member, and demonstrated at the sprint boundary.
 
-Acceptance criteria are per story. The definition of done is not, except that P stories (the
-planning lane) adapt it for documents, which can't be unit-tested: see D-052.
+Acceptance criteria are per story. The definition of done is not, apart from two exceptions for
+P stories (the planning lane, D-052): a document gets a written check, since it can't be
+unit-tested, and past work recorded after the fact may show `<n> h actual` until its owner
+supplies a measured figure. `AGENTS.md`'s definition of done states both.
 
 ---
 
@@ -255,7 +257,7 @@ Full detail in each story file.
 | [P-20](P/P-20.md) | Midterm presentation deck | — | nothing | Claimed | @TabeenRaoof |
 | [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
 | [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
-| [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | nothing | Ready | _unclaimed_ |
+| [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Blocked | _unclaimed_ |
 
 ---
 
