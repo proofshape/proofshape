@@ -1062,3 +1062,84 @@ next touches `service.py`'s pipeline. Two process notes:
   unaffected.
 - On macOS, `pytest tests/test_vggt_runner.py tests/test_tsdf_fusion.py`, in that order, segfaults
   natively. That is pre-existing; the full suite passes.
+
+
+
+## 2026-10-15 — C-12 observed/unobserved colouring (reviewed)
+
+**Who:** @mbj1994 (PR #142), reviewed by @TabeenRaoof; changes requested.
+**What changed:** nothing merged yet. The PR remaps `recon/provenance.py`'s baked white/grey
+vertex colours to a display palette. It adds a legend with a reserved Inferred slot, plus a
+drift-guard test against the Python constants. Codex's colour-space comment was already fixed in
+0ef1ba6.
+**Result:** CI (pytest, typescript, ruff) green on head 775519b; 12 inline comments, three
+blocking:
+- `write_glb` emits no material, so GLTFLoader's default `metalness: 1` likely renders the palette
+  near-black on faces away from the key light. This comes from reading three r180 and GLTFLoader;
+  nobody has seen it on a device yet.
+- The in-place remap is not idempotent: a geometry shared by two meshes turns entirely magenta.
+  Reproduced with three 0.180.
+- `remapModelProvenanceColors` has no tests.
+
+The story's required one-line legibility addition to C-11's device check is also missing.
+**Concluded:** the colour mapping and the drift guard are correct. The rendering path around them
+has not been checked on a device, so the palette can't be called legible until the device check
+the story already asks for is run.
+**Next:** the author addresses the blocking comments, runs the device check, and re-requests
+review. C-12 already shows Done on its branch (D-038); its actual hours need updating to include
+the extra work.
+
+
+
+## 2026-10-16 — F-01, R-13 and R-15 actual hours recorded
+
+**Who:** @TabeenRaoof, owner of all three.
+**What changed:** the three completion records had been closed as `<n> h actual` because only the
+owner could supply the number. Now filled in by the owner: F-01 2 h (est 2), R-13 3.5 h (est 3),
+R-15 5 h (est 4). The "left blank" notes in R-13 and R-15 now say who filled them in and when;
+the earlier entries here that say "left blank" stay as they were.
+**Next:** three Done stories still show `<n> h actual` for their owners to fill in: F-04 and R-01
+(@dalwalyk), and R-03 (@mbj1994).
+
+
+
+## 2026-10-16 — C-08 next-view scoring merged (PR #144)
+
+**Who:** @TabeenRaoof, reviewed and approved by @dalwalyk.
+**What changed:**
+- New `recon/next_view.py` generates candidate camera views on a hemisphere over the part:
+  25–40 cm, at most 60° from vertical, 147 by default, every limit and density an overridable
+  constant. It scores each view by how many under-observed vertices it would see unoccluded,
+  using Open3D `RaycastingScene` on the CPU, and ranks them best first.
+- "Under-observed" is R-09's `Unobserved` after R-10's downgrade, reused through R-09's own
+  constants rather than redefined.
+- The hemisphere is centred on the part's footprint, not the board's corner origin, which is
+  ~100 mm from the board's centre.
+- Ties on the count break on how square-on the view is. A thin CLI reads R-10's
+  `mesh_uncertainty.glb`.
+- Open3D 0.18.0 is now pinned in `requirements.txt` (D-047), so the tests run in CI. Because of
+  that, R-07's "Open3D not installed" test fakes the missing import instead of skipping, and
+  R-07's Poisson test now runs in CI.
+
+**Result:**
+- Tests: all three of the story's synthetic tests pass. Full suite 463 passed, 0 skipped, on
+  macOS and on Linux CI.
+- Dependency cost: CI's install step went from 22 s to 55 s.
+- Speed: on synthetic spheres, a full 147-candidate scoring run took 0.33 s at 45k vertices, and
+  the raycasting alone ~1 s at 179k. That's one laptop, not a golden-object figure.
+- Review: three non-blocking findings. Two were fixed before merge: defaults recomputed when
+  overrides are given, and equal radii producing duplicate candidates. The third, batching the
+  raycasts, was measured to make no difference and left as is.
+- C-08 closed at 4 h actual against a 4 h estimate.
+
+**Not confirmed:** no review or PR record says C-08 was run on a second member's machine from a
+clean checkout. That box on PR #144's checklist was never ticked. A clean-venv install on the
+author's machine and Linux CI both passed, but neither is the same check.
+**Next:**
+- Nothing has been run on a real golden object yet: there are no local R-10 outputs, and making
+  them needs the GPU pipeline.
+- Wiring the scorer into C-07's arrow is still a step no story owns.
+
+Process note: `main` requires branches to be up to date, and it moved twice after the
+re-approval, before C-08 could merge. Both times, updating the branch through GitHub (a merge of `main` that left the PR's own diff
+unchanged) kept the existing approval rather than dismissing it.

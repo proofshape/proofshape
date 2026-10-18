@@ -17,9 +17,9 @@ pypdfium2==5.13.0
 # R-07 TSDF fusion's primary meshing path (skimage.measure.marching_cubes). CPU-only, no GUI
 # deps, so it belongs here like numpy/opencv rather than in requirements-gpu.txt. The Poisson
 # fallback path uses Open3D instead, imported lazily inside that one function (same pattern as
-# R-01's torch/VGGT) and deliberately NOT listed here -- it is a much heavier, GUI-adjacent
-# dependency for a fallback path that isn't exercised by default; install it locally if you need
-# to run/test that path.
+# R-01's torch/VGGT). R-07 deliberately left Open3D out of this file -- a much heavier,
+# GUI-adjacent dependency for a fallback path that isn't exercised by default. C-08 has since
+# pinned it below for its own reasons (D-047); the lazy import still works either way.
 scikit-image==0.24.0
 # R-08 mesh cleanup and GLB export. Both are core to R-08's primary acceptance criteria (real
 # decimation, a real GLB writer), not a fallback path, so unlike R-07's Open3D both are real,
@@ -28,6 +28,13 @@ scikit-image==0.24.0
 fast-simplification==0.2.0
 pygltflib==1.16.5
 scipy==1.17.1
+# C-08 next-view scoring: Open3D's RaycastingScene, the CPU raycaster the proposal's pinned stack
+# names for "visibility and next view". A real, CI-tested dependency (D-047) rather than an
+# optional one, so C-08's tests run in CI instead of skipping. 0.18.0 is the version verified on
+# macOS ARM64 against numpy 1.26.x (VGGT needs numpy<2). The cost is weight: the Linux wheel is
+# ~400 MB and pulls dash/flask/pandas/scikit-learn. It also makes R-07's Poisson fallback
+# available by default.
+open3d==0.18.0
 
 # R-14 reconstruction HTTP service. FastAPI owns the frozen /v1 contract; multipart is needed
 # for frame+gyro uploads (D-041), uvicorn is the ASGI server R-15 will containerize, and httpx
