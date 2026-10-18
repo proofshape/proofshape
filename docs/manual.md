@@ -16,7 +16,7 @@ carries a status:
 | **Planned** | Designed and specified, not built. The story that will build it is named. |
 | **Undecided** | Genuinely open. Do not assume a behaviour here. |
 
-**Where things stand (checked against `main` on 2026-10-16).** The supplier side mostly works: you
+**Where things stand (checked against `main` on 2026-10-17).** The supplier side mostly works: you
 can print the board, open the capture app in a phone browser, shoot a guided orbit with on-phone
 frame checks, finish the session, and look at a 3D model coloured by what the camera actually saw
 (§5, §8.1). The reconstruction service that turns photos into that model is built and has been
@@ -244,8 +244,10 @@ is no real purchase order to bind to yet (D-034).
   as photos. On `main`, the real service can't pose such frames and fails with a misleading
   `insufficient_baseline` (§9). Calibrating the camera from the board itself instead is
   **In review** (D-050, PR #146).
-- **Next-view scoring** — ranking where one more photo would see the most unobserved surface — is
-  **In review** (C-08, PR #144). It is not wired into the arrow; the arrow follows the fixed orbit.
+- **Next-view scoring** — ranking where one more photo would see the most unobserved surface —
+  exists on `main` (C-08, `recon/next_view.py`), but only as a command-line tool run on a
+  finished model. Nothing calls it yet: not the service, and not the arrow, which follows the
+  fixed orbit.
 
 **Planned, and part of what makes this more than a photo app:**
 - **An LLM agent runs the session** (A-06, A-07, with A-08's deterministic fallback) — it decides
@@ -385,8 +387,10 @@ reference sheet was used**, which regions were observed, and any limits declared
 
 | Code | What happened | What to do |
 |---|---|---|
-| `order_code_unknown` | The order code was not recognised. Today only the mock service checks codes (§4). | Check the code. |
+| `order_code_unknown` | The order code was not recognised. Today the mock service accepts only `PO-48213-A`, and the real service rejects only an empty or blank code, because there is no buyer database to check against yet (§4). | Check the code. |
 | `too_few_frames` | Not enough accepted frames to reconstruct. The real service needs at least 3. | Keep going around the part. |
+| `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
+| `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
 | `vlm_veto` | **Today this means a malformed upload, not a semantic check** — the VLM is not built (A-01, A-02). The contract has no dedicated code for a malformed request yet, and adding one goes through the contract-change process (D-031). Once the VLM exists, this will mean the semantic check rejected the session: wrong part, hands in shot, a photo of a screen. | Reshoot; if it repeats, tell the team, since it points at an app bug. |
 
 **From the reconstruction, after you finish (works now):**
@@ -461,5 +465,6 @@ reasoning — the reasoning belongs in `docs/decisions.md` and drifts if copied.
 floor, latency: if the number does not exist yet, say it does not exist yet and name the milestone
 that will produce it.
 
-*Last checked against `main` on 2026-10-16, in a catch-up pass: nothing here had been updated since
-2026-09-25, while most of the capture app and the reconstruction engine landed.*
+*Last checked against `main` on 2026-10-17. The catch-up pass that started on 2026-10-16 found
+nothing here updated since 2026-09-25, while most of the capture app and the reconstruction
+engine had landed.*
