@@ -15,6 +15,9 @@ Catches these failure modes, the first two of which have both happened already:
    owner — an agent claims on behalf of the person it's working for.
 4. A story row the parser can't read. Before D-037 such a row was silently
    skipped, so it dropped out of every check above without anyone noticing.
+5. An estimate of "—" (never estimated) on a story outside the P lane. D-052
+   allows it only for P stories recording past work; anywhere else it is a
+   missing estimate.
 
 This does not decide anything. It never marks a story Done or Claimed, and it
 never writes an owner — only a human does that, by actually taking or finishing
@@ -40,15 +43,16 @@ INDEX = STORIES_DIR / "README.md"
 ROW_RE = re.compile(
     r"^\|\s*\[([A-Z]-\d\d)\]\(([^)]+\.md)\)\s*\|"  # | [ID](path/to/ID.md) |
     r"[^|\n]*\|"  # title
-    r"\s*(?:\d+(?:\.\d+)?\s*h|—)\s*\|"  # estimate: "3 h", "2.5 h", or "—" (D-052)
+    r"\s*(\d+(?:\.\d+)?\s*h|—)\s*\|"  # estimate: "3 h", "2.5 h", or "—" (D-052)
     r"\s*([^|\n]*?)\s*\|"  # depends-on
     r"\s*(\w[\w ]*?)\s*\|"  # state
     r"\s*([^|\n]*?)\s*\|\s*$",  # owner
     re.MULTILINE,
 )
-# The estimate's "—" is the em dash (U+2014) only, and the group is non-capturing so the row
-# still unpacks into the same five fields. A past story recorded after the fact had no estimate,
-# and writing one in afterwards would be a made-up number (D-052, D-033). Anything else that
+# The estimate's "—" is the em dash (U+2014) only. A past story recorded after the fact had no
+# estimate, and writing one in afterwards would be a made-up number (D-052, D-033). The pattern
+# reads "—" on any row, so that the row stays visible to every other check; whether this story
+# may use it (only a P story may) is judged afterwards, in estimate_problems. Anything else that
 # isn't "<number> h", a hyphen, a blank, "TBD", still fails to parse and is reported below,
 # so a typo can't quietly turn the estimate column into a wildcard. "<number>" needs at least
 # one digit before any decimal point: the original `[\d.]+` also read ".. h" and ". h" as
@@ -62,6 +66,8 @@ STORY_ROW_START_RE = re.compile(r"^\|\s*\[([A-Z]-\d\d)\]\(", re.MULTILINE)
 FILE_STATE_RE = re.compile(r"\*\*State:\*\*\s*(\w[\w ]*?)\s*$", re.MULTILINE)
 FILE_OWNER_RE = re.compile(r"\*\*Owner:\*\*\s*(.*?)\s*$", re.MULTILINE)
 
+NEVER_ESTIMATED = "—"
+PLANNING_LANE_PREFIX = "P-"
 UNCLAIMED = "_unclaimed_"
 OWNED_STATES = {"Claimed", "In review", "Done"}
 UNOWNED_STATES = {"Blocked", "Ready"}
@@ -84,12 +90,13 @@ AI_ASSISTANT_NAMES = {
 def parse_index():
     text = INDEX.read_text(encoding="utf-8")
     rows = {}
-    for sid, path, deps, state, owner in ROW_RE.findall(text):
+    for sid, path, estimate, deps, state, owner in ROW_RE.findall(text):
         dep_ids = (
             [] if deps.strip().lower() == "nothing" else re.findall(r"[A-Z]-\d\d", deps)
         )
         rows[sid] = {
             "path": path,
+            "estimate": estimate.strip(),
             "deps": dep_ids,
             "index_state": state.strip(),
             "index_owner": owner.strip(),
@@ -119,6 +126,23 @@ def file_state(relpath):
 def file_owner(story_text):
     m = FILE_OWNER_RE.search(story_text)
     return m.group(1).strip() if m else None
+
+
+def estimate_problems(sid, estimate):
+    """Everything wrong with one story's estimate. Empty list if it's fine.
+
+    "—" means never estimated, and D-052 allows that only for a P story recording past
+    planning work. Every other lane estimates before the work starts, so "—" there is a
+    missing estimate, not a convention. ROW_RE has already rejected anything that is
+    neither "<number> h" nor "—".
+    """
+    problems = []
+    if estimate == NEVER_ESTIMATED and not sid.startswith(PLANNING_LANE_PREFIX):
+        problems.append(
+            f'{sid}: Est is "{NEVER_ESTIMATED}", which only a P story recording past work may '
+            "use (D-052). Give it an estimate in hours"
+        )
+    return problems
 
 
 def owner_problems(sid, state, owner):
@@ -181,10 +205,12 @@ def main():
         problems.append(
             f"{sid}: its row in stories/README.md doesn't match the expected "
             '| ID | Story | Est | Depends on | State | Owner | layout (Est is "3 h", or "—" '
-            "for past work never estimated), so none of the other checks can see it"
+            "for a P story's past work never estimated), so none of the other checks can see it"
         )
 
     for sid, info in rows.items():
+        problems.extend(estimate_problems(sid, info["estimate"]))
+
         fstate, ftext = file_state(info["path"])
         if fstate is None:
             problems.append(f"{sid}: no story file, or no **State:** line found")

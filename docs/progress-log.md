@@ -1146,7 +1146,7 @@ unchanged) kept the existing approval rather than dismissing it.
 
 
 
-## 2026-10-16 — P-22 planning lane: planning work gets stories (D-052)
+## 2026-10-17 — P-22 planning lane: planning work gets stories (D-052)
 
 **Who:** @TabeenRaoof (PR #153).
 **What changed:** a P (Planning) lane, so planning, backlog, document and review work gets stories
@@ -1159,18 +1159,21 @@ review: 18 `Done`, plus P-17 (the manual refresh, #149) `In review`. P-20 and P-
 and report) are claimed, P-22 is this PR, and P-23 (refresh the sprint plan) is Blocked until
 P-17 is `Done`, since its manual pointer waits for #149. Every past
 actual is `<n> h actual` until its owner fills it in. P-22 itself closed at 1 h actual (est 3).
-Full suite 472 passed, 0 skipped after merging `main`. The checker has nine new test cases.
-Three failed before their fix: `—` read as an estimate, and `.. h` and `. h` rejected. The other
-six are guards that passed before and after: `-`, a blank and `TBD` are still rejected, and
-`2.5 h`, `10 h` and `3h` are still read.
+Full suite 475 passed, 0 skipped after merging `main`. The checker has twelve new test cases.
+Six failed before their fix: `—` read as an estimate on a P story, `.. h` and `. h` rejected,
+and `—` reported on an F, R or C story. The other six are guards that passed before and after:
+`-`, a blank and `TBD` are still rejected, and `2.5 h`, `10 h` and `3h` are still read.
 **Review:** @mbj1994 requested changes. P-22's actual hours were filled in. `AGENTS.md`'s
 definition of done now points to D-052 in this PR instead of waiting for P-23. @mbj1994 confirmed
 their own name on P-01 and P-21. Also fixed: P-20's estimate became `—`, because it was set two
 days into the work, and D-052's D-028 note was rechecked after D-047 merged.
-@dalwalyk then requested changes (2026-10-18). This entry had called P-23 Ready when the index
+@dalwalyk then requested changes (2026-10-17). This entry had called P-23 Ready when the index
 says Blocked, and the story template gave no cue for `—`; both are fixed. A follow-up comment
 found that the estimate pattern read `.. h` as an estimate, a gap since before this PR. The
 pattern now needs a digit, with tests. `stories/README.md` now points to `AGENTS.md` for the two
-P-lane exceptions rather than restating them.
+P-lane exceptions rather than restating them. A second round from @dalwalyk the same day
+found two more problems, both fixed. The checker read `—` on any lane, though D-052 allows it
+only for P stories; a `—` elsewhere is now reported. And this entry's dates disagreed with
+P-22's record, because a UTC date had slipped in. All dates are now 2026-10-17, local time.
 **Next:** owners fill in their hours, and @dalwalyk confirms or removes their name on P-01, P-14
 and P-21. #149 carries P-17's `Done` commit before it merges, which unblocks P-23.

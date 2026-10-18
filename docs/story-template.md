@@ -1,6 +1,6 @@
 # <ID> · <Title>
 
-**Area:** recon | capture | inspect | planning · **Tier:** 1 | 2 | 3 (— for planning) · **Estimate:** <n> h, or — for past work never estimated (D-052)
+**Area:** recon | capture | inspect | planning · **Tier:** 1 | 2 | 3 (— for planning) · **Estimate:** <n> h, or — only for a P story recording past work never estimated (D-052)
 **Depends on:** <IDs, or "nothing">
 **State:** Blocked | Ready | Claimed | In review | Done
 **Owner:** _unclaimed_

@@ -12,7 +12,7 @@ states need an @github-handle, unowned states must read _unclaimed_, an AI assis
 owner, and a row the parser can't read is reported instead of silently skipped.
 
 Since D-052, an Est of "—" (a past story that never had an estimate) is read like any other row,
-and nothing else non-numeric is.
+and nothing else non-numeric is. Only a P story may use it; on any other lane it is reported.
 
 The script reads two module-level paths (STORIES_DIR, INDEX) rather than taking a root as a
 parameter, so these tests monkeypatch those two attributes to point at a throwaway directory
@@ -322,6 +322,30 @@ def test_story_never_estimated_is_read_not_skipped(css, capsys):
     assert exit_code == 0, out
     rows, _ = css.parse_index()
     assert rows["P-01"]["index_owner"] == owners
+
+
+@pytest.mark.parametrize("sid", ["F-02", "R-02", "C-02"])
+def test_never_estimated_dash_outside_the_planning_lane_is_reported(css, capsys, sid):
+    """D-052 allows "—" only for a P story recording past work that was never estimated.
+    Every other lane estimates before the work, so a "—" there is a missing estimate, and
+    it is reported with its own reason rather than read as if it were fine (found reviewing
+    #153).
+    """
+    _write_story(css, "F-01", "Done")
+    _write_story(css, sid, "Done")
+    _write_index(css, [("F-01", "nothing", "Done")])
+    with css.INDEX.open("a", encoding="utf-8") as index:
+        index.write(
+            f"| [{sid}]({sid}.md) | a test story | — | nothing | Done | @member |\n"
+        )
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 1
+    assert f'{sid}: Est is "—"' in out
+    assert "D-052" in out
+    # The row is read, and flagged for the right reason, not as unreadable.
+    assert "doesn't match" not in out
 
 
 @pytest.mark.parametrize("estimate", ["-", "", "TBD", ".. h", ". h"])
