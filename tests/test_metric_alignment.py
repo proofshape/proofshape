@@ -234,6 +234,7 @@ def test_board_anchor_rejects_too_few_usable_corners() -> None:
             corner_frame_index,
             corner_id,
             corner_px,
+            preprocess_geometry=_identity_preprocess_geometry(frame_names),
         )
 
 
