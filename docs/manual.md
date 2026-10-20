@@ -458,6 +458,11 @@ Flip a section from **Planned** or **In review** to **Works now** in the same pu
 makes it true — not afterwards. A manual that describes more than the system does is worse than no
 manual, because it is the one document a reader has no way to check against reality.
 
+When no single implementation story owns a manual catch-up, reconciliation or record correction,
+that maintenance is **P-lane planning work under D-052**. The P story owns bringing the manual back
+in step with `main`; it does not silently rewrite history or attribute late maintenance time to the
+story that originally shipped the behavior.
+
 When a section's behaviour is set by a decision, cite the decision number rather than restating its
 reasoning — the reasoning belongs in `docs/decisions.md` and drifts if copied.
 
