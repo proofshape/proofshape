@@ -226,7 +226,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Ready | _unclaimed_ |
+| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Claimed | @dalwalyk |
 | [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | G-01 | Blocked | _unclaimed_ |
 | [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
