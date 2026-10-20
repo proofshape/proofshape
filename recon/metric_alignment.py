@@ -242,6 +242,8 @@ def lift_board_corner_observations(
     corner_frame_index: np.ndarray,
     corner_id: np.ndarray,
     corner_px: np.ndarray,
+    preprocess_geometry: list[dict[str, Any]] | None = None,
+    board_pose_found: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Lift R-02 ChArUco detections through R-01 depth/cameras into reconstruction space.
 
@@ -263,6 +265,23 @@ def lift_board_corner_observations(
     corner_frame_index = np.asarray(corner_frame_index)
     corner_id = np.asarray(corner_id)
     corner_px = np.asarray(corner_px, dtype=np.float64)
+    found = (
+        np.ones(len(board_names), dtype=bool)
+        if board_pose_found is None
+        else np.asarray(board_pose_found, dtype=bool)
+    )
+    if found.shape != (len(board_names),):
+        raise ValueError("board_pose_found must have one value per board frame.")
+
+    geometry_by_name: dict[str, dict[str, Any]] = {}
+    if preprocess_geometry is not None:
+        for description in preprocess_geometry:
+            frame_name = str(description.get("frame_name", ""))
+            if not frame_name:
+                raise ValueError("Every preprocess_geometry entry needs a frame_name.")
+            if frame_name in geometry_by_name:
+                raise ValueError("preprocess_geometry frame names must be unique.")
+            geometry_by_name[frame_name] = description
 
     frame_count = len(names)
     if reconstruction_extrinsic.shape != (frame_count, 3, 4):
@@ -295,6 +314,8 @@ def lift_board_corner_observations(
         cid = int(corner_id[row])
         if cid < 0 or cid >= len(nominal_corners):
             raise ValueError("corner_id contains an out-of-range ChArUco corner id.")
+        if not found[board_frame_index]:
+            continue
         reconstruction_index = frame_index_by_name.get(board_names[board_frame_index])
         if reconstruction_index is not None:
             observations_by_frame.setdefault(reconstruction_index, []).append(row)
@@ -311,8 +332,46 @@ def lift_board_corner_observations(
             raise ValueError("board image dimensions must be positive.")
 
         pixels_full_res = corner_px[row_indices]
-        u = (pixels_full_res[:, 0] + 0.5) * processed_width / full_width - 0.5
-        v = (pixels_full_res[:, 1] + 0.5) * processed_height / full_height - 0.5
+        frame_name = names[frame_index]
+        description = geometry_by_name.get(frame_name)
+        if description is not None:
+            if description.get("supported_for_metric_alignment") is False:
+                raise ValueError(
+                    f"{frame_name}: recorded reconstruction preprocessing is not supported for "
+                    "metric alignment: "
+                    f"{description.get('unsupported_reason', 'unknown reason')}"
+                )
+            recorded_original = tuple(int(value) for value in description["original_size_hw"])
+            if recorded_original != (int(full_height), int(full_width)):
+                raise ValueError(
+                    f"{frame_name}: board image size {int(full_height)}x{int(full_width)} does "
+                    f"not match reconstruction preprocessing metadata {recorded_original}."
+                )
+            recorded_processed = tuple(
+                int(value) for value in description["processed_size_hw"]
+            )
+            if recorded_processed != (processed_height, processed_width):
+                raise ValueError(
+                    f"{frame_name}: preprocessing metadata says processed size "
+                    f"{recorded_processed}, but depth uses {(processed_height, processed_width)}."
+                )
+            scale_x = float(description["scale_x"])
+            scale_y = float(description["scale_y"])
+            crop_left = float(description.get("crop_left_px", 0))
+            crop_top = float(description.get("crop_top_px", 0))
+            u = (pixels_full_res[:, 0] + 0.5) * scale_x - 0.5 - crop_left
+            v = (pixels_full_res[:, 1] + 0.5) * scale_y - 0.5 - crop_top
+        else:
+            # Backward compatibility for pre-R-23 golden runs. Their stored frames are landscape
+            # and VGGT did not crop them vertically. A portrait/ambiguous legacy run must be
+            # regenerated so the exact resize/crop map is recorded rather than guessed.
+            if full_height >= full_width or processed_height >= processed_width:
+                raise ValueError(
+                    f"{frame_name}: reconstruction predates preprocess_geometry and is not a "
+                    "clearly uncropped landscape frame; rerun R-01 to record resize/crop metadata."
+                )
+            u = (pixels_full_res[:, 0] + 0.5) * processed_width / full_width - 0.5
+            v = (pixels_full_res[:, 1] + 0.5) * processed_height / full_height - 0.5
         in_bounds = (
             (u >= 0)
             & (u <= processed_width - 1)
@@ -383,6 +442,8 @@ def align_board_geometry(
     corner_frame_index: np.ndarray,
     corner_id: np.ndarray,
     corner_px: np.ndarray,
+    preprocess_geometry: list[dict[str, Any]] | None = None,
+    board_pose_found: np.ndarray | None = None,
 ) -> BoardAlignmentResult:
     """Solve reconstruction -> board-mm similarity directly from the in-scene printed board."""
     source, target, frame_of_point = lift_board_corner_observations(
@@ -396,6 +457,8 @@ def align_board_geometry(
         corner_frame_index,
         corner_id,
         corner_px,
+        preprocess_geometry,
+        board_pose_found,
     )
     scale, rotation, translation = solve_similarity(source, target)
     predicted = scale * (source @ rotation.T) + translation
@@ -492,6 +555,7 @@ def load_and_align(
 
     run = json.loads(run_path.read_text(encoding="utf-8"))
     processed_size_hw = tuple(int(value) for value in run["processed_image_size_hw"])
+    preprocess_geometry = run.get("preprocess_geometry")
     with np.load(poses_path) as reconstruction:
         reconstruction_names = [str(name) for name in reconstruction["frame_names"]]
         reconstruction_extrinsic = reconstruction["extrinsic"]
@@ -505,6 +569,7 @@ def load_and_align(
             "corner_frame_index",
             "corner_id",
             "corner_px",
+            "pose_found",
         )
         for key in required:
             if key not in board:
@@ -514,6 +579,7 @@ def load_and_align(
         corner_frame_index = board["corner_frame_index"]
         corner_id = board["corner_id"]
         corner_px = board["corner_px"]
+        board_pose_found = board["pose_found"]
 
     return align_board_geometry(
         reconstruction_names,
@@ -526,6 +592,8 @@ def load_and_align(
         corner_frame_index,
         corner_id,
         corner_px,
+        preprocess_geometry,
+        board_pose_found,
     )
 
 
