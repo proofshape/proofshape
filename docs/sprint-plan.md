@@ -69,19 +69,19 @@ Every column sums to that sprint’s capacity, and the whole table sums to 349. 
 
 The course requires a progress presentation every two weeks: what we did, and what moved. These are graded deliverables, so they are planned work, not something absorbed on the day.
 
-**Assumed cadence: every second Friday from 11 September.** Confirm the real dates with the instructor; if they shift, the content mapping below still holds, because each review shows whatever gate most recently cleared.
+**Actual cadence, re-anchored from the delivered class reviews:** Friday 18 September, then every second Friday. Progress Review 1 is dated 18 September 2026 and Progress Review 2 is dated 2 October 2026, so the earlier 11/25 September assumption is superseded (O-003, closed 2026-10-20). No separate written instructor message is stored in the repo; the delivered class-review artifacts are the evidence used here.
 
 | Review | Date | Position | What we demo |
 |---|---|---|---|
-| R1 | Fri Sep 11 | inside S1 | The spike: a 3D mesh built from real phone photos. Reconstruction engine chosen and why. |
-| R2 | Fri Sep 25 | **S1 boundary = M1** | Live end to end: phone → upload → 3D model in the browser. |
-| R3 | Fri Oct 9 | **S2 boundary = M2** | Guidance arrow driving capture; latency table; the live-vs-batch decision. |
-| R4 | Fri Oct 23 | inside S4 | Measured accuracy and σ_floor per reference tier. Registration on printed parts. *(2026-10-19: the board reference comes first, G-04; the sheet and card references are G-10. Neither exists yet, so R4 reports the plan, not a number.)* |
-| R5 | Fri Nov 6 | inside S5 | Live: a planted defect comes back as Fail with the region highlighted. |
-| R6 | Fri Nov 20 | inside S6 | Feature-complete walkthrough, including the pre-check and the Unverifiable path. |
-| R7 | Fri Dec 4 | **S7 boundary = M7** | Test results, the recorded demo, and what we would do next. |
+| R1 | Fri Sep 18 | inside S1 | The spike: a 3D mesh built from real phone photos. Reconstruction engine chosen and why. |
+| R2 | Fri Oct 2 | inside S2 | Live end to end: phone → upload → 3D model in the browser. |
+| R3 | Fri Oct 16 | **S3 boundary = M3** | Guidance arrow driving capture; latency table; the live-vs-batch decision. |
+| R4 | Fri Oct 30 | **S4 boundary = M4 · I3** | Measured accuracy and σ_floor per reference tier. Registration on printed parts. *(2026-10-19: the board reference comes first, G-04; the sheet and card references are G-10. Neither exists yet, so R4 reports the plan, not a number.)* |
+| R5 | Fri Nov 13 | **S5 boundary = M5** | Live: a planted defect comes back as Fail with the region highlighted. |
+| R6 | Fri Nov 27 | inside S6 | Feature-complete walkthrough, including the pre-check and the Unverifiable path. |
+| R7 | Fri Dec 11 | inside S8 | Test results, the recorded demo, and what we would do next. |
 
-**Why this cadence works.** Three reviews land exactly on sprint boundaries. The other four fall roughly a week *after* a gate closes, which is better than landing on one: we demo work that has been finished and tested for a few days rather than something that started working that morning. Every review in the table has a gate cleared within the preceding week, so there is never a review with nothing to show.
+**Why this cadence works.** Re-anchoring to the real class calendar moves reviews onto or just after recent sprint gates instead of preserving the obsolete 11/25 September assumption. The content rule is unchanged: each review shows the most recently completed, tested work rather than forcing a demo to match an outdated planning date.
 
 **The standing template.** Same four slides every time, so preparation is assembly rather than invention:
 
