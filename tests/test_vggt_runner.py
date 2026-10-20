@@ -6,6 +6,7 @@ import json
 import sys
 
 import numpy as np
+from PIL import Image
 import pytest
 
 from recon import frames, vggt_runner
@@ -130,6 +131,37 @@ def test_unproject_rejects_mismatched_shapes():
         vggt_runner.unproject_depth_to_world(
             depth, np.zeros((2, 3, 4)), np.zeros((1, 3, 3))
         )
+
+
+# --- VGGT preprocessing geometry -------------------------------------------------------------
+
+
+def test_describe_vggt_crop_preprocess_landscape_has_no_crop(tmp_path):
+    path = tmp_path / "landscape.jpg"
+    Image.new("RGB", (4032, 3024)).save(path)
+
+    [description] = vggt_runner.describe_vggt_crop_preprocess([path])
+
+    assert description["original_size_hw"] == [3024, 4032]
+    assert description["resized_size_hw"] == [392, 518]
+    assert description["crop_top_px"] == 0
+    assert description["processed_size_hw"] == [392, 518]
+    assert description["scale_x"] == pytest.approx(518 / 4032)
+    assert description["scale_y"] == pytest.approx(392 / 3024)
+
+
+def test_describe_vggt_crop_preprocess_portrait_records_center_crop(tmp_path):
+    path = tmp_path / "portrait.jpg"
+    Image.new("RGB", (1080, 1920)).save(path)
+
+    [description] = vggt_runner.describe_vggt_crop_preprocess([path])
+
+    assert description["original_size_hw"] == [1920, 1080]
+    assert description["resized_size_hw"] == [924, 518]
+    assert description["crop_top_px"] == 203
+    assert description["processed_size_hw"] == [518, 518]
+    assert description["scale_x"] == pytest.approx(518 / 1080)
+    assert description["scale_y"] == pytest.approx(924 / 1920)
 
 
 # --- frames_chw_to_hwc ---------------------------------------------------------------------
