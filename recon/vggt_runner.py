@@ -87,11 +87,7 @@ def describe_vggt_crop_preprocess(frame_paths: list[Path]) -> list[dict[str, Any
 
         resized_width = VGGT_TARGET_WIDTH_PX
         resized_height = int(
-            round(
-                original_height
-                * (resized_width / original_width)
-                / VGGT_MULTIPLE_PX
-            )
+            round(original_height * (resized_width / original_width) / VGGT_MULTIPLE_PX)
             * VGGT_MULTIPLE_PX
         )
         resized_height = max(VGGT_MULTIPLE_PX, resized_height)
