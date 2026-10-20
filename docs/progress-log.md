@@ -1224,7 +1224,7 @@ starts, since that is where a method mistake becomes a wrong number.
 
 
 
-## 2026-10-20 — P-20 midterm deck corrected to the 15 October cutoff (PR #nnn)
+## 2026-10-20 — P-20 midterm deck corrected to the 15 October cutoff (PR #165)
 
 **Who:** @TabeenRaoof. Follows the same correction made to P-21's midterm report (PR #160)
 earlier the same day, applied to the deck.
