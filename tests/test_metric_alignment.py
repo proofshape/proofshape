@@ -237,7 +237,6 @@ def test_board_anchor_rejects_too_few_usable_corners() -> None:
         )
 
 
-
 def _identity_preprocess_geometry(
     frame_names: list[str], height: int = 400, width: int = 400
 ) -> list[dict[str, object]]:
@@ -358,9 +357,7 @@ def test_board_anchor_recovers_nontrivial_similarity() -> None:
     # Start from an exact board-space synthetic reconstruction, then express all geometry in
     # another reconstruction frame related by x_board = s * (R @ x_recon) + t.
     expected_scale = 2.5
-    expected_rotation = np.array(
-        [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
-    )
+    expected_rotation = np.array([[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
     expected_translation = np.array([40.0, -25.0, 12.0])
 
     # x_board = s * (R_similarity @ x_recon) + t_similarity. Substituting into
@@ -371,9 +368,7 @@ def test_board_anchor_recovers_nontrivial_similarity() -> None:
     for frame_index in range(len(frame_names)):
         board_rotation = reconstruction_extrinsic[frame_index, :, :3]
         board_translation = reconstruction_extrinsic[frame_index, :, 3]
-        transformed_extrinsic[frame_index, :, :3] = (
-            board_rotation @ expected_rotation
-        )
+        transformed_extrinsic[frame_index, :, :3] = board_rotation @ expected_rotation
         transformed_extrinsic[frame_index, :, 3] = (
             board_rotation @ expected_translation + board_translation
         ) / expected_scale
@@ -411,10 +406,11 @@ def test_board_anchor_ignores_frames_without_trusted_board_pose() -> None:
         corner_frame_index,
         corner_id,
         corner_px,
-    ) = _synthetic_board_alignment_inputs()
+    ) = _synthetic_board_alignment_inputs(corner_ids=range(15))
 
-    # Corrupt frame c completely. If pose_found is honoured, those 12 corners are excluded and
-    # the remaining two frames still recover the exact identity alignment.
+    # Corrupt frame c completely. If pose_found is honoured, those 15 corners are excluded and
+    # the remaining two trusted frames still provide the required 30 observations and recover
+    # the exact identity alignment.
     depth[2] = 9999.0
     result = align_board_geometry(
         frame_names,
@@ -432,7 +428,7 @@ def test_board_anchor_ignores_frames_without_trusted_board_pose() -> None:
     )
 
     assert result.frame_count == 2
-    assert result.observation_count == 24
+    assert result.observation_count == 30
     assert result.scale == pytest.approx(1.0, abs=1e-6)
 
 
