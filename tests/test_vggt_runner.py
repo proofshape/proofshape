@@ -6,8 +6,8 @@ import json
 import sys
 
 import numpy as np
-from PIL import Image
 import pytest
+from PIL import Image
 
 from recon import frames, vggt_runner
 
