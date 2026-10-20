@@ -41,9 +41,11 @@ from typing import Any
 
 import cv2
 import numpy as np
+
 from recon.board_pose import MIN_CORNERS_FOR_POSE
 from recon.camera_intrinsics import CalibrationFailure, rescale_vggt_intrinsic
 from recon.metric_alignment import (
+    align_camera_centres,
     apply_similarity_transform,
     lift_board_corner_observations,
     solve_similarity,
@@ -597,12 +599,15 @@ class _RunBundle:
     depth: np.ndarray  # (S,H,W) R-01's arbitrary-scale depth
     depth_conf: np.ndarray  # (S,H,W)
     processed_size_hw: tuple[int, int]
+    preprocess_geometry: list[dict[str, Any]] | None
     alignment_scale: float
     alignment_rotation: np.ndarray
     alignment_translation_mm: np.ndarray
     board_frame_names: list[str]
     board_image_size_hw: np.ndarray  # (S2,2) full-resolution sensor pixels
     board_intrinsic: np.ndarray  # (S2,3,3) the K R-02 actually posed each frame with
+    board_extrinsic: np.ndarray  # (S2,3,4) camera-from-board in millimetres
+    board_pose_found: np.ndarray  # (S2,) R-02 trusted pose mask
     corner_frame_index: np.ndarray  # (C,) index into board_frame_names
     corner_id: (
         np.ndarray
@@ -638,6 +643,8 @@ def load_bundle(recon_run_dir: Path, board_pose_dir: Path) -> _RunBundle:
         board_frame_names = [str(name) for name in board["frame_names"]]
         board_image_size_hw = board["image_size_hw"]
         board_intrinsic = board["intrinsic"].astype(np.float64)
+        board_extrinsic = board["extrinsic"].astype(np.float64)
+        board_pose_found = board["pose_found"].astype(bool)
         corner_frame_index = board["corner_frame_index"]
         corner_id = board["corner_id"]
         corner_px = board["corner_px"]
@@ -652,6 +659,7 @@ def load_bundle(recon_run_dir: Path, board_pose_dir: Path) -> _RunBundle:
         depth=depth,
         depth_conf=depth_conf,
         processed_size_hw=processed_size_hw,
+        preprocess_geometry=run_info.get("preprocess_geometry"),
         alignment_scale=float(alignment["scale"]),
         alignment_rotation=np.array(alignment["rotation"], dtype=np.float64),
         alignment_translation_mm=np.array(
@@ -660,6 +668,8 @@ def load_bundle(recon_run_dir: Path, board_pose_dir: Path) -> _RunBundle:
         board_frame_names=board_frame_names,
         board_image_size_hw=board_image_size_hw,
         board_intrinsic=board_intrinsic,
+        board_extrinsic=board_extrinsic,
+        board_pose_found=board_pose_found,
         corner_frame_index=corner_frame_index,
         corner_id=corner_id,
         corner_px=corner_px,
@@ -706,14 +716,13 @@ class BoardScaleResult:
     focal_ratio_board_over_vggt: float
 
 
-def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
-    """Measure the reconstructed board after the current metric transform.
-
-    R-23 shares the lifting primitive with metric alignment itself.  This function deliberately
-    remains a *diagnostic*: it applies the already-written alignment, then asks how large the
-    reconstructed board is relative to its exact nominal geometry.  A correct R-23 output should
-    therefore report a scale near 1.0 without this function correcting anything itself.
-    """
+def _measure_board_scale_after_transform(
+    bundle: _RunBundle,
+    scale_to_board: float,
+    rotation_to_board: np.ndarray,
+    translation_to_board_mm: np.ndarray,
+) -> BoardScaleResult:
+    """Measure nominal-vs-reconstructed board size after one supplied metric transform."""
     recon_points, nominal_points, frame_of_point = lift_board_corner_observations(
         bundle.frame_names,
         bundle.poses_extrinsic,
@@ -725,18 +734,17 @@ def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
         bundle.corner_frame_index,
         bundle.corner_id,
         bundle.corner_px,
+        bundle.preprocess_geometry,
+        bundle.board_pose_found,
     )
-
     recon_points_board = apply_similarity_transform(
         recon_points,
-        bundle.alignment_scale,
-        bundle.alignment_rotation,
-        bundle.alignment_translation_mm,
+        scale_to_board,
+        rotation_to_board,
+        translation_to_board_mm,
     )
-    # Keep R-22's historical convention: solve nominal -> reconstructed, so scale < 1 means
-    # the board (and therefore the reconstructed scene) is smaller than its true printed size.
     scale, rotation, translation = solve_similarity(nominal_points, recon_points_board)
-    predicted = scale * (nominal_points @ rotation.T) + translation
+    predicted = apply_similarity_transform(nominal_points, scale, rotation, translation)
     residuals = np.linalg.norm(predicted - recon_points_board, axis=1)
 
     per_frame_scales: list[float] = []
@@ -762,7 +770,7 @@ def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
     for frame_index in matched_frames:
         frame_name = str(bundle.frame_names[frame_index])
         board_frame_index = board_index_by_name.get(frame_name)
-        if board_frame_index is None:
+        if board_frame_index is None or not bundle.board_pose_found[board_frame_index]:
             continue
         full_height, full_width = bundle.board_image_size_hw[board_frame_index]
         rescaled = rescale_vggt_intrinsic(
@@ -803,6 +811,37 @@ def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
     )
 
 
+def measure_legacy_camera_centre_board_scale(bundle: _RunBundle) -> BoardScaleResult:
+    """Preserve R-22 independent diagnostic using the pre-R-23 camera-centre transform."""
+    legacy = align_camera_centres(
+        bundle.frame_names,
+        bundle.poses_extrinsic,
+        bundle.board_frame_names,
+        bundle.board_extrinsic,
+        bundle.board_pose_found,
+    )
+    return _measure_board_scale_after_transform(
+        bundle,
+        legacy.scale,
+        legacy.rotation,
+        legacy.translation,
+    )
+
+def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
+    """Measure the reconstructed board after R-23 current board-anchored transform.
+
+    This is the explicit R-23 acceptance measurement: after anchoring on the board, report what
+    board scale remains. It is expected to be near 1.0, but is not an independent detector of
+    uniform scale error. measure_legacy_camera_centre_board_scale preserves the independent
+    pre-R-23 diagnostic for that purpose.
+    """
+    return _measure_board_scale_after_transform(
+        bundle,
+        bundle.alignment_scale,
+        bundle.alignment_rotation,
+        bundle.alignment_translation_mm,
+    )
+
 # --- Orchestration and CLI ----------------------------------------------------------------------
 
 
@@ -819,6 +858,7 @@ def build_report(
     """
     bundle = load_bundle(recon_run_dir, board_pose_dir)
     board_scale = measure_board_scale(bundle)
+    legacy_board_scale = measure_legacy_camera_centre_board_scale(bundle)
     report: dict[str, Any] = {
         "story": "R-22",
         "recon_run_dir": str(recon_run_dir),
@@ -842,6 +882,22 @@ def build_report(
                 "pixel frame). R-22 used that ratio to diagnose the old camera-centre anchor; "
                 "R-23 no longer uses it to set metric scale. Not a tolerance or accuracy claim "
                 "(D-003)."
+            ),
+        },
+        "legacy_camera_centre_board_scale": {
+            "scale": legacy_board_scale.scale,
+            "rms_residual_mm": legacy_board_scale.rms_residual_mm,
+            "observation_count": legacy_board_scale.observation_count,
+            "frame_count": legacy_board_scale.frame_count,
+            "per_frame_scale_median": legacy_board_scale.per_frame_scale_median,
+            "per_frame_scale_min": legacy_board_scale.per_frame_scale_min,
+            "per_frame_scale_max": legacy_board_scale.per_frame_scale_max,
+            "focal_ratio_board_over_vggt": legacy_board_scale.focal_ratio_board_over_vggt,
+            "note": (
+                "Independent historical R-22 diagnostic: the same reconstructed board is "
+                "measured after the legacy camera-centre transform, not R-23's board anchor. "
+                "This preserves visibility into the focal-length-driven scale error that "
+                "motivated R-23."
             ),
         },
     }
