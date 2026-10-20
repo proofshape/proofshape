@@ -1200,3 +1200,24 @@ enough. Not done: @dalwalyk's suggestion to add a manual line to the PR template
 the merged branch. P-23 moved from Blocked to Ready.
 **Next:** when #146 (C-13) merges, it flips the manual's eight **In review (C-13, PR #146)**
 lines to Works now. P-23 (refresh the sprint plan; point the manual at D-052) is up for grabs.
+
+
+
+## 2026-10-18 — P-24 ground-truth lane written up (G-01..G-09)
+
+**Who:** @TabeenRaoof (PR #156). The claim, #155, was reviewed by @dalwalyk, who caught that
+G-06..G-09 had no named scope until the claim listed them.
+**What changed:** the G lane was five titles. It now has nine stories in a new Ground truth
+section of `stories/README.md`, in critical-path order toward σ_floor: printer characterisation
+on the SFBU lab printer, a specimen batch the size check can measure, calipering, error and
+σ_floor for the board reference, the 2/4/8 mm defect ladder, calipering the golden-set parts and
+the board sheet, the reliability curve that sets `k`, and photographing the batch and the ladder
+as fixture sets. Every story measures against calipered prints, not CAD, and writes its method
+down before measuring. `fixtures/README.md` defines the caliper-reading file they all write.
+G-10 (sheet and card references) and G-11 (robustness set) stay titles-only.
+**Result:** G-01 is Ready, G-06 is Claimed by @TabeenRaoof, and the other seven are Blocked. The
+checker is consistent and `--fix` changes nothing. There's no code and no new decision. P-24
+closed at 2.5 h actual, including the review round (no estimate was made before the work).
+**Next:** G-01 (book the lab) and G-06 (caliper s-04, s-05 and the board sheet) can start now.
+G-04 waits on R-23 (#152). Its PR, and G-07's, should get both reviewers before any measuring
+starts, since that is where a method mistake becomes a wrong number.

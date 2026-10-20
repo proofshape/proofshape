@@ -191,6 +191,53 @@ so this is behind schedule, not early.
 
 ---
 
+## Ground truth
+
+The second slice of Phase 3 written up early, because σ_floor is the next step on the critical
+path: "provenance and σ → σ_floor measured → verdict logic → accuracy runs → freeze"
+(`docs/sprint-plan.md` §3). Provenance and σ are done (R-09, R-10). Every tolerance the verdict
+uses waits on this lane, and so does R-16. Printing is on the SFBU lab printer (G-01).
+
+**The measured print is truth, not the CAD.** FDM drifts by a few tenths of a millimetre
+(proposal §12), so every comparison is against caliper readings of the actual printed part, never
+against the CAD's nominal sizes.
+
+**How every story here measures:**
+- **Method first.** Write the method down before measuring, then report what was measured,
+  including a negative result. No tolerance and no `k` without a measurement behind it (D-003;
+  R-04's reverted tolerance is the precedent).
+- **Calipers, PR #35's protocol, matched to `measure_prism`.** Name each feature by its CAD vertex
+  pair. Read at mid-height, away from the first-layer flare, because `measure_prism` fits edges
+  from the 0.3–0.7 h band. Read across parallel faces for rectangles and corner to corner for
+  triangles. For a square footprint, record which way each wall faced on the board. Take 10
+  placements and give the mean, min, max and standard deviation. State the resolution, and say
+  "no accuracy spec" where the instrument has none.
+- **Where readings go.** One file per story, `fixtures/caliper_<id>.json`, in the format in
+  `fixtures/README.md`. `tests/test_caliper_files.py` (G-06) checks every such file; a readings
+  file that lands before G-06 is checked against that format by hand, and the test covers it
+  from then on. Photographs are never committed.
+- **Where code goes.** `recon/cad_size_check.py` is extended rather than `inspect/` started, since
+  D-030 leaves `inspect/`'s import name to I-01.
+- **Naming.** Say "the board reference", "the sheet reference", "the card reference", never
+  "tier 1/2/3": *Tier* also means how essential a feature is (D-001), and the two collide. The
+  glossary's Reference sheet entry gives both names.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Ready | _unclaimed_ |
+| [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | G-01 | Blocked | _unclaimed_ |
+| [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
+| [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
+| [G-05](G/G-05.md) | Defect ladder at 2 / 4 / 8 mm | 4 h | G-01 | Blocked | _unclaimed_ |
+| [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Claimed | @TabeenRaoof |
+| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
+| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Blocked | _unclaimed_ |
+| [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
+
+---
+
 ## The chain that sets the date
 
 Total work is 93 hours, and at 27 hours a week across three people that looks like three and a half weeks. It is not, because much of this work cannot be done in parallel.
@@ -208,6 +255,19 @@ Two consequences worth acting on:
 **The September 25 milestone is tight.** A working endpoint needs about 40 hours of that chain, which is roughly four and a half weeks from a September 3 start. That lands in early October, not late September. The milestone is reachable if the chain never stalls, and it is the first thing to slip if it does. We are leaving the date as it stands for now and will revisit at the second sprint boundary with real velocity numbers rather than estimates.
 
 The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16, R-17, R-18, R-19 — are where the other two people work while the chain advances. There is enough of that work to keep everyone busy, which is the point of laying the backlog out this way.
+
+**Since 2026-10-18 the chain that sets the date runs through ground truth.** Everything above
+describes Phases 1–2 as written in September: the 93 hours and the F-02 → R-15 chain, which is
+now done. The sprint plan's critical path (§3) continues "provenance and σ → σ_floor measured →
+verdict logic → accuracy runs → freeze", and provenance and σ are done. The new serial run is:
+
+> G-01 → G-02 → G-08 → G-04 → verdict logic (I-07)
+
+G-01 3 h, G-02 4 h, G-08 4 h and G-04 6 h are about 17 hours one after another. Three things
+join it without lengthening it if they're done in time: G-06 (calipering the board sheet, 1.5 h)
+must finish before G-08 shoots on that sheet, G-03 runs beside G-08, and G-04 also waits on R-23
+(#152). G-05, G-07 and G-09 are off the chain. The rule above applies unchanged: whoever holds a
+chain story hands it off the same day if stuck.
 
 ---
 
@@ -256,7 +316,7 @@ Full detail in each story file.
 | [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
 | [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
 | [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Ready | _unclaimed_ |
-| [P-24](P/P-24.md) | Write up the ground-truth lane | — | nothing | Claimed | @TabeenRaoof |
+| [P-24](P/P-24.md) | Write up the ground-truth lane | — | nothing | Done | @TabeenRaoof |
 | [P-25](P/P-25.md) | Write up the inspection lane | — | nothing | Claimed | @TabeenRaoof |
 
 ---
@@ -265,8 +325,9 @@ Full detail in each story file.
 
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
-The thin capture thread (C-01–C-13) is the one exception — it's written up above, not here, since
-it's meant to run early rather than wait for a sprint boundary.
+The thin capture thread (C-01–C-13) and ground truth (G-01–G-09) are the exceptions — both are
+written up above, not here: the capture thread is meant to run early, and ground truth sits on the
+critical path, so neither can wait for a sprint boundary.
 
 **Capture app**
 C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF with order code · C-18 device testing
@@ -275,7 +336,7 @@ C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF
 I-01 synthetic mesh generator · I-02 CAD loading · I-03 global registration · I-04 robust ICP · I-05 symmetry ambiguity check · I-06 deviation computation · I-07 verdict logic · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
 
 **Ground truth**
-G-01 printer characterisation · G-02 specimen batch · G-03 caliper measurement · G-04 noise floor per tier · G-05 defect ladder
+G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)
 
 **Generative AI**
 A-01 VLM frame supervision · A-02 VLM verdict veto · A-03 prose-to-spec parser · A-04 shape completion integration · A-05 disagreement map · A-06 agent tool definitions · A-07 agent loop · A-08 deterministic fallback · A-09 report narrative
