@@ -76,7 +76,7 @@ The course requires a progress presentation every two weeks: what we did, and wh
 | R1 | Fri Sep 11 | inside S1 | The spike: a 3D mesh built from real phone photos. Reconstruction engine chosen and why. |
 | R2 | Fri Sep 25 | **S1 boundary = M1** | Live end to end: phone → upload → 3D model in the browser. |
 | R3 | Fri Oct 9 | **S2 boundary = M2** | Guidance arrow driving capture; latency table; the live-vs-batch decision. |
-| R4 | Fri Oct 23 | inside S4 | Measured accuracy and σ_floor per reference tier. Registration on printed parts. |
+| R4 | Fri Oct 23 | inside S4 | Measured accuracy and σ_floor per reference tier. Registration on printed parts. *(2026-10-19: the board reference comes first, G-04; the sheet and card references are G-10. Neither exists yet, so R4 reports the plan, not a number.)* |
 | R5 | Fri Nov 6 | inside S5 | Live: a planted defect comes back as Fail with the region highlighted. |
 | R6 | Fri Nov 20 | inside S6 | Feature-complete walkthrough, including the pre-check and the Unverifiable path. |
 | R7 | Fri Dec 4 | **S7 boundary = M7** | Test results, the recorded demo, and what we would do next. |
@@ -252,7 +252,7 @@ Calendar events, not intentions. All other work stops.
 ### S3 · Ground truth — Oct 12–16 — 24 h
 - **Capture (7 h):** observed/unobserved coloring; report page skeleton.
 - **Reconstruction (7 h):** fusion fixes from I2; frame-count tuning; **integrate the generative completion model and run the first K samples**.
-- **Inspection (13 h):** caliper 5–8 printed parts; error and σ_floor per reference tier; print the defect ladder (2 / 4 / 8 mm).
+- **Inspection (13 h):** caliper 5–8 printed parts; error and σ_floor per reference tier; print the defect ladder (2 / 4 / 8 mm). *(2026-10-19: now G-01..G-09. σ_floor for the board reference is G-04; the sheet and card references are G-10, after the S5 sheet and card tiers exist.)*
 - **Gate M3:** σ_floor is a measured number. Every demo tolerance is set from it; anything below it is declared Unverifiable rather than attempted.
 
 ### S4 · Inspection — Oct 19–30 — 48 h

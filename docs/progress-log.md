@@ -1062,3 +1062,162 @@ next touches `service.py`'s pipeline. Two process notes:
   unaffected.
 - On macOS, `pytest tests/test_vggt_runner.py tests/test_tsdf_fusion.py`, in that order, segfaults
   natively. That is pre-existing; the full suite passes.
+
+
+
+## 2026-10-15 — C-12 observed/unobserved colouring (reviewed)
+
+**Who:** @mbj1994 (PR #142), reviewed by @TabeenRaoof; changes requested.
+**What changed:** nothing merged yet. The PR remaps `recon/provenance.py`'s baked white/grey
+vertex colours to a display palette. It adds a legend with a reserved Inferred slot, plus a
+drift-guard test against the Python constants. Codex's colour-space comment was already fixed in
+0ef1ba6.
+**Result:** CI (pytest, typescript, ruff) green on head 775519b; 12 inline comments, three
+blocking:
+- `write_glb` emits no material, so GLTFLoader's default `metalness: 1` likely renders the palette
+  near-black on faces away from the key light. This comes from reading three r180 and GLTFLoader;
+  nobody has seen it on a device yet.
+- The in-place remap is not idempotent: a geometry shared by two meshes turns entirely magenta.
+  Reproduced with three 0.180.
+- `remapModelProvenanceColors` has no tests.
+
+The story's required one-line legibility addition to C-11's device check is also missing.
+**Concluded:** the colour mapping and the drift guard are correct. The rendering path around them
+has not been checked on a device, so the palette can't be called legible until the device check
+the story already asks for is run.
+**Next:** the author addresses the blocking comments, runs the device check, and re-requests
+review. C-12 already shows Done on its branch (D-038); its actual hours need updating to include
+the extra work.
+
+
+
+## 2026-10-16 — F-01, R-13 and R-15 actual hours recorded
+
+**Who:** @TabeenRaoof, owner of all three.
+**What changed:** the three completion records had been closed as `<n> h actual` because only the
+owner could supply the number. Now filled in by the owner: F-01 2 h (est 2), R-13 3.5 h (est 3),
+R-15 5 h (est 4). The "left blank" notes in R-13 and R-15 now say who filled them in and when;
+the earlier entries here that say "left blank" stay as they were.
+**Next:** three Done stories still show `<n> h actual` for their owners to fill in: F-04 and R-01
+(@dalwalyk), and R-03 (@mbj1994).
+
+
+
+## 2026-10-16 — C-08 next-view scoring merged (PR #144)
+
+**Who:** @TabeenRaoof, reviewed and approved by @dalwalyk.
+**What changed:**
+- New `recon/next_view.py` generates candidate camera views on a hemisphere over the part:
+  25–40 cm, at most 60° from vertical, 147 by default, every limit and density an overridable
+  constant. It scores each view by how many under-observed vertices it would see unoccluded,
+  using Open3D `RaycastingScene` on the CPU, and ranks them best first.
+- "Under-observed" is R-09's `Unobserved` after R-10's downgrade, reused through R-09's own
+  constants rather than redefined.
+- The hemisphere is centred on the part's footprint, not the board's corner origin, which is
+  ~100 mm from the board's centre.
+- Ties on the count break on how square-on the view is. A thin CLI reads R-10's
+  `mesh_uncertainty.glb`.
+- Open3D 0.18.0 is now pinned in `requirements.txt` (D-047), so the tests run in CI. Because of
+  that, R-07's "Open3D not installed" test fakes the missing import instead of skipping, and
+  R-07's Poisson test now runs in CI.
+
+**Result:**
+- Tests: all three of the story's synthetic tests pass. Full suite 463 passed, 0 skipped, on
+  macOS and on Linux CI.
+- Dependency cost: CI's install step went from 22 s to 55 s.
+- Speed: on synthetic spheres, a full 147-candidate scoring run took 0.33 s at 45k vertices, and
+  the raycasting alone ~1 s at 179k. That's one laptop, not a golden-object figure.
+- Review: three non-blocking findings. Two were fixed before merge: defaults recomputed when
+  overrides are given, and equal radii producing duplicate candidates. The third, batching the
+  raycasts, was measured to make no difference and left as is.
+- C-08 closed at 4 h actual against a 4 h estimate.
+
+**Not confirmed:** no review or PR record says C-08 was run on a second member's machine from a
+clean checkout. That box on PR #144's checklist was never ticked. A clean-venv install on the
+author's machine and Linux CI both passed, but neither is the same check.
+**Next:**
+- Nothing has been run on a real golden object yet: there are no local R-10 outputs, and making
+  them needs the GPU pipeline.
+- Wiring the scorer into C-07's arrow is still a step no story owns.
+
+Process note: `main` requires branches to be up to date, and it moved twice after the
+re-approval, before C-08 could merge. Both times, updating the branch through GitHub (a merge of `main` that left the PR's own diff
+unchanged) kept the existing approval rather than dismissing it.
+
+
+
+## 2026-10-17 — P-22 planning lane: planning work gets stories (D-052)
+
+**Who:** @TabeenRaoof (PR #153).
+**What changed:** a P (Planning) lane, so planning, backlog, document and review work gets stories
+and actual hours the way code does. D-052 sets the boundary: a story's own claim, close-out,
+log entry and follow-up stories stay in that story's hours; P takes the work no single story owns,
+plus work on someone else's story after it merged. `check_story_states.py` now accepts `—` as the
+estimate for past work that never had one, and still rejects anything else that isn't `<number> h`.
+**Result:** 23 P stories. P-01..P-19 record past work, from the 2026-09-05 proposal to the 2 Oct
+review: 18 `Done`, plus P-17 (the manual refresh, #149) `In review`. P-20 and P-21 (midterm deck
+and report) are claimed, P-22 is this PR, and P-23 (refresh the sprint plan) is Blocked until
+P-17 is `Done`, since its manual pointer waits for #149. Every past
+actual is `<n> h actual` until its owner fills it in. P-22 itself closed at 1 h actual (est 3).
+Full suite 475 passed, 0 skipped after merging `main`. The checker has twelve new test cases.
+Six failed before their fix: `—` read as an estimate on a P story, `.. h` and `. h` rejected,
+and `—` reported on an F, R or C story. The other six are guards that passed before and after:
+`-`, a blank and `TBD` are still rejected, and `2.5 h`, `10 h` and `3h` are still read.
+**Review:** @mbj1994 requested changes. P-22's actual hours were filled in. `AGENTS.md`'s
+definition of done now points to D-052 in this PR instead of waiting for P-23. @mbj1994 confirmed
+their own name on P-01 and P-21. Also fixed: P-20's estimate became `—`, because it was set two
+days into the work, and D-052's D-028 note was rechecked after D-047 merged.
+@dalwalyk then requested changes (2026-10-17). This entry had called P-23 Ready when the index
+says Blocked, and the story template gave no cue for `—`; both are fixed. A follow-up comment
+found that the estimate pattern read `.. h` as an estimate, a gap since before this PR. The
+pattern now needs a digit, with tests. `stories/README.md` now points to `AGENTS.md` for the two
+P-lane exceptions rather than restating them. A second round from @dalwalyk the same day
+found two more problems, both fixed. The checker read `—` on any lane, though D-052 allows it
+only for P stories; a `—` elsewhere is now reported. And this entry's dates disagreed with
+P-22's record, because a UTC date had slipped in. All dates are now 2026-10-17, local time.
+**Next:** owners fill in their hours, and @dalwalyk confirms or removes their name on P-01, P-14
+and P-21. #149 carries P-17's `Done` commit before it merges, which unblocks P-23.
+
+
+
+## 2026-10-17 — P-17 operating manual refresh (PR #149)
+
+**Who:** @TabeenRaoof. Reviewed by @dalwalyk and @mbj1994.
+**What changed:** `docs/manual.md` had not changed since 2026-09-25. Each section's status now
+matches `main`, with a new **In review** status for work that exists only in an open pull request
+(today, C-13 in #146). Supplier capture (§5) and the result viewer (§8.1) are Works now against
+the mock service. A new §0 says which README to use to run the app or the service. §9 lists the
+codes the phone and the service actually return today, including that `vlm_veto` currently means
+a malformed upload. §7 and §10 state the measured 4–9% scale error (R-22) and say not to read
+dimensions off a model until R-23 lands. `AGENTS.md`'s repo map now lists the manual.
+**Review:** both reviewers requested changes on the first version, and all three findings were
+fixed. §9 gained `session_not_found` and `session_already_finished`. Its order-code row no
+longer says only the mock checks codes, since the real service rejects a blank one. §5 no longer
+calls C-08 In review after #144 merged. @dalwalyk re-checked the technical claims against the
+code and approved. @mbj1994's change request was dismissed as addressed, since one approval is
+enough. Not done: @dalwalyk's suggestion to add a manual line to the PR template.
+**Result:** P-17 closed at 1 h actual (no estimate, D-052). Docs only; full suite 475 passed on
+the merged branch. P-23 moved from Blocked to Ready.
+**Next:** when #146 (C-13) merges, it flips the manual's eight **In review (C-13, PR #146)**
+lines to Works now. P-23 (refresh the sprint plan; point the manual at D-052) is up for grabs.
+
+
+
+## 2026-10-18 — P-24 ground-truth lane written up (G-01..G-09)
+
+**Who:** @TabeenRaoof (PR #156). The claim, #155, was reviewed by @dalwalyk, who caught that
+G-06..G-09 had no named scope until the claim listed them.
+**What changed:** the G lane was five titles. It now has nine stories in a new Ground truth
+section of `stories/README.md`, in critical-path order toward σ_floor: printer characterisation
+on the SFBU lab printer, a specimen batch the size check can measure, calipering, error and
+σ_floor for the board reference, the 2/4/8 mm defect ladder, calipering the golden-set parts and
+the board sheet, the reliability curve that sets `k`, and photographing the batch and the ladder
+as fixture sets. Every story measures against calipered prints, not CAD, and writes its method
+down before measuring. `fixtures/README.md` defines the caliper-reading file they all write.
+G-10 (sheet and card references) and G-11 (robustness set) stay titles-only.
+**Result:** G-01 is Ready, G-06 is Claimed by @TabeenRaoof, and the other seven are Blocked. The
+checker is consistent and `--fix` changes nothing. There's no code and no new decision. P-24
+closed at 2.5 h actual, including the review round (no estimate was made before the work).
+**Next:** G-01 (book the lab) and G-06 (caliper s-04, s-05 and the board sheet) can start now.
+G-04 waits on R-23 (#152). Its PR, and G-07's, should get both reviewers before any measuring
+starts, since that is where a method mistake becomes a wrong number.
