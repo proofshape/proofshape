@@ -111,6 +111,7 @@ def describe_vggt_crop_preprocess(frame_paths: list[Path]) -> list[dict[str, Any
         )
     return descriptions
 
+
 def choose_dtype_name(
     device_type: str, compute_capability: tuple[int, int] | None
 ) -> str:
