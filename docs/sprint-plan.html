@@ -1127,7 +1127,7 @@ footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font
 <section>
   <div class="sec-head"><span class="num">09</span><h2>Stories</h2></div>
   <div class="finding">
-    <p><strong>Backend first.</strong> The reconstruction engine &mdash; photographs in, metric 3D model out &mdash; is built before the other layers, so the hardest risk is retired before anything is built on top of it. The full backlog lives in <span class="file">proofshape_stories.md</span>: 22 stories written out for foundations and the engine, 93 hours, with everything after that left as titles until its sprint planning.</p>
+    <p><strong>Backend first.</strong> The reconstruction engine &mdash; photographs in, metric 3D model out &mdash; is built before the other layers, so the hardest risk is retired before anything is built on top of it. The live backlog now lives under <span class="file">stories/</span>, indexed by <span class="file">stories/README.md</span>. The earlier <span class="file">proofshape_stories.md</span> / 22 stories / 93 hours description is a superseded planning snapshot; the backlog has since expanded and is maintained through the story process, including the P planning lane from D-052.</p>
   </div>
 
   <div class="cols">
@@ -1154,9 +1154,9 @@ footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font
 
   <div class="warn-box" style="margin-top:22px;">
     <h3 style="margin-bottom:9px;">The chain sets the date, not the hour total</h3>
-    <p>Ninety-three hours across three people at 27 hours a week looks like three and a half weeks. It is not. About <b>42 of those hours can only run one story after another</b>, and a serial chain advances at one person&rsquo;s pace no matter how many people are free:</p>
+    <p>The original planning snapshot put 93 hours in the first two phases, with about <b>42 serial hours</b>. Those figures are retained here as historical planning context, not as the current backlog total. A serial chain still advances at one person&rsquo;s pace no matter how many people are free:</p>
     <pre class="code" style="margin:12px 0;">F-02 &rarr; F-07 &rarr; R-01 &rarr; R-04 &rarr; R-06 &rarr; R-07 &rarr; R-08 &rarr; R-14 &rarr; R-15</pre>
-    <p>That is roughly <b>five weeks</b>. Adding a third person does not shorten it. Two consequences: the chain is always somebody&rsquo;s top priority and gets handed off the same day if its owner stalls; and the September 25 milestone is tight, since a working endpoint needs about 40 hours of that chain. We leave the date as it stands and revisit at the second sprint boundary with real velocity rather than estimates.</p>
+    <p>The planning lesson still holds: adding a third person does not shorten serial work. The chain is always somebody&rsquo;s top priority and gets handed off the same day if its owner stalls; current status and estimates belong in <span class="file">stories/README.md</span>, not in a frozen count here.</p>
   </div>
 
   <p class="note" style="margin-top:16px;">The off-chain stories &mdash; board detection, intrinsics, the scale check, provenance, uncertainty, both fallback backbones and the latency table &mdash; are where the other two people work while the chain advances. There is enough of that to keep everyone busy, which is the point of laying the backlog out this way. <b>Three stories have no dependencies at all</b> and are the ones to start on day one, one each: the public repository, the GPU pod, and the golden capture set.</p>
