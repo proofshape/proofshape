@@ -1222,7 +1222,7 @@ closed at 2.5 h actual, including the review round (no estimate was made before 
 G-04 waits on R-23 (#152). Its PR, and G-07's, should get both reviewers before any measuring
 starts, since that is where a method mistake becomes a wrong number.
 
-## 2026-10-20 — P-21 midterm report opened for review (PR #nn)
+## 2026-10-20 — P-21 midterm report opened for review (PR #160)
 
 **Who:** @TabeenRaoof, drafted with Claude; review requested from @dalwalyk and @mbj1994.
 **What changed:** the midterm report draft (started locally 2026-10-16) lands in the repository,
