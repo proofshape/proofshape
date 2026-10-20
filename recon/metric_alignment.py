@@ -289,13 +289,17 @@ def lift_board_corner_observations(
     if reconstruction_intrinsic.shape != (frame_count, 3, 3):
         raise ValueError("reconstruction_intrinsic must have shape (S,3,3).")
     if depth.ndim != 3 or depth.shape[0] != frame_count:
-        raise ValueError("depth must have shape (S,H,W) with one image per reconstruction frame.")
+        raise ValueError(
+            "depth must have shape (S,H,W) with one image per reconstruction frame."
+        )
     if board_image_size_hw.shape != (len(board_names), 2):
         raise ValueError("board_image_size_hw must have shape (S2,2).")
     if corner_px.ndim != 2 or corner_px.shape[1] != 2:
         raise ValueError("corner_px must have shape (N,2).")
     if not (len(corner_frame_index) == len(corner_id) == len(corner_px)):
-        raise ValueError("corner_frame_index, corner_id and corner_px must have equal length.")
+        raise ValueError(
+            "corner_frame_index, corner_id and corner_px must have equal length."
+        )
 
     processed_height, processed_width = processed_size_hw
     if (processed_height, processed_width) != tuple(depth.shape[1:]):
@@ -310,7 +314,9 @@ def lift_board_corner_observations(
     for row in range(len(corner_id)):
         board_frame_index = int(corner_frame_index[row])
         if board_frame_index < 0 or board_frame_index >= len(board_names):
-            raise ValueError("corner_frame_index contains an out-of-range board frame index.")
+            raise ValueError(
+                "corner_frame_index contains an out-of-range board frame index."
+            )
         cid = int(corner_id[row])
         if cid < 0 or cid >= len(nominal_corners):
             raise ValueError("corner_id contains an out-of-range ChArUco corner id.")
@@ -341,7 +347,9 @@ def lift_board_corner_observations(
                     "metric alignment: "
                     f"{description.get('unsupported_reason', 'unknown reason')}"
                 )
-            recorded_original = tuple(int(value) for value in description["original_size_hw"])
+            recorded_original = tuple(
+                int(value) for value in description["original_size_hw"]
+            )
             if recorded_original != (int(full_height), int(full_width)):
                 raise ValueError(
                     f"{frame_name}: board image size {int(full_height)}x{int(full_width)} does "
@@ -551,7 +559,9 @@ def load_and_align(
     board_path = board_pose_dir / "board_poses.npz"
     for path in (run_path, poses_path, depth_path, board_path):
         if not path.is_file():
-            raise FileNotFoundError(f"{path} is required for board-anchored metric alignment.")
+            raise FileNotFoundError(
+                f"{path} is required for board-anchored metric alignment."
+            )
 
     run = json.loads(run_path.read_text(encoding="utf-8"))
     processed_size_hw = tuple(int(value) for value in run["processed_image_size_hw"])
