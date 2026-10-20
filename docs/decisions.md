@@ -741,6 +741,30 @@ D-048–D-050 (#146) and D-051 (#152) are still on open branches, and nothing el
 goes past D-047. When those two merge after this one, their entries land below D-052, out of
 numeric order; that is expected, not a lost or duplicated number.
 
+**D-053 · Inspection code is the package `inspection`, at `inspect/inspection/`; `inspect/` stays
+a bare directory.** (2026-10-19)
+Settles the import name D-030 left to I-01. The lane directory stays `inspect/` (D-020) with
+**no** `__init__.py`. The importable package is `inspection`, living at `inspect/inspection/`,
+and `pyproject.toml` replaces `[tool.setuptools.packages.find]` with an explicit
+`packages = ["recon", "inspection"]` plus `[tool.setuptools.package-dir] inspection =
+"inspect/inspection"`. Code imports it as `from inspection import registration`. I-01 implements
+this and strengthens `tests/test_packaging.py` to prove it: the standard library's `inspect` still
+resolves under `sysconfig`'s stdlib path, and `inspection.__file__` sits under
+`inspect/inspection/`.
+*Why:* two simpler layouts fail. An `inspect/__init__.py` at the repository root makes `inspect/`
+a regular package, and `python -m pytest` (how CI runs) puts the repository root first on
+`sys.path`, so `import inspect` inside pytest itself would get ours; a bare directory is only a
+namespace package, which the import system tries last. And mapping `inspection` straight onto
+`inspect/` needs that same `__init__.py`, while `packages.find` cannot discover a package under a
+name different from its directory, hence the explicit list. Renaming the directory would reverse
+part of D-020 and every document citing it; folding the code into `recon/` would make `recon/` the
+whole backend, which the lane layout exists to prevent.
+*Not decided here:* anything about the lane's modules beyond their package. Their names
+(`synthetic`, `cad`, `registration`) are in I-01..I-05's story files.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. D-048–D-050
+(`capture/C-13-connect-deployed-service`, #146) and D-051 (`recon/R-23-board-scale-anchor`, #152)
+are held on open branches and D-052 is on `main`, so D-053 was the first free number.
+
 ---
 
 ## Open — not yet decided
