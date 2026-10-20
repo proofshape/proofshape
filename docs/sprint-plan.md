@@ -299,7 +299,7 @@ Calendar events, not intentions. All other work stops.
 - **Sprint boundary call, 30 minutes,** held on the milestone date. Demo what works, check the gate, agree next sprint's stories, one retro question.
 - **Biweekly progress review, every second Friday.** The graded class presentation. Uses the standing four-slide template and always shows something running.
 - **Integration points are calendar events.** During I1–I4 all other work stops.
-- **Ceremony overhead is ~15 min/person/day** and is already inside the 8 h/week, not added on top.
+- **Ceremony overhead is ~15 min/person/day** and is already inside the 9 h/week commitment set by D-016, not added on top.
 
 ### Definition of done
 
@@ -391,7 +391,7 @@ Link every pull request to an issue. The issues closed since the last class pres
 
 ## 9 · Stories
 
-The work is broken into stories in **`proofshape_stories.md`**, sized so one story is one pull request and one or two work sessions.
+The work is broken into stories under **`stories/`**, with the live backlog in **`stories/README.md`**. The earlier `proofshape_stories.md` pointer is superseded; stories are still sized so one story is normally one pull request and one or two work sessions.
 
 **Backend first.** The reconstruction engine — photos in, metric 3D model out — is built before the other layers, so the hardest risk is retired before anything is built on top of it.
 
@@ -401,9 +401,9 @@ The work is broken into stories in **`proofshape_stories.md`**, sized so one sto
 
 **Completion is recorded on the story**: who, the date, the pull request, and actual hours against the estimate. Actuals are how the estimates stop being wrong.
 
-Phases 1 and 2, foundations and the reconstruction engine, are written out in full — 22 stories, 93 hours. Everything after that is titles only, elaborated one sprint ahead at the boundary call.
+**Superseded planning snapshot:** phases 1 and 2 were originally described here as 22 stories / 93 hours, with later work titles-only. The backlog has since expanded and is now maintained in `stories/README.md` under the story process (including the P planning lane from D-052), so this document no longer freezes a story count or hour total that immediately drifts.
 
-**The constraint is the dependency chain, not the hour total.** About 42 of those 93 hours can only run one story after another, and a serial chain moves at one person's pace regardless of how many people are free. That is roughly five weeks, not the three and a half the totals suggest. The chain is always somebody's top priority, and it gets handed off the same day if its owner stalls.
+**The constraint is the dependency chain, not the hour total.** The original planning snapshot estimated about 42 serial hours inside those 93 hours. That figure is retained as historical planning context, not as the current backlog total. A serial chain still moves at one person's pace regardless of how many people are free, so the chain is always somebody's top priority and is handed off the same day if its owner stalls.
 
 ---
 
