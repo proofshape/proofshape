@@ -1217,7 +1217,7 @@ down before measuring. `fixtures/README.md` defines the caliper-reading file the
 G-10 (sheet and card references) and G-11 (robustness set) stay titles-only.
 **Result:** G-01 is Ready, G-06 is Claimed by @TabeenRaoof, and the other seven are Blocked. The
 checker is consistent and `--fix` changes nothing. There's no code and no new decision. P-24
-closed at 2 h actual (no estimate was made before the work).
+closed at 2.5 h actual, including the review round (no estimate was made before the work).
 **Next:** G-01 (book the lab) and G-06 (caliper s-04, s-05 and the board sheet) can start now.
 G-04 waits on R-23 (#152). Its PR, and G-07's, should get both reviewers before any measuring
 starts, since that is where a method mistake becomes a wrong number.
