@@ -33,6 +33,7 @@ from recon.cad_size_check import (
     reconstruct_confidence_filtered_points,
     write_report,
 )
+from recon.metric_alignment import camera_centres
 from recon.vggt_runner import write_ply
 
 # --- shared synthetic-geometry helpers ---------------------------------------------------------
@@ -538,7 +539,7 @@ def test_legacy_camera_centre_diagnostic_remains_independent() -> None:
     board_extrinsic = bundle.board_extrinsic.copy()
     # Scale board-pose camera centres to 90% of reconstruction camera centres, reproducing the
     # old R-04 mechanism while leaving R-23's stored board-anchor transform untouched.
-    centres = cad_size_check.camera_centres(bundle.poses_extrinsic)
+    centres = camera_centres(bundle.poses_extrinsic)
     wrong_centres = 0.9 * centres
     board_extrinsic[:, :, :3] = np.eye(3)
     board_extrinsic[:, :, 3] = -wrong_centres
