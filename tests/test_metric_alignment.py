@@ -199,6 +199,7 @@ def test_board_anchor_ignores_camera_centre_scale_error() -> None:
         corner_frame_index,
         corner_id,
         corner_px,
+        preprocess_geometry=_identity_preprocess_geometry(frame_names),
     )
 
     assert anchored.scale == pytest.approx(1.0, abs=1e-6)
@@ -235,6 +236,25 @@ def test_board_anchor_rejects_too_few_usable_corners() -> None:
             corner_px,
         )
 
+
+
+def _identity_preprocess_geometry(
+    frame_names: list[str], height: int = 400, width: int = 400
+) -> list[dict[str, object]]:
+    return [
+        {
+            "frame_name": name,
+            "original_size_hw": [height, width],
+            "resized_size_hw": [height, width],
+            "crop_top_px": 0,
+            "crop_left_px": 0,
+            "processed_size_hw": [height, width],
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "supported_for_metric_alignment": True,
+        }
+        for name in frame_names
+    ]
 
 
 def _portrait_preprocess_geometry(
@@ -343,13 +363,20 @@ def test_board_anchor_recovers_nontrivial_similarity() -> None:
     )
     expected_translation = np.array([40.0, -25.0, 12.0])
 
-    # Camera centres and world points must be transformed consistently. Convert the original
-    # camera extrinsics to the chosen reconstruction frame by transforming their centres.
-    board_centres = camera_centres(reconstruction_extrinsic)
-    recon_centres = (
-        (board_centres - expected_translation) @ expected_rotation
-    ) / expected_scale
-    transformed_extrinsic = _extrinsics_from_centres(recon_centres)
+    # x_board = s * (R_similarity @ x_recon) + t_similarity. Substituting into
+    # x_cam_board = R_board @ x_board + t_board and expressing camera coordinates in
+    # reconstruction units gives R_recon = R_board @ R_similarity and
+    # t_recon = (R_board @ t_similarity + t_board) / s.
+    transformed_extrinsic = reconstruction_extrinsic.copy()
+    for frame_index in range(len(frame_names)):
+        board_rotation = reconstruction_extrinsic[frame_index, :, :3]
+        board_translation = reconstruction_extrinsic[frame_index, :, 3]
+        transformed_extrinsic[frame_index, :, :3] = (
+            board_rotation @ expected_rotation
+        )
+        transformed_extrinsic[frame_index, :, 3] = (
+            board_rotation @ expected_translation + board_translation
+        ) / expected_scale
     transformed_depth = depth / expected_scale
 
     result = align_board_geometry(
@@ -363,6 +390,7 @@ def test_board_anchor_recovers_nontrivial_similarity() -> None:
         corner_frame_index,
         corner_id,
         corner_px,
+        preprocess_geometry=_identity_preprocess_geometry(frame_names),
         board_pose_found=np.array([True, True, True]),
     )
 
@@ -399,6 +427,7 @@ def test_board_anchor_ignores_frames_without_trusted_board_pose() -> None:
         corner_frame_index,
         corner_id,
         corner_px,
+        preprocess_geometry=_identity_preprocess_geometry(frame_names),
         board_pose_found=np.array([True, True, False]),
     )
 
