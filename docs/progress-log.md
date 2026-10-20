@@ -1221,3 +1221,27 @@ closed at 2.5 h actual, including the review round (no estimate was made before 
 **Next:** G-01 (book the lab) and G-06 (caliper s-04, s-05 and the board sheet) can start now.
 G-04 waits on R-23 (#152). Its PR, and G-07's, should get both reviewers before any measuring
 starts, since that is where a method mistake becomes a wrong number.
+
+## 2026-10-20 — P-21 midterm report opened for review (PR #nn)
+
+**Who:** @TabeenRaoof, drafted with Claude; review requested from @dalwalyk and @mbj1994.
+**What changed:** the midterm report draft (started locally 2026-10-16) lands in the repository,
+so the team can review it as a pull request instead of a shared file. `scripts/build_midterm_report.js`
+is the committed generator (the review artifact, same pattern as `scripts/build_review_deck.js`),
+`submissions/midterm-report-draft.docx` its output, and figures in `submissions/assets/2026-10-16/`.
+Content was refreshed against `main` on this date rather than left at its 16 October numbers: 41 of
+44 foundations/reconstruction/capture stories done (was 40–42, hedged), 141 pull requests merged
+(was 131), 656 tests passing (was 680, which had assumed two still-open pull requests merged),
+48 decisions (was 49, same reason), C-08 shown merged rather than in review, and R-23 shown as its
+own open pull request (#152) rather than "the next story." The figures were also recompressed from
+print resolution to what a Word page actually needs, 8.7 MB to 1.6 MB, which is why the acceptance
+criterion's "8 MB" note in `stories/P/P-21.md` is now "1.6 MB."
+**Result:** `node scripts/build_midterm_report.js` runs clean; the `.docx` passes schema/relationship
+validation. Full Python suite 475 passed on `main`; capture suite 181 passed. `check_story_states.py`
+reports no change (P-21 stays `Claimed`; this PR advances it without closing it, same precedent as
+R-15's and C-13's own non-closing pull requests).
+**Next:** @dalwalyk and @mbj1994 read their own sections (Table 2 in the report names which), fill in
+their student ID and surname, and fact-check their section against the code before approving — that
+review also stands in for @dalwalyk's still-outstanding P-21 co-ownership confirmation (D-052).
+Section 10's "C-13, pull request #146" wording, and the capture/progress/appendix numbers that
+depend on it, need a follow-up pass once #146 or #152 actually merges.

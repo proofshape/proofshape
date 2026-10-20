@@ -3,6 +3,7 @@
   "private": true,
   "description": "Node helpers. Deliberately NOT at the repository root — see build_review_deck.js.",
   "dependencies": {
-    "pptxgenjs": "^4.0.1"
+    "pptxgenjs": "^4.0.1",
+    "docx": "^9.5.1"
   }
 }
