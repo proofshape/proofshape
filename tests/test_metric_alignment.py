@@ -236,6 +236,177 @@ def test_board_anchor_rejects_too_few_usable_corners() -> None:
         )
 
 
+
+def _portrait_preprocess_geometry(
+    frame_names: list[str],
+    full_height: int,
+    full_width: int,
+) -> tuple[list[dict[str, object]], int, int]:
+    resized_width = 518
+    resized_height = round(full_height * (resized_width / full_width) / 14) * 14
+    crop_top = max(0, (resized_height - 518) // 2)
+    processed_height = min(resized_height, 518)
+    geometry = [
+        {
+            "frame_name": name,
+            "original_size_hw": [full_height, full_width],
+            "resized_size_hw": [resized_height, resized_width],
+            "crop_top_px": crop_top,
+            "crop_left_px": 0,
+            "processed_size_hw": [processed_height, resized_width],
+            "scale_x": resized_width / full_width,
+            "scale_y": resized_height / full_height,
+            "supported_for_metric_alignment": True,
+        }
+        for name in frame_names
+    ]
+    return geometry, processed_height, resized_width
+
+
+def test_board_anchor_handles_portrait_resize_and_crop() -> None:
+    names = ["a.jpg", "b.jpg", "c.jpg"]
+    full_height, full_width = 1920, 1080
+    geometry, processed_height, processed_width = _portrait_preprocess_geometry(
+        names, full_height, full_width
+    )
+    nominal = np.asarray(make_board().getChessboardCorners(), dtype=np.float64)
+    focal_full = 0.75 * full_width
+    cx_full, cy_full = full_width / 2, full_height / 2
+    distance = 600.0
+
+    sx = float(geometry[0]["scale_x"])
+    sy = float(geometry[0]["scale_y"])
+    crop_top = float(geometry[0]["crop_top_px"])
+    intrinsic = np.array(
+        [
+            [focal_full * sx, 0.0, (cx_full + 0.5) * sx - 0.5],
+            [0.0, focal_full * sy, (cy_full + 0.5) * sy - 0.5 - crop_top],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+
+    offsets = [(-80.0, -40.0), (-60.0, -10.0), (-90.0, 20.0)]
+    extrinsics = np.zeros((3, 3, 4), dtype=np.float64)
+    extrinsics[:, :, :3] = np.eye(3)
+    corner_frame_index: list[int] = []
+    corner_id: list[int] = []
+    corner_px: list[list[float]] = []
+    for frame_index, (tx, ty) in enumerate(offsets):
+        extrinsics[frame_index, :, 3] = [tx, ty, distance]
+        for cid, (x, y, _z) in enumerate(nominal):
+            u_full = focal_full * (x + tx) / distance + cx_full
+            v_full = focal_full * (y + ty) / distance + cy_full
+            v_processed = (v_full + 0.5) * sy - 0.5 - crop_top
+            if 0 <= v_processed <= processed_height - 1:
+                corner_frame_index.append(frame_index)
+                corner_id.append(cid)
+                corner_px.append([u_full, v_full])
+
+    result = align_board_geometry(
+        names,
+        extrinsics,
+        np.tile(intrinsic[None], (3, 1, 1)),
+        np.full((3, processed_height, processed_width), distance, dtype=np.float64),
+        (processed_height, processed_width),
+        names,
+        np.tile([[full_height, full_width]], (3, 1)),
+        np.asarray(corner_frame_index),
+        np.asarray(corner_id),
+        np.asarray(corner_px, dtype=np.float64),
+        preprocess_geometry=geometry,
+        board_pose_found=np.array([True, True, True]),
+    )
+
+    assert result.scale == pytest.approx(1.0, abs=1e-6)
+    assert result.rms_residual_mm == pytest.approx(0.0, abs=1e-5)
+
+
+def test_board_anchor_recovers_nontrivial_similarity() -> None:
+    (
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+    ) = _synthetic_board_alignment_inputs()
+
+    # Start from an exact board-space synthetic reconstruction, then express all geometry in
+    # another reconstruction frame related by x_board = s * (R @ x_recon) + t.
+    expected_scale = 2.5
+    expected_rotation = np.array(
+        [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
+    )
+    expected_translation = np.array([40.0, -25.0, 12.0])
+
+    # Camera centres and world points must be transformed consistently. Convert the original
+    # camera extrinsics to the chosen reconstruction frame by transforming their centres.
+    board_centres = camera_centres(reconstruction_extrinsic)
+    recon_centres = (
+        (board_centres - expected_translation) @ expected_rotation
+    ) / expected_scale
+    transformed_extrinsic = _extrinsics_from_centres(recon_centres)
+    transformed_depth = depth / expected_scale
+
+    result = align_board_geometry(
+        frame_names,
+        transformed_extrinsic,
+        reconstruction_intrinsic,
+        transformed_depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+        board_pose_found=np.array([True, True, True]),
+    )
+
+    assert result.scale == pytest.approx(expected_scale, rel=1e-6)
+    assert result.rotation == pytest.approx(expected_rotation, abs=1e-6)
+    assert result.translation == pytest.approx(expected_translation, abs=1e-5)
+
+
+def test_board_anchor_ignores_frames_without_trusted_board_pose() -> None:
+    (
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+    ) = _synthetic_board_alignment_inputs()
+
+    # Corrupt frame c completely. If pose_found is honoured, those 12 corners are excluded and
+    # the remaining two frames still recover the exact identity alignment.
+    depth[2] = 9999.0
+    result = align_board_geometry(
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+        board_pose_found=np.array([True, True, False]),
+    )
+
+    assert result.frame_count == 2
+    assert result.observation_count == 24
+    assert result.scale == pytest.approx(1.0, abs=1e-6)
+
+
 def test_camera_centres_rejects_bad_shape() -> None:
     with pytest.raises(ValueError, match="shape"):
         camera_centres(np.zeros((3, 4)))
