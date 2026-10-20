@@ -317,6 +317,7 @@ Full detail in each story file.
 | [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
 | [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Ready | _unclaimed_ |
 | [P-24](P/P-24.md) | Write up the ground-truth lane | — | nothing | Done | @TabeenRaoof |
+| [P-25](P/P-25.md) | Write up the inspection lane | — | nothing | Claimed | @TabeenRaoof |
 
 ---
 
