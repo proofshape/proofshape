@@ -61,22 +61,29 @@ Top level:
 | `story` | The story that took the readings, e.g. `"G-06"` |
 | `measured_by` | The person's `@github-handle` |
 | `date` | `YYYY-MM-DD` |
-| `instrument` | `type` (e.g. `"digital caliper"`), `resolution_mm`, and `accuracy_spec`: `null` when the instrument states none. Resolution is not accuracy. |
-| `features` | One entry per measured feature, below |
+| `instrument` | An object with the three fields below |
+| `instrument.type` | e.g. `"digital caliper"` |
+| `instrument.resolution_mm` | The smallest step it displays |
+| `instrument.accuracy_spec` | The maker's stated accuracy, or `null` when it states none. Resolution is not accuracy. |
+| `features` | An array of objects, one per measured feature, with the fields below |
 
-Each feature:
+Each object in `features`:
 
 | Field | Meaning |
 |---|---|
 | `object` | `s-04`, a specimen ID, `board`, or a cube ID |
 | `kind` | `edge`, `height`, `board_span` or `cube_axis` |
 | `cad_vertices` | For an `edge`, the CAD vertex pair it runs between, as `[[x, y], [x, y]]` in the STL's millimetres. `null` otherwise |
-| `nominal_mm` | The size it should be, and `nominal_source`: `"cad"`, `"D-034"` (the board's 20 mm squares) or `"cube"` |
+| `nominal_mm` | The size it should be, in millimetres |
+| `nominal_source` | Where `nominal_mm` comes from: `"cad"`, `"D-034"` (the board's 20 mm squares) or `"cube"` |
 | `square_count` | For a `board_span`, how many squares it spans |
 | `where` | How it was read, e.g. `"mid-height, across the parallel faces"` or `"corner to corner"` |
 | `orientation_on_board` | For a square footprint, which way this wall faced on the board. `null` otherwise |
 | `readings_mm` | The 10 independent placements, in millimetres |
-| `mean_mm`, `min_mm`, `max_mm`, `std_mm` | Computed from `readings_mm` (sample standard deviation) |
+| `mean_mm` | Mean of `readings_mm` |
+| `min_mm` | Smallest reading |
+| `max_mm` | Largest reading |
+| `std_mm` | Sample standard deviation of `readings_mm` |
 
 `tests/test_caliper_files.py` (G-06) checks every `fixtures/caliper_*.json` against this format,
 including that the summary figures match the readings they summarise.

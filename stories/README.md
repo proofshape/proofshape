@@ -213,7 +213,9 @@ against the CAD's nominal sizes.
   placements and give the mean, min, max and standard deviation. State the resolution, and say
   "no accuracy spec" where the instrument has none.
 - **Where readings go.** One file per story, `fixtures/caliper_<id>.json`, in the format in
-  `fixtures/README.md`. Photographs are never committed.
+  `fixtures/README.md`. `tests/test_caliper_files.py` (G-06) checks every such file; a readings
+  file that lands before G-06 is checked against that format by hand, and the test covers it
+  from then on. Photographs are never committed.
 - **Where code goes.** `recon/cad_size_check.py` is extended rather than `inspect/` started, since
   D-030 leaves `inspect/`'s import name to I-01.
 - **Naming.** Say "the board reference", never "tier 1": in this backlog *Tier* means how essential
@@ -252,6 +254,18 @@ Two consequences worth acting on:
 **The September 25 milestone is tight.** A working endpoint needs about 40 hours of that chain, which is roughly four and a half weeks from a September 3 start. That lands in early October, not late September. The milestone is reachable if the chain never stalls, and it is the first thing to slip if it does. We are leaving the date as it stands for now and will revisit at the second sprint boundary with real velocity numbers rather than estimates.
 
 The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16, R-17, R-18, R-19 — are where the other two people work while the chain advances. There is enough of that work to keep everyone busy, which is the point of laying the backlog out this way.
+
+**Since 2026-10-18 the chain that sets the date runs through ground truth.** Everything above
+describes Phases 1–2 as written in September: the 93 hours and the F-02 → R-15 chain, which is
+now done. The sprint plan's critical path (§3) continues "provenance and σ → σ_floor measured →
+verdict logic → accuracy runs → freeze", and provenance and σ are done. The new serial run is:
+
+> G-01 → G-02 → G-08 → G-04 → verdict logic (I-07)
+
+G-01 3 h, G-02 4 h, G-08 4 h and G-04 6 h are about 17 hours one after another, and G-04 also
+waits on G-03, G-06 and R-23 (#152). G-03 runs beside G-08, and G-05, G-07 and G-09 are off the
+chain. The rule above applies unchanged: whoever holds a chain story hands it off the same day if
+stuck.
 
 ---
 

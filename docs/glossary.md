@@ -11,7 +11,7 @@ review. Terms that carry a specific meaning here are marked **(ProofShape term)*
 | **Golden capture** | The committed fixture set: several objects photographed on a printed board, stored outside git behind a download script. The only source of real photographs during the backend push. |
 | **Provenance** **(ProofShape term)** | Per-vertex label saying whether the camera actually saw that surface. **Observed** means two or more frames with adequate triangulation baseline. Everything else is **Unobserved**. |
 | **σ (sigma)** | Per-vertex uncertainty, computed from the spread of depth residuals across the frames that observe a vertex. Not the spread across generative samples — see D-006. |
-| **σ_floor** | The smallest deviation the method can distinguish from its own noise, measured per reference tier in the October calibration study. Every demo tolerance is set from it. |
+| **σ_floor** | The smallest deviation the method can distinguish from its own noise, measured per reference tier in the October calibration study. The board reference is measured first (G-04); the sheet and card references follow (G-10). Every demo tolerance is set from it. |
 | **Disagreement map** **(ProofShape term)** | Where the generative completion samples differ from each other. Drives capture guidance only; never enters a verdict. |
 | **The hard rule** **(ProofShape term)** | Unobserved geometry can never pass or fail a part. It may only trigger a Rescan. See D-005. |
 | **TSDF fusion** | Truncated signed distance function. Merges per-frame depth maps into one volume, from which a mesh is extracted. |
