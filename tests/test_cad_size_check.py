@@ -26,6 +26,7 @@ from recon.cad_size_check import (
     fit_board_plane,
     main,
     measure_board_scale,
+    measure_legacy_camera_centre_board_scale,
     measure_prism,
     prism_from_cad,
     read_ascii_stl,
@@ -424,11 +425,7 @@ def _make_synthetic_board_bundle(
     frame_count: int = 3,
     corner_ids: range = range(12),
 ) -> _RunBundle:
-    """A ``_RunBundle`` with cameras looking straight down at the D-034 board from a known
-    distance, so every corner's true 3D position is known in closed form. ``focal_ratio`` sets
-    ``board_intrinsic``'s focal relative to ``poses_intrinsic``'s -- the two pose sources'
-    reported K's disagreeing is exactly what ``focal_ratio_board_over_vggt`` reports.
-    """
+    """Synthetic board run with exact geometry, trusted poses and explicit pixel mapping."""
     nominal = make_board().getChessboardCorners()
     corner_ids = list(corner_ids)
     focal, principal_point, image_size, distance = 1000.0, 150.0, 400, 1000.0
@@ -445,8 +442,17 @@ def _make_synthetic_board_bundle(
     )
 
     frame_names = [f"frame_{index}" for index in range(frame_count)]
-    extrinsic_single = np.hstack([np.eye(3), np.array([[0.0], [0.0], [distance]])])
-    poses_extrinsic = np.tile(extrinsic_single[None, :, :], (frame_count, 1, 1))
+    offsets = [(0.0, 0.0), (35.0, 10.0), (10.0, 45.0)]
+    if frame_count > len(offsets):
+        offsets.extend(
+            [(20.0 * index, 15.0 * index) for index in range(len(offsets), frame_count)]
+        )
+    offsets = offsets[:frame_count]
+
+    poses_extrinsic = np.zeros((frame_count, 3, 4), dtype=np.float64)
+    poses_extrinsic[:, :, :3] = np.eye(3)
+    for frame_index, (tx, ty) in enumerate(offsets):
+        poses_extrinsic[frame_index, :, 3] = [tx, ty, distance]
     poses_intrinsic = np.tile(vggt_intrinsic[None, :, :], (frame_count, 1, 1))
     depth = np.full((frame_count, image_size, image_size), distance)
     depth_conf = np.ones((frame_count, image_size, image_size))
@@ -454,15 +460,31 @@ def _make_synthetic_board_bundle(
         np.array([[image_size, image_size]]), (frame_count, 1)
     )
     board_intrinsic = np.tile(board_intrinsic_single[None, :, :], (frame_count, 1, 1))
+    board_extrinsic = poses_extrinsic.copy()
+    board_pose_found = np.ones(frame_count, dtype=bool)
+    preprocess_geometry = [
+        {
+            "frame_name": name,
+            "original_size_hw": [image_size, image_size],
+            "resized_size_hw": [image_size, image_size],
+            "crop_top_px": 0,
+            "crop_left_px": 0,
+            "processed_size_hw": [image_size, image_size],
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "supported_for_metric_alignment": True,
+        }
+        for name in frame_names
+    ]
 
     corner_frame_index: list[int] = []
     corner_id: list[int] = []
     corner_px: list[list[float]] = []
-    for frame_index in range(frame_count):
+    for frame_index, (tx, ty) in enumerate(offsets):
         for cid in corner_ids:
             x, y, _z = nominal[cid]
-            u = focal * x / distance + principal_point
-            v = focal * y / distance + principal_point
+            u = focal * (x + tx) / distance + principal_point
+            v = focal * (y + ty) / distance + principal_point
             corner_frame_index.append(frame_index)
             corner_id.append(cid)
             corner_px.append([u, v])
@@ -474,12 +496,15 @@ def _make_synthetic_board_bundle(
         depth=depth,
         depth_conf=depth_conf,
         processed_size_hw=(image_size, image_size),
+        preprocess_geometry=preprocess_geometry,
         alignment_scale=alignment_scale,
         alignment_rotation=np.eye(3),
         alignment_translation_mm=np.zeros(3),
         board_frame_names=frame_names,
         board_image_size_hw=board_image_size_hw,
         board_intrinsic=board_intrinsic,
+        board_extrinsic=board_extrinsic,
+        board_pose_found=board_pose_found,
         corner_frame_index=np.array(corner_frame_index),
         corner_id=np.array(corner_id),
         corner_px=np.array(corner_px),
@@ -506,6 +531,24 @@ def test_measure_board_scale_detects_an_induced_scale_error() -> None:
 
     assert result.scale == pytest.approx(0.9, abs=1e-3)
     assert result.per_frame_scale_median == pytest.approx(0.9, abs=1e-3)
+
+
+def test_legacy_camera_centre_diagnostic_remains_independent() -> None:
+    bundle = _make_synthetic_board_bundle()
+    board_extrinsic = bundle.board_extrinsic.copy()
+    # Scale board-pose camera centres to 90% of reconstruction camera centres, reproducing the
+    # old R-04 mechanism while leaving R-23's stored board-anchor transform untouched.
+    centres = cad_size_check.camera_centres(bundle.poses_extrinsic)
+    wrong_centres = 0.9 * centres
+    board_extrinsic[:, :, :3] = np.eye(3)
+    board_extrinsic[:, :, 3] = -wrong_centres
+    bundle = replace(bundle, board_extrinsic=board_extrinsic)
+
+    current = measure_board_scale(bundle)
+    legacy = measure_legacy_camera_centre_board_scale(bundle)
+
+    assert current.scale == pytest.approx(1.0, abs=1e-3)
+    assert legacy.scale == pytest.approx(0.9, abs=1e-3)
 
 
 def test_measure_board_scale_reports_focal_ratio() -> None:
@@ -591,7 +634,12 @@ def _write_synthetic_run(run_dir: Path, board_dir: Path, prism: PrismCAD) -> Non
         depth_conf=bundle.depth_conf.astype(np.float32),
     )
     (run_dir / "run.json").write_text(
-        json.dumps({"processed_image_size_hw": [int(height), int(width)]}),
+        json.dumps(
+            {
+                "processed_image_size_hw": [int(height), int(width)],
+                "preprocess_geometry": bundle.preprocess_geometry,
+            }
+        ),
         encoding="utf-8",
     )
     (run_dir / "metric_alignment.json").write_text(
@@ -609,6 +657,8 @@ def _write_synthetic_run(run_dir: Path, board_dir: Path, prism: PrismCAD) -> Non
         frame_names=np.array(bundle.board_frame_names),
         image_size_hw=bundle.board_image_size_hw,
         intrinsic=bundle.board_intrinsic.astype(np.float64),
+        extrinsic=bundle.board_extrinsic.astype(np.float64),
+        pose_found=bundle.board_pose_found,
         corner_frame_index=bundle.corner_frame_index,
         corner_id=bundle.corner_id,
         corner_px=bundle.corner_px,
