@@ -5,8 +5,10 @@
 //
 //   node scripts/build_midterm_report.js [out.docx]   # defaults to submissions/midterm-report-draft.docx
 //
-// Every figure and number is read from the repository as of 20 Oct 2026 (origin/main, plus
-// C-13's own PR #146, named wherever the text relies on it) -- never recalled or invented.
+// Content is scoped to everything from the start of term up to Thursday 15 October 2026 and
+// nothing after (the team's own rule for this deliverable) -- verified against main at commit
+// 3a373ed (2026-10-15 21:52 PDT, the day's last commit) and, where the text cites C-13's own
+// branch directly, against that branch's last commit before midnight, d296be9 (23:29 PDT).
 // Figures live in submissions/assets/2026-10-16/; re-render them from the pipeline outputs named
 // in each caption if a figure needs updating, following R-17's precedent for ad hoc renders.
 
@@ -65,8 +67,8 @@ const BREAK = () => DOC.push({ type: "break" });
 // Summary
 H1("Summary", "All three members");
 P("ProofShape is a web application that turns a smartphone into a coarse 3D inspection tool for manufactured parts. A supplier places a part on a printed reference board, photographs it from guided positions, and gets back a 3D model in real millimetres in which every surface is labelled as either genuinely observed or not. Later in the term, that model will be compared with the buyer's CAD file to give a Pass, Fail, Rescan or Unverifiable result.");
-P("In the first six weeks the team built the core of the system, Tier 1, end to end. That covers a reconstruction service with eight stages (board pose, learned 3D reconstruction, metric alignment, segmentation, fusion, mesh cleanup, provenance and uncertainty, and export), a browser-based capture app, and a containerised deployment on a cloud GPU. On 16 October a real iPhone session went from photos to a coloured 3D model through that service.");
-P("Testing on real photographs exposed three systematic problems that the synthetic unit tests could not: stray low-confidence points, a misplaced board plane, and a 4–9% scale error. The first two are fixed. The third has a diagnosed cause and a planned fix. Still to come are the ground-truth calibration study, Tier 2 inspection, and the five generative-AI components, which are the priority for the second half of the term. Since this draft was first written, the ground-truth lane has been scoped into nine stories (G-01\u2013G-09) and the inspection lane into five (I-01\u2013I-05, pull request #159 in review) \u2014 neither has started, but both are now concrete work, not placeholders.");
+P("In the first six weeks the team built the core of the system, Tier 1, end to end. That covers a reconstruction service with eight stages (board pose, learned 3D reconstruction, metric alignment, segmentation, fusion, mesh cleanup, provenance and uncertainty, and export), a browser-based capture app, and a containerised deployment on a cloud GPU. By 15 October the reconstruction service and the capture app were each proven independently; connecting them on a real phone was the one link not yet confirmed end to end.");
+P("Testing on real photographs exposed three systematic problems that the synthetic unit tests could not: stray low-confidence points, a misplaced board plane, and a 4–9% scale error. The first two are fixed. The third has a diagnosed cause and a planned fix. Still to come are the ground-truth calibration study, Tier 2 inspection, and the five generative-AI components, which are the priority for the second half of the term.");
 P("**No accuracy figure is claimed anywhere in this report.** Accuracy and tolerance come from the calibration study (milestone M3), which has not run yet. Every millimetre value below is either a measured property of a specific run, labelled as such, or a working default the team chose.");
 
 // 1 · Introduction
@@ -83,7 +85,7 @@ BULLETS([
 H2("1.3 Scope and delivery tiers");
 P("The project is delivered in tiers, so that a working product exists at every milestone. Tier 1 is never cut. The course also requires roughly a third of the project to be generative AI, and those components carry the same protection as Tier 1 (decision D-017).");
 TABLE("tiers", "Delivery tiers, from the project proposal [21].", [1.4, 3.6, 1.5],
-  ["Tier", "Deliverable", "Status (16 Oct)"],
+  ["Tier", "Deliverable", "Status (15 Oct)"],
   [
     ["1 · Core", "Phone photos → metric 3D model in the browser, with an observed/unobserved map; VLM supervision of capture", "Built, except VLM"],
     ["2 · Inspection", "CAD alignment, deviation heatmap, verdict logic, condition report, plain-English inspection spec, generative shape completion, LLM capture agent", "Not started"],
@@ -101,9 +103,9 @@ P("The team has three members. We work from one shared backlog of user stories: 
 TABLE("team", "Team members, their main contributions this term, and the report sections each wrote. Story IDs are listed in Appendix A.", [1.55, 1.05, 2.9, 1.0],
   ["Member", "Student ID", "Main work this term", "Report sections"],
   [
-    ["Mamadou [surname]\n@mbj1994", "[ID]", "Shared GPU workspace (F-05); golden capture set (F-06, with Tabeen); camera calibration (R-03); MASt3R and COLMAP backbones (R-11, R-12); reconstruction API service (R-14); σ baseline (R-19); result screen, mock service, 3D viewer and provenance colouring (C-10–C-12); claimed the metric-scale fix (R-23, PR #152, in review)", "Summary (joint), 1–5"],
+    ["Mamadou [surname]\n@mbj1994", "[ID]", "Shared GPU workspace (F-05); golden capture set (F-06, with Tabeen); camera calibration (R-03); MASt3R and COLMAP backbones (R-11, R-12); reconstruction API service (R-14); σ baseline (R-19); result screen, mock service, 3D viewer and provenance colouring (C-10–C-12)", "Summary (joint), 1–5"],
     ["Yashi [surname]\n@dalwalyk", "[ID]", "Repository skeleton, CI and dev environment (F-02, F-04, F-07); VGGT runner (R-01); metric alignment and scale check (R-04, R-05); segmentation, fusion and mesh cleanup (R-06–R-08); provenance and uncertainty (R-09, R-10); mesh check (R-18); gyro, app shell, live camera, frame gate, orbit guidance and capture loop (C-03–C-07, C-09); connection to the service (C-13, with Tabeen)", "Summary (joint), 6–9"],
-    ["Tabeen Raoof\n@TabeenRaoof", "[ID]", "Repository and branch protection, API contract (F-01, F-03); board detection and camera pose (R-02); latency instrumentation (R-13); container and cloud deployment (R-15); real-data checks and fixes (R-17, R-20–R-22, R-24); upload page and camera permission (C-01, C-02); next-view scoring (C-08, merged); first phone session (C-13, with Yashi); started tracking planning work itself and wrote up the ground-truth and inspection lanes (P-20–P-25, G-01–G-09, D-052)", "Summary (joint), 10–14, References, Appendix A"],
+    ["Tabeen Raoof\n@TabeenRaoof", "[ID]", "Repository and branch protection, API contract (F-01, F-03); board detection and camera pose (R-02); latency instrumentation (R-13); container and cloud deployment (R-15); real-data checks and fixes (R-17, R-20–R-22, R-24); upload page and camera permission (C-01, C-02); next-view scoring (C-08, in review); the first real-phone attempt (C-13, with Yashi)", "Summary (joint), 10–14, References, Appendix A"],
   ]);
 P("Capacity is about 9 hours per person per week over the semester, roughly 349 person-hours in total [21]. The midterm presentation follows the same split: Mamadou presents slides 1–5, Yashi 6–9 and Tabeen 10–15.");
 
@@ -159,7 +161,7 @@ P("The same board corners calibrate the camera lens across a session. On s-04 th
 P("One similarity transform, solved with Umeyama's method [7], then maps VGGT's camera centres onto the board's camera centres. That puts the whole reconstruction in board millimetres. Per-frame residuals are reported; on s-04 the camera-centre residual was 10.0 mm RMS, which is an alignment diagnostic, not an object-accuracy figure.");
 P("A separate check (R-05) compares three independent scale sources as ratios to the board pitch (D-039), and flags the session if any two disagree by more than about 2%. The three sources are the printed board pitch, an optional caliper reading, and the CAD registration residual. The 2% is a team rule, not a measured value. Nothing feeds the check yet: there is no caliper entry in the app and no CAD registration.");
 H2("5.3 Finding: the scene comes out 4–9% small (R-22)");
-P("The board itself is an exact ruler inside every reconstruction, so we measured it. {fig:boardscale} shows that the reconstructed board comes out **4–9% smaller** than its true size on all five golden objects. That shrinkage tracks, almost exactly, the ratio between the focal length our board poses were solved with and the focal length VGGT predicts. Because metric alignment fits camera centres, and a camera's distance from the scene scales with the focal length assumed for it, the focal mismatch turns directly into a scale error. The fix, **R-23**, anchors the scale on the board corners actually visible in the scene instead of on camera centres. It is pull request #152, in review as of 20 October.");
+P("The board itself is an exact ruler inside every reconstruction, so we measured it. {fig:boardscale} shows that the reconstructed board comes out **4–9% smaller** than its true size on all five golden objects. That shrinkage tracks, almost exactly, the ratio between the focal length our board poses were solved with and the focal length VGGT predicts. Because metric alignment fits camera centres, and a camera's distance from the scene scales with the focal length assumed for it, the focal mismatch turns directly into a scale error. The fix, **R-23**, anchors the scale on the board corners actually visible in the scene instead of on camera centres. R-22 filed it; it is not yet claimed.");
 FIGURE("boardscale", "fig_board_scale.png", 6.3, "Using the board as a ruler inside each reconstruction (R-22). Dark bars show the size at which the 20 mm board comes out after metric alignment, as a fraction of its true size. Light bars show the ratio between the focal length used for the board poses and the focal length VGGT predicts. The two track each other on all five objects, which identifies the focal mismatch as the cause of the shrinkage.");
 P("Part walls shrink somewhat more than the board does (on s-05, to 81–85% of nominal once the board's own scale error is divided out). We attribute this to VGGT's depth on surfaces seen at shallow angles, and it is still open. An earlier hand-picked measurement of a single s-04 edge in R-04 had agreed with a caliper reading to within 0.26 mm. R-22's repeatable, tested measurement supersedes it, and it is the one this report relies on.");
 
@@ -198,7 +200,7 @@ TABLE("provenance", "Provenance and uncertainty on the five golden objects, curr
 
 // 8 · Capture app
 H1("8. The Capture App", "Yashi");
-P("The capture app is a web page, so a supplier opens a link and installs nothing. It is written in TypeScript with Vite and no UI framework, and tested with Vitest (D-040). 12 of the 13 capture stories are merged; C-13, which connects the app to the real service, is pull request #146, in final review. Table {tab:capture} lists what each story added and how it was verified.");
+P("The capture app is a web page, so a supplier opens a link and installs nothing. It is written in TypeScript with Vite and no UI framework, and tested with Vitest (D-040). 11 of the 13 capture stories are merged; two are still open pull requests — C-08, next-view scoring (Section 9), and C-13, which connects the app to the real service (Section 10). Table {tab:capture} lists what each story added and how it was verified.");
 P("Several behaviours can only be checked on a real phone, such as permission prompts, live video and the gyroscope. Those stories carry a written manual check on a real iPhone, in addition to their automated tests. Those device checks found real bugs that every automated test had missed. On C-02, for example, the camera preview never started playing, and the permission-denied message was present but easy to miss.");
 FIGURE("mobile", "fig_mobile.jpg", 5.6, "The capture app at phone size (390 × 844 CSS pixels). (a) Capture screen: session started, live camera preview, two frames accepted and the orbit counter at 2 of 13; the small arrow at the bottom of the preview points toward the next position. (b) Result screen: the 3D viewer with its provenance legend and Download GLB link, showing our real s-05 mesh (blue = Observed, slate = Unobserved). Captured in desktop Chrome at phone size, with a golden-capture photo standing in for the camera and the mock service returning the s-05 model.");
 FIGURE("desktop_capture", "fig_desktop_capture.jpg", 4.8, "The same capture screen in a desktop browser (1366 px wide), in the same state as {fig:mobile}(a). Each section heading names the story that built it. The page is deliberately plain: layout polish is planned for the device-testing story (C-18).");
@@ -217,13 +219,13 @@ TABLE("capture", "Capture-app stories and how each was verified. \"Device check\
     ["C-10", "Result screen polling the service, and a mock service with a canned model", "Unit tests against the contract"],
     ["C-11", "3D viewer (three.js [16]) with orbit, pinch-zoom and download", "Unit tests with a mocked loader; device check in iPhone Safari"],
     ["C-12", "Provenance colouring and legend; a reserved slot for Inferred surface", "Unit tests, including a guard that fails if the server's colours change"],
-    ["C-13", "Connection to the real service, plus the first real phone session (Section 10)", "Device check (iPhone 16); PR #146 in final review"],
-    ["C-08", "Next-view scoring (Section 9)", "Unit tests on synthetic meshes; merged (#144, 4 h actual)"],
+    ["C-13", "Connection to the real service (Section 10)", "Two device-check attempts found a real integration gap; fix written, not yet re-verified on device; PR #146, in review"],
+    ["C-08", "Next-view scoring (Section 9)", "Unit tests on synthetic meshes; PR #144, in review"],
   ]);
 
 // 9 · Next-view scoring
 H1("9. Next-View Scoring", "Yashi");
-P("Once the system knows which surface is unobserved, the next question is where to point the camera. Next-view scoring (C-08, merged 16 October as pull request #144) answers it. The story was built by Tabeen; it is presented here because it completes the capture-guidance thread.");
+P("Once the system knows which surface is unobserved, the next question is where to point the camera. Next-view scoring (C-08, pull request #144, in review) answers it. The story was built by Tabeen; it is presented here because it completes the capture-guidance thread.");
 BULLETS([
   "**Candidates.** 147 camera positions on a hemisphere centred on the part, at 25, 32.5 and 40 cm, and at most 60° from vertical. Each one looks at the part.",
   "**Visibility.** From each candidate, rays are cast with Open3D's ray-casting scene [13] (D-047) to every under-observed vertex. The whole mesh blocks the rays, so Observed surface still hides what is behind it.",
@@ -251,23 +253,11 @@ BULLETS([
   "The runtime limit we relied on did not stop the GPU. One deployment ran for about 28 hours. Stopping is now an explicit runbook step, and an automatic cost guard is filed as an issue.",
   "Credits that existed but were not allocated to the workspace blocked the public endpoint for about a day.",
 ]);
-H2("10.3 The first real phone session (C-13, 16 October)");
+H2("10.3 The first real-phone attempt (C-13, 15 October)");
 P("For this check, the service ran on our M2 Max laptop rather than the cloud GPU (D-049). A second Lightning start never got a ready GPU, and the deployed image can only contain code that is already on main, so it could not test the branch under review. The phone loaded the app over HTTPS from a development server, which forwarded API calls to the service on the same origin.");
-P("Result: an iPhone 16 captured **19 frames** of a white rectangular object. The service returned a **metric** model with an observed fraction of 0.16, and the phone displayed it, coloured by provenance. The model downloaded on the phone was byte-identical to the server's output (1,074,288 bytes; 31,557 vertices; 50,000 triangles). {fig:phone} shows one captured frame and the model.");
-FIGURE("phone", "fig_phone_session.jpg", 5.2, "The first real phone session (C-13, 16 October). (a) One of the 19 frames the app captured on an iPhone 16, at 480 × 640 pixels. (b) The model the service returned and the phone displayed, rendered here from the same file: teal is Observed, grey is Unobserved. The object is the Observed region; the surrounding surfaces are Unobserved fusion artifacts.");
-H2("10.4 What the phone taught us");
-P("The phone found problems the golden photos never could. Frames taken from the live camera preview carry **no EXIF focal length**, because they come through a canvas rather than the camera app, so the first two sessions could not pose a single frame. The service now calibrates the camera from the board itself when frames have no focal length (D-050). On the first failed session's frames, that gave a 0.20 px calibration error and posed 18 of 19 frames.");
-P("Even after that fix, only **2 of 7** finished sessions produced a model (Table {tab:sessions}), and every failure reported its specific reason. Why phone frames fail the board-surface fit when golden photos do not is not yet known. The app's low capture resolution of 480 × 640 (it does not request a resolution), the board-calibrated lens model, and how much board each object leaves visible are all candidates. That investigation is the next recon-lane story.");
-TABLE("sessions", "Real phone sessions after the EXIF fix (D-050), from C-13's records. Two earlier sessions failed for lack of EXIF focal length before the fix; two more were abandoned before finishing.", [1.1, 0.75, 4.65],
-  ["Order code", "Frames", "Outcome"],
-  [
-    ["222", "15", "Failed in fusion: too few board points near the fitted board surface"],
-    ["223", "15", "Completed — a clear glass object; the board showed through it and the glass was not reconstructed"],
-    ["334", "19", "Failed: board calibration found 2 usable views and needs 3"],
-    ["335", "19", "Failed in fusion: fitted board tilt 19.65°, over the 2° limit"],
-    ["300, 400", "14, 14", "Failed in fusion: same cause as 222 (with 222, three tries of the same object)"],
-    ["600", "19", "Completed — metric, observed fraction 0.16 ({fig:phone})"],
-  ]);
+P("Result: two real-phone sessions, 19 and 17 frames, both failed with **zero camera poses**, even though the board was detected in every frame. Frames taken from the live camera preview carry no EXIF focal length, because they come through a canvas rather than the camera app, unlike the golden capture's Camera-app photos — so the board-pose stage had no focal length to pose with.");
+H2("10.4 What the first attempt taught us");
+P("The fix (D-050): when frames carry no focal length, the service calibrates the camera from the board itself, using the corners the board-detection stage already found, then re-poses every frame with that calibration. Reprocessing the first failed session's own 19 saved frames through the corrected pipeline validated the fix offline: calibration RMS 0.20 px, 18 of 19 frames posed, and the full pipeline then produced a metric result (observed fraction 0.17) in about 44 seconds. That is one reprocessed run on already-captured frames, not a live device confirming the fix end to end — getting that confirmation is the first item in Section 14's next steps.");
 P("Still open (O-005): how a browser should reach the cloud deployment. Three questions remain: whether the proxy's token check blocks the browser's preflight request, whether a token inside the app's code is acceptable, and the order code. The deployed service does not check order codes, so today any non-empty code would start a paid GPU run.");
 
 // 11 · Real data
@@ -289,18 +279,18 @@ TABLE("realdata", "Real-data measurements on the five golden objects. Stray poin
     ["s-05", "17.7%", "2.5%", "5.3", "3.2", "3.5"],
   ]);
 P("The new cut on s-01 and s-02 is higher than the old one on purpose. On those two, VGGT reconstructs a weaker second layer of the board grid 4–6 mm above the real surface, and the new cut is set above it.");
-P("**Honest status.** The fused meshes still do not close into a recognisable part on any of the five objects. Before R-21, only 2 of 5 passed a mesh check, and those were the same padlock under two lightings (R-18). After R-20, every mesh is measurably less noisy (28–48% fewer vertices) but still not a pass. Next is the scale fix (R-23), then a rerun of the mesh check, then the phone-session failures (Section 10.4).");
+P("**Honest status.** The fused meshes still do not close into a recognisable part on any of the five objects. Before R-21, only 2 of 5 passed a mesh check, and those were the same padlock under two lightings (R-18). After R-20, every mesh is measurably less noisy (28–48% fewer vertices) but still not a pass. Next is the scale fix (R-23), then a rerun of the mesh check, then confirming the EXIF fix on a real device (Section 10.4).");
 
 // 12 · Progress and process
 H1("12. Progress and Engineering Process", "Tabeen");
-TABLE("progress", "Progress by the numbers, as of 16 October 2026. C-08 and C-13 are complete and in final review (pull requests #144 and #146).", [1.6, 2.4, 2.5],
+TABLE("progress", "Progress by the numbers, as of 15 October 2026. C-08 and C-13 are each open pull requests (#144 and #146).", [1.6, 2.4, 2.5],
   ["Measure", "Value", "Notes"],
   [
-    ["Stories done", "41 of 44 written (foundations, reconstruction, capture)", "R-23 (#152) and C-13 (#146) are open pull requests; R-16 is blocked on ground truth, which is now written up as G-01\u2013G-09 (P-24) but not yet executed"],
-    ["Pull requests", "141 merged", "Every one approved by another member"],
-    ["Automated tests", "656 passing", "475 Python and 181 TypeScript, on main (20 Oct); C-13's own branch separately reports 389 Python and 187 TypeScript passing"],
-    ["Decisions", "48 recorded", "Each with its reasoning; 3 more (D-048\u2013D-050) sit in C-13's open pull request and will land when it merges"],
-    ["By area", "Foundations 7/7 · Reconstruction 22/24 · Capture 12/13", "R-23 (#152) and C-13 (#146) are each the one open pull request in their area; R-16 is blocked on ground truth. Inspection, ground-truth and generative-AI stories are written one sprint ahead, so they are not counted yet"],
+    ["Stories done", "40 of 44 written (foundations, reconstruction, capture)", "C-08 and C-13 are each open pull requests; R-16 is blocked on ground truth; R-23 is filed (R-22's finding) but not yet claimed"],
+    ["Pull requests", "130 merged", "Every one approved by another member"],
+    ["Automated tests", "585 passing", "404 Python (1 skipped) and 181 TypeScript, on main; C-13's own branch separately reports 418 Python (1 skipped) and 203 TypeScript passing"],
+    ["Decisions", "45 recorded", "Each with its reasoning; 3 more (D-048–D-050) sit in C-13's open pull request and will land when it merges"],
+    ["By area", "Foundations 7/7 · Reconstruction 22/24 · Capture 11/13", "C-08 and C-13 are each open pull requests in capture; R-23 is filed but not yet claimed in reconstruction; R-16 is blocked on ground truth. Inspection, ground-truth and generative-AI stories are written one sprint ahead, so they are not counted yet"],
   ]);
 P("Every story goes through the same gate. It starts as a story file with testable acceptance criteria. It is claimed by one person, on the shared main branch, so nobody duplicates work (D-037). Tests are written alongside the code, never deferred (D-029). It merges through a pull request with CI and a teammate's review. It is marked Done inside that same pull request, with the actual hours measured, never the estimate copied in (D-033, D-038). A script checks that the backlog index and the story files agree.");
 P("Two habits have paid off. First, decisions are recorded with their reasoning (D-001 onward), so they are not silently reversed. Second, reviews regularly catch real defects before merge. Examples include four ways the camera could be left on (C-05), a deploy-stop command that reported success while the GPU kept billing (R-15), and an orbit reading that could cover two slots at once (C-07).");
@@ -308,11 +298,11 @@ P("Two habits have paid off. First, decisions are recorded with their reasoning 
 // 13 · Timeline
 H1("13. Timeline", "Tabeen");
 P("{fig:timeline} compares the sprint plan with what actually happened, and Table {tab:milestones} lists the milestones.");
-FIGURE("timeline", "fig_timeline.png", 6.5, "Plan versus actual, September to December. Outlined bars are the sprint plan; solid teal bars are completed work; the dashed amber box is the next step on the real-data fixes; dashed red boxes are work that was planned to have started but has not. Diamonds mark the sprint-gate milestones and the dashed red line marks 16 October.");
-TABLE("milestones", "Milestones from the sprint plan, with status on 16 October.", [0.55, 2.2, 1.05, 2.7],
+FIGURE("timeline", "fig_timeline.png", 6.5, "Plan versus actual, September to December. Outlined bars are the sprint plan; solid teal bars are completed work; the dashed amber box is the next step on the real-data fixes; dashed red boxes are work that was planned to have started but has not. Diamonds mark the sprint-gate milestones. (This chart is inherited from the midterm slide deck and has not yet been redrawn for this report\u2019s 15 October cutoff: it still marks Today as 16 October and shows the capture app as fully done through that date. Table 8 and the text in this section are the corrected, cutoff-accurate figures; treat the chart as approximate until it is redrawn.)");
+TABLE("milestones", "Milestones from the sprint plan, with status on 15 October.", [0.55, 2.2, 1.05, 2.7],
   ["Gate", "Meaning", "Planned", "Status"],
   [
-    ["M1", "Phone → upload → reconstruction → model display, nobody touching a terminal", "25 Sep", "Demonstrated 16 Oct (C-13's own device check), about three weeks late, with the service on the M2 Max rather than the cloud GPU; formally closes when pull request #146 merges"],
+    ["M1", "Phone → upload → reconstruction → model display, nobody touching a terminal", "25 Sep", "Not yet demonstrated — already 3 weeks late. C-13 (#146), which connects the app to the service, is open; its first real-phone attempt is Section 10"],
     ["M2", "Latency table decides interactive vs batch", "9 Oct", "On time: measured 7 Oct (R-13); batch confirmed"],
     ["M3", "σ_floor measured from printed, caliper-measured parts", "16 Oct", "Not started — behind"],
     ["M4", "Inspection: planted defect → Fail; unobserved region → Rescan", "30 Oct", "Not started"],
@@ -327,7 +317,7 @@ H1("14. Next Steps", "Tabeen");
 TABLE("next", "The five work streams for the second half of the term, in priority order.", [1.55, 3.05, 1.0, 0.9],
   ["Stream", "What", "Stories", "Target"],
   [
-    ["1 · Geometry and phone reliability", "Anchor scale on the board; find why 5 of 7 phone sessions failed; capture at the camera's full resolution", "R-23 (#152) + new", "Now"],
+    ["1 · Geometry and phone reliability", "Anchor scale on the board (R-23); confirm the EXIF fix (D-050) on a real device; capture at the camera's full resolution", "R-23 + new", "Now"],
     ["2 · Ground truth", "Print and caliper-measure test parts; measure σ_floor and the first real tolerance", "G-01–G-05, R-16", "M3 (slipping)"],
     ["3 · Tier 2 inspection", "CAD registration, deviation heatmap, the four verdicts with the hard rule built in", "I-01–I-10", "M4, 30 Oct"],
     ["4 · Generative AI", "VLM capture checking first; then the plain-English spec, shape completion, the capture agent and the report narrative", "A-01–A-09", "Start now → M5"],
@@ -362,7 +352,7 @@ const REFS = [
   "ProofShape team, “ProofShape — Phone-Based 3D Capture and Inspection for Manufactured Parts,” CS595 capstone project proposal, San Francisco Bay University, Sept. 2026.",
 ];
 
-// Appendix A: every story written so far (stories/README.md on main, 16 Oct 2026).
+// Appendix A: every story written so far (stories/README.md on main, 15 Oct 2026).
 const STORIES = [
   ["F-01", "Public repository with branch protection", "@TabeenRaoof", "Done"],
   ["F-02", "Repository skeleton and module boundaries", "@dalwalyk", "Done"],
@@ -393,7 +383,7 @@ const STORIES = [
   ["R-20", "Use VGGT's confidence in the point cloud and in fusion", "@TabeenRaoof", "Done"],
   ["R-21", "Measure the height cut from the real board surface", "@TabeenRaoof", "Done"],
   ["R-22", "Find why parts reconstruct smaller than their CAD", "@TabeenRaoof", "Done"],
-  ["R-23", "Anchor metric scale on the board in the scene", "@mbj1994", "In review (#152)"],
+  ["R-23", "Anchor metric scale on the board in the scene", "—", "Ready"],
   ["R-24", "Use VGGT's confidence in provenance's observation count", "@TabeenRaoof", "Done"],
   ["C-01", "Minimal upload page", "@TabeenRaoof", "Done"],
   ["C-02", "Camera permissions on a real iPhone", "@TabeenRaoof", "Done"],
@@ -402,7 +392,7 @@ const STORIES = [
   ["C-05", "Live camera", "@dalwalyk", "Done"],
   ["C-06", "Frame gate", "@dalwalyk", "Done"],
   ["C-07", "Gyro overlay and arrow", "@dalwalyk", "Done"],
-  ["C-08", "Next-view scoring", "@TabeenRaoof", "Done"],
+  ["C-08", "Next-view scoring", "@TabeenRaoof", "In review (#144)"],
   ["C-09", "Capture loop", "@dalwalyk", "Done"],
   ["C-10", "Reconstruction result and the mock service", "@mbj1994", "Done"],
   ["C-11", "Model viewer", "@mbj1994", "Done"],
@@ -551,7 +541,7 @@ function appendix() {
     new Paragraph({ children: [new PageBreak()] }),
     new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Appendix A. Story Backlog")] }),
     new Paragraph({ spacing: { before: 0, after: 160 }, children: [new TextRun({ text: "Author: Tabeen", italics: true, size: 19, color: TEAL })] }),
-    new Paragraph({ children: runs("Every story in the three product lanes, with its owner and state on 20 October 2026 (from the backlog index in the repository [20]). F = foundations, R = reconstruction engine, C = capture app — these are the delivery lanes the Progress table in Section 12 counts. Since 16 October the team also tracks its own process work as a fourth lane, P — planning (D-052): 25 stories, 21 of them already Done, covering the proposal, the sprint plan, the decisions log, this report (P-21) and the midterm deck (P-20), audits, and the operating-manual refresh (Section numbers unaffected; listing all 25 here would roughly double this appendix for little reader benefit, so only the three product lanes are listed in full). Ground truth has also been scoped into nine stories (G-01–G-09, P-24), all still Blocked or Ready because the printed specimens and calipers it needs have not arrived; and inspection into five (I-01–I-05, P-25, pull request #159, not yet merged). Generative-AI (A) stories still exist as titles only, written one sprint ahead (Section 14).") }),
+    new Paragraph({ children: runs("Every story written so far, with its owner and state on 15 October 2026 (from the backlog index in the repository [20]). F = foundations, R = reconstruction engine, C = capture app. Inspection (I), ground-truth (G) and generative-AI (A) stories exist as titles and are written one sprint ahead.") }),
     ...table({ key: "backlog", caption: "The story backlog. Each story is one pull request with its own acceptance criteria, tests and completion record.", widths: [0.6, 3.55, 1.55, 0.8], header: ["ID", "Story", "Owner", "State"], rows: STORIES, size: 17 }),
   ];
 }
