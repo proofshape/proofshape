@@ -827,6 +827,7 @@ def measure_legacy_camera_centre_board_scale(bundle: _RunBundle) -> BoardScaleRe
         legacy.translation,
     )
 
+
 def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
     """Measure the reconstructed board after R-23 current board-anchored transform.
 
@@ -841,6 +842,7 @@ def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
         bundle.alignment_rotation,
         bundle.alignment_translation_mm,
     )
+
 
 # --- Orchestration and CLI ----------------------------------------------------------------------
 
