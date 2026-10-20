@@ -218,8 +218,9 @@ against the CAD's nominal sizes.
   from then on. Photographs are never committed.
 - **Where code goes.** `recon/cad_size_check.py` is extended rather than `inspect/` started, since
   D-030 leaves `inspect/`'s import name to I-01.
-- **Naming.** Say "the board reference", never "tier 1": in this backlog *Tier* means how essential
-  a feature is.
+- **Naming.** Say "the board reference", "the sheet reference", "the card reference", never
+  "tier 1/2/3": *Tier* also means how essential a feature is (D-001), and the two collide. The
+  glossary's Reference sheet entry gives both names.
 
 Full detail in each story file.
 
@@ -232,7 +233,7 @@ Full detail in each story file.
 | [G-05](G/G-05.md) | Defect ladder at 2 / 4 / 8 mm | 4 h | G-01 | Blocked | _unclaimed_ |
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Claimed | @TabeenRaoof |
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
-| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02 | Blocked | _unclaimed_ |
+| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Blocked | _unclaimed_ |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
 
 ---
@@ -262,10 +263,11 @@ verdict logic → accuracy runs → freeze", and provenance and σ are done. The
 
 > G-01 → G-02 → G-08 → G-04 → verdict logic (I-07)
 
-G-01 3 h, G-02 4 h, G-08 4 h and G-04 6 h are about 17 hours one after another, and G-04 also
-waits on G-03, G-06 and R-23 (#152). G-03 runs beside G-08, and G-05, G-07 and G-09 are off the
-chain. The rule above applies unchanged: whoever holds a chain story hands it off the same day if
-stuck.
+G-01 3 h, G-02 4 h, G-08 4 h and G-04 6 h are about 17 hours one after another. Three things
+join it without lengthening it if they're done in time: G-06 (calipering the board sheet, 1.5 h)
+must finish before G-08 shoots on that sheet, G-03 runs beside G-08, and G-04 also waits on R-23
+(#152). G-05, G-07 and G-09 are off the chain. The rule above applies unchanged: whoever holds a
+chain story hands it off the same day if stuck.
 
 ---
 
