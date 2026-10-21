@@ -339,25 +339,25 @@ footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font
   </div>
 
   <h3 style="margin-top:30px;">Biweekly progress reviews</h3>
-  <p class="note" style="margin:8px 0 16px;">The course requires a progress presentation every two weeks. These are graded deliverables, so they are planned work rather than something absorbed on the day. <b>Assumed cadence: every second Friday from 11 September</b> &mdash; confirm the real dates with the instructor. If they shift, the mapping below still holds, because each review shows whatever gate most recently cleared.</p>
+  <p class="note" style="margin:8px 0 16px;">The course requires a progress presentation every two weeks. These are graded deliverables, so they are planned work rather than something absorbed on the day. <b>Actual cadence, re-anchored from the delivered class reviews: Friday 18 September, then every second Friday.</b> Progress Review 1 is dated 18 September 2026 and Progress Review 2 is dated 2 October 2026, so the earlier 11/25 September assumption is superseded (O-003, closed 2026-10-20). No separate written instructor message is stored in the repo; the delivered class-review artifacts are the evidence used here.</p>
   <div class="scroller" style="border:none;">
   <table class="dep">
     <thead><tr><th>#</th><th class="from">Date</th><th>Position</th><th>What we demo</th></tr></thead>
     <tbody>
-      <tr><td>R1</td><td class="from">Fri Sep 11</td><td>inside S1</td><td>The spike: a 3D mesh built from real phone photographs. Which reconstruction engine we chose, and why.</td></tr>
-      <tr><td>R2</td><td class="from">Fri Sep 25</td><td><b>S1 boundary &middot; M1</b></td><td>Live, end to end: phone, upload, 3D model in the browser.</td></tr>
-      <tr><td>R3</td><td class="from">Fri Oct 9</td><td><b>S2 boundary &middot; M2</b></td><td>Guidance arrow driving capture, the timing table, and the live-versus-batch decision.</td></tr>
-      <tr><td>R4</td><td class="from">Fri Oct 23</td><td>inside S4</td><td>Measured accuracy and the noise floor per reference tier. Alignment working on printed parts.</td></tr>
-      <tr><td>R5</td><td class="from">Fri Nov 6</td><td>inside S5</td><td>Live: a planted defect comes back as a failure with the region highlighted.</td></tr>
-      <tr><td>R6</td><td class="from">Fri Nov 20</td><td>inside S6</td><td>Feature-complete walkthrough, including the intake pre-check and the unverifiable outcome.</td></tr>
-      <tr><td>R7</td><td class="from">Fri Dec 4</td><td><b>S7 boundary &middot; M7</b></td><td>Test results, the recorded demo, and what we would do next.</td></tr>
+      <tr><td>R1</td><td class="from">Fri Sep 18</td><td>inside S1</td><td>The spike: a 3D mesh built from real phone photographs. Which reconstruction engine we chose, and why.</td></tr>
+      <tr><td>R2</td><td class="from">Fri Oct 2</td><td>inside S2</td><td>Live, end to end: phone, upload, 3D model in the browser.</td></tr>
+      <tr><td>R3</td><td class="from">Fri Oct 16</td><td><b>S3 boundary &middot; M3</b></td><td>Guidance arrow driving capture, the timing table, and the live-versus-batch decision.</td></tr>
+      <tr><td>R4</td><td class="from">Fri Oct 30</td><td><b>S4 boundary &middot; M4 &middot; I3</b></td><td>Measured accuracy and the noise floor per reference tier. Alignment working on printed parts.</td></tr>
+      <tr><td>R5</td><td class="from">Fri Nov 13</td><td><b>S5 boundary &middot; M5</b></td><td>Live: a planted defect comes back as a failure with the region highlighted.</td></tr>
+      <tr><td>R6</td><td class="from">Fri Nov 27</td><td>inside S6</td><td>Feature-complete walkthrough, including the intake pre-check and the unverifiable outcome.</td></tr>
+      <tr><td>R7</td><td class="from">Fri Dec 11</td><td>inside S8</td><td>Test results, the recorded demo, and what we would do next.</td></tr>
     </tbody>
   </table>
   </div>
   <div class="cols" style="margin-top:20px;">
     <div class="blk">
       <h3>Why this cadence works</h3>
-      <p class="note" style="font-size:13.5px;">Three reviews land exactly on sprint boundaries. The other four fall about a week <i>after</i> a gate closes, which is better than landing on one: we demo work that has been finished and tested for a few days rather than something that started working that morning. Every review in the table has a gate cleared within the preceding week, so there is never a review with nothing to show.</p>
+      <p class="note" style="font-size:13.5px;">Re-anchoring to the real class calendar moves reviews onto or just after recent sprint gates instead of preserving the obsolete 11/25 September assumption. The content rule is unchanged: each review shows the most recently completed, tested work rather than forcing a demo to match an outdated planning date.</p>
     </div>
     <div class="blk">
       <h3>The standing template</h3>
@@ -1028,7 +1028,7 @@ footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font
         <li><b>Sprint boundary call, 30 minutes.</b> Demo what works, check the gate, agree the next sprint's stories, one retro question. Held on the milestone date.</li>
         <li><b>Biweekly progress review, every second Friday.</b> The graded class presentation. Uses the standing four-slide template and always shows something running.</li>
         <li><b>Integration points are calendar events,</b> not intentions. During I1 through I4 all other work stops until the pieces talk to each other.</li>
-        <li><b>Ceremony overhead is about 15 minutes per person per day</b> and is already inside the eight hours a week, not added on top.</li>
+        <li><b>Ceremony overhead is about 15 minutes per person per day</b> and is already inside the nine hours a week set by D-016, not added on top.</li>
       </ul>
       <h3 style="margin-top:20px;">Definition of done</h3>
       <ul>
@@ -1127,7 +1127,7 @@ footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font
 <section>
   <div class="sec-head"><span class="num">09</span><h2>Stories</h2></div>
   <div class="finding">
-    <p><strong>Backend first.</strong> The reconstruction engine &mdash; photographs in, metric 3D model out &mdash; is built before the other layers, so the hardest risk is retired before anything is built on top of it. The full backlog lives in <span class="file">proofshape_stories.md</span>: 22 stories written out for foundations and the engine, 93 hours, with everything after that left as titles until its sprint planning.</p>
+    <p><strong>Backend first.</strong> The reconstruction engine &mdash; photographs in, metric 3D model out &mdash; is built before the other layers, so the hardest risk is retired before anything is built on top of it. The live backlog now lives under <span class="file">stories/</span>, indexed by <span class="file">stories/README.md</span>. The earlier <span class="file">proofshape_stories.md</span> / 22 stories / 93 hours description is a superseded planning snapshot; the backlog has since expanded and is maintained through the story process, including the P planning lane from D-052.</p>
   </div>
 
   <div class="cols">
@@ -1154,9 +1154,9 @@ footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font
 
   <div class="warn-box" style="margin-top:22px;">
     <h3 style="margin-bottom:9px;">The chain sets the date, not the hour total</h3>
-    <p>Ninety-three hours across three people at 27 hours a week looks like three and a half weeks. It is not. About <b>42 of those hours can only run one story after another</b>, and a serial chain advances at one person&rsquo;s pace no matter how many people are free:</p>
+    <p>The original planning snapshot put 93 hours in the first two phases, with about <b>42 serial hours</b>. Those figures are retained here as historical planning context, not as the current backlog total. A serial chain still advances at one person&rsquo;s pace no matter how many people are free:</p>
     <pre class="code" style="margin:12px 0;">F-02 &rarr; F-07 &rarr; R-01 &rarr; R-04 &rarr; R-06 &rarr; R-07 &rarr; R-08 &rarr; R-14 &rarr; R-15</pre>
-    <p>That is roughly <b>five weeks</b>. Adding a third person does not shorten it. Two consequences: the chain is always somebody&rsquo;s top priority and gets handed off the same day if its owner stalls; and the September 25 milestone is tight, since a working endpoint needs about 40 hours of that chain. We leave the date as it stands and revisit at the second sprint boundary with real velocity rather than estimates.</p>
+    <p>The planning lesson still holds: adding a third person does not shorten serial work. The chain is always somebody&rsquo;s top priority and gets handed off the same day if its owner stalls; current status and estimates belong in <span class="file">stories/README.md</span>, not in a frozen count here.</p>
   </div>
 
   <p class="note" style="margin-top:16px;">The off-chain stories &mdash; board detection, intrinsics, the scale check, provenance, uncertainty, both fallback backbones and the latency table &mdash; are where the other two people work while the chain advances. There is enough of that to keep everyone busy, which is the point of laying the backlog out this way. <b>Three stories have no dependencies at all</b> and are the ones to start on day one, one each: the public repository, the GPU pod, and the golden capture set.</p>

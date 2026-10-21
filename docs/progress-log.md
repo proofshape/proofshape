@@ -1221,3 +1221,23 @@ closed at 2.5 h actual, including the review round (no estimate was made before 
 **Next:** G-01 (book the lab) and G-06 (caliper s-04, s-05 and the board sheet) can start now.
 G-04 waits on R-23 (#152). Its PR, and G-07's, should get both reviewers before any measuring
 starts, since that is where a method mistake becomes a wrong number.
+
+
+
+## 2026-10-20 — P-25 inspection lane written up (I-01..I-05)
+
+**Who:** @TabeenRaoof (PR #159). The claim, #158, was reviewed by @dalwalyk and also recorded
+D-053, the `inspect/` import name.
+**What changed:** the inspection lane was ten titles. Its first five are now stories in a new
+Inspection section of `stories/README.md`, written from the settled method (proposal §7.1,
+D-008): the synthetic mesh generator, which also puts D-053's package in place (`inspection`
+at `inspect/inspection/`); CAD loading for ASCII and binary STL and GLB, with no unit conversion
+because the pipeline's own GLBs hold raw millimetres; FPFH + RANSAC candidate poses with the
+free-scale residual in the convention R-05's code defines; Tukey point-to-plane ICP; and the
+orientation-ambiguity check, which keeps symmetry-equivalent poses separate so it can't be a
+no-op on a symmetric part. No tolerance, `k` or σ_floor appears; every threshold is a declared
+parameter (D-003, #157). `pyproject.toml`'s comment and `inspect/README.md` now point to D-053.
+I-06..I-10 stay titles-only behind G-04 and D-032, and I-11 (OBJ loading) is added.
+**Result:** I-01 and I-02 are Ready, I-03..I-05 Blocked, none claimed. The checker is consistent
+and `--fix` changes nothing. P-25 closed at 2 h actual (no estimate was made before the work).
+**Next:** I-01 and I-02 can start now and in parallel. I-03 needs both.

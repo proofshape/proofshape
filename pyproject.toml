@@ -15,7 +15,9 @@ dev = ["numpy>=1.26,<2", "pytest>=8", "pyyaml>=6", "jsonschema>=4", "openapi-spe
 # deliberately left out — see docs/decisions.md D-030: its directory name
 # collides with the Python standard library `inspect` module, and installing
 # it as a top-level package would shadow that module for the whole
-# environment. The import name for inspect-lane code is a decision for I-01,
-# once there is real code to import.
+# environment. D-053 settles the import name for inspect-lane code: package
+# `inspection` at inspect/inspection/, added here by I-01 (an explicit
+# `packages` list plus `package-dir`, since `packages.find` can't discover a
+# package whose name differs from its directory).
 [tool.setuptools.packages.find]
 include = ["recon*"]
