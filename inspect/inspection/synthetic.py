@@ -7,10 +7,13 @@ with no GPU, no capture hardware, and no fixtures.
 Frame convention. CAD files are authored z-up from z = 0 (base at z = 0, body at z > 0) --
 ordinary CAD practice. Reconstruction's own board frame uses the opposite sign for height:
 `recon/cad_size_check.py`'s own comment puts it plainly ("height above the board is -z relative
-to the fitted plane"). So turning a loaded CAD into something that looks like real reconstruction
-output means negating z once, as a *fixed* step -- not a random one. That fixed flip is composed
-with the random pose below into one rotation + translation, which is what the sidecar records as
-"the transform": a single affine map from the CAD's own coordinates to this module's output.
+to the fitted plane"). Turning a loaded CAD into something that looks like real reconstruction
+output therefore needs the body's z sign flipped -- but as a proper 180-degree rotation about x
+(`diag(1, -1, -1)`, determinant +1), not a single-axis mirror (`diag(1, 1, -1)`, determinant -1):
+a mirror silently reflects a chiral part into one no rigid pose can ever register against its own
+CAD again. That fixed rotation is composed with the random pose below into one rotation +
+translation, which is what the sidecar records as "the transform": a single affine map from the
+CAD's own coordinates to this module's output.
 
 Random pose. Not a full random SO(3) rotation -- the part rests on the board, so (as I-03's own
 acceptance criteria puts it) "the free pose is yaw and an xy shift." A random rotation about z
@@ -102,11 +105,10 @@ def densify_mesh(
             f"target_edge_length_mm must be positive, got {target_edge_length_mm}"
         )
     vertices_mm, faces = _validate_mesh(vertices_mm, faces)
+    if _edge_lengths(vertices_mm, faces).max() <= target_edge_length_mm:
+        return vertices_mm, faces
 
     for _ in range(_MAX_DENSIFY_PASSES):
-        if _edge_lengths(vertices_mm, faces).max() <= target_edge_length_mm:
-            return vertices_mm, faces
-
         vertices_list = list(vertices_mm)
         midpoint_cache: dict[tuple[int, int], int] = {}
         new_faces = []
@@ -129,6 +131,8 @@ def densify_mesh(
 
         vertices_mm = np.array(vertices_list, dtype=np.float64)
         faces = np.array(new_faces, dtype=np.int64)
+        if _edge_lengths(vertices_mm, faces).max() <= target_edge_length_mm:
+            return vertices_mm, faces
 
     raise ValueError(
         f"Could not reach target edge length {target_edge_length_mm} mm within "
@@ -137,16 +141,23 @@ def densify_mesh(
 
 
 def board_frame_transform(rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
-    """The fixed CAD->board-frame z-flip, composed with a random yaw-about-z and a random xy
+    """The fixed CAD->board-frame flip, composed with a random yaw-about-z and a random xy
     translation -- the only motion a part resting on the board actually has. Returns (rotation
     (3,3), translation_mm (3,)) such that `board_vertex = rotation @ cad_vertex + translation`.
+
+    The flip is a proper 180-degree rotation about x, `diag(1, -1, -1)`, not a single-axis
+    mirror `diag(1, 1, -1)`: the latter has determinant -1, which silently turns every output
+    part into its own mirror image (wrong winding, inward normals, and no rigid pose -- the only
+    kind I-03 searches over -- can ever recover it for a chiral part). Rotating 180 degrees about
+    x still sends CAD's +z (body) to board frame's -z, and the random yaw that follows makes the
+    choice of x-axis versus y-axis irrelevant.
     """
     yaw_rad = rng.uniform(0.0, 2.0 * np.pi)
     cos_yaw, sin_yaw = np.cos(yaw_rad), np.sin(yaw_rad)
     yaw_rotation = np.array(
         [[cos_yaw, -sin_yaw, 0.0], [sin_yaw, cos_yaw, 0.0], [0.0, 0.0, 1.0]]
     )
-    z_flip = np.diag([1.0, 1.0, -1.0])
+    z_flip = np.diag([1.0, -1.0, -1.0])
     rotation = yaw_rotation @ z_flip
 
     translation_xy = rng.uniform(
@@ -261,6 +272,7 @@ def generate_synthetic_sample(
         "sigma_mm": sigma_mm,
         "patch_fraction": patch_fraction,
         "patch_vertex_count": int(np.count_nonzero(patch_mask)),
+        "patch_vertex_indices": sorted(int(i) for i in np.flatnonzero(patch_mask)),
         "vertex_count": len(dense_vertices),
         "face_count": len(dense_faces),
         "transform": {

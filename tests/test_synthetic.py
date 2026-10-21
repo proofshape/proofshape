@@ -12,6 +12,12 @@ from recon.mesh_cleanup import read_glb
 from recon.provenance import LABEL_OBSERVED, LABEL_UNOBSERVED, colors_to_labels
 
 # --- a tiny closed CAD-like solid, z-up from z = 0 (ordinary CAD convention) ----------------------
+#
+# Deliberately scalene (10, 7, 4 mm legs), not the equal-legs tetrahedron this file used to use:
+# equal legs are symmetric under swapping any two axes, so that shape's own mirror image looks
+# identical to itself -- exactly why the original mirror-vs-rotation bug (PR #170 review) survived
+# every test here. A genuinely chiral fixture is the only way a test can tell a mirror from a
+# rotation at all.
 
 
 def _tetrahedron():
@@ -19,8 +25,8 @@ def _tetrahedron():
         [
             [0.0, 0.0, 0.0],
             [10.0, 0.0, 0.0],
-            [0.0, 10.0, 0.0],
-            [0.0, 0.0, 10.0],
+            [0.0, 7.0, 0.0],
+            [0.0, 0.0, 4.0],
         ]
     )
     faces = np.array(
@@ -41,6 +47,17 @@ def _undirected_edge_counts(faces):
             key = (a, b) if a < b else (b, a)
             counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def _signed_volume(vertices, faces):
+    """Six times the enclosed volume of a closed, consistently-wound mesh (the divergence-theorem
+    formula) -- translation-invariant, and its *sign* flips under a reflection but is preserved by
+    any proper rotation, regardless of whether the shape itself has any symmetry."""
+    total = 0.0
+    for v0, v1, v2 in faces:
+        a, b, c = vertices[v0], vertices[v1], vertices[v2]
+        total += np.dot(a, np.cross(b, c))
+    return total / 6.0
 
 
 # --- a standard closest-point-on-triangle, for verifying the recovered transform ------------------
@@ -141,6 +158,28 @@ def test_board_frame_transform_rotation_is_orthogonal():
     rng = np.random.default_rng(0)
     rotation, _translation = synthetic.board_frame_transform(rng)
     np.testing.assert_allclose(rotation @ rotation.T, np.eye(3), atol=1e-10)
+
+
+def test_board_frame_transform_is_a_proper_rotation_for_any_seed():
+    # det == +1, not -1: a mirror is orthogonal too, so orthogonality alone (above) can't tell
+    # them apart. This is the PR #170 review's bug, caught here directly rather than only through
+    # its downstream symptoms.
+    for seed in range(20):
+        rng = np.random.default_rng(seed)
+        rotation, _translation = synthetic.board_frame_transform(rng)
+        assert np.linalg.det(rotation) == pytest.approx(1.0)
+
+
+def test_board_frame_transform_preserves_signed_volume():
+    vertices, faces = _tetrahedron()
+    original_volume = _signed_volume(vertices, faces)
+
+    rng = np.random.default_rng(11)
+    rotation, translation = synthetic.board_frame_transform(rng)
+    posed_vertices = vertices @ rotation.T + translation
+    posed_volume = _signed_volume(posed_vertices, faces)
+
+    assert posed_volume == pytest.approx(original_volume)
 
 
 # --- apply_gaussian_noise ----------------------------------------------------------------------
@@ -247,10 +286,15 @@ def test_patch_vertices_are_exactly_the_unobserved_ones():
         vertices, faces, seed=7, patch_fraction=0.3
     )
 
-    unobserved_count = int(np.count_nonzero(sample.labels == LABEL_UNOBSERVED))
+    unobserved_indices = set(np.flatnonzero(sample.labels == LABEL_UNOBSERVED).tolist())
     observed_count = int(np.count_nonzero(sample.labels == LABEL_OBSERVED))
-    assert unobserved_count == sample.sidecar["patch_vertex_count"]
-    assert unobserved_count + observed_count == len(sample.labels)
+
+    # Set equality against the sidecar's own recorded indices, not just a count match -- a
+    # same-sized but different patch (e.g. labels[np.roll(patch_mask, 1)]) would pass a count-only
+    # check (PR #170 review).
+    assert unobserved_indices == set(sample.sidecar["patch_vertex_indices"])
+    assert len(unobserved_indices) == sample.sidecar["patch_vertex_count"]
+    assert len(unobserved_indices) + observed_count == len(sample.labels)
 
 
 def test_sidecar_transform_recovers_the_original_cad_within_noise():
