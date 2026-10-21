@@ -707,6 +707,23 @@ error; there is no fallback to camera centres.
 The `metric_alignment.json` transform keys and convention stay unchanged, so R-06, R-07 and
 R-09 continue consuming the same scale/rotation/translation representation.
 
+Three implementation constraints were made explicit during review:
+- R-23 uses the exact resize/crop geometry recorded by VGGT in `run.json`. Legacy runs are
+  accepted only when they are clearly uncropped landscape frames; portrait/ambiguous legacy
+  runs are refused and must rerun R-01 rather than guessing a crop offset.
+- Only board frames where R-02 wrote `pose_found = true` contribute lifted corners to the fit.
+  A frame R-02 distrusted cannot silently affect metric scale.
+- R-22's post-R-23 `measure_board_scale` is an acceptance measurement on the same board anchor,
+  so it is expected to sit near 1 by construction. The separate legacy camera-centre diagnostic
+  is retained to preserve the independent signal that exposed the original focal-length scale
+  mechanism; CAD checks on s-04/s-05 provide a part-level cross-check.
+
+The board anchor intentionally samples depth at the detected ChArUco corner locations without
+applying R-20's global point-cloud confidence threshold. Those observations are the ruler used to
+set scale, not a dense surface estimate; dropping them with a threshold chosen for cloud/fusion
+would change the physical ruler opportunistically. Fit quality is therefore reported by residuals
+instead of silently substituting the camera-centre fallback.
+
 *Checked against D-028 at merge-sync time:* `main` has D-047 and D-052–D-053; open C-13
 holds D-048–D-050. D-051 remains unique and is inserted here before D-052 for readability.
 
