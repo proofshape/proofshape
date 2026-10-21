@@ -471,6 +471,41 @@ def test_run_on_capture_end_to_end_with_stubbed_model(tmp_path, monkeypatch):
     assert next(iter(run_info["timings"])) == "find_frames_s"
 
 
+def test_run_on_capture_marks_mismatched_preprocess_geometry_unsupported(
+    tmp_path, monkeypatch
+):
+    capture_dir = tmp_path / "s-99"
+    capture_dir.mkdir()
+    (capture_dir / "1.jpg").write_bytes(b"x")
+
+    result = _fake_model_result(1, height=4, width=6)
+    result["preprocess_geometry"] = [
+        {
+            "frame_name": "1.jpg",
+            "original_size_hw": [10, 20],
+            "resized_size_hw": [8, 12],
+            "crop_top_px": 0,
+            "crop_left_px": 0,
+            "processed_size_hw": [8, 12],
+            "scale_x": 0.6,
+            "scale_y": 0.8,
+        }
+    ]
+    monkeypatch.setattr(
+        vggt_runner,
+        "run_vggt_model",
+        lambda frame_paths, model_id, device_type: result,
+    )
+
+    run_info = vggt_runner.run_on_capture(
+        capture_dir, tmp_path / "out", device_type="cuda"
+    )
+
+    [description] = run_info["preprocess_geometry"]
+    assert description["supported_for_metric_alignment"] is False
+    assert "padded a mixed-shape batch" in description["unsupported_reason"]
+
+
 def test_main_default_confidence_threshold_reaches_run_json(tmp_path, monkeypatch):
     # R-20's acceptance criterion: the chosen default (D-045) must reach run.json from the CLI,
     # not just from a direct run_on_capture call -- the CLI has its own argparse default, which
