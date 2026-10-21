@@ -317,7 +317,9 @@ def test_board_anchor_handles_portrait_resize_and_crop() -> None:
     corner_frame_index: list[int] = []
     corner_id: list[int] = []
     corner_px: list[list[float]] = []
-    for frame_index, ((tx, ty), distance) in enumerate(zip(offsets, distances, strict=True)):
+    for frame_index, ((tx, ty), distance) in enumerate(
+        zip(offsets, distances, strict=True)
+    ):
         extrinsics[frame_index, :, 3] = [tx, ty, distance]
         depth[frame_index] = distance
         for cid, (x, y, _z) in enumerate(nominal):
