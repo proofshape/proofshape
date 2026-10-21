@@ -20,7 +20,7 @@ from scipy.ndimage import map_coordinates
 from recon.board_pose import make_board
 
 MIN_ALIGNMENT_FRAMES = 3
-MIN_BOARD_CORNER_OBSERVATIONS = 30
+# Inherited from R-22's board-ruler check: enough observations to avoid fitting scale from a\n# handful of corners while still allowing partial board visibility across trusted frames.\nMIN_BOARD_CORNER_OBSERVATIONS = 30
 
 
 def validate_known_size(
