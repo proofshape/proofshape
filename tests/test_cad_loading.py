@@ -178,6 +178,33 @@ def test_multi_node_assembly_with_transform_is_rejected(tmp_path):
         load_mesh(path)
 
 
+def test_unreferenced_glb_mesh_is_rejected(tmp_path):
+    path = tmp_path / "orphan-mesh.glb"
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+        dtype=np.float32,
+    )
+    write_glb(path, vertices, np.array([[0, 1, 2]], dtype=np.int32))
+
+    document = pygltflib.GLTF2().load_binary(str(path))
+    original = document.meshes[0].primitives[0]
+    document.meshes.append(
+        pygltflib.Mesh(
+            primitives=[
+                pygltflib.Primitive(
+                    attributes=original.attributes,
+                    indices=original.indices,
+                    mode=original.mode,
+                )
+            ]
+        )
+    )
+    document.save_binary(str(path))
+
+    with pytest.raises(ValueError, match="not referenced exactly once"):
+        load_mesh(path)
+
+
 @pytest.mark.parametrize("suffix", [".obj", ".ply", ".gltf", ""])
 def test_unsupported_formats_name_the_three_supported_inputs(tmp_path, suffix):
     path = tmp_path / ("mesh" + suffix)
