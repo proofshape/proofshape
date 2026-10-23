@@ -160,7 +160,7 @@ Full detail in each story file.
 | [R-20](R/R-20.md) | Use VGGT's confidence in the point cloud and in fusion | 4 h | R-01, R-07 | Done | @TabeenRaoof |
 | [R-21](R/R-21.md) | Measure the height cut from the real board surface | 3 h | R-06 | Done | @TabeenRaoof |
 | [R-22](R/R-22.md) | Find why parts reconstruct smaller than their CAD | 3 h | R-03, R-04 | Done | @TabeenRaoof |
-| [R-23](R/R-23.md) | Anchor R-04's metric scale on the board in the scene | 5 h | R-04, R-22 | Claimed | @mbj1994; @TabeenRaoof |
+| [R-23](R/R-23.md) | Anchor R-04's metric scale on the board in the scene | 5 h | R-04, R-22 | Done | @mbj1994; @TabeenRaoof |
 | [R-24](R/R-24.md) | Use VGGT's confidence in provenance's observation count | 3 h | R-20 | Done | @TabeenRaoof |
 
 ---
@@ -274,6 +274,7 @@ Full detail in each story file.
 | [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Blocked | _unclaimed_ |
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Blocked | _unclaimed_ |
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 10% | 3 h | I-04 | Blocked | _unclaimed_ |
+| [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Blocked | _unclaimed_ |
 
 ---
 
@@ -391,8 +392,8 @@ Full detail in each story file.
 | [P-17](P/P-17.md) | Operating manual refresh | — | nothing | Done | @TabeenRaoof |
 | [P-18](P/P-18.md) | 18 Sept progress review: deck and generator | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-19](P/P-19.md) | 2 Oct progress review | 2.5 h | nothing | Done | @TabeenRaoof |
-| [P-20](P/P-20.md) | Midterm presentation deck | — | nothing | Claimed | @TabeenRaoof |
-| [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
+| [P-20](P/P-20.md) | Midterm presentation deck | — | nothing | Done | @TabeenRaoof |
+| [P-21](P/P-21.md) | Midterm report | — | nothing | Done | @TabeenRaoof; @dalwalyk; @mbj1994 |
 | [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
 | [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Done | @mbj1994 |
 | [P-24](P/P-24.md) | Write up the ground-truth lane | — | nothing | Done | @TabeenRaoof |
@@ -415,7 +416,7 @@ from S2/S3.
 C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF with order code · C-18 device testing
 
 **Inspection**
-I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path · I-11 OBJ loading
+I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
 
 **Ground truth**
 G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)
