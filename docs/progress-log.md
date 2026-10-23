@@ -1276,4 +1276,5 @@ post-cutoff numbers, as next-steps material rather than another correction.
 **Review:** @dalwalyk requested changes on one thing: slide 3's system diagram drew the
 capture app's link to the service in the same solid "Done" style as the built stages, with the
 caveat only in the presenter notes. That connector now uses slide 13's "In progress" style
-(amber, dashed) and says "live link not yet confirmed" on the slide itself.
+(amber, dashed) and says "live link not yet confirmed" on the slide itself. The deck was
+presented, and P-20 closed at 3 h actual (no estimate was made before the work).
