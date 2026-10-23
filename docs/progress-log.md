@@ -1312,9 +1312,11 @@ independent ones, since D-039 makes the board pitch the anchor. The team table's
 student IDs are still for @mbj1994 and @dalwalyk to fill in.
 **Close-out (2026-10-23):** @dalwalyk filled in their name and ID, and one team list now feeds
 both the cover page and Table 2, with @TabeenRaoof's ID added. P-21 is `Done` at 10 h actual
-(4 h @TabeenRaoof, 3 h each @dalwalyk and @mbj1994, as @TabeenRaoof reported; each confirms
-their own share in review). Still to fill in before submission: Mamadou's name and ID, the
-instructor's name and the date. Figure 13 now comes from #165's corrected timeline slide.
+(4 h @TabeenRaoof, 3 h each @dalwalyk and @mbj1994, as @TabeenRaoof reported). @dalwalyk
+confirmed their share directly; @mbj1994's is unconfirmed. The final report shows Mamadou without
+a surname or student ID, which were never supplied, and drops the cover's instructor and date
+lines. Figure 13 now comes from #165's corrected timeline slide. @mbj1994's 10-21 change request,
+whose four points were all fixed in `c1729ac`, was dismissed so the report could close.
 
 ## 2026-10-22 — I-01 synthetic mesh generator and the `inspection` package (merged)
 

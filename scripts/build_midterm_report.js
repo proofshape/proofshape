@@ -98,15 +98,15 @@ BULLETS([
 ]);
 
 // One source for each member's name and student ID, read by both the cover page and Table 2, so
-// the two can never disagree. A null id hasn't been supplied yet: the cover keeps a blank line to
-// write on and Table 2 shows "[ID]", so a missing ID stays visible instead of looking finished.
+// the two can never disagree. A null id was not supplied before submission: the cover keeps a blank
+// line to write it on and Table 2 leaves the cell empty, rather than printing a placeholder.
 const TEAM = {
   "@TabeenRaoof": { name: "Tabeen Raoof", id: "163965" },
-  "@mbj1994": { name: "Mamadou [surname]", id: null },
+  "@mbj1994": { name: "Mamadou", id: null },
   "@dalwalyk": { name: "Yashi Dalwala", id: "164054" },
 };
 const teamCell = (handle) => `${TEAM[handle].name}\n${handle}`;
-const teamId = (handle) => TEAM[handle].id ?? "[ID]";
+const teamId = (handle) => TEAM[handle].id ?? "";
 
 // 2 · Team
 H1("2. Team Information", "Mamadou");
@@ -516,8 +516,6 @@ function coverPage() {
       rows: [memberRow("@TabeenRaoof"), memberRow("@mbj1994"), memberRow("@dalwalyk")],
     }),
     new Paragraph({ spacing: { before: 600, after: 60 }, children: [new TextRun({ text: "San Francisco Bay University · Fall 2026", size: 22, color: INK })] }),
-    new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: "Instructor: [instructor name]", size: 22, color: INK })] }),
-    new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: "Submitted: [date], October 2026", size: 22, color: INK })] }),
     new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: "Repository: github.com/proofshape/proofshape", size: 22, color: MUTED })] }),
     new Paragraph({ children: [new PageBreak()] }),
   ];
