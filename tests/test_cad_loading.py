@@ -6,8 +6,8 @@ from pathlib import Path
 import numpy as np
 import pygltflib
 import pytest
-
 from inspection.cad import load_mesh
+
 from recon.mesh_cleanup import write_glb
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "reference_cad"
