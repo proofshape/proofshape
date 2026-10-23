@@ -26,6 +26,7 @@ RUN grep -v '^-e ' requirements.txt > /tmp/requirements-deps.txt \
 
 COPY pyproject.toml ./
 COPY recon/ recon/
+COPY inspect/inspection/ inspect/inspection/
 COPY scripts/container_entrypoint.sh /usr/local/bin/container_entrypoint.sh
 RUN python -m pip install --no-cache-dir --no-deps . \
     && useradd --create-home --uid 1000 proofshape \
