@@ -283,8 +283,9 @@ The fourth slice of Phase 3 written up early, because it is overdue. The course 
 third of the project to be generative AI, and those components are never cut (AGENTS.md, D-017).
 VLM supervision was due in S2 (its M2 gate, "a screen photo is rejected by the VLM", was missed)
 and shape completion in S3; none of it is built. These are the first stories that can start
-without the verdict. A-02 (veto), A-03 (spec parser), A-05 (disagreement map) and A-06..A-09
-(agent, fallback, narrative) stay titles-only until the verdict or A-04 exists.
+without the verdict, plus the agent's tools (A-06) and its deterministic fallback (A-08), which
+the proposal says is built first. A-02 (veto), A-03 (spec parser), A-05 (disagreement map), A-07
+(agent loop) and A-09 (narrative) stay titles-only until the verdict, A-04 or A-06/A-08 exist.
 
 **What counts.** The test is "if you run it twice, can it give two different answers?"
 (AGENTS.md). A VLM's reply and sampled completions both can; the reconstruction backbone can't
@@ -311,6 +312,8 @@ Full detail in each story file.
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Ready | _unclaimed_ |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Blocked | _unclaimed_ |
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Ready | _unclaimed_ |
+| [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Ready | _unclaimed_ |
+| [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Blocked | _unclaimed_ |
 
 ---
 
@@ -394,7 +397,7 @@ Full detail in each story file.
 | [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Done | @mbj1994 |
 | [P-24](P/P-24.md) | Write up the ground-truth lane | — | nothing | Done | @TabeenRaoof |
 | [P-25](P/P-25.md) | Write up the inspection lane | — | nothing | Done | @TabeenRaoof |
-| [P-26](P/P-26.md) | Write up the first generative-AI stories | — | nothing | Claimed | @TabeenRaoof |
+| [P-26](P/P-26.md) | Write up the first generative-AI stories | — | nothing | Done | @TabeenRaoof |
 
 ---
 
@@ -403,9 +406,10 @@ Full detail in each story file.
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
 The thin capture thread (C-01–C-13), ground truth (G-01–G-09), the first half of inspection
-(I-01–I-05) and the first generative-AI stories (A-01, A-04, A-10, A-11) are the exceptions —
-all written up above, not here: the capture thread is meant to run early, ground truth sits on
-the critical path, inspection's sprint has started, and generative AI is overdue from S2/S3.
+(I-01–I-05) and the first generative-AI stories (A-01, A-04, A-06, A-08, A-10, A-11) are the
+exceptions — all written up above, not here: the capture thread is meant to run early, ground
+truth sits on the critical path, inspection's sprint has started, and generative AI is overdue
+from S2/S3.
 
 **Capture app**
 C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF with order code · C-18 device testing
@@ -417,7 +421,7 @@ I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · 
 G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)
 
 **Generative AI**
-A-02 VLM verdict veto · A-03 prose-to-spec parser · A-05 disagreement map · A-06 agent tool definitions · A-07 agent loop · A-08 deterministic fallback · A-09 report narrative
+A-02 VLM verdict veto · A-03 prose-to-spec parser · A-05 disagreement map · A-07 agent loop · A-09 report narrative
 
 **Cross-cutting**
 X-01 integration point I1 · X-02 I2 · X-03 I3 · X-04 I4 · X-05 recorded backup demo
