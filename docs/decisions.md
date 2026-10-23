@@ -775,6 +775,43 @@ showed before.
 *Checked against D-028 at write time:* D-049 on this branch was the highest decision anywhere, so
 D-050 was the first free number.
 
+**D-051 · Metric alignment is anchored on lifted ChArUco board geometry, not camera centres.** (2026-10-16)
+R-23 replaces R-04's camera-centre similarity fit with a direct fit from reconstructed ChArUco
+corner observations to the printed board's exact millimetre coordinates. The corners R-02
+already detects are rescaled into R-01's processed pixel frame, lifted through R-01 depth and
+camera intrinsics/extrinsics, and solved with the existing Umeyama `solve_similarity`. R-22's
+board-scale diagnostic reuses the same lifting helper rather than carrying a second copy.
+
+*Why:* R-22 measured every golden reconstruction 4–9% small and found the error tracked the focal
+ratio between the board-pose and VGGT cameras. Camera-centre distance depends on the focal length
+assumed by the pose source; the physical board dimensions do not. A synthetic regression test
+makes the legacy centre fit recover a deliberately wrong 0.9 scale while the board anchor
+recovers 1.0 from the same reconstruction. Fewer than 30 usable lifted corners is an explicit
+error; there is no fallback to camera centres.
+
+The `metric_alignment.json` transform keys and convention stay unchanged, so R-06, R-07 and
+R-09 continue consuming the same scale/rotation/translation representation.
+
+Three implementation constraints were made explicit during review:
+- R-23 uses the exact resize/crop geometry recorded by VGGT in `run.json`. Legacy runs are
+  accepted only when they are clearly uncropped landscape frames; portrait/ambiguous legacy
+  runs are refused and must rerun R-01 rather than guessing a crop offset.
+- Only board frames where R-02 wrote `pose_found = true` contribute lifted corners to the fit.
+  A frame R-02 distrusted cannot silently affect metric scale.
+- R-22's post-R-23 `measure_board_scale` is an acceptance measurement on the same board anchor,
+  so it is expected to sit near 1 by construction. The separate legacy camera-centre diagnostic
+  is retained to preserve the independent signal that exposed the original focal-length scale
+  mechanism; CAD checks on s-04/s-05 provide a part-level cross-check.
+
+The board anchor intentionally samples depth at the detected ChArUco corner locations without
+applying R-20's global point-cloud confidence threshold. Those observations are the ruler used to
+set scale, not a dense surface estimate; dropping them with a threshold chosen for cloud/fusion
+would change the physical ruler opportunistically. Fit quality is therefore reported by residuals
+instead of silently substituting the camera-centre fallback.
+
+*Checked against D-028 at merge-sync time:* `main` has D-047 and D-052–D-053; open C-13
+holds D-048–D-050. D-051 remains unique and is inserted here before D-052 for readability.
+
 **D-052 · Planning work gets stories too, in a P lane; past work is recorded as it was.**
 (2026-10-16)
 A new lane, **P — Planning**, holds the work that belongs to no single story: the proposal and

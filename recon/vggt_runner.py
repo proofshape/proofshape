@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from PIL import Image
 
 from recon.frames import find_capture_frames
 from recon.timing import format_timing_table
@@ -56,6 +57,59 @@ _MIN_BF16_COMPUTE_CAPABILITY = (8, 0)
 
 # find_capture_frames now lives in recon/frames.py (issue #43); imported here so
 # `vggt_runner.find_capture_frames` keeps working for existing callers and tests.
+
+
+VGGT_TARGET_WIDTH_PX = 518
+VGGT_MULTIPLE_PX = 14
+
+
+def describe_vggt_crop_preprocess(frame_paths: list[Path]) -> list[dict[str, Any]]:
+    """Describe VGGT pinned default crop preprocessing in full-resolution pixel terms.
+
+    R-23 needs the exact map from R-02 stored-image pixels to VGGT processed pixels. The
+    pinned loader first resizes width to 518, rounds height to a multiple of 14, then
+    centre-crops height to at most 518. We record that geometry with the run so downstream
+    code never has to infer it from a single final HxW pair.
+
+    EXIF orientation is deliberately ignored here, matching R-01/R-02 stored-pixel convention.
+    Mixed-shape batches that VGGT later pads are not representable by this simple map; R-23
+    detects that by comparing each recorded final size with the actual depth image size and
+    refuses rather than guessing.
+    """
+    descriptions: list[dict[str, Any]] = []
+    for path in frame_paths:
+        with Image.open(path) as image:
+            original_width, original_height = image.size
+        if original_width <= 0 or original_height <= 0:
+            raise ValueError(
+                f"Invalid image dimensions for {path}: {original_width}x{original_height}"
+            )
+
+        resized_width = VGGT_TARGET_WIDTH_PX
+        resized_height = int(
+            round(original_height * (resized_width / original_width) / VGGT_MULTIPLE_PX)
+            * VGGT_MULTIPLE_PX
+        )
+        resized_height = max(VGGT_MULTIPLE_PX, resized_height)
+
+        crop_top = max(0, (resized_height - VGGT_TARGET_WIDTH_PX) // 2)
+        crop_left = 0
+        final_height = min(resized_height, VGGT_TARGET_WIDTH_PX)
+        final_width = resized_width
+
+        descriptions.append(
+            {
+                "frame_name": path.name,
+                "original_size_hw": [int(original_height), int(original_width)],
+                "resized_size_hw": [int(resized_height), int(resized_width)],
+                "crop_top_px": int(crop_top),
+                "crop_left_px": int(crop_left),
+                "processed_size_hw": [int(final_height), int(final_width)],
+                "scale_x": float(resized_width / original_width),
+                "scale_y": float(resized_height / original_height),
+            }
+        )
+    return descriptions
 
 
 def choose_dtype_name(
@@ -402,6 +456,8 @@ def run_vggt_model(
     synchronise()
     timings["model_load_s"] = time.perf_counter() - started
 
+    preprocess_geometry = describe_vggt_crop_preprocess(frame_paths)
+
     started = time.perf_counter()
     images = load_and_preprocess_images([str(path) for path in frame_paths]).to(
         device_type
@@ -439,6 +495,7 @@ def run_vggt_model(
         "device": device_name,
         "dtype": dtype_name,
         "torch_version": str(torch.__version__),
+        "preprocess_geometry": preprocess_geometry,
     }
 
 
@@ -472,6 +529,18 @@ def run_on_capture(
 
     frame_names = [path.name for path in frame_paths]
     _, height, width = result["depth"].shape
+    preprocess_geometry = result.get("preprocess_geometry")
+    if preprocess_geometry is not None:
+        for description in preprocess_geometry:
+            if description["processed_size_hw"] != [int(height), int(width)]:
+                description["supported_for_metric_alignment"] = False
+                description["unsupported_reason"] = (
+                    "VGGT batch output size differs from this frame's resize/crop size; "
+                    "the loader likely padded a mixed-shape batch."
+                )
+            else:
+                description["supported_for_metric_alignment"] = True
+
     run_info: dict[str, Any] = {
         "story": "R-01",
         "backend": "vggt",
@@ -480,6 +549,7 @@ def run_on_capture(
         "frame_count": len(frame_names),
         "frame_names": frame_names,
         "processed_image_size_hw": [int(height), int(width)],
+        "preprocess_geometry": preprocess_geometry,
         "device": result["device"],
         "dtype": result["dtype"],
         "torch_version": result["torch_version"],
