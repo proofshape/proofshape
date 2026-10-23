@@ -87,7 +87,7 @@ P("The project is delivered in tiers, so that a working product exists at every 
 TABLE("tiers", "Delivery tiers, from the project proposal [21].", [1.4, 3.6, 1.5],
   ["Tier", "Deliverable", "Status (15 Oct)"],
   [
-    ["1 · Core", "Phone photos → metric 3D model in the browser, with an observed/unobserved map; VLM supervision of capture", "Built, except VLM"],
+    ["1 · Core", "Phone photos → metric 3D model in the browser, with an observed/unobserved map; VLM supervision of capture", "Components built; end-to-end phone connection not yet confirmed; VLM not built"],
     ["2 · Inspection", "CAD alignment, deviation heatmap, verdict logic, condition report, plain-English inspection spec, generative shape completion, LLM capture agent", "Not started"],
     ["3 · Stretch", "Defect-aware guidance, session integrity checks, LLM report narrative", "Not started"],
   ]);
@@ -113,14 +113,14 @@ P("Capacity is about 9 hours per person per week over the semester, roughly 349 
 H1("3. System Overview and Foundations", "Mamadou");
 P("{fig:overview} shows the whole system. The capture app runs in the phone's browser. It sends photos and gyroscope readings over HTTPS to the reconstruction service through a frozen API. The service runs eight stages, in order, on every finished session:");
 BULLETS([
-  "**Stage 1** finds the printed board in every photo and solves where the camera was, in millimetres (Section 5).",
+  "**Stage 1** detects the printed board in each photo and, where enough of its corners are found, solves where the camera was, in millimetres (Section 5).",
   "**Stage 2** runs a large learned model that reconstructs camera poses and per-pixel depth from all the photos at once (Section 4).",
   "**Stage 3** aligns that reconstruction to the board, which gives it real units (Section 5).",
   "**Stages 4–6** cut the part away from the board, fuse the depth maps into a mesh, and clean it (Section 6).",
   "**Stage 7** labels every vertex Observed or Unobserved and gives it an uncertainty (Section 7).",
   "**Stage 8** returns the result as a GLB model, with those labels stored as vertex colours [15].",
 ]);
-FIGURE("overview", "fig_overview.png", 6.5, "ProofShape system overview. The capture app (left) talks to the reconstruction service (right) through a frozen HTTPS API, and the eight service stages run in order on every finished session. The bottom row lists the four foundations built first, so that three people could work in parallel (Section 3.1). Everything drawn here is built; Tier 2 inspection and the generative-AI components are not.");
+FIGURE("overview", "fig_overview.png", 6.5, "ProofShape system overview. The capture app (left) talks to the reconstruction service (right) through a frozen HTTPS API, and the eight service stages run in order on every finished session. The bottom row lists the four foundations built first, so that three people could work in parallel (Section 3.1). Every component drawn here is built, but the live link between the capture app and the service had not yet been confirmed on a real phone by 15 October (Section 10.3). Tier 2 inspection and the generative-AI components are not built.");
 H2("3.1 Foundations built first");
 P("The first three weeks went into four pieces of groundwork whose job is to stop the three of us from blocking each other.");
 BULLETS([
@@ -159,7 +159,7 @@ FIGURE("cameras", "fig_cameras.png", 4.4, "Camera poses solved from the printed 
 H2("5.2 Lens calibration (R-03) and metric alignment (R-04, R-05)");
 P("The same board corners calibrate the camera lens across a session. On s-04 this gave a reprojection error of **1.20 px** over 29 views. That is internal consistency, not accuracy. If calibration fails, the stage falls back to VGGT's predicted intrinsics and records that it did so.");
 P("One similarity transform, solved with Umeyama's method [7], then maps VGGT's camera centres onto the board's camera centres. That puts the whole reconstruction in board millimetres. Per-frame residuals are reported; on s-04 the camera-centre residual was 10.0 mm RMS, which is an alignment diagnostic, not an object-accuracy figure.");
-P("A separate check (R-05) compares three independent scale sources as ratios to the board pitch (D-039), and flags the session if any two disagree by more than about 2%. The three sources are the printed board pitch, an optional caliper reading, and the CAD registration residual. The 2% is a team rule, not a measured value. Nothing feeds the check yet: there is no caliper entry in the app and no CAD registration.");
+P("A separate check (R-05) compares three scale sources, each expressed as a ratio to the board pitch (D-039), and flags the session if any two disagree by more than about 2%. The three sources are the printed board pitch, an optional caliper reading, and the CAD registration residual. The 2% is a team rule, not a measured value. Nothing feeds the check yet: there is no caliper entry in the app and no CAD registration.");
 H2("5.3 Finding: the scene comes out 4–9% small (R-22)");
 P("The board itself is an exact ruler inside every reconstruction, so we measured it. {fig:boardscale} shows that the reconstructed board comes out **4–9% smaller** than its true size on all five golden objects. That shrinkage tracks, almost exactly, the ratio between the focal length our board poses were solved with and the focal length VGGT predicts. Because metric alignment fits camera centres, and a camera's distance from the scene scales with the focal length assumed for it, the focal mismatch turns directly into a scale error. The fix, **R-23**, anchors the scale on the board corners actually visible in the scene instead of on camera centres. R-22 filed it; it is not yet claimed.");
 FIGURE("boardscale", "fig_board_scale.png", 6.3, "Using the board as a ruler inside each reconstruction (R-22). Dark bars show the size at which the 20 mm board comes out after metric alignment, as a fraction of its true size. Light bars show the ratio between the focal length used for the board poses and the focal length VGGT predicts. The two track each other on all five objects, which identifies the focal mismatch as the cause of the shrinkage.");
