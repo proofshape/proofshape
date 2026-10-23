@@ -417,8 +417,13 @@ SLIDES.push(async (pres, C) => {
   s.addImage({ data: await icon("FaMobileScreenButton", HEX.lt1), x: M + 0.85, y: top + 0.28, w: 0.6, h: 0.6 });
   text(s, "Capture app", { x: M + 0.1, y: top + 1.03, w: 2.1, h: 0.35, fontSize: 15, bold: true, color: C.background1, align: "center" });
   text(s, "phone browser:\nphotos + gyro in,\ncoloured 3D model out", { x: M + 0.1, y: top + 1.42, w: 2.1, h: 0.9, fontSize: 11.5, color: C.background1, align: "center" });
-  s.addShape("line", { x: 2.98, y: top + ph / 2 + 0.05, w: 0.62, h: 0, line: { color: C.accent4, width: 1.5, beginArrowType: "triangle", endArrowType: "triangle" } });
+  // The capture app and the service are each built, but the live link between them (C-13) was not
+  // confirmed by the 15 October cutoff. So this one connector uses slide 13's "In progress" style
+  // (amber, dashed) instead of the solid "Done" look, and says so on the slide itself: a reader of
+  // the .pptx who never hears the presenter notes must not see a fully finished pipeline.
+  s.addShape("line", { x: 2.98, y: top + ph / 2 + 0.05, w: 0.62, h: 0, line: { color: C.accent2, width: 1.5, dashType: "dash", beginArrowType: "triangle", endArrowType: "triangle" } });
   text(s, "HTTPS\nAPI", { x: 2.9, y: top + ph / 2 - 0.55, w: 0.8, h: 0.5, fontSize: 9.5, color: C.accent4, align: "center" });
+  text(s, "live link\nnot yet\nconfirmed", { x: 2.86, y: top + ph / 2 + 0.17, w: 0.88, h: 0.62, fontSize: 9, italic: true, color: C.accent2, align: "center" });
   const px = 3.72;
   const pw = W - M - px;
   s.addShape("roundRect", { x: px, y: top, w: pw, h: ph, rectRadius: 0.06, fill: { color: C.background2 }, line: { color: C.accent6 } });
