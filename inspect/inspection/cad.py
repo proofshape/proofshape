@@ -146,7 +146,9 @@ def _accessor_array(
     element_bytes = dtype.itemsize * width
     stride = view.byteStride or element_bytes
     if stride != element_bytes:
-        raise ValueError("Interleaved GLB vertex buffers are not supported for CAD loading.")
+        raise ValueError(
+            "Interleaved GLB vertex buffers are not supported for CAD loading."
+        )
 
     offset = int(view.byteOffset or 0) + int(accessor.byteOffset or 0)
     count = int(accessor.count)
@@ -159,12 +161,81 @@ def _accessor_array(
 
 
 def _node_has_nonidentity_scale(node: pygltflib.Node) -> bool:
-    if node.scale is None:
-        return False
-    scale = np.asarray(node.scale, dtype=np.float64)
-    return scale.shape != (3,) or not np.allclose(
-        scale, np.ones(3), atol=0.0, rtol=0.0
+    if node.scale is not None:
+        scale = np.asarray(node.scale, dtype=np.float64)
+        if scale.shape != (3,) or not np.allclose(
+            scale, np.ones(3), atol=0.0, rtol=0.0
+        ):
+            return True
+
+    if node.matrix is not None:
+        matrix_values = np.asarray(node.matrix, dtype=np.float64)
+        if matrix_values.shape != (16,):
+            return True
+        # glTF stores matrices column-major. Scale is the norm of each basis column in the
+        # upper-left 3x3; translation and pure rotation do not change those norms.
+        matrix = matrix_values.reshape(4, 4, order="F")
+        basis_scale = np.linalg.norm(matrix[:3, :3], axis=0)
+        if not np.allclose(basis_scale, np.ones(3), atol=1e-9, rtol=1e-9):
+            return True
+
+    return False
+
+
+def _node_has_nonidentity_transform(node: pygltflib.Node) -> bool:
+    if node.matrix is not None:
+        matrix_values = np.asarray(node.matrix, dtype=np.float64)
+        if matrix_values.shape != (16,):
+            return True
+        matrix = matrix_values.reshape(4, 4, order="F")
+        return not np.allclose(matrix, np.eye(4), atol=1e-9, rtol=1e-9)
+
+    translation = (
+        np.zeros(3, dtype=np.float64)
+        if node.translation is None
+        else np.asarray(node.translation, dtype=np.float64)
     )
+    rotation = (
+        np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+        if node.rotation is None
+        else np.asarray(node.rotation, dtype=np.float64)
+    )
+    scale = (
+        np.ones(3, dtype=np.float64)
+        if node.scale is None
+        else np.asarray(node.scale, dtype=np.float64)
+    )
+    if translation.shape != (3,) or rotation.shape != (4,) or scale.shape != (3,):
+        return True
+    return not (
+        np.allclose(translation, np.zeros(3), atol=1e-9, rtol=1e-9)
+        and np.allclose(
+            rotation,
+            np.array([0.0, 0.0, 0.0, 1.0]),
+            atol=1e-9,
+            rtol=1e-9,
+        )
+        and np.allclose(scale, np.ones(3), atol=1e-9, rtol=1e-9)
+    )
+
+
+def _validate_glb_scene_nodes(document: pygltflib.GLTF2) -> None:
+    mesh_nodes = [node for node in document.nodes if node.mesh is not None]
+    mesh_refs = [int(node.mesh) for node in mesh_nodes]
+
+    if len(mesh_refs) != len(set(mesh_refs)):
+        raise ValueError(
+            "GLB reuses one mesh from multiple nodes. Instance transforms are not supported; "
+            "export a single baked mesh before loading."
+        )
+
+    if len(mesh_nodes) > 1 and any(
+        _node_has_nonidentity_transform(node) for node in document.nodes
+    ):
+        raise ValueError(
+            "GLB contains multiple mesh-bearing nodes with transforms. ProofShape does not "
+            "silently discard assembly placement; export a single baked mesh before loading."
+        )
 
 
 def _load_glb(path: Path) -> tuple[np.ndarray, np.ndarray, str]:
@@ -179,6 +250,7 @@ def _load_glb(path: Path) -> tuple[np.ndarray, np.ndarray, str]:
             "export coordinates at the intended scale or pass load_mesh(..., scale=...) "
             "explicitly after removing the node scale."
         )
+    _validate_glb_scene_nodes(document)
 
     blob = document.binary_blob()
     if blob is None:
