@@ -231,6 +231,15 @@ def _validate_glb_scene_nodes(document: pygltflib.GLTF2) -> None:
             "export a single baked mesh before loading."
         )
 
+    referenced_meshes = set(mesh_refs)
+    expected_meshes = set(range(len(document.meshes)))
+    if referenced_meshes != expected_meshes:
+        raise ValueError(
+            "GLB contains mesh data that is not referenced exactly once by a node. "
+            "ProofShape will not silently merge orphan geometry; export a single baked mesh "
+            "before loading."
+        )
+
     if len(mesh_nodes) > 1 and any(
         _node_has_nonidentity_transform(node) for node in document.nodes
     ):
