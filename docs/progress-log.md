@@ -1242,8 +1242,6 @@ I-06..I-10 stay titles-only behind G-04 and D-032, and I-11 (OBJ loading) is add
 and `--fix` changes nothing. P-25 closed at 2 h actual (no estimate was made before the work).
 **Next:** I-01 and I-02 can start now and in parallel. I-03 needs both.
 
-
-
 ## 2026-10-20 — P-21 midterm report opened for review (PR #160)
 
 **Who:** @TabeenRaoof, drafted with Claude; review requested from @dalwalyk and @mbj1994.
@@ -1308,3 +1306,33 @@ about the live link (Section 10.3); Stage 1 detects the board and solves pose wh
 corners are found, matching §5.1's 138 of 142; and R-05 compares three scale sources, not three
 independent ones, since D-039 makes the board pitch the anchor. The team table's surnames and
 student IDs are still for @mbj1994 and @dalwalyk to fill in.
+
+## 2026-10-22 — I-01 synthetic mesh generator and the `inspection` package (merged)
+
+**Who:** @dalwalyk (PR #170), reviewed by @TabeenRaoof and @mbj1994.
+**What changed:** `inspect/inspection/` now exists (D-053's package layout) with
+`inspection.synthetic`: densify a CAD mesh to a target edge length, apply a fixed
+CAD-to-board-frame rotation composed with a random yaw/xy pose, add Gaussian noise along each
+vertex's normal, label a connected patch of vertices Unobserved, and export via
+`recon.mesh_cleanup.write_glb` with `recon.provenance`'s label colours. 16 new tests in
+`tests/test_synthetic.py`, 2 more in `tests/test_packaging.py` for D-053's own acceptance check.
+**Review round caught a real bug, confirmed numerically, before merge:** the CAD-to-board-frame
+flip was `diag(1, 1, -1)` (determinant −1, a mirror), not a rotation — every synthetic part came
+out as its own mirror image. @TabeenRaoof reproduced it by fitting a proper similarity from CAD
+to output on a chiral tetrahedron and an s-04-shaped prism (both came back with the enclosed
+volume's sign flipped and tens of mm of residual) and caught that the test fixture's equal legs
+had hidden the bug — its own mirror image looked identical to itself. Fixed to `diag(1, -1, -1)`
+(a proper 180° rotation about x); the fixture is now scalene; `det(rotation) == +1` and
+signed-volume-sign tests added. Also caught: the sidecar recorded only a patch vertex *count*,
+so a same-sized but different patch passed every test (fixed by recording
+`patch_vertex_indices` and asserting set equality); and the Docker image no longer built,
+because `pyproject.toml` now names the `inspection` package explicitly but the Dockerfile never
+copied `inspect/inspection/` into the build context (fixed with one more `COPY`). All three
+fixes were mutation-tested by hand: reverting each one individually fails exactly the test(s)
+meant to catch it.
+**Result:** I-01 is Done, 3 h actual (est 4). Full suite 495 passed, ruff and
+`check_story_states.py` clean. I-02 was already Ready and independent; I-03 still needs both.
+**Worth knowing if you pull this:** any existing `.venv` needs
+`./scripts/bootstrap_dev_env.sh` (or `pip install -e .`) re-run after this merge, or
+`import inspection` fails and the test suite stops at collection — @TabeenRaoof hit exactly that
+with an older environment during review.
