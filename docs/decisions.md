@@ -802,6 +802,32 @@ whole backend, which the lane layout exists to prevent.
 (`capture/C-13-connect-deployed-service`, #146) and D-051 (`recon/R-23-board-scale-anchor`, #152)
 are held on open branches and D-052 is on `main`, so D-053 was the first free number.
 
+**D-054 · Orbit coverage is recomputed server-side; `check_frame` is `unavailable` until the
+frame-gate result is actually reported.** (2026-10-23)
+A-06's two phone-side tool sources (`capture/src/frame_gate.ts`, `capture/src/orbit.ts`) reach
+the server two different ways. Orbit: every accepted frame's gyro reading is already persisted
+at `<session_dir>/frames/frame_NNNN.gyro.json` by `SessionStore.add_frame`, so
+`recon.agent_tools.coverage_report` replays `orbit.ts`'s `computeCoverage` logic over those files
+directly — no contract change. Frame gate: a rejected frame's pixels and gyro are never
+uploaded, so there is nothing to recompute server-side, and nothing has ever reported a
+rejection to the server either — only a new contract field could carry that, which needs a
+D-031 request at a sprint boundary (Oct 30 or Nov 13), deliberately not added here.
+`recon.agent_tools.check_frame` is therefore `unavailable` for every call, the same honesty
+`vlm_inspect` already applies to A-01 not existing yet.
+*Rejected alternative, caught in review:* an earlier version of this decision had `check_frame`
+answer `upload_frame`'s own server-side accept/reject outcome instead — a real signal, but a
+different question than the one the acceptance criteria name ("`check_frame` over the gate
+result"). @mbj1994 caught that this made the story's own criterion look satisfied while actually
+implementing a different tool under the same name. Reverted; no `last_frame_event` state was
+kept.
+*Why:* A-06 was picked over A-11 specifically to avoid being gated on a D-031 sprint boundary.
+Adding frame-gate telemetry now would reintroduce that same gate. Honestly returning
+`unavailable` costs nothing and invents nothing; a real, gate-rejection-aware `check_frame` is
+explicit future work once the agent (A-07) actually needs it and the team decides to spend a
+D-031 slot on it.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked; nothing
+past D-053 exists anywhere, so D-054 was the first free number.
+
 ---
 
 ## Open — not yet decided
