@@ -274,6 +274,7 @@ Full detail in each story file.
 | [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Blocked | _unclaimed_ |
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Blocked | _unclaimed_ |
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 10% | 3 h | I-04 | Blocked | _unclaimed_ |
+| [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Blocked | _unclaimed_ |
 
 ---
 
@@ -415,7 +416,7 @@ from S2/S3.
 C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF with order code · C-18 device testing
 
 **Inspection**
-I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path · I-11 OBJ loading
+I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
 
 **Ground truth**
 G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)
