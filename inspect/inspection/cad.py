@@ -117,7 +117,9 @@ def _load_stl(path: Path) -> tuple[np.ndarray, np.ndarray, str]:
         try:
             soup = read_ascii_stl(path)
         except ValueError as exc:
-            raise ValueError(f"Could not read {path} as STL. {_SUPPORTED_MESSAGE}") from exc
+            raise ValueError(
+                f"Could not read {path} as STL. {_SUPPORTED_MESSAGE}"
+            ) from exc
 
     vertices, faces = _deduplicate_triangle_soup(soup)
     return vertices, faces, _STL_UNITS
