@@ -127,6 +127,47 @@ def test_nonidentity_glb_node_scale_is_rejected(tmp_path):
         load_mesh(path)
 
 
+def test_matrix_encoded_scale_is_rejected(tmp_path):
+    path = tmp_path / "matrix-scale.glb"
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+        dtype=np.float32,
+    )
+    write_glb(path, vertices, np.array([[0, 1, 2]], dtype=np.int32))
+
+    document = pygltflib.GLTF2().load_binary(str(path))
+    document.nodes[0].scale = None
+    document.nodes[0].matrix = [
+        2.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+    ]
+    document.save_binary(str(path))
+
+    with pytest.raises(ValueError, match="non-identity node scale"):
+        load_mesh(path)
+
+
+def test_multi_node_assembly_with_transform_is_rejected(tmp_path):
+    path = tmp_path / "assembly.glb"
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+        dtype=np.float32,
+    )
+    write_glb(path, vertices, np.array([[0, 1, 2]], dtype=np.int32))
+
+    document = pygltflib.GLTF2().load_binary(str(path))
+    document.nodes.append(
+        pygltflib.Node(mesh=0, translation=[25.0, 0.0, 0.0])
+    )
+    document.scenes[0].nodes.append(1)
+    document.save_binary(str(path))
+
+    with pytest.raises(ValueError, match="reuses one mesh from multiple nodes"):
+        load_mesh(path)
+
+
 @pytest.mark.parametrize("suffix", [".obj", ".ply", ".gltf", ""])
 def test_unsupported_formats_name_the_three_supported_inputs(tmp_path, suffix):
     path = tmp_path / ("mesh" + suffix)
