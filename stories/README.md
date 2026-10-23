@@ -392,7 +392,7 @@ Full detail in each story file.
 | [P-17](P/P-17.md) | Operating manual refresh | — | nothing | Done | @TabeenRaoof |
 | [P-18](P/P-18.md) | 18 Sept progress review: deck and generator | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-19](P/P-19.md) | 2 Oct progress review | 2.5 h | nothing | Done | @TabeenRaoof |
-| [P-20](P/P-20.md) | Midterm presentation deck | — | nothing | Claimed | @TabeenRaoof |
+| [P-20](P/P-20.md) | Midterm presentation deck | — | nothing | Done | @TabeenRaoof |
 | [P-21](P/P-21.md) | Midterm report | — | nothing | Done | @TabeenRaoof; @dalwalyk; @mbj1994 |
 | [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
 | [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Done | @mbj1994 |
