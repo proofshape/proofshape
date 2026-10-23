@@ -161,6 +161,39 @@ def test_matrix_encoded_scale_is_rejected(tmp_path):
         load_mesh(path)
 
 
+def test_matrix_encoded_reflection_is_rejected(tmp_path):
+    path = tmp_path / "matrix-reflection.glb"
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+        dtype=np.float32,
+    )
+    write_glb(path, vertices, np.array([[0, 1, 2]], dtype=np.int32))
+
+    document = pygltflib.GLTF2().load_binary(str(path))
+    document.nodes[0].matrix = [
+        -1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
+    document.save_binary(str(path))
+
+    with pytest.raises(ValueError, match="non-identity node scale"):
+        load_mesh(path)
+
+
 def test_multi_node_assembly_with_transform_is_rejected(tmp_path):
     path = tmp_path / "assembly.glb"
     vertices = np.array(
