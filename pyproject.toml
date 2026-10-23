@@ -11,13 +11,14 @@ requires-python = ">=3.11"
 [project.optional-dependencies]
 dev = ["numpy>=1.26,<2", "pytest>=8", "pyyaml>=6", "jsonschema>=4", "openapi-spec-validator>=0.7", "ruff>=0.16", "pypdfium2>=5"]
 
-# Only `recon` is registered as an installed package for now. `inspect` is
-# deliberately left out — see docs/decisions.md D-030: its directory name
-# collides with the Python standard library `inspect` module, and installing
-# it as a top-level package would shadow that module for the whole
-# environment. D-053 settles the import name for inspect-lane code: package
-# `inspection` at inspect/inspection/, added here by I-01 (an explicit
-# `packages` list plus `package-dir`, since `packages.find` can't discover a
-# package whose name differs from its directory).
-[tool.setuptools.packages.find]
-include = ["recon*"]
+# `inspect/` itself is still never registered — see docs/decisions.md D-030: its directory name
+# collides with the Python standard library `inspect` module, and installing it as a top-level
+# package would shadow that module for the whole environment. D-053 settles the import name for
+# inspect-lane code instead: package `inspection`, living at inspect/inspection/. `packages.find`
+# can't discover a package whose name differs from its directory, so both packages are listed
+# explicitly here, with `package-dir` mapping `inspection` to its real location.
+[tool.setuptools]
+packages = ["recon", "inspection"]
+
+[tool.setuptools.package-dir]
+inspection = "inspect/inspection"
