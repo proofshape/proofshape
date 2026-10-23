@@ -1306,6 +1306,11 @@ about the live link (Section 10.3); Stage 1 detects the board and solves pose wh
 corners are found, matching §5.1's 138 of 142; and R-05 compares three scale sources, not three
 independent ones, since D-039 makes the board pitch the anchor. The team table's surnames and
 student IDs are still for @mbj1994 and @dalwalyk to fill in.
+**Close-out (2026-10-23):** @dalwalyk filled in their name and ID, and one team list now feeds
+both the cover page and Table 2, with @TabeenRaoof's ID added. P-21 is `Done` at 10 h actual
+(4 h @TabeenRaoof, 3 h each @dalwalyk and @mbj1994, as @TabeenRaoof reported; each confirms
+their own share in review). Still to fill in before submission: Mamadou's name and ID, the
+instructor's name and the date. Figure 13 is still the uncorrected deck crop.
 
 ## 2026-10-22 — I-01 synthetic mesh generator and the `inspection` package (merged)
 
