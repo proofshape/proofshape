@@ -69,19 +69,19 @@ Every column sums to that sprint’s capacity, and the whole table sums to 349. 
 
 The course requires a progress presentation every two weeks: what we did, and what moved. These are graded deliverables, so they are planned work, not something absorbed on the day.
 
-**Assumed cadence: every second Friday from 11 September.** Confirm the real dates with the instructor; if they shift, the content mapping below still holds, because each review shows whatever gate most recently cleared.
+**Actual cadence, re-anchored from the delivered class reviews:** Friday 18 September, then every second Friday. Progress Review 1 is dated 18 September 2026 and Progress Review 2 is dated 2 October 2026, so the earlier 11/25 September assumption is superseded (O-003, closed 2026-10-20). No separate written instructor message is stored in the repo; the delivered class-review artifacts are the evidence used here.
 
 | Review | Date | Position | What we demo |
 |---|---|---|---|
-| R1 | Fri Sep 11 | inside S1 | The spike: a 3D mesh built from real phone photos. Reconstruction engine chosen and why. |
-| R2 | Fri Sep 25 | **S1 boundary = M1** | Live end to end: phone → upload → 3D model in the browser. |
-| R3 | Fri Oct 9 | **S2 boundary = M2** | Guidance arrow driving capture; latency table; the live-vs-batch decision. |
-| R4 | Fri Oct 23 | inside S4 | Measured accuracy and σ_floor per reference tier. Registration on printed parts. |
-| R5 | Fri Nov 6 | inside S5 | Live: a planted defect comes back as Fail with the region highlighted. |
-| R6 | Fri Nov 20 | inside S6 | Feature-complete walkthrough, including the pre-check and the Unverifiable path. |
-| R7 | Fri Dec 4 | **S7 boundary = M7** | Test results, the recorded demo, and what we would do next. |
+| R1 | Fri Sep 18 | inside S1 | The spike: a 3D mesh built from real phone photos. Reconstruction engine chosen and why. |
+| R2 | Fri Oct 2 | inside S2 | Live end to end: phone → upload → 3D model in the browser. |
+| R3 | Fri Oct 16 | **S3 boundary = M3** | Guidance arrow driving capture; latency table; the live-vs-batch decision. |
+| R4 | Fri Oct 30 | **S4 boundary = M4 · I3** | Measured accuracy and σ_floor per reference tier. Registration on printed parts. *(2026-10-19: the board reference comes first, G-04; the sheet and card references are G-10. Neither exists yet, so R4 reports the plan, not a number.)* |
+| R5 | Fri Nov 13 | **S5 boundary = M5** | Live: a planted defect comes back as Fail with the region highlighted. |
+| R6 | Fri Nov 27 | inside S6 | Feature-complete walkthrough, including the pre-check and the Unverifiable path. |
+| R7 | Fri Dec 11 | inside S8 | Test results, the recorded demo, and what we would do next. |
 
-**Why this cadence works.** Three reviews land exactly on sprint boundaries. The other four fall roughly a week *after* a gate closes, which is better than landing on one: we demo work that has been finished and tested for a few days rather than something that started working that morning. Every review in the table has a gate cleared within the preceding week, so there is never a review with nothing to show.
+**Why this cadence works.** Re-anchoring to the real class calendar moves reviews onto or just after recent sprint gates instead of preserving the obsolete 11/25 September assumption. The content rule is unchanged: each review shows the most recently completed, tested work rather than forcing a demo to match an outdated planning date.
 
 **The standing template.** Same four slides every time, so preparation is assembly rather than invention:
 
@@ -252,7 +252,7 @@ Calendar events, not intentions. All other work stops.
 ### S3 · Ground truth — Oct 12–16 — 24 h
 - **Capture (7 h):** observed/unobserved coloring; report page skeleton.
 - **Reconstruction (7 h):** fusion fixes from I2; frame-count tuning; **integrate the generative completion model and run the first K samples**.
-- **Inspection (13 h):** caliper 5–8 printed parts; error and σ_floor per reference tier; print the defect ladder (2 / 4 / 8 mm).
+- **Inspection (13 h):** caliper 5–8 printed parts; error and σ_floor per reference tier; print the defect ladder (2 / 4 / 8 mm). *(2026-10-19: now G-01..G-09. σ_floor for the board reference is G-04; the sheet and card references are G-10, after the S5 sheet and card tiers exist.)*
 - **Gate M3:** σ_floor is a measured number. Every demo tolerance is set from it; anything below it is declared Unverifiable rather than attempted.
 
 ### S4 · Inspection — Oct 19–30 — 48 h
@@ -299,7 +299,7 @@ Calendar events, not intentions. All other work stops.
 - **Sprint boundary call, 30 minutes,** held on the milestone date. Demo what works, check the gate, agree next sprint's stories, one retro question.
 - **Biweekly progress review, every second Friday.** The graded class presentation. Uses the standing four-slide template and always shows something running.
 - **Integration points are calendar events.** During I1–I4 all other work stops.
-- **Ceremony overhead is ~15 min/person/day** and is already inside the 8 h/week, not added on top.
+- **Ceremony overhead is ~15 min/person/day** and is already inside the 9 h/week commitment set by D-016, not added on top.
 
 ### Definition of done
 
@@ -391,7 +391,7 @@ Link every pull request to an issue. The issues closed since the last class pres
 
 ## 9 · Stories
 
-The work is broken into stories in **`proofshape_stories.md`**, sized so one story is one pull request and one or two work sessions.
+The work is broken into stories under **`stories/`**, with the live backlog in **`stories/README.md`**. The earlier `proofshape_stories.md` pointer is superseded; stories are still sized so one story is normally one pull request and one or two work sessions.
 
 **Backend first.** The reconstruction engine — photos in, metric 3D model out — is built before the other layers, so the hardest risk is retired before anything is built on top of it.
 
@@ -401,9 +401,9 @@ The work is broken into stories in **`proofshape_stories.md`**, sized so one sto
 
 **Completion is recorded on the story**: who, the date, the pull request, and actual hours against the estimate. Actuals are how the estimates stop being wrong.
 
-Phases 1 and 2, foundations and the reconstruction engine, are written out in full — 22 stories, 93 hours. Everything after that is titles only, elaborated one sprint ahead at the boundary call.
+**Superseded planning snapshot:** phases 1 and 2 were originally described here as 22 stories / 93 hours, with later work titles-only. The backlog has since expanded and is now maintained in `stories/README.md` under the story process (including the P planning lane from D-052), so this document no longer freezes a story count or hour total that immediately drifts.
 
-**The constraint is the dependency chain, not the hour total.** About 42 of those 93 hours can only run one story after another, and a serial chain moves at one person's pace regardless of how many people are free. That is roughly five weeks, not the three and a half the totals suggest. The chain is always somebody's top priority, and it gets handed off the same day if its owner stalls.
+**The constraint is the dependency chain, not the hour total.** The original planning snapshot estimated about 42 serial hours inside those 93 hours. That figure is retained as historical planning context, not as the current backlog total. A serial chain still moves at one person's pace regardless of how many people are free, so the chain is always somebody's top priority and is handed off the same day if its owner stalls.
 
 ---
 

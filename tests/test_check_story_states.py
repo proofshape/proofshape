@@ -11,6 +11,9 @@ and, since D-037, the owner checks: the index's Owner cell must match the story 
 states need an @github-handle, unowned states must read _unclaimed_, an AI assistant is never an
 owner, and a row the parser can't read is reported instead of silently skipped.
 
+Since D-052, an Est of "—" (a past story that never had an estimate) is read like any other row,
+and nothing else non-numeric is. Only a P story may use it; on any other lane it is reported.
+
 The script reads two module-level paths (STORIES_DIR, INDEX) rather than taking a root as a
 parameter, so these tests monkeypatch those two attributes to point at a throwaway directory
 built fresh for each test, then exercise the real functions against it. That keeps the tests
@@ -299,6 +302,91 @@ def test_row_the_parser_cannot_read_is_reported_not_skipped(css, capsys):
 
     assert exit_code == 1
     assert "F-02: its row in stories/README.md doesn't match" in out
+
+
+def test_story_never_estimated_is_read_not_skipped(css, capsys):
+    """A past story that never had an estimate shows "—" in Est (D-052). Its row must be read
+    and checked like any other, three owners included, not reported as unreadable.
+    """
+    owners = "@TabeenRaoof; @dalwalyk; @mbj1994"
+    _write_story(css, "F-01", "Done")
+    _write_story(css, "P-01", "Done", owner=owners)
+    _write_index(css, [("F-01", "nothing", "Done")])
+    with css.INDEX.open("a", encoding="utf-8") as index:
+        index.write(
+            f"| [P-01](P-01.md) | a test story | — | nothing | Done | {owners} |\n"
+        )
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 0, out
+    rows, _ = css.parse_index()
+    assert rows["P-01"]["index_owner"] == owners
+
+
+@pytest.mark.parametrize("sid", ["F-02", "R-02", "C-02"])
+def test_never_estimated_dash_outside_the_planning_lane_is_reported(css, capsys, sid):
+    """D-052 allows "—" only for a P story recording past work that was never estimated.
+    Every other lane estimates before the work, so a "—" there is a missing estimate, and
+    it is reported with its own reason rather than read as if it were fine (found reviewing
+    #153).
+    """
+    _write_story(css, "F-01", "Done")
+    _write_story(css, sid, "Done")
+    _write_index(css, [("F-01", "nothing", "Done")])
+    with css.INDEX.open("a", encoding="utf-8") as index:
+        index.write(
+            f"| [{sid}]({sid}.md) | a test story | — | nothing | Done | @member |\n"
+        )
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 1
+    assert f'{sid}: Est is "—"' in out
+    assert "D-052" in out
+    # The row is read, and flagged for the right reason, not as unreadable.
+    assert "doesn't match" not in out
+
+
+@pytest.mark.parametrize("estimate", ["-", "", "TBD", ".. h", ". h"])
+def test_estimate_that_is_neither_hours_nor_the_dash_is_still_unreadable(
+    css, capsys, estimate
+):
+    """Only "—" means never estimated. Loosening the pattern for it must not turn the
+    estimate cell into a wildcard: a hyphen, a blank or a placeholder still fails loudly.
+    So does an hours figure with no digit in it (".. h", ". h"), which the original
+    `[\\d.]+` accepted because it allows dots alone (found reviewing #153).
+    """
+    _write_story(css, "F-01", "Done")
+    _write_story(css, "P-01", "Done")
+    _write_index(css, [("F-01", "nothing", "Done")])
+    with css.INDEX.open("a", encoding="utf-8") as index:
+        index.write(
+            f"| [P-01](P-01.md) | a test story | {estimate} | nothing | Done | @member |\n"
+        )
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 1
+    assert "P-01: its row in stories/README.md doesn't match" in out
+
+
+@pytest.mark.parametrize("estimate", ["2.5 h", "10 h", "3h"])
+def test_estimate_in_hours_is_read_including_decimals(css, capsys, estimate):
+    """Requiring a digit must not reject a real estimate: the index already has "2.5 h"
+    rows (P-18, P-19), and the old pattern also read "3h" without a space.
+    """
+    _write_story(css, "F-01", "Done")
+    _write_story(css, "P-01", "Done")
+    _write_index(css, [("F-01", "nothing", "Done")])
+    with css.INDEX.open("a", encoding="utf-8") as index:
+        index.write(
+            f"| [P-01](P-01.md) | a test story | {estimate} | nothing | Done | @member |\n"
+        )
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 0, out
 
 
 def test_lane_subfolder_layout_is_supported(css, monkeypatch):

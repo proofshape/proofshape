@@ -315,3 +315,22 @@ to judge "nearly free," not a pass/fail check this code makes itself.
 Still open: COLMAP isn't on `main` yet (R-12), so the table above has only been produced for
 VGGT and MASt3R so far; recording all three on the same capture needs R-12 merged and one real
 run on the shared Lightning GPU.
+
+## C-08 · next-view scoring
+
+`recon.next_view` answers "which camera position would see the most surface that isn't properly
+observed yet?" It generates candidate views on a hemisphere over the part: 25-40 cm, at most 60°
+from vertical (proposal §6.2), every value an overridable constant. It scores each candidate by
+how many under-observed vertices it would see unoccluded, using Open3D raycasting on the CPU, and
+ranks them best first. "Under-observed" means R-09's `Unobserved` label after R-10's sigma
+downgrade, so the CLI reads R-10's output directly:
+
+```bash
+python -m recon.next_view <run>/uncertainty           # writes <run>/uncertainty/next_view/next_view.json
+python -m recon.next_view <run>/uncertainty --out-dir /tmp/nv --max-angle-from-vertical-deg 45
+```
+
+The hemisphere is centred on the part's footprint, not on the board's corner origin. Ties on the
+count are broken by how square-on the view is. Open3D is a pinned `requirements.txt` dependency
+for this (D-047). The reasoning for each of these choices is in `stories/C/C-08.md`. The scorer
+isn't wired into C-07's arrow yet; that's a separate step no story owns.

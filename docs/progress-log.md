@@ -1021,3 +1021,315 @@ with the bottom cut off, making its before/after comparison against R-18 more te
 **What changed:** C-11 added the interactive Three.js GLB viewer, wired it to completed reconstruction results, preserved raw GLB download access, and added explicit failed/missing-URL/load-error states. The real iPhone Safari device check confirmed rendering, one-finger orbit, pinch zoom, and GLB retrieval.
 **Result:** TypeScript, pytest, and ruff CI passed on the reviewed head; the second-member clean checkout passed typecheck, lint, format check, tests, and dev startup. C-11 is Done at 5 h actual against a 3 h estimate.
 **Next:** C-12 is Ready. The separate HTTP/2 contract-stub issue found during device verification is tracked outside C-11 and did not block this merge.
+
+
+
+## 2026-10-15 — R-24 provenance counts only confidence-trusted observations (PR #143)
+
+**Who:** @TabeenRaoof, reviewed and approved by @dalwalyk (including a clean-checkout run).
+**What changed:** R-09's `compute_observations` let any depth-consistent pixel count as a frame
+observing a vertex, including pixels R-20 had already dropped from `points.ply` and from fusion
+for sitting at VGGT's confidence floor. So the hard rule's own mechanism could accept evidence the
+rest of the pipeline had rejected. It now requires a boolean trusted-pixel mask
+(`confidence_keep_mask`'s output, no "trust everything" default), and `provenance_run` resolves
+the threshold the same way `fuse_run` does. The default is the run's own `run.json`, and an
+explicit `min_confidence` (CLI `--min-confidence`) overrides it. That rule moved out of `fuse_run`
+into a shared `recon.vggt_runner.resolve_min_confidence`, so the two stages can't drift apart.
+`provenance.json` now records the threshold, its source, the dropped-pixel count and the
+observation count.
+**Result:** 16 new tests; removing the trust check makes 4 of them fail. Full suite 404 passed,
+1 skipped. Golden-set rerun on all five objects, re-fused on current code, R-08-cleaned, and
+labelled at 0.0 vs 1.0001 on the same mesh: confidence removed 2.8–4.5% of observations, and
+`observed_fraction` fell 0–0.54 points (s-03 most: 39.76% → 39.22%). It always moved toward
+Unobserved, never up. These are the first real-data `observed_fraction` figures recorded; neither
+R-09 nor R-20 had any. R-10 sigma moved by ≤0.02 mm. R-19's finding still holds (3.0 mm downgrades
+3.8–8.5%, neither everything nor nothing), but its per-object numbers describe the pre-R-20/R-21
+pipeline, so a dated pointer was added to R-19's notes. R-24 closed at 0.9 h actual against a 3 h
+estimate.
+**Concluded:** fusion and provenance now trust the same pixels by construction. On today's meshes
+the effect is small, consistent with those meshes already being fused from trusted pixels only.
+The reviewer raised three non-blocking points, left for a later change rather than pushed after
+approval:
+- `service.py` has no error handling around `provenance_run` for the `run.json` errors `fuse_run`
+  already maps. This can't happen today, because fusion reads the same file first.
+- The three confidence report fields are built separately in provenance and fusion.
+- `depth_conf` is upcast to float64 where float32 would do.
+
+**Next:** none of the three needs its own story. The first is worth picking up by whichever story
+next touches `service.py`'s pipeline. Two process notes:
+- The venv's editable install points `recon` at the main checkout, so a script run from a git
+  worktree silently imports the main checkout's code. `python -m pytest` from the worktree is
+  unaffected.
+- On macOS, `pytest tests/test_vggt_runner.py tests/test_tsdf_fusion.py`, in that order, segfaults
+  natively. That is pre-existing; the full suite passes.
+
+
+
+## 2026-10-15 — C-12 observed/unobserved colouring (reviewed)
+
+**Who:** @mbj1994 (PR #142), reviewed by @TabeenRaoof; changes requested.
+**What changed:** nothing merged yet. The PR remaps `recon/provenance.py`'s baked white/grey
+vertex colours to a display palette. It adds a legend with a reserved Inferred slot, plus a
+drift-guard test against the Python constants. Codex's colour-space comment was already fixed in
+0ef1ba6.
+**Result:** CI (pytest, typescript, ruff) green on head 775519b; 12 inline comments, three
+blocking:
+- `write_glb` emits no material, so GLTFLoader's default `metalness: 1` likely renders the palette
+  near-black on faces away from the key light. This comes from reading three r180 and GLTFLoader;
+  nobody has seen it on a device yet.
+- The in-place remap is not idempotent: a geometry shared by two meshes turns entirely magenta.
+  Reproduced with three 0.180.
+- `remapModelProvenanceColors` has no tests.
+
+The story's required one-line legibility addition to C-11's device check is also missing.
+**Concluded:** the colour mapping and the drift guard are correct. The rendering path around them
+has not been checked on a device, so the palette can't be called legible until the device check
+the story already asks for is run.
+**Next:** the author addresses the blocking comments, runs the device check, and re-requests
+review. C-12 already shows Done on its branch (D-038); its actual hours need updating to include
+the extra work.
+
+
+
+## 2026-10-16 — F-01, R-13 and R-15 actual hours recorded
+
+**Who:** @TabeenRaoof, owner of all three.
+**What changed:** the three completion records had been closed as `<n> h actual` because only the
+owner could supply the number. Now filled in by the owner: F-01 2 h (est 2), R-13 3.5 h (est 3),
+R-15 5 h (est 4). The "left blank" notes in R-13 and R-15 now say who filled them in and when;
+the earlier entries here that say "left blank" stay as they were.
+**Next:** three Done stories still show `<n> h actual` for their owners to fill in: F-04 and R-01
+(@dalwalyk), and R-03 (@mbj1994).
+
+
+
+## 2026-10-16 — C-08 next-view scoring merged (PR #144)
+
+**Who:** @TabeenRaoof, reviewed and approved by @dalwalyk.
+**What changed:**
+- New `recon/next_view.py` generates candidate camera views on a hemisphere over the part:
+  25–40 cm, at most 60° from vertical, 147 by default, every limit and density an overridable
+  constant. It scores each view by how many under-observed vertices it would see unoccluded,
+  using Open3D `RaycastingScene` on the CPU, and ranks them best first.
+- "Under-observed" is R-09's `Unobserved` after R-10's downgrade, reused through R-09's own
+  constants rather than redefined.
+- The hemisphere is centred on the part's footprint, not the board's corner origin, which is
+  ~100 mm from the board's centre.
+- Ties on the count break on how square-on the view is. A thin CLI reads R-10's
+  `mesh_uncertainty.glb`.
+- Open3D 0.18.0 is now pinned in `requirements.txt` (D-047), so the tests run in CI. Because of
+  that, R-07's "Open3D not installed" test fakes the missing import instead of skipping, and
+  R-07's Poisson test now runs in CI.
+
+**Result:**
+- Tests: all three of the story's synthetic tests pass. Full suite 463 passed, 0 skipped, on
+  macOS and on Linux CI.
+- Dependency cost: CI's install step went from 22 s to 55 s.
+- Speed: on synthetic spheres, a full 147-candidate scoring run took 0.33 s at 45k vertices, and
+  the raycasting alone ~1 s at 179k. That's one laptop, not a golden-object figure.
+- Review: three non-blocking findings. Two were fixed before merge: defaults recomputed when
+  overrides are given, and equal radii producing duplicate candidates. The third, batching the
+  raycasts, was measured to make no difference and left as is.
+- C-08 closed at 4 h actual against a 4 h estimate.
+
+**Not confirmed:** no review or PR record says C-08 was run on a second member's machine from a
+clean checkout. That box on PR #144's checklist was never ticked. A clean-venv install on the
+author's machine and Linux CI both passed, but neither is the same check.
+**Next:**
+- Nothing has been run on a real golden object yet: there are no local R-10 outputs, and making
+  them needs the GPU pipeline.
+- Wiring the scorer into C-07's arrow is still a step no story owns.
+
+Process note: `main` requires branches to be up to date, and it moved twice after the
+re-approval, before C-08 could merge. Both times, updating the branch through GitHub (a merge of `main` that left the PR's own diff
+unchanged) kept the existing approval rather than dismissing it.
+
+
+
+## 2026-10-17 — P-22 planning lane: planning work gets stories (D-052)
+
+**Who:** @TabeenRaoof (PR #153).
+**What changed:** a P (Planning) lane, so planning, backlog, document and review work gets stories
+and actual hours the way code does. D-052 sets the boundary: a story's own claim, close-out,
+log entry and follow-up stories stay in that story's hours; P takes the work no single story owns,
+plus work on someone else's story after it merged. `check_story_states.py` now accepts `—` as the
+estimate for past work that never had one, and still rejects anything else that isn't `<number> h`.
+**Result:** 23 P stories. P-01..P-19 record past work, from the 2026-09-05 proposal to the 2 Oct
+review: 18 `Done`, plus P-17 (the manual refresh, #149) `In review`. P-20 and P-21 (midterm deck
+and report) are claimed, P-22 is this PR, and P-23 (refresh the sprint plan) is Blocked until
+P-17 is `Done`, since its manual pointer waits for #149. Every past
+actual is `<n> h actual` until its owner fills it in. P-22 itself closed at 1 h actual (est 3).
+Full suite 475 passed, 0 skipped after merging `main`. The checker has twelve new test cases.
+Six failed before their fix: `—` read as an estimate on a P story, `.. h` and `. h` rejected,
+and `—` reported on an F, R or C story. The other six are guards that passed before and after:
+`-`, a blank and `TBD` are still rejected, and `2.5 h`, `10 h` and `3h` are still read.
+**Review:** @mbj1994 requested changes. P-22's actual hours were filled in. `AGENTS.md`'s
+definition of done now points to D-052 in this PR instead of waiting for P-23. @mbj1994 confirmed
+their own name on P-01 and P-21. Also fixed: P-20's estimate became `—`, because it was set two
+days into the work, and D-052's D-028 note was rechecked after D-047 merged.
+@dalwalyk then requested changes (2026-10-17). This entry had called P-23 Ready when the index
+says Blocked, and the story template gave no cue for `—`; both are fixed. A follow-up comment
+found that the estimate pattern read `.. h` as an estimate, a gap since before this PR. The
+pattern now needs a digit, with tests. `stories/README.md` now points to `AGENTS.md` for the two
+P-lane exceptions rather than restating them. A second round from @dalwalyk the same day
+found two more problems, both fixed. The checker read `—` on any lane, though D-052 allows it
+only for P stories; a `—` elsewhere is now reported. And this entry's dates disagreed with
+P-22's record, because a UTC date had slipped in. All dates are now 2026-10-17, local time.
+**Next:** owners fill in their hours, and @dalwalyk confirms or removes their name on P-01, P-14
+and P-21. #149 carries P-17's `Done` commit before it merges, which unblocks P-23.
+
+
+
+## 2026-10-17 — P-17 operating manual refresh (PR #149)
+
+**Who:** @TabeenRaoof. Reviewed by @dalwalyk and @mbj1994.
+**What changed:** `docs/manual.md` had not changed since 2026-09-25. Each section's status now
+matches `main`, with a new **In review** status for work that exists only in an open pull request
+(today, C-13 in #146). Supplier capture (§5) and the result viewer (§8.1) are Works now against
+the mock service. A new §0 says which README to use to run the app or the service. §9 lists the
+codes the phone and the service actually return today, including that `vlm_veto` currently means
+a malformed upload. §7 and §10 state the measured 4–9% scale error (R-22) and say not to read
+dimensions off a model until R-23 lands. `AGENTS.md`'s repo map now lists the manual.
+**Review:** both reviewers requested changes on the first version, and all three findings were
+fixed. §9 gained `session_not_found` and `session_already_finished`. Its order-code row no
+longer says only the mock checks codes, since the real service rejects a blank one. §5 no longer
+calls C-08 In review after #144 merged. @dalwalyk re-checked the technical claims against the
+code and approved. @mbj1994's change request was dismissed as addressed, since one approval is
+enough. Not done: @dalwalyk's suggestion to add a manual line to the PR template.
+**Result:** P-17 closed at 1 h actual (no estimate, D-052). Docs only; full suite 475 passed on
+the merged branch. P-23 moved from Blocked to Ready.
+**Next:** when #146 (C-13) merges, it flips the manual's eight **In review (C-13, PR #146)**
+lines to Works now. P-23 (refresh the sprint plan; point the manual at D-052) is up for grabs.
+
+
+
+## 2026-10-18 — P-24 ground-truth lane written up (G-01..G-09)
+
+**Who:** @TabeenRaoof (PR #156). The claim, #155, was reviewed by @dalwalyk, who caught that
+G-06..G-09 had no named scope until the claim listed them.
+**What changed:** the G lane was five titles. It now has nine stories in a new Ground truth
+section of `stories/README.md`, in critical-path order toward σ_floor: printer characterisation
+on the SFBU lab printer, a specimen batch the size check can measure, calipering, error and
+σ_floor for the board reference, the 2/4/8 mm defect ladder, calipering the golden-set parts and
+the board sheet, the reliability curve that sets `k`, and photographing the batch and the ladder
+as fixture sets. Every story measures against calipered prints, not CAD, and writes its method
+down before measuring. `fixtures/README.md` defines the caliper-reading file they all write.
+G-10 (sheet and card references) and G-11 (robustness set) stay titles-only.
+**Result:** G-01 is Ready, G-06 is Claimed by @TabeenRaoof, and the other seven are Blocked. The
+checker is consistent and `--fix` changes nothing. There's no code and no new decision. P-24
+closed at 2.5 h actual, including the review round (no estimate was made before the work).
+**Next:** G-01 (book the lab) and G-06 (caliper s-04, s-05 and the board sheet) can start now.
+G-04 waits on R-23 (#152). Its PR, and G-07's, should get both reviewers before any measuring
+starts, since that is where a method mistake becomes a wrong number.
+
+
+
+## 2026-10-20 — P-25 inspection lane written up (I-01..I-05)
+
+**Who:** @TabeenRaoof (PR #159). The claim, #158, was reviewed by @dalwalyk and also recorded
+D-053, the `inspect/` import name.
+**What changed:** the inspection lane was ten titles. Its first five are now stories in a new
+Inspection section of `stories/README.md`, written from the settled method (proposal §7.1,
+D-008): the synthetic mesh generator, which also puts D-053's package in place (`inspection`
+at `inspect/inspection/`); CAD loading for ASCII and binary STL and GLB, with no unit conversion
+because the pipeline's own GLBs hold raw millimetres; FPFH + RANSAC candidate poses with the
+free-scale residual in the convention R-05's code defines; Tukey point-to-plane ICP; and the
+orientation-ambiguity check, which keeps symmetry-equivalent poses separate so it can't be a
+no-op on a symmetric part. No tolerance, `k` or σ_floor appears; every threshold is a declared
+parameter (D-003, #157). `pyproject.toml`'s comment and `inspect/README.md` now point to D-053.
+I-06..I-10 stay titles-only behind G-04 and D-032, and I-11 (OBJ loading) is added.
+**Result:** I-01 and I-02 are Ready, I-03..I-05 Blocked, none claimed. The checker is consistent
+and `--fix` changes nothing. P-25 closed at 2 h actual (no estimate was made before the work).
+**Next:** I-01 and I-02 can start now and in parallel. I-03 needs both.
+
+## 2026-10-22 — I-01 synthetic mesh generator and the `inspection` package (merged)
+
+**Who:** @dalwalyk (PR #170), reviewed by @TabeenRaoof and @mbj1994.
+**What changed:** `inspect/inspection/` now exists (D-053's package layout) with
+`inspection.synthetic`: densify a CAD mesh to a target edge length, apply a fixed
+CAD-to-board-frame rotation composed with a random yaw/xy pose, add Gaussian noise along each
+vertex's normal, label a connected patch of vertices Unobserved, and export via
+`recon.mesh_cleanup.write_glb` with `recon.provenance`'s label colours. 16 new tests in
+`tests/test_synthetic.py`, 2 more in `tests/test_packaging.py` for D-053's own acceptance check.
+**Review round caught a real bug, confirmed numerically, before merge:** the CAD-to-board-frame
+flip was `diag(1, 1, -1)` (determinant −1, a mirror), not a rotation — every synthetic part came
+out as its own mirror image. @TabeenRaoof reproduced it by fitting a proper similarity from CAD
+to output on a chiral tetrahedron and an s-04-shaped prism (both came back with the enclosed
+volume's sign flipped and tens of mm of residual) and caught that the test fixture's equal legs
+had hidden the bug — its own mirror image looked identical to itself. Fixed to `diag(1, -1, -1)`
+(a proper 180° rotation about x); the fixture is now scalene; `det(rotation) == +1` and
+signed-volume-sign tests added. Also caught: the sidecar recorded only a patch vertex *count*,
+so a same-sized but different patch passed every test (fixed by recording
+`patch_vertex_indices` and asserting set equality); and the Docker image no longer built,
+because `pyproject.toml` now names the `inspection` package explicitly but the Dockerfile never
+copied `inspect/inspection/` into the build context (fixed with one more `COPY`). All three
+fixes were mutation-tested by hand: reverting each one individually fails exactly the test(s)
+meant to catch it.
+**Result:** I-01 is Done, 3 h actual (est 4). Full suite 495 passed, ruff and
+`check_story_states.py` clean. I-02 was already Ready and independent; I-03 still needs both.
+**Worth knowing if you pull this:** any existing `.venv` needs
+`./scripts/bootstrap_dev_env.sh` (or `pip install -e .`) re-run after this merge, or
+`import inspection` fails and the test suite stops at collection — @TabeenRaoof hit exactly that
+with an older environment during review.
+
+
+
+## 2026-10-23 — P-26 first generative-AI stories written up (A-01, A-04, A-06, A-08, A-10, A-11)
+
+**Who:** @TabeenRaoof (PR #174, reviewed by @dalwalyk). The claim was #168.
+**What changed:** generative AI is a third of the course requirement, never cut (D-017), and was
+overdue from S2/S3. Six stories in a new Generative AI section of `stories/README.md`, written
+from the proposal (§6.5–§6.7, §8.3, §9):
+- A-01: VLM frame supervision on sampled frames with a pinned Gemini Flash-Lite model; one atomic
+  result file per frame, never a silent pass, and the key redacted in both deploy calls.
+- A-10: a spike to choose the diffusion-based completion model.
+- A-04: the completion stage, K samples stored beside the pipeline with the verdict mesh and σ
+  byte-identical.
+- A-11: one D-031 request to show the VLM hint and give malformed uploads their own error code.
+- A-06: the agent's five tools as typed, deterministic server functions.
+- A-08: the deterministic capture policy the agent falls back to.
+
+A-02, A-03, A-05, A-07 and A-09 stay titles-only.
+**Result:** A-01, A-06, A-10 and A-11 are Ready; A-04 and A-08 Blocked; none claimed. The checker
+is consistent and `--fix` changes nothing. P-26 closed at 1.5 h actual. No code, no new decision.
+**Next:** A-01, A-06, A-10 and A-11 can start now. A-11 and any A-06 contract change are D-031
+requests, timed for the Oct 30 or Nov 13 sprint boundary.
+
+
+
+
+
+## 2026-10-20 — P-20 midterm deck corrected to the 15 October cutoff (PR #165)
+
+**Who:** @TabeenRaoof. Follows the same correction made to P-21's midterm report (PR #160)
+earlier the same day, applied to the deck.
+**What changed:** the deck drafted on 16 October, before this lane existed, described the first
+real-phone session as verified working end to end. It wasn't: that session's own close-out
+commit, `9e8942b`, is timestamped 2026-10-16 00:17 PDT, seventeen minutes past this
+deliverable's own cutoff (start of term through Thursday 15 October, nothing after — now its
+own acceptance criterion in `stories/P/P-20.md`, matching P-21's). The deck was rebuilt from a
+new generator script, `scripts/build_midterm_deck.js`, committed as the reviewable artifact the
+same way `scripts/build_midterm_report.js` was for P-21. Every number was checked against `main`
+at commit `3a373ed` (2026-10-15 21:52 PDT, the day's last commit) and, where slide 10 cites
+C-13's own branch directly, against that branch's last commit before midnight, `d296be9`
+(23:29 PDT): stories done 40/44 (not 42), 130 PRs merged (not 131), 585 tests passing — 404
+Python + 181 TypeScript (not 680), 45 decisions (not 49), capture app 11/13 (not 13/13, a real
+bug in the original draft since C-13 was already described elsewhere as open). Slide 10 no
+longer claims a working phone session; it now shows the two failed attempts (deployment
+chicken-and-egg, then zero poses from missing EXIF focal length) and the fix, D-050, validated
+offline only, with live-device confirmation stated as not yet done. Slide 13's Gantt chart was
+corrected in the chart code itself, not just captioned: the "Today" line moved from 16 to 15
+Oct, and no bar marked done extends past the 15th.
+**Result:** figures reused from P-21's already cutoff-checked set in
+`submissions/assets/2026-10-16/`, plus one new crop for the title slide. Full suite and
+`check_story_states.py` pass on the branch. `State` stays `Claimed`, matching P-21's pattern —
+this PR advances the story, it does not close it.
+**Next:** @dalwalyk and @mbj1994 present 10 of the 15 slides between them, so the PR asks both
+to read their own sections against the code as it stood on 15 October before approving. Once
+C-08, C-13 and R-23 actually land, both the deck and the report need a second pass with the
+post-cutoff numbers, as next-steps material rather than another correction.
+**Review:** @dalwalyk requested changes on one thing: slide 3's system diagram drew the
+capture app's link to the service in the same solid "Done" style as the built stages, with the
+caveat only in the presenter notes. That connector now uses slide 13's "In progress" style
+(amber, dashed) and says "live link not yet confirmed" on the slide itself. The deck was
+presented, and P-20 closed at 3 h actual (no estimate was made before the work).

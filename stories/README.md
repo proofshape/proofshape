@@ -21,6 +21,7 @@ grows past that, split it.
 | **G** | Ground truth — printing, calipers, calibration |
 | **A** | Generative AI — agent, completion, VLM, spec parser |
 | **X** | Cross-cutting — integration points, demo |
+| **P** | Planning — proposal, sprint plan, backlog, process rules, documents, reviews and reports |
 
 The number is just the order we wrote them down. **`R-04` is not more important than `R-12`, and
 it is not "step 4"** — read the **Depends on** line to know what actually has to come first.
@@ -89,7 +90,7 @@ they do.
 | **Ready** | Dependencies are done and nobody has claimed it. Anyone can take it. Owner is `_unclaimed_`. |
 | **Claimed** | Someone has put their `@github-handle` on it, in the story file and in this index, before starting. |
 | **In review** | Pull request open, waiting on one approval. |
-| **Done** | Merged, and the completion record below is filled in. |
+| **Done** | Merged, and the completion record below is filled in. P stories have one exception here, stated in `AGENTS.md`'s definition of done (D-052). |
 
 ### Completion record
 
@@ -104,7 +105,8 @@ Notes: forced fp16 — bf16 runs at half speed on Apple Silicon.
 
 Applies to every story, unchanged from the plan: merged to `main`, runs on a second member's machine from a clean checkout, has one automated test or one written manual check, reviewed and approved by one other member, and demonstrated at the sprint boundary.
 
-Acceptance criteria are per story. The definition of done is not.
+Acceptance criteria are per story. The definition of done is not, apart from two exceptions for
+P stories (the planning lane), set by D-052 and stated in `AGENTS.md`'s definition of done.
 
 ---
 
@@ -158,7 +160,7 @@ Full detail in each story file.
 | [R-20](R/R-20.md) | Use VGGT's confidence in the point cloud and in fusion | 4 h | R-01, R-07 | Done | @TabeenRaoof |
 | [R-21](R/R-21.md) | Measure the height cut from the real board surface | 3 h | R-06 | Done | @TabeenRaoof |
 | [R-22](R/R-22.md) | Find why parts reconstruct smaller than their CAD | 3 h | R-03, R-04 | Done | @TabeenRaoof |
-| [R-23](R/R-23.md) | Anchor R-04's metric scale on the board in the scene | 5 h | R-04, R-22 | Ready | _unclaimed_ |
+| [R-23](R/R-23.md) | Anchor R-04's metric scale on the board in the scene | 5 h | R-04, R-22 | Claimed | @mbj1994; @TabeenRaoof |
 | [R-24](R/R-24.md) | Use VGGT's confidence in provenance's observation count | 3 h | R-20 | Done | @TabeenRaoof |
 
 ---
@@ -180,12 +182,139 @@ so this is behind schedule, not early.
 | [C-05](C/C-05.md) | Live camera | 3 h | C-04 | Done | @dalwalyk |
 | [C-06](C/C-06.md) | Frame gate | 3 h | nothing | Done | @dalwalyk |
 | [C-07](C/C-07.md) | Gyro overlay and arrow | 3 h | C-03 | Done | @dalwalyk |
-| [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Claimed | @TabeenRaoof |
+| [C-08](C/C-08.md) | Next-view scoring | 4 h | R-09, R-10 | Done | @TabeenRaoof |
 | [C-09](C/C-09.md) | Capture loop | 4 h | C-05, C-06, C-07 | Done | @dalwalyk |
 | [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Done | @mbj1994 |
 | [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Done | @mbj1994 |
 | [C-12](C/C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Done | @mbj1994 |
 | [C-13](C/C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Done | @dalwalyk; @TabeenRaoof |
+
+---
+
+## Ground truth
+
+The second slice of Phase 3 written up early, because σ_floor is the next step on the critical
+path: "provenance and σ → σ_floor measured → verdict logic → accuracy runs → freeze"
+(`docs/sprint-plan.md` §3). Provenance and σ are done (R-09, R-10). Every tolerance the verdict
+uses waits on this lane, and so does R-16. Printing is on the SFBU lab printer (G-01).
+
+**The measured print is truth, not the CAD.** FDM drifts by a few tenths of a millimetre
+(proposal §12), so every comparison is against caliper readings of the actual printed part, never
+against the CAD's nominal sizes.
+
+**How every story here measures:**
+- **Method first.** Write the method down before measuring, then report what was measured,
+  including a negative result. No tolerance and no `k` without a measurement behind it (D-003;
+  R-04's reverted tolerance is the precedent).
+- **Calipers, PR #35's protocol, matched to `measure_prism`.** Name each feature by its CAD vertex
+  pair. Read at mid-height, away from the first-layer flare, because `measure_prism` fits edges
+  from the 0.3–0.7 h band. Read across parallel faces for rectangles and corner to corner for
+  triangles. For a square footprint, record which way each wall faced on the board. Take 10
+  placements and give the mean, min, max and standard deviation. State the resolution, and say
+  "no accuracy spec" where the instrument has none.
+- **Where readings go.** One file per story, `fixtures/caliper_<id>.json`, in the format in
+  `fixtures/README.md`. `tests/test_caliper_files.py` (G-06) checks every such file; a readings
+  file that lands before G-06 is checked against that format by hand, and the test covers it
+  from then on. Photographs are never committed.
+- **Where code goes.** `recon/cad_size_check.py` is extended rather than `inspect/` started, since
+  D-030 leaves `inspect/`'s import name to I-01.
+- **Naming.** Say "the board reference", "the sheet reference", "the card reference", never
+  "tier 1/2/3": *Tier* also means how essential a feature is (D-001), and the two collide. The
+  glossary's Reference sheet entry gives both names.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Claimed | @dalwalyk |
+| [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | G-01 | Blocked | _unclaimed_ |
+| [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
+| [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
+| [G-05](G/G-05.md) | Defect ladder at 2 / 4 / 8 mm | 4 h | G-01 | Blocked | _unclaimed_ |
+| [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Claimed | @TabeenRaoof |
+| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
+| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Blocked | _unclaimed_ |
+| [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
+
+---
+
+## Inspection
+
+The third slice of Phase 3 written up early. The sprint plan's S4 "Inspection" sprint starts on
+2026-10-19 and ends on Oct 30 with two gates: I3, "verdict proven end to end", and M4, "planted
+4 mm hole shift → Fail; unobserved region → Rescan; substituted part caught on scale or shape".
+Both need registration first. These five don't wait on ground truth: the sprint plan built the synthetic mesh generator
+(§4 item 3) so that registration and verdict tests run on every pull request with no GPU and no
+fixtures.
+
+**The method is settled, not open** (proposal §7.1, D-008): FPFH + RANSAC global registration,
+then robust point-to-plane ICP with a Tukey loss; scale fixed to 1 in the fit, the free-scale
+residual computed separately as the substitution check; a runner-up within 10% of the best marks
+the session orientation-ambiguous. Open3D 0.18 (already pinned) has all of it.
+
+**No tolerance until G-04.** Nothing here decides whether a deviation passes. Every threshold (σ,
+patch size, voxel size, Tukey `k`, the 10%) is a declared parameter with a stated default, and
+the verdict (I-06..I-10) waits for σ_floor and the tolerance schema (D-032). Issue #157 already
+binds I-07 to `max(σ, σ_floor)`.
+
+**Where the code goes.** D-053 settles the import name D-030 left open: the directory stays
+`inspect/`, the importable package is `inspection`, at `inspect/inspection/`. I-01 puts it in
+place.
+
+These five total 19 h against roughly 15 h implied by the plan's S1 and S2 inspection bullets once
+printing and the calibration cube moved to G-01/G-02; the extra is densifying the tiny fixture
+CADs and the packaging decision.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [I-01](I/I-01.md) | Synthetic mesh generator, and the `inspection` package | 4 h | nothing | Done | @dalwalyk |
+| [I-02](I/I-02.md) | CAD loading: ASCII and binary STL, and GLB, coordinates as stored | 3 h | nothing | Claimed | @mbj1994 |
+| [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Blocked | _unclaimed_ |
+| [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Blocked | _unclaimed_ |
+| [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 10% | 3 h | I-04 | Blocked | _unclaimed_ |
+| [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Blocked | _unclaimed_ |
+
+---
+
+## Generative AI
+
+The fourth slice of Phase 3 written up early, because it is overdue. The course requires about a
+third of the project to be generative AI, and those components are never cut (AGENTS.md, D-017).
+VLM supervision was due in S2 (its M2 gate, "a screen photo is rejected by the VLM", was missed)
+and shape completion in S3; none of it is built. These are the first stories that can start
+without the verdict, plus the agent's tools (A-06) and its deterministic fallback (A-08), which
+the proposal says is built first. A-02 (veto), A-03 (spec parser), A-05 (disagreement map), A-07
+(agent loop) and A-09 (narrative) stay titles-only until the verdict, A-04 or A-06/A-08 exist.
+
+**What counts.** The test is "if you run it twice, can it give two different answers?"
+(AGENTS.md). A VLM's reply and sampled completions both can; the reconstruction backbone can't
+(D-018).
+
+**Hard rules.** A model's guess never passes or fails a part (D-005). σ comes from depth residuals,
+and the spread across completions is guidance only (D-006, issue #157), so completed surface is
+labelled Inferred and never touches the verdict mesh. No cost, latency, accuracy or K is promised:
+each is measured or a declared parameter.
+
+**What the proposal already decides.** The VLM is Gemini Flash-Lite, version pinned, called on
+sampled frames, not every frame (§6.5, §8.3); its key lives in Actions secrets and a gitignored
+local env file, and never reaches the phone app. Completion is diffusion-based, K samples, with
+coverage-only guidance as the fallback (§6.6, §9); no model is named, hence the A-10 spike.
+
+The A-10..A-13 on the unmerged `chore/proposal-revisions-2026-09-05` branch are superseded, as
+that branch's G-06 and C-09..C-15 already were.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Ready | _unclaimed_ |
+| [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Ready | _unclaimed_ |
+| [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Blocked | _unclaimed_ |
+| [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Ready | _unclaimed_ |
+| [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Claimed | @dalwalyk |
+| [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Blocked | _unclaimed_ |
 
 ---
 
@@ -207,26 +336,93 @@ Two consequences worth acting on:
 
 The off-chain stories — R-02, R-03, R-05, R-09, R-10, R-11, R-12, R-13, R-16, R-17, R-18, R-19 — are where the other two people work while the chain advances. There is enough of that work to keep everyone busy, which is the point of laying the backlog out this way.
 
+**Since 2026-10-18 the chain that sets the date runs through ground truth.** Everything above
+describes Phases 1–2 as written in September: the 93 hours and the F-02 → R-15 chain, which is
+now done. The sprint plan's critical path (§3) continues "provenance and σ → σ_floor measured →
+verdict logic → accuracy runs → freeze", and provenance and σ are done. The new serial run is:
+
+> G-01 → G-02 → G-08 → G-04 → verdict logic (I-07)
+
+G-01 3 h, G-02 4 h, G-08 4 h and G-04 6 h are about 17 hours one after another. Three things
+join it without lengthening it if they're done in time: G-06 (calipering the board sheet, 1.5 h)
+must finish before G-08 shoots on that sheet, G-03 runs beside G-08, and G-04 also waits on R-23
+(#152). G-05, G-07 and G-09 are off the chain. The rule above applies unchanged: whoever holds a
+chain story hands it off the same day if stuck.
+
+---
+
+## Planning lane
+
+The work that keeps the project steerable but belongs to no single story: the proposal and the
+sprint plan, the decisions and process rules, writing and splitting stories, keeping documents
+such as the manual in step with `main`, audits and reconciliations across stories, and the class
+reviews and reports. Until D-052 none of it had a story, so none of it had actual hours.
+
+**The boundary.** Anything done inside a story's own pull request — its claim, its `Done` state
+and completion record, its progress-log entry, the follow-up stories it files — stays in that
+story's hours. P is for what no single story owns, plus work on someone else's story after it
+merged (a late close-out, a reconciliation, a record correction), since its owner's actual never
+included it.
+
+**Past work.** Most of these stories record work done before the lane existed. They are `Done`,
+with their evidence in the notes, and `<n> h actual` until the owner fills in a real figure
+(D-033). Where no estimate existed before the work, Est is `—` rather than a number made up
+afterwards; the class reviews use the sprint plan's 2.5 h per review. Full rules in D-052.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [P-01](P/P-01.md) | Proposal and proposal deck | — | nothing | Done | @TabeenRaoof; @dalwalyk; @mbj1994 |
+| [P-02](P/P-02.md) | Sprint plan | — | nothing | Done | @TabeenRaoof |
+| [P-03](P/P-03.md) | Initial backlog | — | nothing | Done | @TabeenRaoof |
+| [P-04](P/P-04.md) | Decisions log and working agreements | — | nothing | Done | @TabeenRaoof |
+| [P-05](P/P-05.md) | Make the definition of done checkable: PR template and state checker | — | nothing | Done | @TabeenRaoof |
+| [P-06](P/P-06.md) | Check every branch before taking a decision number | — | nothing | Done | @TabeenRaoof |
+| [P-07](P/P-07.md) | Tests are written during implementation | — | nothing | Done | @TabeenRaoof |
+| [P-08](P/P-08.md) | Agent entry point and measured hours; restore decisions a merge dropped | — | nothing | Done | @TabeenRaoof |
+| [P-09](P/P-09.md) | Claims shown in the backlog index and enforced | — | nothing | Done | @TabeenRaoof |
+| [P-10](P/P-10.md) | Set Done before merge, not after | — | nothing | Done | @TabeenRaoof |
+| [P-11](P/P-11.md) | Story files in one subfolder per lane | — | nothing | Done | @TabeenRaoof |
+| [P-12](P/P-12.md) | Write up the thin capture thread | — | nothing | Done | @TabeenRaoof |
+| [P-13](P/P-13.md) | Reconciliations and record corrections on others' stories | — | nothing | Done | @TabeenRaoof |
+| [P-14](P/P-14.md) | Close-out audit of every R story | — | nothing | Done | @dalwalyk |
+| [P-15](P/P-15.md) | Operating manual, first version | — | nothing | Done | @TabeenRaoof |
+| [P-16](P/P-16.md) | README brought out of skeleton state | — | nothing | Done | @TabeenRaoof |
+| [P-17](P/P-17.md) | Operating manual refresh | — | nothing | Done | @TabeenRaoof |
+| [P-18](P/P-18.md) | 18 Sept progress review: deck and generator | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-19](P/P-19.md) | 2 Oct progress review | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-20](P/P-20.md) | Midterm presentation deck | — | nothing | Done | @TabeenRaoof |
+| [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
+| [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
+| [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Done | @mbj1994 |
+| [P-24](P/P-24.md) | Write up the ground-truth lane | — | nothing | Done | @TabeenRaoof |
+| [P-25](P/P-25.md) | Write up the inspection lane | — | nothing | Done | @TabeenRaoof |
+| [P-26](P/P-26.md) | Write up the first generative-AI stories | — | nothing | Done | @TabeenRaoof |
+
 ---
 
 ## Phase 3 and beyond · titles only
 
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
-The thin capture thread (C-01–C-13) is the one exception — it's written up above, not here, since
-it's meant to run early rather than wait for a sprint boundary.
+The thin capture thread (C-01–C-13), ground truth (G-01–G-09), the first half of inspection
+(I-01–I-05) and the first generative-AI stories (A-01, A-04, A-06, A-08, A-10, A-11) are the
+exceptions — all written up above, not here: the capture thread is meant to run early, ground
+truth sits on the critical path, inspection's sprint has started, and generative AI is overdue
+from S2/S3.
 
 **Capture app**
 C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF with order code · C-18 device testing
 
 **Inspection**
-I-01 synthetic mesh generator · I-02 CAD loading · I-03 global registration · I-04 robust ICP · I-05 symmetry ambiguity check · I-06 deviation computation · I-07 verdict logic · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
+I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
 
 **Ground truth**
-G-01 printer characterisation · G-02 specimen batch · G-03 caliper measurement · G-04 noise floor per tier · G-05 defect ladder
+G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)
 
 **Generative AI**
-A-01 VLM frame supervision · A-02 VLM verdict veto · A-03 prose-to-spec parser · A-04 shape completion integration · A-05 disagreement map · A-06 agent tool definitions · A-07 agent loop · A-08 deterministic fallback · A-09 report narrative
+A-02 VLM verdict veto · A-03 prose-to-spec parser · A-05 disagreement map · A-07 agent loop · A-09 report narrative
 
 **Cross-cutting**
 X-01 integration point I1 · X-02 I2 · X-03 I3 · X-04 I4 · X-05 recorded backup demo

@@ -663,6 +663,33 @@ patching the three call sites.
 highest decision anywhere was D-045 (on `recon/R-20-confidence-in-fusion`, not yet merged), so
 D-046 was the first free number.
 
+**D-047 · Open3D is a pinned `requirements.txt` dependency.** (2026-10-15)
+`open3d==0.18.0` is now in `requirements.txt`, the CPU/laptop-and-CI set, so CI, laptops and the
+recon image all install it. C-08's next-view scoring uses Open3D's `RaycastingScene`, which is
+what the proposal's pinned stack names for "visibility and next view". `recon/next_view.py`
+imports Open3D at module level, as R-08 does with its real dependencies. R-07's Poisson fallback
+keeps its lazy import, which still works.
+*Why:* C-08's story says outright that tests skipping in CI don't count toward the definition of
+done, and an optional Open3D is precisely what makes them skip. It is CPU-only use, and
+`requirements.txt` exists for CPU dependencies. The separate requirements files (GPU, COLMAP)
+hold things that must *not* be installed on CPU, macOS or CI, which is the opposite case.
+0.18.0 is the version verified on macOS ARM64 with numpy 1.26.4 (VGGT needs numpy<2):
+`RaycastingScene` works there, and `pip check` is clean. R-20's macOS crash is inside Open3D's
+Poisson reconstruction, not its raycaster.
+*Cost, accepted:* the Linux wheel is ~400 MB and pulls dash, flask, pandas and scikit-learn, so CI
+installs are slower and the recon image is bigger. Two side effects: R-07's Poisson success-path
+test now runs in CI instead of skipping, and R-07's "Open3D not installed" test now fakes the
+missing import rather than skipping whenever Open3D is present.
+*Alternatives considered:* a separate `requirements-open3d.txt` installed by CI and the bootstrap
+script but not the image. It works, but it's one more file to keep in sync, for an image size
+the service will likely need anyway once rescan guidance runs there. `open3d-cpu` (~100 MB) only
+ships Linux wheels, so it would need platform markers and two package names for one import. A
+pure-numpy raycaster would need its own BVH or z-buffer to be fast enough on golden-size meshes.
+That doesn't fit a 4-hour story, and it departs from the pinned stack.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
+highest decision anywhere was D-046 (on `main` and every open branch), so D-047 was the first
+free number.
+
 **D-048 · C-13 connects `capture/` to the deployed service with a wildcard-origin CORS policy
 and the bearer token embedded in the client build; the order code is the real access control.**
 (2026-10-15)
@@ -748,6 +775,81 @@ showed before.
 *Checked against D-028 at write time:* D-049 on this branch was the highest decision anywhere, so
 D-050 was the first free number.
 
+**D-052 · Planning work gets stories too, in a P lane; past work is recorded as it was.**
+(2026-10-16)
+A new lane, **P — Planning**, holds the work that belongs to no single story: the proposal and
+the sprint plan, decisions and process rules, writing and splitting stories, keeping documents
+such as `docs/manual.md` in step with `main`, audits and reconciliations across stories, and the
+class reviews and reports. Its place is the planning documents (`docs/`, `submissions/`,
+`stories/` and the process files at the root), so D-020 still holds: a lane is a place, and anyone
+picks up a P story. Branch names use `planning/`. Tier is `—`, because the delivery tiers
+(D-001) apply to product features, not to documents.
+- **The boundary.** Anything done inside a story's own pull request stays in that story's hours:
+  its claim, its `Done` state and completion record, its progress-log entry, and any follow-up
+  stories it files. P takes only what no single story owns, plus work on someone else's story
+  after its pull request merged (a late close-out, a reconciliation, a record correction),
+  because that owner's actual hours never include it.
+- **Past work** becomes `Done` stories, owned by the handles git shows did the work; teammates
+  confirm, correct or remove their names in review. Where no estimate existed before the work,
+  Est is `—`, never a number made up afterwards. `check_story_states.py` accepts `—` there, and
+  nothing else that isn't `<number> h`. Actual hours stay `<n> h actual` until the owner gives a
+  real figure (D-033), and a figure reconstructed from memory says so. A co-owned story records
+  total person-hours, with each person's share in its notes where known. Work pushed straight
+  to `main` before branch protection existed (root commit `88d4ad6`) had no pull request. Its
+  record says so, and the pull request that adds the story is its first review.
+- **Claims that predate the lane** (P-20, P-21, P-22) land with it. They could not reach `main`
+  before the lane existed there (D-037).
+- **Definition of done for P.** Merged through a pull request and approved by one other member,
+  as always. A document can't be unit-tested, so its written check is the reviewer reading it
+  against the story's acceptance criteria. Code inside a P story keeps the normal rules: tests
+  written alongside it (D-029), and a run on a second member's machine.
+- **Budget.** Class review and report stories count against the sprint plan's 18 h `Reviews`
+  row. Stand-ups and boundary calls are ceremony overhead, already inside the weekly hours, and
+  get no story. Nothing else P covers had a budget line; recording it is how we find out what it
+  costs.
+
+*Why:* only code stories carried actual hours. Every hours total therefore left out the
+proposal, the plan, the process rules, the backlog write-ups, the documents and the reviews, and
+no estimate for that work could ever be checked. Recording it in pull request descriptions
+instead would have kept it out of the index, out of the checker and out of the completion records
+everyone already reads, so it uses the same story machinery as everything else.
+*Not decided here:* whether time spent reviewing others' pull requests is recorded anywhere. The
+sprint plan (§8) already counts review time inside each lane's estimates, and a review is not a
+deliverable with one owner, so it gets no P story.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. D-047
+(`capture/C-08-next-view-scoring`, #144), D-048–D-050 (`capture/C-13-connect-deployed-service`,
+#146) and D-051 (`recon/R-23-board-scale-anchor`, #152) are held on open branches, so D-052 was
+the first free number. Whichever of these merges after another will need its decisions
+reconciled together, not one at a time.
+*Rechecked 2026-10-17:* #144 has since merged, so D-047 now sits just above this entry.
+D-048–D-050 (#146) and D-051 (#152) are still on open branches, and nothing else on `origin`
+goes past D-047. When those two merge after this one, their entries land below D-052, out of
+numeric order; that is expected, not a lost or duplicated number.
+
+**D-053 · Inspection code is the package `inspection`, at `inspect/inspection/`; `inspect/` stays
+a bare directory.** (2026-10-19)
+Settles the import name D-030 left to I-01. The lane directory stays `inspect/` (D-020) with
+**no** `__init__.py`. The importable package is `inspection`, living at `inspect/inspection/`,
+and `pyproject.toml` replaces `[tool.setuptools.packages.find]` with an explicit
+`packages = ["recon", "inspection"]` plus `[tool.setuptools.package-dir] inspection =
+"inspect/inspection"`. Code imports it as `from inspection import registration`. I-01 implements
+this and strengthens `tests/test_packaging.py` to prove it: the standard library's `inspect` still
+resolves under `sysconfig`'s stdlib path, and `inspection.__file__` sits under
+`inspect/inspection/`.
+*Why:* two simpler layouts fail. An `inspect/__init__.py` at the repository root makes `inspect/`
+a regular package, and `python -m pytest` (how CI runs) puts the repository root first on
+`sys.path`, so `import inspect` inside pytest itself would get ours; a bare directory is only a
+namespace package, which the import system tries last. And mapping `inspection` straight onto
+`inspect/` needs that same `__init__.py`, while `packages.find` cannot discover a package under a
+name different from its directory, hence the explicit list. Renaming the directory would reverse
+part of D-020 and every document citing it; folding the code into `recon/` would make `recon/` the
+whole backend, which the lane layout exists to prevent.
+*Not decided here:* anything about the lane's modules beyond their package. Their names
+(`synthetic`, `cad`, `registration`) are in I-01..I-05's story files.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked. D-048–D-050
+(`capture/C-13-connect-deployed-service`, #146) and D-051 (`recon/R-23-board-scale-anchor`, #152)
+are held on open branches and D-052 is on `main`, so D-053 was the first free number.
+
 ---
 
 ## Open — not yet decided
@@ -762,8 +864,13 @@ a different course's calendar. It has since hardened into the milestone table, t
 and the horizontal axis of both Gantt charts without ever being verified against SFBU's academic
 calendar. Confirm it before the schedule is treated as fixed.
 
-**O-003 · Exact biweekly review dates.** Planned for every second Friday from 11 September;
-re-anchor if the real dates differ.
+**O-003 · Exact biweekly review dates. — Closed 2026-10-20.**
+~~Planned for every second Friday from 11 September; re-anchor if the real dates differ.~~
+The delivered class-review record establishes Progress Review 1 on 18 September 2026 and
+Progress Review 2 on 2 October 2026. The sprint plan is therefore re-anchored to every second
+Friday from 18 September: 18 Sep, 2 Oct, 16 Oct, 30 Oct, 13 Nov, 27 Nov, 11 Dec. No separate
+written instructor-confirmation message is stored in the repo, Gmail or calendar; the delivered
+class-review artifacts are the evidence used for this closure, and the plan says so explicitly.
 
 **O-004 · Whether a formal user study is expected this semester.** An informal one is planned;
 a formal one with IRB approval is future work.
