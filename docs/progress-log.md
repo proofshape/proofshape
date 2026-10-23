@@ -1294,3 +1294,42 @@ A-02, A-03, A-05, A-07 and A-09 stay titles-only.
 is consistent and `--fix` changes nothing. P-26 closed at 1.5 h actual. No code, no new decision.
 **Next:** A-01, A-06, A-10 and A-11 can start now. A-11 and any A-06 contract change are D-031
 requests, timed for the Oct 30 or Nov 13 sprint boundary.
+
+
+
+
+
+## 2026-10-20 — P-20 midterm deck corrected to the 15 October cutoff (PR #165)
+
+**Who:** @TabeenRaoof. Follows the same correction made to P-21's midterm report (PR #160)
+earlier the same day, applied to the deck.
+**What changed:** the deck drafted on 16 October, before this lane existed, described the first
+real-phone session as verified working end to end. It wasn't: that session's own close-out
+commit, `9e8942b`, is timestamped 2026-10-16 00:17 PDT, seventeen minutes past this
+deliverable's own cutoff (start of term through Thursday 15 October, nothing after — now its
+own acceptance criterion in `stories/P/P-20.md`, matching P-21's). The deck was rebuilt from a
+new generator script, `scripts/build_midterm_deck.js`, committed as the reviewable artifact the
+same way `scripts/build_midterm_report.js` was for P-21. Every number was checked against `main`
+at commit `3a373ed` (2026-10-15 21:52 PDT, the day's last commit) and, where slide 10 cites
+C-13's own branch directly, against that branch's last commit before midnight, `d296be9`
+(23:29 PDT): stories done 40/44 (not 42), 130 PRs merged (not 131), 585 tests passing — 404
+Python + 181 TypeScript (not 680), 45 decisions (not 49), capture app 11/13 (not 13/13, a real
+bug in the original draft since C-13 was already described elsewhere as open). Slide 10 no
+longer claims a working phone session; it now shows the two failed attempts (deployment
+chicken-and-egg, then zero poses from missing EXIF focal length) and the fix, D-050, validated
+offline only, with live-device confirmation stated as not yet done. Slide 13's Gantt chart was
+corrected in the chart code itself, not just captioned: the "Today" line moved from 16 to 15
+Oct, and no bar marked done extends past the 15th.
+**Result:** figures reused from P-21's already cutoff-checked set in
+`submissions/assets/2026-10-16/`, plus one new crop for the title slide. Full suite and
+`check_story_states.py` pass on the branch. `State` stays `Claimed`, matching P-21's pattern —
+this PR advances the story, it does not close it.
+**Next:** @dalwalyk and @mbj1994 present 10 of the 15 slides between them, so the PR asks both
+to read their own sections against the code as it stood on 15 October before approving. Once
+C-08, C-13 and R-23 actually land, both the deck and the report need a second pass with the
+post-cutoff numbers, as next-steps material rather than another correction.
+**Review:** @dalwalyk requested changes on one thing: slide 3's system diagram drew the
+capture app's link to the service in the same solid "Done" style as the built stages, with the
+caveat only in the presenter notes. That connector now uses slide 13's "In progress" style
+(amber, dashed) and says "live link not yet confirmed" on the slide itself. The deck was
+presented, and P-20 closed at 3 h actual (no estimate was made before the work).
