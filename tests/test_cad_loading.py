@@ -138,10 +138,22 @@ def test_matrix_encoded_scale_is_rejected(tmp_path):
     document = pygltflib.GLTF2().load_binary(str(path))
     document.nodes[0].scale = None
     document.nodes[0].matrix = [
-        2.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
+        2.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
     ]
     document.save_binary(str(path))
 
@@ -158,9 +170,7 @@ def test_multi_node_assembly_with_transform_is_rejected(tmp_path):
     write_glb(path, vertices, np.array([[0, 1, 2]], dtype=np.int32))
 
     document = pygltflib.GLTF2().load_binary(str(path))
-    document.nodes.append(
-        pygltflib.Node(mesh=0, translation=[25.0, 0.0, 0.0])
-    )
+    document.nodes.append(pygltflib.Node(mesh=0, translation=[25.0, 0.0, 0.0]))
     document.scenes[0].nodes.append(1)
     document.save_binary(str(path))
 
