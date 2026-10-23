@@ -152,34 +152,16 @@ def test_score_next_view_wraps_the_real_mesh_after_reconstruction(tmp_path):
 # --- check_frame ---------------------------------------------------------------------------
 
 
-def test_check_frame_unavailable_with_no_events_yet():
-    result = agent_tools.check_frame({})
-    assert result.available is False
-    assert result.reason == "no_frames_yet"
-
-
-def test_check_frame_reflects_the_last_recorded_event():
-    accepted = agent_tools.check_frame(
-        {"last_frame_event": {"accepted": True, "frame_index": 2}}
-    )
-    assert accepted.available is True
-    assert accepted.data == {"accepted": True, "frame_index": 2}
-
-    rejected = agent_tools.check_frame(
-        {
-            "last_frame_event": {
-                "accepted": False,
-                "code": "frame_rejected_exposure",
-                "message": "x",
-            }
-        }
-    )
-    assert rejected.data["accepted"] is False
-    assert rejected.data["code"] == "frame_rejected_exposure"
+def test_check_frame_is_always_unavailable():
+    # D-054, revised after review: the gate's actual decision never reaches the server (a
+    # rejected frame is never uploaded), so this tool does not invent a different answer under
+    # its name -- same honesty vlm_inspect already applies to A-01 not existing yet.
+    assert agent_tools.check_frame({}).available is False
+    assert agent_tools.check_frame({"frame_count": 5}).available is False
 
 
 def test_check_frame_is_deterministic():
-    record = {"last_frame_event": {"accepted": True, "frame_index": 0}}
+    record = {"frame_count": 3}
     assert agent_tools.check_frame(record) == agent_tools.check_frame(record)
 
 
@@ -232,6 +214,31 @@ def test_finish_session_already_finished(tmp_path):
     assert second.error_code == "session_already_finished"
 
 
+def test_finish_session_handles_a_genuine_mark_finished_race(tmp_path, monkeypatch):
+    # Distinct from test_finish_session_already_finished above: that test hits the early
+    # `record["status"] != "capturing"` check on its second call, never reaching
+    # `store.mark_finished()` at all. This test makes the early checks pass (record still says
+    # "capturing") and has `mark_finished` itself raise, as a real concurrent race would.
+    store = service.SessionStore(tmp_path)
+    record = store.create("order-1")
+    for _ in range(3):
+        store.add_frame(
+            record["session_id"], b"jpeg", {"alpha": 0.0, "beta": 0.0, "gamma": 0.0}
+        )
+
+    def losing_race(session_id):
+        raise service.SessionAlreadyFinishedError("session_already_finished")
+
+    monkeypatch.setattr(store, "mark_finished", losing_race)
+
+    result = agent_tools.finish_session(
+        store, record["session_id"], lambda sid: None, min_frames=3
+    )
+
+    assert result.ok is False
+    assert result.error_code == "session_already_finished"
+
+
 def test_finish_session_success_schedules_reconstruction(tmp_path):
     store = service.SessionStore(tmp_path)
     record = store.create("order-1")
@@ -248,46 +255,6 @@ def test_finish_session_success_schedules_reconstruction(tmp_path):
     assert result.ok is True
     assert result.record["status"] == "finished"
     assert scheduled == [record["session_id"]]
-
-
-# --- wiring: upload_frame actually populates what check_frame reads ---------------------------
-
-
-def test_upload_frame_sets_last_frame_event_for_check_frame(tmp_path):
-    from fastapi.testclient import TestClient
-
-    app = service.create_app(tmp_path, pipeline_runner=lambda *_: {})
-    client = TestClient(app)
-    session_id = client.post("/v1/sessions", json={"order_code": "order-1"}).json()[
-        "session_id"
-    ]
-
-    gyro = json.dumps({"alpha": 1.0, "beta": 2.0, "gamma": 3.0})
-    client.post(
-        f"/v1/sessions/{session_id}/frames",
-        files={
-            "frame": ("frame.jpg", b"jpeg-data", "image/jpeg"),
-            "gyro": ("blob", gyro, "application/json"),
-        },
-    )
-
-    store = app.state.store
-    record = store.load(session_id)
-    result = agent_tools.check_frame(record)
-    assert result.data == {"accepted": True, "frame_index": 0}
-
-    rejected = client.post(
-        f"/v1/sessions/{session_id}/frames",
-        files={
-            "frame": ("frame.jpg", b"", "image/jpeg"),
-            "gyro": ("blob", gyro, "application/json"),
-        },
-    )
-    assert rejected.status_code == 422
-    record_after_reject = store.load(session_id)
-    rejected_result = agent_tools.check_frame(record_after_reject)
-    assert rejected_result.data["accepted"] is False
-    assert rejected_result.data["code"] == "frame_rejected_exposure"
 
 
 @pytest.mark.parametrize("min_frames", [1])

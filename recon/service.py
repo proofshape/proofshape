@@ -179,20 +179,8 @@ class SessionStore:
                 json.dumps(gyro, sort_keys=True) + "\n", encoding="utf-8"
             )
             record["frame_count"] = frame_index + 1
-            record["last_frame_event"] = {"accepted": True, "frame_index": frame_index}
             self._write_record(record)
             return frame_index
-
-    def set_last_frame_event(self, session_id: str, event: dict[str, Any]) -> None:
-        """A-06/D-054: `check_frame` reads this back. Under the same lock as `add_frame` so a
-        rejection recorded here can never race with a concurrent accept overwriting it with a
-        stale `frame_count`."""
-        with self._lock:
-            record = self.load(session_id)
-            if record is None:
-                raise KeyError(session_id)
-            record["last_frame_event"] = event
-            self._write_record(record)
 
     def fail_orphaned_pending(self) -> int:
         """Fail jobs left pending by a previous process so clients do not poll forever."""
@@ -225,7 +213,7 @@ class SessionStore:
             if record is None:
                 raise KeyError(session_id)
             if record["status"] != "capturing":
-                raise RuntimeError("session_already_finished")
+                raise SessionAlreadyFinishedError("session_already_finished")
             record["status"] = "finished"
             record["reconstruction"] = {"status": "pending"}
             self._write_record(record)
@@ -496,14 +484,6 @@ def create_app(
             )
         frame_bytes = await frame.read()
         if not frame_bytes:
-            store.set_last_frame_event(
-                session_id,
-                {
-                    "accepted": False,
-                    "code": "frame_rejected_exposure",
-                    "message": "The uploaded frame is empty.",
-                },
-            )
             return error(
                 422,
                 ErrorDetail(
@@ -518,11 +498,13 @@ def create_app(
             # ErrorCode. Keep the response contract-valid for v1 and make the semantic
             # debt explicit; D-031 requires a sprint-boundary contract change to add a
             # dedicated malformed_request code.
-            message = f"Malformed frame upload (not a VLM decision): {exc}"
-            store.set_last_frame_event(
-                session_id, {"accepted": False, "code": "vlm_veto", "message": message}
+            return error(
+                422,
+                ErrorDetail(
+                    code="vlm_veto",
+                    message=f"Malformed frame upload (not a VLM decision): {exc}",
+                ),
             )
-            return error(422, ErrorDetail(code="vlm_veto", message=message))
         try:
             frame_index = store.add_frame(session_id, frame_bytes, gyro_value)
         except SessionAlreadyFinishedError:

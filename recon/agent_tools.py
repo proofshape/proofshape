@@ -9,10 +9,10 @@ Two of the five tools have a phone-side source (`capture/src/frame_gate.ts`,
 - `coverage_report` recomputes orbit coverage server-side from every accepted frame's gyro
   reading, already persisted at `<session_dir>/frames/frame_NNNN.gyro.json`
   (`SessionStore.add_frame`) -- no contract change.
-- `check_frame` does *not* add frame-gate telemetry (that would need a new contract field and a
-  D-031 sprint-boundary request). It wraps `upload_frame`'s own real accept/reject outcome
-  instead, which `upload_frame` now remembers per session as `record["last_frame_event"]` --
-  server-internal state, nothing new crosses the wire.
+- `check_frame` is always `unavailable`. A frame the gate rejects is never uploaded, so the
+  server never learns the gate's actual decision, and nothing here answers a different
+  question under this tool's name instead. Reporting the real gate result would need a new
+  contract field and a D-031 sprint-boundary request -- deliberately not added here.
 """
 
 from __future__ import annotations
@@ -190,12 +190,19 @@ def score_next_view(record: dict[str, Any]) -> ToolResult:
 
 
 def check_frame(record: dict[str, Any]) -> ToolResult:
-    """What the server itself last saw for this session's uploads -- `upload_frame`'s own real
-    accept/reject outcome (D-054), never the phone's frame-gate decision."""
-    last_event = record.get("last_frame_event")
-    if last_event is None:
-        return ToolResult(available=False, reason="no_frames_yet")
-    return ToolResult(available=True, data=dict(last_event))
+    """Always `unavailable` (D-054, revised after review): the acceptance criteria name this
+    tool "over the gate result" -- `capture/src/frame_gate.ts`'s blur/exposure/duplicate
+    decision -- but a frame the gate rejects is never uploaded, so the server never learns the
+    gate's actual answer, and nothing here invents one. Reporting it would need a new contract
+    field (a D-031 request), deliberately not added in this story. Returning `unavailable` is
+    honest about that gap, the same way `vlm_inspect` is honest about A-01 not existing yet --
+    rather than answering a different, already-knowable question (`upload_frame`'s own
+    accept/reject outcome) under this tool's name, which would look complete without being
+    complete."""
+    del record
+    return ToolResult(
+        available=False, reason="frame-gate result is not reported to the server"
+    )
 
 
 # --- vlm_inspect -------------------------------------------------------------------------------
@@ -203,8 +210,7 @@ def check_frame(record: dict[str, Any]) -> ToolResult:
 
 def vlm_inspect(record: dict[str, Any]) -> ToolResult:
     """A-01 isn't built yet, so this is `unavailable` for every call. The one-line seam A-01
-    fills in: reading `record`'s own VLM results the same way `check_frame` reads
-    `last_frame_event`."""
+    fills in: reading `record`'s own VLM results once they exist."""
     del record
     return ToolResult(available=False, reason="A-01 not yet built")
 
