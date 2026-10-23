@@ -779,8 +779,13 @@ a different course's calendar. It has since hardened into the milestone table, t
 and the horizontal axis of both Gantt charts without ever being verified against SFBU's academic
 calendar. Confirm it before the schedule is treated as fixed.
 
-**O-003 · Exact biweekly review dates.** Planned for every second Friday from 11 September;
-re-anchor if the real dates differ.
+**O-003 · Exact biweekly review dates. — Closed 2026-10-20.**
+~~Planned for every second Friday from 11 September; re-anchor if the real dates differ.~~
+The delivered class-review record establishes Progress Review 1 on 18 September 2026 and
+Progress Review 2 on 2 October 2026. The sprint plan is therefore re-anchored to every second
+Friday from 18 September: 18 Sep, 2 Oct, 16 Oct, 30 Oct, 13 Nov, 27 Nov, 11 Dec. No separate
+written instructor-confirmation message is stored in the repo, Gmail or calendar; the delivered
+class-review artifacts are the evidence used for this closure, and the plan says so explicitly.
 
 **O-004 · Whether a formal user study is expected this semester.** An informal one is planned;
 a formal one with IRB approval is future work.

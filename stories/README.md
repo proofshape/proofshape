@@ -226,7 +226,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Ready | _unclaimed_ |
+| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Claimed | @dalwalyk |
 | [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | G-01 | Blocked | _unclaimed_ |
 | [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
@@ -235,6 +235,85 @@ Full detail in each story file.
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Blocked | _unclaimed_ |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
+
+---
+
+## Inspection
+
+The third slice of Phase 3 written up early. The sprint plan's S4 "Inspection" sprint starts on
+2026-10-19 and ends on Oct 30 with two gates: I3, "verdict proven end to end", and M4, "planted
+4 mm hole shift → Fail; unobserved region → Rescan; substituted part caught on scale or shape".
+Both need registration first. These five don't wait on ground truth: the sprint plan built the synthetic mesh generator
+(§4 item 3) so that registration and verdict tests run on every pull request with no GPU and no
+fixtures.
+
+**The method is settled, not open** (proposal §7.1, D-008): FPFH + RANSAC global registration,
+then robust point-to-plane ICP with a Tukey loss; scale fixed to 1 in the fit, the free-scale
+residual computed separately as the substitution check; a runner-up within 10% of the best marks
+the session orientation-ambiguous. Open3D 0.18 (already pinned) has all of it.
+
+**No tolerance until G-04.** Nothing here decides whether a deviation passes. Every threshold (σ,
+patch size, voxel size, Tukey `k`, the 10%) is a declared parameter with a stated default, and
+the verdict (I-06..I-10) waits for σ_floor and the tolerance schema (D-032). Issue #157 already
+binds I-07 to `max(σ, σ_floor)`.
+
+**Where the code goes.** D-053 settles the import name D-030 left open: the directory stays
+`inspect/`, the importable package is `inspection`, at `inspect/inspection/`. I-01 puts it in
+place.
+
+These five total 19 h against roughly 15 h implied by the plan's S1 and S2 inspection bullets once
+printing and the calibration cube moved to G-01/G-02; the extra is densifying the tiny fixture
+CADs and the packaging decision.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [I-01](I/I-01.md) | Synthetic mesh generator, and the `inspection` package | 4 h | nothing | Done | @dalwalyk |
+| [I-02](I/I-02.md) | CAD loading: ASCII and binary STL, and GLB, coordinates as stored | 3 h | nothing | Claimed | @mbj1994 |
+| [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Blocked | _unclaimed_ |
+| [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Blocked | _unclaimed_ |
+| [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 10% | 3 h | I-04 | Blocked | _unclaimed_ |
+
+---
+
+## Generative AI
+
+The fourth slice of Phase 3 written up early, because it is overdue. The course requires about a
+third of the project to be generative AI, and those components are never cut (AGENTS.md, D-017).
+VLM supervision was due in S2 (its M2 gate, "a screen photo is rejected by the VLM", was missed)
+and shape completion in S3; none of it is built. These are the first stories that can start
+without the verdict, plus the agent's tools (A-06) and its deterministic fallback (A-08), which
+the proposal says is built first. A-02 (veto), A-03 (spec parser), A-05 (disagreement map), A-07
+(agent loop) and A-09 (narrative) stay titles-only until the verdict, A-04 or A-06/A-08 exist.
+
+**What counts.** The test is "if you run it twice, can it give two different answers?"
+(AGENTS.md). A VLM's reply and sampled completions both can; the reconstruction backbone can't
+(D-018).
+
+**Hard rules.** A model's guess never passes or fails a part (D-005). σ comes from depth residuals,
+and the spread across completions is guidance only (D-006, issue #157), so completed surface is
+labelled Inferred and never touches the verdict mesh. No cost, latency, accuracy or K is promised:
+each is measured or a declared parameter.
+
+**What the proposal already decides.** The VLM is Gemini Flash-Lite, version pinned, called on
+sampled frames, not every frame (§6.5, §8.3); its key lives in Actions secrets and a gitignored
+local env file, and never reaches the phone app. Completion is diffusion-based, K samples, with
+coverage-only guidance as the fallback (§6.6, §9); no model is named, hence the A-10 spike.
+
+The A-10..A-13 on the unmerged `chore/proposal-revisions-2026-09-05` branch are superseded, as
+that branch's G-06 and C-09..C-15 already were.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Ready | _unclaimed_ |
+| [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Ready | _unclaimed_ |
+| [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Blocked | _unclaimed_ |
+| [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Ready | _unclaimed_ |
+| [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Claimed | @dalwalyk |
+| [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Blocked | _unclaimed_ |
 
 ---
 
@@ -315,9 +394,10 @@ Full detail in each story file.
 | [P-20](P/P-20.md) | Midterm presentation deck | — | nothing | Claimed | @TabeenRaoof |
 | [P-21](P/P-21.md) | Midterm report | — | nothing | Claimed | @TabeenRaoof; @dalwalyk; @mbj1994 |
 | [P-22](P/P-22.md) | Planning lane: D-052, the checker change, the P stories | 3 h | nothing | Done | @TabeenRaoof |
-| [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Ready | _unclaimed_ |
+| [P-23](P/P-23.md) | Refresh the sprint plan and point the manual at D-052 | 2 h | P-17 | Done | @mbj1994 |
 | [P-24](P/P-24.md) | Write up the ground-truth lane | — | nothing | Done | @TabeenRaoof |
-| [P-25](P/P-25.md) | Write up the inspection lane | — | nothing | Claimed | @TabeenRaoof |
+| [P-25](P/P-25.md) | Write up the inspection lane | — | nothing | Done | @TabeenRaoof |
+| [P-26](P/P-26.md) | Write up the first generative-AI stories | — | nothing | Done | @TabeenRaoof |
 
 ---
 
@@ -325,21 +405,23 @@ Full detail in each story file.
 
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
-The thin capture thread (C-01–C-13) and ground truth (G-01–G-09) are the exceptions — both are
-written up above, not here: the capture thread is meant to run early, and ground truth sits on the
-critical path, so neither can wait for a sprint boundary.
+The thin capture thread (C-01–C-13), ground truth (G-01–G-09), the first half of inspection
+(I-01–I-05) and the first generative-AI stories (A-01, A-04, A-06, A-08, A-10, A-11) are the
+exceptions — all written up above, not here: the capture thread is meant to run early, ground
+truth sits on the critical path, inspection's sprint has started, and generative AI is overdue
+from S2/S3.
 
 **Capture app**
 C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF with order code · C-18 device testing
 
 **Inspection**
-I-01 synthetic mesh generator · I-02 CAD loading · I-03 global registration · I-04 robust ICP · I-05 symmetry ambiguity check · I-06 deviation computation · I-07 verdict logic · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
+I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path · I-11 OBJ loading
 
 **Ground truth**
 G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)
 
 **Generative AI**
-A-01 VLM frame supervision · A-02 VLM verdict veto · A-03 prose-to-spec parser · A-04 shape completion integration · A-05 disagreement map · A-06 agent tool definitions · A-07 agent loop · A-08 deterministic fallback · A-09 report narrative
+A-02 VLM verdict veto · A-03 prose-to-spec parser · A-05 disagreement map · A-07 agent loop · A-09 report narrative
 
 **Cross-cutting**
 X-01 integration point I1 · X-02 I2 · X-03 I3 · X-04 I4 · X-05 recorded backup demo
