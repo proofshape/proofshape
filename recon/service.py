@@ -17,6 +17,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from recon import agent_tools
+
 MIN_FINISH_FRAMES = 3
 
 # R-15: on Lightning's deployment proxy, the connection the container actually sees has
@@ -177,8 +179,20 @@ class SessionStore:
                 json.dumps(gyro, sort_keys=True) + "\n", encoding="utf-8"
             )
             record["frame_count"] = frame_index + 1
+            record["last_frame_event"] = {"accepted": True, "frame_index": frame_index}
             self._write_record(record)
             return frame_index
+
+    def set_last_frame_event(self, session_id: str, event: dict[str, Any]) -> None:
+        """A-06/D-054: `check_frame` reads this back. Under the same lock as `add_frame` so a
+        rejection recorded here can never race with a concurrent accept overwriting it with a
+        stale `frame_count`."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is None:
+                raise KeyError(session_id)
+            record["last_frame_event"] = event
+            self._write_record(record)
 
     def fail_orphaned_pending(self) -> int:
         """Fail jobs left pending by a previous process so clients do not poll forever."""
@@ -482,6 +496,14 @@ def create_app(
             )
         frame_bytes = await frame.read()
         if not frame_bytes:
+            store.set_last_frame_event(
+                session_id,
+                {
+                    "accepted": False,
+                    "code": "frame_rejected_exposure",
+                    "message": "The uploaded frame is empty.",
+                },
+            )
             return error(
                 422,
                 ErrorDetail(
@@ -496,13 +518,11 @@ def create_app(
             # ErrorCode. Keep the response contract-valid for v1 and make the semantic
             # debt explicit; D-031 requires a sprint-boundary contract change to add a
             # dedicated malformed_request code.
-            return error(
-                422,
-                ErrorDetail(
-                    code="vlm_veto",
-                    message=f"Malformed frame upload (not a VLM decision): {exc}",
-                ),
+            message = f"Malformed frame upload (not a VLM decision): {exc}"
+            store.set_last_frame_event(
+                session_id, {"accepted": False, "code": "vlm_veto", "message": message}
             )
+            return error(422, ErrorDetail(code="vlm_veto", message=message))
         try:
             frame_index = store.add_frame(session_id, frame_bytes, gyro_value)
         except SessionAlreadyFinishedError:
@@ -560,45 +580,17 @@ def create_app(
         operation_id="finishSession",
     )
     def finish_session(session_id: str, background_tasks: BackgroundTasks):
-        record = store.load(session_id)
-        if record is None:
+        result = agent_tools.finish_session(
+            store,
+            session_id,
+            lambda sid: background_tasks.add_task(run_session, sid),
+            min_frames=MIN_FINISH_FRAMES,
+        )
+        if not result.ok:
             return error(
-                409,
-                ErrorDetail(
-                    code="session_not_found", message="No session with that id."
-                ),
+                409, ErrorDetail(code=result.error_code, message=result.error_message)
             )
-        if record["status"] != "capturing":
-            return error(
-                409,
-                ErrorDetail(
-                    code="session_already_finished",
-                    message="The session is already finished.",
-                ),
-            )
-        if int(record["frame_count"]) < MIN_FINISH_FRAMES:
-            return error(
-                409,
-                ErrorDetail(
-                    code="too_few_frames",
-                    message=(
-                        f"At least {MIN_FINISH_FRAMES} accepted frames are required "
-                        "before finishing."
-                    ),
-                ),
-            )
-        try:
-            record = store.mark_finished(session_id)
-        except SessionAlreadyFinishedError:
-            return error(
-                409,
-                ErrorDetail(
-                    code="session_already_finished",
-                    message="The session is already finished.",
-                ),
-            )
-        background_tasks.add_task(run_session, session_id)
-        return SessionResponse(**record)
+        return SessionResponse(**result.record)
 
     @app.get(
         "/v1/sessions/{session_id}/reconstruction",

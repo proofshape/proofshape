@@ -765,6 +765,27 @@ whole backend, which the lane layout exists to prevent.
 (`capture/C-13-connect-deployed-service`, #146) and D-051 (`recon/R-23-board-scale-anchor`, #152)
 are held on open branches and D-052 is on `main`, so D-053 was the first free number.
 
+**D-054 · `check_frame` wraps `upload_frame`'s own accept/reject outcome, not the phone's
+frame-gate; orbit coverage is recomputed server-side.** (2026-10-23)
+A-06's two phone-side tool sources (`capture/src/frame_gate.ts`, `capture/src/orbit.ts`) reach
+the server two different ways. Orbit: every accepted frame's gyro reading is already persisted
+at `<session_dir>/frames/frame_NNNN.gyro.json` by `SessionStore.add_frame`, so
+`recon.agent_tools.coverage_report` replays `orbit.ts`'s `computeCoverage` logic over those files
+directly — no contract change. Frame gate: a rejected frame's pixels and gyro are never
+uploaded, so there is nothing to recompute server-side, and nothing has ever reported a
+rejection to the server either — only a new contract field could carry that, which needs a
+D-031 request at a sprint boundary (Oct 30 or Nov 13). `recon.agent_tools.check_frame` does not
+add that field here. Instead `upload_frame` gains one small, server-internal addition —
+`record["last_frame_event"]`, set on every call, accepted or rejected — so `check_frame` answers
+a real question (what did the server itself last see for this session) instead of a
+tautological one, with no new data crossing the wire.
+*Why:* A-06 was picked over A-11 specifically to avoid being gated on a D-031 sprint boundary.
+Adding frame-gate telemetry now would reintroduce that same gate for no immediate benefit — no
+story yet calls `check_frame` for a decision that needs it. A richer, gate-rejection-aware
+version is explicit future work once the agent (A-07) actually needs it.
+*Checked against D-028 at write time:* every branch on `origin` was fetched and checked; nothing
+past D-053 exists anywhere, so D-054 was the first free number.
+
 ---
 
 ## Open — not yet decided
