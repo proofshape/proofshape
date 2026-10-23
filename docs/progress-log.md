@@ -1271,3 +1271,26 @@ meant to catch it.
 `./scripts/bootstrap_dev_env.sh` (or `pip install -e .`) re-run after this merge, or
 `import inspection` fails and the test suite stops at collection — @TabeenRaoof hit exactly that
 with an older environment during review.
+
+
+
+## 2026-10-23 — P-26 first generative-AI stories written up (A-01, A-04, A-06, A-08, A-10, A-11)
+
+**Who:** @TabeenRaoof (PR #174, reviewed by @dalwalyk). The claim was #168.
+**What changed:** generative AI is a third of the course requirement, never cut (D-017), and was
+overdue from S2/S3. Six stories in a new Generative AI section of `stories/README.md`, written
+from the proposal (§6.5–§6.7, §8.3, §9):
+- A-01: VLM frame supervision on sampled frames with a pinned Gemini Flash-Lite model; one atomic
+  result file per frame, never a silent pass, and the key redacted in both deploy calls.
+- A-10: a spike to choose the diffusion-based completion model.
+- A-04: the completion stage, K samples stored beside the pipeline with the verdict mesh and σ
+  byte-identical.
+- A-11: one D-031 request to show the VLM hint and give malformed uploads their own error code.
+- A-06: the agent's five tools as typed, deterministic server functions.
+- A-08: the deterministic capture policy the agent falls back to.
+
+A-02, A-03, A-05, A-07 and A-09 stay titles-only.
+**Result:** A-01, A-06, A-10 and A-11 are Ready; A-04 and A-08 Blocked; none claimed. The checker
+is consistent and `--fix` changes nothing. P-26 closed at 1.5 h actual. No code, no new decision.
+**Next:** A-01, A-06, A-10 and A-11 can start now. A-11 and any A-06 contract change are D-031
+requests, timed for the Oct 30 or Nov 13 sprint boundary.
