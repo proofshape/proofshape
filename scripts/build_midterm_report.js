@@ -104,7 +104,7 @@ TABLE("team", "Team members, their main contributions this term, and the report 
   ["Member", "Student ID", "Main work this term", "Report sections"],
   [
     ["Mamadou [surname]\n@mbj1994", "[ID]", "Shared GPU workspace (F-05); golden capture set (F-06, with Tabeen); camera calibration (R-03); MASt3R and COLMAP backbones (R-11, R-12); reconstruction API service (R-14); σ baseline (R-19); result screen, mock service, 3D viewer and provenance colouring (C-10–C-12)", "Summary (joint), 1–5"],
-    ["Yashi [surname]\n@dalwalyk", "[ID]", "Repository skeleton, CI and dev environment (F-02, F-04, F-07); VGGT runner (R-01); metric alignment and scale check (R-04, R-05); segmentation, fusion and mesh cleanup (R-06–R-08); provenance and uncertainty (R-09, R-10); mesh check (R-18); gyro, app shell, live camera, frame gate, orbit guidance and capture loop (C-03–C-07, C-09); connection to the service (C-13, with Tabeen)", "Summary (joint), 6–9"],
+    ["Yashi Dalwala\n@dalwalyk", "164054", "Repository skeleton, CI and dev environment (F-02, F-04, F-07); VGGT runner (R-01); metric alignment and scale check (R-04, R-05); segmentation, fusion and mesh cleanup (R-06–R-08); provenance and uncertainty (R-09, R-10); mesh check (R-18); gyro, app shell, live camera, frame gate, orbit guidance and capture loop (C-03–C-07, C-09); connection to the service (C-13, with Tabeen)", "Summary (joint), 6–9"],
     ["Tabeen Raoof\n@TabeenRaoof", "[ID]", "Repository and branch protection, API contract (F-01, F-03); board detection and camera pose (R-02); latency instrumentation (R-13); container and cloud deployment (R-15); real-data checks and fixes (R-17, R-20–R-22, R-24); upload page and camera permission (C-01, C-02); next-view scoring (C-08, in review); the first real-phone attempt (C-13, with Yashi)", "Summary (joint), 10–14, References, Appendix A"],
   ]);
 P("Capacity is about 9 hours per person per week over the semester, roughly 349 person-hours in total [21]. The midterm presentation follows the same split: Mamadou presents slides 1–5, Yashi 6–9 and Tabeen 10–15.");
@@ -498,7 +498,7 @@ function coverPage() {
     new Table({
       width: { size: DXA(6.5), type: WidthType.DXA }, columnWidths: [2.4, 2.3, 1.8].map(DXA),
       borders: { top: border, bottom: border, left: border, right: border, insideHorizontal: border, insideVertical: border },
-      rows: [memberRow("Tabeen Raoof", "@TabeenRaoof"), memberRow("Mamadou [surname]", "@mbj1994"), memberRow("Yashi [surname]", "@dalwalyk")],
+      rows: [memberRow("Tabeen Raoof", "@TabeenRaoof"), memberRow("Mamadou [surname]", "@mbj1994"), memberRow("Yashi Dalwala", "@dalwalyk")],
     }),
     new Paragraph({ spacing: { before: 600, after: 60 }, children: [new TextRun({ text: "San Francisco Bay University · Fall 2026", size: 22, color: INK })] }),
     new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: "Instructor: [instructor name]", size: 22, color: INK })] }),
