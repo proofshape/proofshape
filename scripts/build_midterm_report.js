@@ -309,7 +309,7 @@ P("Two habits have paid off. First, decisions are recorded with their reasoning 
 // 13 · Timeline
 H1("13. Timeline", "Tabeen");
 P("{fig:timeline} compares the sprint plan with what actually happened, and Table {tab:milestones} lists the milestones.");
-FIGURE("timeline", "fig_timeline.png", 6.5, "Plan versus actual, September to December. Outlined bars are the sprint plan; solid teal bars are completed work; the dashed amber box is the next step on the real-data fixes; dashed red boxes are work that was planned to have started but has not. Diamonds mark the sprint-gate milestones. (This chart is inherited from the midterm slide deck and has not yet been redrawn for this report\u2019s 15 October cutoff: it still marks Today as 16 October and shows the capture app as fully done through that date. Table 8 and the text in this section are the corrected, cutoff-accurate figures; treat the chart as approximate until it is redrawn.)");
+FIGURE("timeline", "fig_timeline.png", 6.5, "Plan versus actual, September to December, as of the 15 October cutoff (the dashed Today line). Outlined bars are the sprint plan, with dashed red outlines where that work is behind plan. Solid bars are actual work, none extending past the cutoff: teal is done and amber is in progress. The short red mark on the phone-to-service row is the first real-phone attempt on 15 October (Section 10.3). Diamonds mark the sprint-gate milestones. Cropped from the midterm deck's timeline slide (P-20).");
 TABLE("milestones", "Milestones from the sprint plan, with status on 15 October.", [0.55, 2.2, 1.05, 2.7],
   ["Gate", "Meaning", "Planned", "Status"],
   [

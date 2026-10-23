@@ -1310,7 +1310,7 @@ student IDs are still for @mbj1994 and @dalwalyk to fill in.
 both the cover page and Table 2, with @TabeenRaoof's ID added. P-21 is `Done` at 10 h actual
 (4 h @TabeenRaoof, 3 h each @dalwalyk and @mbj1994, as @TabeenRaoof reported; each confirms
 their own share in review). Still to fill in before submission: Mamadou's name and ID, the
-instructor's name and the date. Figure 13 is still the uncorrected deck crop.
+instructor's name and the date. Figure 13 now comes from #165's corrected timeline slide.
 
 ## 2026-10-22 — I-01 synthetic mesh generator and the `inspection` package (merged)
 
