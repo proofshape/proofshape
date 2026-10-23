@@ -174,11 +174,14 @@ def _node_has_nonidentity_scale(node: pygltflib.Node) -> bool:
         matrix_values = np.asarray(node.matrix, dtype=np.float64)
         if matrix_values.shape != (16,):
             return True
-        # glTF stores matrices column-major. Scale is the norm of each basis column in the
-        # upper-left 3x3; translation and pure rotation do not change those norms.
+        # glTF stores matrices column-major. The upper-left 3x3 must be a proper rotation:
+        # orthonormal with determinant +1. That rejects scale, shear and reflection instead of
+        # silently dropping an authored handedness/shape change.
         matrix = matrix_values.reshape(4, 4, order="F")
-        basis_scale = np.linalg.norm(matrix[:3, :3], axis=0)
-        if not np.allclose(basis_scale, np.ones(3), atol=1e-9, rtol=1e-9):
+        basis = matrix[:3, :3]
+        if not np.allclose(basis.T @ basis, np.eye(3), atol=1e-9, rtol=1e-9):
+            return True
+        if not np.isclose(np.linalg.det(basis), 1.0, atol=1e-9, rtol=1e-9):
             return True
 
     return False
