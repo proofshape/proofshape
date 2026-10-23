@@ -7,6 +7,7 @@ import sys
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from recon import frames, vggt_runner
 
@@ -130,6 +131,37 @@ def test_unproject_rejects_mismatched_shapes():
         vggt_runner.unproject_depth_to_world(
             depth, np.zeros((2, 3, 4)), np.zeros((1, 3, 3))
         )
+
+
+# --- VGGT preprocessing geometry -------------------------------------------------------------
+
+
+def test_describe_vggt_crop_preprocess_landscape_has_no_crop(tmp_path):
+    path = tmp_path / "landscape.jpg"
+    Image.new("RGB", (4032, 3024)).save(path)
+
+    [description] = vggt_runner.describe_vggt_crop_preprocess([path])
+
+    assert description["original_size_hw"] == [3024, 4032]
+    assert description["resized_size_hw"] == [392, 518]
+    assert description["crop_top_px"] == 0
+    assert description["processed_size_hw"] == [392, 518]
+    assert description["scale_x"] == pytest.approx(518 / 4032)
+    assert description["scale_y"] == pytest.approx(392 / 3024)
+
+
+def test_describe_vggt_crop_preprocess_portrait_records_center_crop(tmp_path):
+    path = tmp_path / "portrait.jpg"
+    Image.new("RGB", (1080, 1920)).save(path)
+
+    [description] = vggt_runner.describe_vggt_crop_preprocess([path])
+
+    assert description["original_size_hw"] == [1920, 1080]
+    assert description["resized_size_hw"] == [924, 518]
+    assert description["crop_top_px"] == 203
+    assert description["processed_size_hw"] == [518, 518]
+    assert description["scale_x"] == pytest.approx(518 / 1080)
+    assert description["scale_y"] == pytest.approx(924 / 1920)
 
 
 # --- frames_chw_to_hwc ---------------------------------------------------------------------
@@ -437,6 +469,41 @@ def test_run_on_capture_end_to_end_with_stubbed_model(tmp_path, monkeypatch):
     # on the in-memory dict, not `on_disk` -- run.json is written with sort_keys=True, so its
     # key order is always alphabetical and says nothing about insertion order.
     assert next(iter(run_info["timings"])) == "find_frames_s"
+
+
+def test_run_on_capture_marks_mismatched_preprocess_geometry_unsupported(
+    tmp_path, monkeypatch
+):
+    capture_dir = tmp_path / "s-99"
+    capture_dir.mkdir()
+    (capture_dir / "1.jpg").write_bytes(b"x")
+
+    result = _fake_model_result(1, height=4, width=6)
+    result["preprocess_geometry"] = [
+        {
+            "frame_name": "1.jpg",
+            "original_size_hw": [10, 20],
+            "resized_size_hw": [8, 12],
+            "crop_top_px": 0,
+            "crop_left_px": 0,
+            "processed_size_hw": [8, 12],
+            "scale_x": 0.6,
+            "scale_y": 0.8,
+        }
+    ]
+    monkeypatch.setattr(
+        vggt_runner,
+        "run_vggt_model",
+        lambda frame_paths, model_id, device_type: result,
+    )
+
+    run_info = vggt_runner.run_on_capture(
+        capture_dir, tmp_path / "out", device_type="cuda"
+    )
+
+    [description] = run_info["preprocess_geometry"]
+    assert description["supported_for_metric_alignment"] is False
+    assert "padded a mixed-shape batch" in description["unsupported_reason"]
 
 
 def test_main_default_confidence_threshold_reaches_run_json(tmp_path, monkeypatch):

@@ -10,14 +10,11 @@ Two independent measurements, both against the same board-frame point cloud R-04
 
   - ``measure_board_scale``: the board itself is an in-scene ruler (D-034's printed ChArUco
     pattern has an exact, known pitch). Every corner R-02 already detected is lifted through
-    VGGT's own depth and camera (R-01), passed through R-04's transform, and fit against the
-    board's true geometry with the same Umeyama solve R-04 uses (``metric_alignment.
-    solve_similarity``). If the *board* reconstructs at the wrong size, the bug is upstream of
-    the part -- in R-01's depth/intrinsics or R-04's alignment, not in segmentation or fusion.
-    Also reports the ratio between the camera intrinsics R-02's board poses were actually solved
-    with and VGGT's own predicted intrinsics: R-04 fits camera centres, and a camera's distance
-    from the scene scales with the focal length assumed for it, so a focal-length mismatch
-    between the two pose sources is a direct, testable mechanism for a scene-wide scale error.
+    VGGT's own depth and camera (R-01), passed through R-04/R-23's transform, and fit against
+    the board's true geometry with the same Umeyama solve the alignment uses. If the *board*
+    reconstructs at the wrong size, the bug is upstream of the part -- in R-01's depth/intrinsics
+    or the metric alignment, not in segmentation or fusion. The report retains R-22's focal-ratio
+    measurement as a historical diagnostic for the camera-centre scale bug R-23 replaces.
   - ``measure_prism``: an extruded-prism CAD part (read from a simple ASCII STL -- see
     ``prism_from_cad`` for the exact shape this supports) located in the board-frame cloud and
     measured independently: height from the top-face point cluster, each footprint edge's length
@@ -44,11 +41,15 @@ from typing import Any
 
 import cv2
 import numpy as np
-from scipy.ndimage import map_coordinates
 
-from recon.board_pose import MIN_CORNERS_FOR_POSE, make_board
+from recon.board_pose import MIN_CORNERS_FOR_POSE
 from recon.camera_intrinsics import CalibrationFailure, rescale_vggt_intrinsic
-from recon.metric_alignment import apply_similarity_transform, solve_similarity
+from recon.metric_alignment import (
+    align_camera_centres,
+    apply_similarity_transform,
+    lift_board_corner_observations,
+    solve_similarity,
+)
 from recon.part_segmentation import DEFAULT_FOOTPRINT_MM
 from recon.vggt_runner import read_ply, select_point_cloud, unproject_depth_to_world
 
@@ -598,12 +599,15 @@ class _RunBundle:
     depth: np.ndarray  # (S,H,W) R-01's arbitrary-scale depth
     depth_conf: np.ndarray  # (S,H,W)
     processed_size_hw: tuple[int, int]
+    preprocess_geometry: list[dict[str, Any]] | None
     alignment_scale: float
     alignment_rotation: np.ndarray
     alignment_translation_mm: np.ndarray
     board_frame_names: list[str]
     board_image_size_hw: np.ndarray  # (S2,2) full-resolution sensor pixels
     board_intrinsic: np.ndarray  # (S2,3,3) the K R-02 actually posed each frame with
+    board_extrinsic: np.ndarray  # (S2,3,4) camera-from-board in millimetres
+    board_pose_found: np.ndarray  # (S2,) R-02 trusted pose mask
     corner_frame_index: np.ndarray  # (C,) index into board_frame_names
     corner_id: (
         np.ndarray
@@ -639,6 +643,8 @@ def load_bundle(recon_run_dir: Path, board_pose_dir: Path) -> _RunBundle:
         board_frame_names = [str(name) for name in board["frame_names"]]
         board_image_size_hw = board["image_size_hw"]
         board_intrinsic = board["intrinsic"].astype(np.float64)
+        board_extrinsic = board["extrinsic"].astype(np.float64)
+        board_pose_found = board["pose_found"].astype(bool)
         corner_frame_index = board["corner_frame_index"]
         corner_id = board["corner_id"]
         corner_px = board["corner_px"]
@@ -653,6 +659,7 @@ def load_bundle(recon_run_dir: Path, board_pose_dir: Path) -> _RunBundle:
         depth=depth,
         depth_conf=depth_conf,
         processed_size_hw=processed_size_hw,
+        preprocess_geometry=run_info.get("preprocess_geometry"),
         alignment_scale=float(alignment["scale"]),
         alignment_rotation=np.array(alignment["rotation"], dtype=np.float64),
         alignment_translation_mm=np.array(
@@ -661,6 +668,8 @@ def load_bundle(recon_run_dir: Path, board_pose_dir: Path) -> _RunBundle:
         board_frame_names=board_frame_names,
         board_image_size_hw=board_image_size_hw,
         board_intrinsic=board_intrinsic,
+        board_extrinsic=board_extrinsic,
+        board_pose_found=board_pose_found,
         corner_frame_index=corner_frame_index,
         corner_id=corner_id,
         corner_px=corner_px,
@@ -707,103 +716,40 @@ class BoardScaleResult:
     focal_ratio_board_over_vggt: float
 
 
-def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
-    """Lift every R-02-detected board corner through VGGT's depth + camera and R-04's transform,
-    and fit it against the board's true, known geometry.
-
-    Not confidence-filtered: R-17 found most pixels, board included, sit at VGGT's confidence
-    floor, so filtering corners by confidence here would throw away most of the ruler along with
-    whatever R-20 later decides to drop from the point cloud it fuses. This module measures
-    what R-01/R-04 actually produce, confidence and all.
-    """
-    nominal_corners = make_board().getChessboardCorners()
-    frame_index_by_name = {name: index for index, name in enumerate(bundle.frame_names)}
-    processed_height, processed_width = bundle.processed_size_hw
-
-    observations_by_frame: dict[int, list[int]] = {}
-    for row in range(len(bundle.corner_id)):
-        board_frame_index = int(bundle.corner_frame_index[row])
-        frame_name = bundle.board_frame_names[board_frame_index]
-        frame_index = frame_index_by_name.get(frame_name)
-        if frame_index is not None:
-            observations_by_frame.setdefault(frame_index, []).append(row)
-
-    recon_point_chunks: list[np.ndarray] = []
-    nominal_point_chunks: list[np.ndarray] = []
-    frame_of_point_chunks: list[np.ndarray] = []
-    matched_frames: list[int] = []
-    matched_board_indices: list[int] = []
-
-    for frame_index, rows in observations_by_frame.items():
-        board_frame_index = int(bundle.corner_frame_index[rows[0]])
-        full_height, full_width = bundle.board_image_size_hw[board_frame_index]
-        pixels_full_res = bundle.corner_px[rows]
-        # Rescale pixel-centre coordinates from the full-resolution sensor frame (R-02's) to
-        # VGGT's processed-image frame (R-01's), the same per-axis rescale vggt_runner's own
-        # docstring warns is required (VGGT resizes non-uniformly and rounds height to a
-        # multiple of 14, so x and y cannot share one scale factor).
-        u = (pixels_full_res[:, 0] + 0.5) * processed_width / full_width - 0.5
-        v = (pixels_full_res[:, 1] + 0.5) * processed_height / full_height - 0.5
-        in_bounds = (
-            (u >= 0)
-            & (u <= processed_width - 1)
-            & (v >= 0)
-            & (v <= processed_height - 1)
-        )
-        if not in_bounds.any():
-            continue
-
-        coordinates = np.stack([v[in_bounds], u[in_bounds]])
-        depth_values = map_coordinates(
-            bundle.depth[frame_index], coordinates, order=1, mode="nearest"
-        )
-        intrinsic = bundle.poses_intrinsic[frame_index]
-        extrinsic = bundle.poses_extrinsic[frame_index]
-        inverse_intrinsic = np.linalg.inv(intrinsic)
-        pixels_homogeneous = np.stack(
-            [u[in_bounds], v[in_bounds], np.ones(in_bounds.sum())], axis=1
-        )
-        rays = pixels_homogeneous @ inverse_intrinsic.T
-        camera_points = rays * depth_values[:, None]
-        # Invert x_cam = R @ x_world + t the same way vggt_runner.unproject_depth_to_world does.
-        world_points = (camera_points - extrinsic[:, 3]) @ extrinsic[:, :3]
-
-        recon_point_chunks.append(world_points)
-        ids = bundle.corner_id[np.array(rows)[in_bounds]]
-        nominal_point_chunks.append(nominal_corners[ids])
-        frame_of_point_chunks.append(np.full(in_bounds.sum(), frame_index))
-        matched_frames.append(frame_index)
-        matched_board_indices.append(board_frame_index)
-
-    if not recon_point_chunks:
-        raise ValueError(
-            "No board corner observations landed inside the VGGT processed frame; cannot "
-            "measure board scale."
-        )
-    recon_points = np.concatenate(recon_point_chunks)
-    nominal_points = np.concatenate(nominal_point_chunks)
-    frame_of_point = np.concatenate(frame_of_point_chunks)
-    if len(recon_points) < 30:
-        raise ValueError(
-            f"Only {len(recon_points)} usable board corner observations; need at least 30."
-        )
-
+def _measure_board_scale_after_transform(
+    bundle: _RunBundle,
+    scale_to_board: float,
+    rotation_to_board: np.ndarray,
+    translation_to_board_mm: np.ndarray,
+) -> BoardScaleResult:
+    """Measure nominal-vs-reconstructed board size after one supplied metric transform."""
+    recon_points, nominal_points, frame_of_point = lift_board_corner_observations(
+        bundle.frame_names,
+        bundle.poses_extrinsic,
+        bundle.poses_intrinsic,
+        bundle.depth,
+        bundle.processed_size_hw,
+        bundle.board_frame_names,
+        bundle.board_image_size_hw,
+        bundle.corner_frame_index,
+        bundle.corner_id,
+        bundle.corner_px,
+        bundle.preprocess_geometry,
+        bundle.board_pose_found,
+    )
     recon_points_board = apply_similarity_transform(
         recon_points,
-        bundle.alignment_scale,
-        bundle.alignment_rotation,
-        bundle.alignment_translation_mm,
+        scale_to_board,
+        rotation_to_board,
+        translation_to_board_mm,
     )
-    # Reuses R-04's own Umeyama solve (metric_alignment.solve_similarity), here fitting nominal
-    # board corners -> reconstructed board corners instead of R-04's reconstruction camera
-    # centres -> board camera poses. scale < 1 means the reconstruction is smaller than true
-    # size, the same convention R-17's findings used.
     scale, rotation, translation = solve_similarity(nominal_points, recon_points_board)
-    predicted = scale * (nominal_points @ rotation.T) + translation
+    predicted = apply_similarity_transform(nominal_points, scale, rotation, translation)
     residuals = np.linalg.norm(predicted - recon_points_board, axis=1)
 
     per_frame_scales: list[float] = []
-    for frame_index in sorted(set(frame_of_point.tolist())):
+    matched_frames = sorted(set(frame_of_point.tolist()))
+    for frame_index in matched_frames:
         selected = frame_of_point == frame_index
         if selected.sum() < MIN_CORNERS_FOR_POSE:
             continue
@@ -816,9 +762,16 @@ def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
             "No single frame had enough corner observations for a per-frame scale check."
         )
 
+    board_index_by_name = {
+        str(name): index for index, name in enumerate(bundle.board_frame_names)
+    }
     vggt_focals: list[float] = []
     board_focals: list[float] = []
-    for frame_index, board_frame_index in zip(matched_frames, matched_board_indices):
+    for frame_index in matched_frames:
+        frame_name = str(bundle.frame_names[frame_index])
+        board_frame_index = board_index_by_name.get(frame_name)
+        if board_frame_index is None or not bundle.board_pose_found[board_frame_index]:
+            continue
         full_height, full_width = bundle.board_image_size_hw[board_frame_index]
         rescaled = rescale_vggt_intrinsic(
             bundle.poses_intrinsic[frame_index],
@@ -832,8 +785,9 @@ def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
                 bundle.board_intrinsic[board_frame_index, 1, 1],
             ]
         )
-    vggt_focals_arr = np.array(vggt_focals)
-    board_focals_arr = np.array(board_focals)
+
+    vggt_focals_arr = np.asarray(vggt_focals, dtype=np.float64)
+    board_focals_arr = np.asarray(board_focals, dtype=np.float64)
     valid = np.isfinite(vggt_focals_arr) & np.isfinite(board_focals_arr)
     if valid.sum() < 2:
         raise ValueError(
@@ -857,6 +811,39 @@ def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
     )
 
 
+def measure_legacy_camera_centre_board_scale(bundle: _RunBundle) -> BoardScaleResult:
+    """Preserve R-22 independent diagnostic using the pre-R-23 camera-centre transform."""
+    legacy = align_camera_centres(
+        bundle.frame_names,
+        bundle.poses_extrinsic,
+        bundle.board_frame_names,
+        bundle.board_extrinsic,
+        bundle.board_pose_found,
+    )
+    return _measure_board_scale_after_transform(
+        bundle,
+        legacy.scale,
+        legacy.rotation,
+        legacy.translation,
+    )
+
+
+def measure_board_scale(bundle: _RunBundle) -> BoardScaleResult:
+    """Measure the reconstructed board after R-23 current board-anchored transform.
+
+    This is the explicit R-23 acceptance measurement: after anchoring on the board, report what
+    board scale remains. It is expected to be near 1.0, but is not an independent detector of
+    uniform scale error. measure_legacy_camera_centre_board_scale preserves the independent
+    pre-R-23 diagnostic for that purpose.
+    """
+    return _measure_board_scale_after_transform(
+        bundle,
+        bundle.alignment_scale,
+        bundle.alignment_rotation,
+        bundle.alignment_translation_mm,
+    )
+
+
 # --- Orchestration and CLI ----------------------------------------------------------------------
 
 
@@ -873,6 +860,7 @@ def build_report(
     """
     bundle = load_bundle(recon_run_dir, board_pose_dir)
     board_scale = measure_board_scale(bundle)
+    legacy_board_scale = measure_legacy_camera_centre_board_scale(bundle)
     report: dict[str, Any] = {
         "story": "R-22",
         "recon_run_dir": str(recon_run_dir),
@@ -893,9 +881,25 @@ def build_report(
                 "through R-04's transform. scale < 1 means the reconstruction is smaller than "
                 "true size. focal_ratio_board_over_vggt is the median ratio between the K R-02's "
                 "board poses were solved with and VGGT's own predicted K (rescaled to the same "
-                "pixel frame): R-04 aligns camera centres, so this ratio predicts most of the "
-                "scale error if a focal-length mismatch between the two pose sources is the "
-                "cause. Not a tolerance or accuracy claim (D-003)."
+                "pixel frame). R-22 used that ratio to diagnose the old camera-centre anchor; "
+                "R-23 no longer uses it to set metric scale. Not a tolerance or accuracy claim "
+                "(D-003)."
+            ),
+        },
+        "legacy_camera_centre_board_scale": {
+            "scale": legacy_board_scale.scale,
+            "rms_residual_mm": legacy_board_scale.rms_residual_mm,
+            "observation_count": legacy_board_scale.observation_count,
+            "frame_count": legacy_board_scale.frame_count,
+            "per_frame_scale_median": legacy_board_scale.per_frame_scale_median,
+            "per_frame_scale_min": legacy_board_scale.per_frame_scale_min,
+            "per_frame_scale_max": legacy_board_scale.per_frame_scale_max,
+            "focal_ratio_board_over_vggt": legacy_board_scale.focal_ratio_board_over_vggt,
+            "note": (
+                "Independent historical R-22 diagnostic: the same reconstructed board is "
+                "measured after the legacy camera-centre transform, not R-23's board anchor. "
+                "This preserves visibility into the focal-length-driven scale error that "
+                "motivated R-23."
             ),
         },
     }
