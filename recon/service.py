@@ -17,6 +17,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+from recon import agent_tools
+
 MIN_FINISH_FRAMES = 3
 
 # R-15: on Lightning's deployment proxy, the connection the container actually sees has
@@ -211,7 +213,7 @@ class SessionStore:
             if record is None:
                 raise KeyError(session_id)
             if record["status"] != "capturing":
-                raise RuntimeError("session_already_finished")
+                raise SessionAlreadyFinishedError("session_already_finished")
             record["status"] = "finished"
             record["reconstruction"] = {"status": "pending"}
             self._write_record(record)
@@ -560,45 +562,17 @@ def create_app(
         operation_id="finishSession",
     )
     def finish_session(session_id: str, background_tasks: BackgroundTasks):
-        record = store.load(session_id)
-        if record is None:
+        result = agent_tools.finish_session(
+            store,
+            session_id,
+            lambda sid: background_tasks.add_task(run_session, sid),
+            min_frames=MIN_FINISH_FRAMES,
+        )
+        if not result.ok:
             return error(
-                409,
-                ErrorDetail(
-                    code="session_not_found", message="No session with that id."
-                ),
+                409, ErrorDetail(code=result.error_code, message=result.error_message)
             )
-        if record["status"] != "capturing":
-            return error(
-                409,
-                ErrorDetail(
-                    code="session_already_finished",
-                    message="The session is already finished.",
-                ),
-            )
-        if int(record["frame_count"]) < MIN_FINISH_FRAMES:
-            return error(
-                409,
-                ErrorDetail(
-                    code="too_few_frames",
-                    message=(
-                        f"At least {MIN_FINISH_FRAMES} accepted frames are required "
-                        "before finishing."
-                    ),
-                ),
-            )
-        try:
-            record = store.mark_finished(session_id)
-        except SessionAlreadyFinishedError:
-            return error(
-                409,
-                ErrorDetail(
-                    code="session_already_finished",
-                    message="The session is already finished.",
-                ),
-            )
-        background_tasks.add_task(run_session, session_id)
-        return SessionResponse(**record)
+        return SessionResponse(**result.record)
 
     @app.get(
         "/v1/sessions/{session_id}/reconstruction",

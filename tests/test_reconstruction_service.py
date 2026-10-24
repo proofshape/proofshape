@@ -455,6 +455,18 @@ def test_finish_race_returns_409_not_500(tmp_path, monkeypatch):
     assert response.json()["code"] == "session_already_finished"
 
 
+def test_mark_finished_raises_the_typed_error_not_a_plain_runtime_error(tmp_path):
+    # Regression (A-06 review): mark_finished used to raise a plain RuntimeError on a losing
+    # race, which `except SessionAlreadyFinishedError` never caught -- it escaped as an
+    # uncaught 500 instead of the structured 409 every other race path returns.
+    store = service.SessionStore(tmp_path)
+    record = store.create("PO-1")
+    store.mark_finished(record["session_id"])
+
+    with pytest.raises(service.SessionAlreadyFinishedError):
+        store.mark_finished(record["session_id"])
+
+
 def test_unexpected_pipeline_exception_becomes_terminal_failure(tmp_path):
     class UnexpectedPipelineError(Exception):
         pass
