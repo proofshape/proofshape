@@ -187,7 +187,7 @@ so this is behind schedule, not early.
 | [C-10](C/C-10.md) | Reconstruction result and the mock service | 3 h | C-01 | Done | @mbj1994 |
 | [C-11](C/C-11.md) | Model viewer | 3 h | C-10 | Done | @mbj1994 |
 | [C-12](C/C-12.md) | Observed/unobserved colouring | 2 h | C-11 | Done | @mbj1994 |
-| [C-13](C/C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Claimed | @dalwalyk; @TabeenRaoof |
+| [C-13](C/C-13.md) | Connect capture to the deployed service | 3 h | C-09, C-11, R-15 | Done | @dalwalyk; @TabeenRaoof |
 
 ---
 

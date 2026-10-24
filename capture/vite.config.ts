@@ -2,6 +2,7 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 import { createContractStub } from "./stub/contract-stub.js";
+import { devReconProxy, resolveDevReconTarget } from "./stub/dev-recon-target.js";
 import { PAGE_TEST_STUB_PORT } from "./stub/page-test-port.js";
 
 // Serves the capture mock service as dev middleware, so `npm run dev` needs no second process
@@ -39,9 +40,24 @@ function contractStubPlugin(): Plugin {
 // comes with that, so it's opt-in via `npm run dev:device` (HTTPS=true), not the default.
 const servingForDeviceTesting = process.env.HTTPS === "true";
 
+// C-13 / D-049: PROOFSHAPE_RECON_PROXY points `/v1` at the real recon service on the Mac instead
+// of the stub (see stub/dev-recon-target.ts). The stub has to be left out entirely in that mode,
+// not just shadowed: its middleware runs before Vite's proxy and would answer every `/v1` route
+// itself. Setting a proxy also makes Vite serve HTTPS over HTTP/1.1 instead of HTTP/2, which is
+// harmless here; the stub's HTTP/2 handling (C-09) still covers the default mode.
+const reconTarget = resolveDevReconTarget(process.env);
+const usingContractStub = reconTarget.mode === "stub";
+const server = {
+  ...(servingForDeviceTesting ? { host: true } : {}),
+  ...(reconTarget.mode === "proxy" ? { proxy: devReconProxy(reconTarget.target) } : {}),
+};
+
 export default defineConfig({
-  plugins: [contractStubPlugin(), ...(servingForDeviceTesting ? [basicSsl()] : [])],
-  ...(servingForDeviceTesting ? { server: { host: true } } : {}),
+  plugins: [
+    ...(usingContractStub ? [contractStubPlugin()] : []),
+    ...(servingForDeviceTesting ? [basicSsl()] : []),
+  ],
+  server,
   test: {
     environment: "node",
     environmentOptions: {
