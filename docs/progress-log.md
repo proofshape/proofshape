@@ -1409,3 +1409,19 @@ capture app's link to the service in the same solid "Done" style as the built st
 caveat only in the presenter notes. That connector now uses slide 13's "In progress" style
 (amber, dashed) and says "live link not yet confirmed" on the slide itself. The deck was
 presented, and P-20 closed at 3 h actual (no estimate was made before the work).
+
+
+
+## 2026-10-23 — P-21 final midterm report
+
+**Who:** @TabeenRaoof.
+**What changed:** @TabeenRaoof reviewed the whole report and edited it in Google Docs, kept as
+`submissions/midterm-report-draft-v2.docx`. A review against the code produced
+`submissions/midterm-report.docx`, the version to submit. Five corrections: the board-visibility
+note (R-02 needs 6 of 35 corners, not all of them), the M2 Max sentence pointed at §10.3, two
+rewordings restored, and the reference-list tabs the Google Docs round trip dropped.
+**Result:** the final validates as a Word document, has all 13 figures at their original
+resolution, and differs from v2 only in those five places. Mamadou Jallow's name and student ID
+are filled in.
+**Next:** the generator script no longer reproduces the final; regenerating would lose the hand
+edits. Submit `submissions/midterm-report.docx`.
