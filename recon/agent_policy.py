@@ -66,6 +66,13 @@ class Finish:
 
 
 @dataclass(frozen=True)
+class AwaitReconstruction:
+    """`finish_session` already ran (`record["status"] == "finished"`) and the pipeline is still
+    running (`reconstruction.status == "pending"`), which takes minutes. Capture is over; there
+    is nothing left to shoot and nothing left to finish -- the caller just waits and polls."""
+
+
+@dataclass(frozen=True)
 class ReportFailure:
     """Reconstruction already failed. The deterministic policy can't fix a pipeline failure --
     it only reports it, from the stored failure record."""
@@ -83,28 +90,46 @@ class ReportComplete:
     under_observed_vertex_count: int | None
 
 
-Action = ShootNextSlot | ExplainRejection | Finish | ReportFailure | ReportComplete
+Action = (
+    ShootNextSlot
+    | ExplainRejection
+    | Finish
+    | AwaitReconstruction
+    | ReportFailure
+    | ReportComplete
+)
 
 
 def next_action(record: dict, tools: ToolResults) -> Action:
     """Deterministic: the same `(record, tools)` always returns the same `Action`, and nothing
     here ever raises -- an unavailable or missing tool result just falls through to the next
-    check, with `Finish` as the final, safe default rather than a stall."""
+    check, with `Finish` as the final, safe default rather than a stall.
+
+    `record["status"]` ("capturing"/"finished") is checked first, not `reconstruction.status`
+    alone: `finish_session` sets `status = "finished"` and `reconstruction.status = "pending"`
+    in the same move, and the pipeline then runs for minutes before it resolves. Checking only
+    `reconstruction.status` for "failed"/"complete" would miss that whole pending window and
+    fall through to the still-capturing branch -- asking for more photos on a closed session, or
+    calling `finish_session` a second time and getting `session_already_finished`.
+    """
     reconstruction = record.get("reconstruction") or {}
-    status = reconstruction.get("status")
+    reconstruction_status = reconstruction.get("status")
 
-    if status == "failed":
-        failure = reconstruction.get("failure") or {}
-        return ReportFailure(
-            code=failure.get("code", "unknown"), message=failure.get("message", "")
-        )
-
-    if status == "complete":
-        under_observed = None
-        if tools.score_next_view.available:
-            count = tools.score_next_view.data["best"]["under_observed_visible_count"]
-            under_observed = count if count > 0 else None
-        return ReportComplete(under_observed_vertex_count=under_observed)
+    if record.get("status") == "finished":
+        if reconstruction_status == "failed":
+            failure = reconstruction.get("failure") or {}
+            return ReportFailure(
+                code=failure.get("code", "unknown"), message=failure.get("message", "")
+            )
+        if reconstruction_status == "complete":
+            under_observed = None
+            if tools.score_next_view.available:
+                count = tools.score_next_view.data["best"][
+                    "under_observed_visible_count"
+                ]
+                under_observed = count if count > 0 else None
+            return ReportComplete(under_observed_vertex_count=under_observed)
+        return AwaitReconstruction()
 
     # Still capturing.
     if tools.check_frame.available and tools.check_frame.data.get("accepted") is False:

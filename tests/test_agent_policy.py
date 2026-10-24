@@ -5,6 +5,7 @@ action."""
 from __future__ import annotations
 
 from recon.agent_policy import (
+    AwaitReconstruction,
     ExplainRejection,
     Finish,
     ReportComplete,
@@ -34,7 +35,11 @@ def _tools(
 
 
 def _capturing_record() -> dict:
-    return {"reconstruction": {"status": "not_started"}}
+    return {"status": "capturing", "reconstruction": {"status": "not_started"}}
+
+
+def _finished_record(reconstruction: dict) -> dict:
+    return {"status": "finished", "reconstruction": reconstruction}
 
 
 # --- normal session: coverage drives ShootNextSlot, then Finish once covered ------------------
@@ -123,18 +128,18 @@ def test_an_accepted_check_frame_does_not_trigger_an_explanation():
 
 
 def test_reports_a_failed_reconstruction():
-    record = {
-        "reconstruction": {
+    record = _finished_record(
+        {
             "status": "failed",
             "failure": {"code": "metric_alignment_failed", "message": "boom"},
         }
-    }
+    )
     action = next_action(record, _tools())
     assert action == ReportFailure(code="metric_alignment_failed", message="boom")
 
 
 def test_failure_report_survives_a_missing_failure_dict():
-    record = {"reconstruction": {"status": "failed"}}
+    record = _finished_record({"status": "failed"})
     action = next_action(record, _tools())
     assert action == ReportFailure(code="unknown", message="")
 
@@ -143,7 +148,7 @@ def test_failure_report_survives_a_missing_failure_dict():
 
 
 def test_reports_remaining_under_observed_vertices_after_completion():
-    record = {"reconstruction": {"status": "complete"}}
+    record = _finished_record({"status": "complete"})
     score = ToolResult(
         available=True, data={"best": {"under_observed_visible_count": 42}}
     )
@@ -152,7 +157,7 @@ def test_reports_remaining_under_observed_vertices_after_completion():
 
 
 def test_reports_nothing_outstanding_once_fully_observed():
-    record = {"reconstruction": {"status": "complete"}}
+    record = _finished_record({"status": "complete"})
     score = ToolResult(
         available=True, data={"best": {"under_observed_visible_count": 0}}
     )
@@ -161,9 +166,43 @@ def test_reports_nothing_outstanding_once_fully_observed():
 
 
 def test_reports_nothing_outstanding_when_score_next_view_is_unavailable():
-    record = {"reconstruction": {"status": "complete"}}
+    record = _finished_record({"status": "complete"})
     action = next_action(record, _tools())
     assert action == ReportComplete(under_observed_vertex_count=None)
+
+
+# --- finished but reconstruction still pending: the bug @TabeenRaoof caught in review ----------
+
+
+def test_awaits_reconstruction_when_finished_but_still_pending():
+    record = _finished_record({"status": "pending"})
+    action = next_action(record, _tools())
+    assert action == AwaitReconstruction()
+
+
+def test_awaits_reconstruction_rather_than_shooting_more_slots():
+    # Before the fix: a finished session with an uncovered orbit fell through to the
+    # still-capturing branch and asked for more photos on a session that can no longer accept
+    # uploads.
+    record = _finished_record({"status": "pending"})
+    coverage = ToolResult(
+        available=True,
+        data={"orbit_coverage": {"covered": [False, False], "next_target_index": 0}},
+    )
+    action = next_action(record, _tools(coverage_report=coverage))
+    assert action == AwaitReconstruction()
+
+
+def test_awaits_reconstruction_rather_than_finishing_a_second_time():
+    # Before the fix: a finished session with a fully-covered orbit fell through to Finish(),
+    # so the caller would call finish_session again and get session_already_finished.
+    record = _finished_record({"status": "pending"})
+    coverage = ToolResult(
+        available=True,
+        data={"orbit_coverage": {"covered": [True, True], "next_target_index": None}},
+    )
+    action = next_action(record, _tools(coverage_report=coverage))
+    assert action == AwaitReconstruction()
 
 
 # --- every tool unavailable: never raises, never stalls -----------------------------------------
