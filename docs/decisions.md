@@ -837,12 +837,12 @@ checked on 2026-10-26 announces **no shutdown date** for it:
 https://ai.google.dev/gemini-api/docs/deprecations . Record each response's actual model
 version and reported token counts; absent counts stay unknown, never zero-filled.
 
-**API tier and billing account: not confirmed yet.** No real Gemini request or production
-rollout is claimed by this implementation. Before the real check, @mbj1994 must confirm
-free/paid API tier and the owning Google project/billing account, store the key privately,
-and record these details in the local evidence report. Account identifiers and keys are
-not public source-code configuration. This outstanding setup is a close-out blocker,
-not permission to guess an account or silently send supplier photographs.
+**Owner-confirmed setup (2026-10-26):** Google project name `ProofShape`, **free** API
+tier. @mbj1994 reports that the `GEMINI_API_KEY` GitHub Actions secret is saved. The key
+has not been read or copied into source code. No paid billing account is used for this
+free-tier check; identify the project and tier in the local evidence report. Local
+Lightning key loading and the real API check are still pending. No real Gemini request
+or production rollout is claimed. Private account identifiers and keys stay out of git.
 
 Two app-owned executor workers have at most 16 jobs running/queued across all sessions.
 An upload never waits for API work or capacity. Full queues, missing keys, API failures,
