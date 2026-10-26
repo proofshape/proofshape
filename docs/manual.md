@@ -20,10 +20,12 @@ carries a status:
 can print the board, open the capture app in a phone browser, shoot a guided orbit with on-phone
 frame checks, finish the session, and look at a 3D model coloured by what the camera actually saw
 (§5, §8.1). The reconstruction service that turns photos into that model is built and has been
-deployed on a cloud GPU (§0). What is **not** on `main` yet is the link between the two: today the
-phone app talks only to a mock service that returns a canned model, and pointing it at the real
-service is **In review** (C-13, PR #146). Nothing on the buyer side — CAD upload, tolerances,
-verdicts, the report — is built yet (§4, §8.2, §8.3).
+deployed on a cloud GPU (§0). A phone can also run a whole session against the real service, with
+the service running on a Mac and the capture dev server forwarding its requests (§0, C-13, D-049).
+That path works, but in its first test, after the D-050 fix, only 2 of 7 finished phone sessions
+produced a model (§5). Pointing the phone at the cloud deployment has never been tried (O-005).
+Nothing on the buyer side — CAD upload, tolerances, verdicts, the report — is built yet (§4, §8.2,
+§8.3).
 
 ---
 
@@ -39,7 +41,7 @@ README; this is only which one to reach for.
 | The capture app on a real phone | `npm run dev:device` in `capture/`, then open the printed `https://<LAN-IP>:<port>` on a phone on the same Wi-Fi and accept the self-signed certificate once. It answers from a **mock service** with a canned model; enter the order code `PO-48213-A`. | [`capture/README.md`](../capture/README.md) |
 | Real photos through the real reconstruction service | `uvicorn recon.service:app` on a machine with a CUDA GPU, then drive a capture folder through it with `scripts/smoke_r14.py`. | [`recon/README.md`](../recon/README.md), R-14 |
 | The service on the shared cloud GPU | R-15's runbook: start, check TLS and the token, smoke-test, **stop**. Stopping is the only thing that ends billing. | [`recon/README.md`](../recon/README.md), R-15 |
-| A real phone session against the real service | **In review** (C-13, PR #146): the dev server proxies `/v1` to the service running natively on the M2 Max (D-049). | PR #146 |
+| A real phone session against the real service | **Works now**, on a Mac (D-049). Terminal 1: `PROOFSHAPE_RECON_DEVICE=mps uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1`. Terminal 2, in `capture/`: `PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device`. Then open `https://<LAN-IP>:5173/?order=<code>` on the phone. The cloud deployment is not used for this and has never served a phone (O-005). | [`capture/README.md`](../capture/README.md), C-13 |
 
 ---
 
@@ -200,8 +202,7 @@ The intended flow:
 **What exists today instead.** There is no buyer side and no order storage. The supplier types an
 order code by hand (§5). The mock service accepts only `PO-48213-A`; the real reconstruction
 service accepts **any** non-empty code, because there is no buyer database to check it against
-(`recon/README.md`, R-14). A capture link that pre-fills the order code (`?order=`) is **In review**
-(C-13, PR #146).
+(`recon/README.md`, R-14). A capture link can pre-fill the order code with `?order=<code>` (C-13).
 
 **Undecided:** when the per-order QR code and orientation arrow actually get added to the printed
 sheet. Margin space is reserved for them; the golden-capture set does not need them, since there
@@ -211,8 +212,8 @@ is no real purchase order to bind to yet (D-034).
 
 ## 5 · Capturing a part — the supplier
 
-**Status: Works now**, against the mock service (§0). Against the real reconstruction service:
-**In review** (C-13, PR #146). Built by C-01 through C-12.
+**Status: Works now**, against the mock service, and against the real reconstruction service running
+on a Mac (§0, C-13). Built by C-01 through C-13.
 
 1. **Open the capture page** on the phone. No install. Enter the order code and tap **Start**.
    The phone then asks for camera permission and for motion/gyroscope permission, both from that
@@ -241,9 +242,13 @@ is no real purchase order to bind to yet (D-034).
   the app asks the browser for no particular resolution (`capture/src/camera.ts`). That is well
   below what the camera can do; reconstruction works at that size, but detail is lost.
 - **Frames carry no EXIF focal length**, because they are taken from the live preview rather than
-  as photos. On `main`, the real service can't pose such frames and fails with a misleading
-  `insufficient_baseline` (§9). Calibrating the camera from the board itself instead is
-  **In review** (D-050, PR #146).
+  as photos. The real service makes up for it by calibrating the camera from the board itself,
+  using the corners it has already found (D-050). If that calibration fails, the session fails
+  with `metric_alignment_failed` and a message saying so (§9).
+- **Most phone sessions don't produce a model yet.** In C-13's first test against the real service,
+  after D-050, only 2 of 7 finished sessions did. Four failed in fusion's board-surface fit
+  ("Fusion failed:", §9) and one in the board calibration. Each failure named its reason. Why
+  phone frames fail there when the golden photos don't is not known yet.
 - **Next-view scoring** — ranking where one more photo would see the most unobserved surface —
   exists on `main` (C-08, `recon/next_view.py`), but only as a command-line tool run on a
   finished model. Nothing calls it yet: not the service, and not the arrow, which follows the
@@ -313,8 +318,8 @@ off a model**, even a metric one.
 
 ### 8.1 The model
 
-**Status: Works now** (C-10, C-11, C-12), against the mock service; with a real reconstruction,
-**In review** (C-13, PR #146).
+**Status: Works now** (C-10, C-11, C-12), against the mock service, and with a real reconstruction
+from the service running on a Mac (C-13).
 
 When reconstruction finishes, the page shows a short summary — the reference tier used, whether the
 result is metric, the **observed fraction**, and any warnings — and then the model, in a 3D viewer
@@ -399,8 +404,8 @@ reference sheet was used**, which regions were observed, and any limits declared
 |---|---|---|
 | `board_not_detected` | No reference board found in enough frames. | Get more of the sheet in shot; check lighting and glare. |
 | `board_partially_occluded` | Too little of the board visible to compute poses. | Move the part toward the centre of the pattern, or shoot from a higher angle. |
-| `insufficient_baseline` | Fewer than 3 frames could be posed from the board. On `main` this is also what frames with **no EXIF focal length** produce — every phone-app frame (§5) — even though the board was found. That case gets its own message and a board-calibration fallback in PR #146 (D-050). | Move further between shots and follow the orbit. If the board was clearly visible, suspect the EXIF case. |
-| `metric_alignment_failed` | The model could not be locked to the board's metric frame. **If the message starts "Fusion failed:"**, the board surface around the part could not be measured: too few board points near it, or the fitted board tilted more than 2° (R-21). It was the most common failure in the first real phone sessions (C-13, PR #146), and why phone frames hit it more than the golden photos is not yet known. | Lay the sheet flat, keep as much board visible around the part as possible (§3.4), and shoot the full orbit. |
+| `insufficient_baseline` | Fewer than 3 frames could be posed from the board. | Move further between shots and follow the orbit. |
+| `metric_alignment_failed` | The model could not be locked to the board's metric frame. **If the message starts "Fusion failed:"**, the board surface around the part could not be measured: too few board points near it, or the fitted board tilted more than 2° (R-21). It caused 4 of the 5 failed phone sessions in C-13's test, and why phone frames hit it more than the golden photos is not yet known. **If it says the frames carry no EXIF focal length and calibrating from the board failed**, the camera could not be calibrated from the board (D-050), most often because too few frames showed enough of it. The rest of the message gives the exact reason. | Lay the sheet flat, keep as much board visible around the part as possible (§3.4), and shoot the full orbit. |
 | `no_cad_uploaded` | A verdict was requested for an order with no CAD. Today that is every order (§8.2). | Expected — no CAD, no verdict (D-004). The model is still valid. |
 
 **Not produced yet** (frozen in the contract, nothing raises them):
@@ -434,7 +439,7 @@ rather than reshooting blindly.
 - **A clean surface.** Models still carry fusion artifacts around the part (§8.1). They are labelled
   Unobserved, so they cannot affect a verdict, but they are there.
 - **Transparent parts.** A clear glass object was not reconstructed, and the board showed through
-  it (C-13's phone sessions, PR #146). This is a known weakness of image-based reconstruction, not
+  it (C-13's phone sessions). This is a known weakness of image-based reconstruction, not
   a bug to fix.
 
 ---
@@ -472,4 +477,5 @@ that will produce it.
 
 *Last checked against `main` on 2026-10-17. The catch-up pass that started on 2026-10-16 found
 nothing here updated since 2026-09-25, while most of the capture app and the reconstruction
-engine had landed.*
+engine had landed. C-13's lines were flipped from In review to Works now in the pull request that
+merged it (#146).*
