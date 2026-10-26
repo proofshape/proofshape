@@ -1457,3 +1457,12 @@ original JSON remain ignored local data; no key or photograph is committed.
 Done/index commit before final approval on #207. This owner's run does not satisfy the
 second-member requirement. Normal production smoke testing follows merge; no Lightning
 deployment or A-02 veto policy was tested here.
+
+## 2026-10-26 — A-01 actual hours confirmed
+
+**Who:** @mbj1994.
+**Record:** the owner confirmed 4 h actual for A-01, including setup and testing, against
+the 7 h estimate. The story and PR #207 now record that measured actual; no completion
+date or second-member evidence is inferred from the hours confirmation.
+**Next:** second-member clean-checkout run, then the D-038 Done/index commit and teammate
+approval on the final head. The story remains In review until that evidence is available.
