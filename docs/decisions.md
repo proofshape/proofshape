@@ -866,7 +866,8 @@ and counts are evidence rather than a fabricated pass. Supplier frames, includin
 as a reference for later checks, are sent to Google only after key setup.
 *Checked against D-028:* fetched all origin branches, inspected their decisions logs;
 D-054 was the highest number anywhere. D-048–D-050 remain on C-13's open branch and are
-not reused. Live Gemini and Lightning validation are pending, as recorded in A-01.
+not reused. Live Gemini evidence is pending. Production Lightning smoke testing follows
+merge under D-013; repeated --env support was checked in the pinned SDK source.
 
 ---
 
