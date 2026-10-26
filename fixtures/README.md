@@ -85,5 +85,9 @@ Each object in `features`:
 | `max_mm` | Largest reading |
 | `std_mm` | Sample standard deviation of `readings_mm` |
 
+Write `mean_mm` and `std_mm` to four decimal places. A caliper's spread is often about 0.01 mm,
+and at that size three decimals can't tell the sample standard deviation from the population one.
+
 `tests/test_caliper_files.py` (G-06) checks every `fixtures/caliper_*.json` against this format,
-including that the summary figures match the readings they summarise.
+including that the summary figures match the readings they summarise and that every reading is a
+whole number of the instrument's displayed steps.
