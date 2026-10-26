@@ -828,6 +828,46 @@ D-031 slot on it.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked; nothing
 past D-053 exists anywhere, so D-054 was the first free number.
 
+**D-055 · A-01 samples asynchronous Gemini observations outside session.json.** (2026-10-26)
+The implementation pins the stable Developer API model code `gemini-3.5-flash-lite` and
+`google-genai==2.33.0`, never a `-latest` alias. Google's model documentation identifies
+that exact model code as stable, image-input capable and structured-output capable:
+https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite . The deprecation schedule
+checked on 2026-10-26 announces **no shutdown date** for it:
+https://ai.google.dev/gemini-api/docs/deprecations . Record each response's actual model
+version and reported token counts; absent counts stay unknown, never zero-filled.
+
+**API tier and billing account: not confirmed yet.** No real Gemini request or production
+rollout is claimed by this implementation. Before the real check, @mbj1994 must confirm
+free/paid API tier and the owning Google project/billing account, store the key privately,
+and record these details in the local evidence report. Account identifiers and keys are
+not public source-code configuration. This outstanding setup is a close-out blocker,
+not permission to guess an account or silently send supplier photographs.
+
+Two app-owned executor workers have at most 16 jobs running/queued across all sessions.
+An upload never waits for API work or capacity. Full queues, missing keys, API failures,
+invalid/blocked/empty responses, shutdown and missing join results become `unchecked` with
+a reason. Each SDK request has a 30 s transport timeout and one attempt (no SDK retries).
+The post-pipeline join waits at most 5 s across the entire session; a late reply cannot
+replace a terminal timeout file. These are declared operational bounds, not measured
+latency or cost claims. D-042's single process/replica remains required.
+
+Per-frame files live at `<session>/vlm/frame_NNNN.json`; the aggregate is
+`<session>/vlm_checks.json`. Neither is stored in `session.json`. A-06's `vlm_inspect`
+now takes an optional explicit session directory to read this evidence; existing callers
+without that path remain unavailable. The caller must not read guessed VLM fields from a
+session record. A-02 is still responsible for any veto policy; A-11 owns the future wire
+field/UI. There is no endpoint/contract change or Pass/Fail decision here.
+
+*Why:* SDK latency cannot block capture, bounded work cannot grow without limit, and
+reconstruction overwrites its saved session record. Separate atomic terminal evidence
+prevents both lost worker results and timeout/aggregate disagreements. Failure reasons
+and counts are evidence rather than a fabricated pass. Supplier frames, including frame 0
+as a reference for later checks, are sent to Google only after key setup.
+*Checked against D-028:* fetched all origin branches, inspected their decisions logs;
+D-054 was the highest number anywhere. D-048–D-050 remain on C-13's open branch and are
+not reused. Live Gemini and Lightning validation are pending, as recorded in A-01.
+
 ---
 
 ## Open — not yet decided

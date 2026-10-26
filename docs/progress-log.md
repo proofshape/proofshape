@@ -1425,3 +1425,15 @@ resolution, and differs from v2 only in those five places. Mamadou Jallow's name
 are filled in.
 **Next:** the generator script no longer reproduces the final; regenerating would lose the hand
 edits. Submit `submissions/midterm-report.docx`.
+
+## 2026-10-26 — A-01 claim merged and VLM implementation prepared
+
+**Who:** @mbj1994.
+**What changed:** claim #206 merged after syncing main and passing Python/Ruff/TypeScript CI.
+A-01 now samples asynchronous Gemini observations into separate atomic evidence, with
+strict validation, bounded work, explicit unchecked paths and deployment-key redaction.
+**Validation:** fake-client tests cover blocked uploads, sampling/reference selection,
+response failures, join timeouts, lifecycle and key preservation. Real API/Lightning
+checks and account/tier confirmation remain pending; no measured result is claimed.
+**Next:** draft implementation PR, live evidence, second-member run and measured hours
+before the D-038 Done commit and final approval.

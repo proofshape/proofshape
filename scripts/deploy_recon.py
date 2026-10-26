@@ -15,6 +15,7 @@ Run by .github/workflows/deploy-recon.yml on `main` only (D-013/D-014). Needs th
     LIGHTNING_TEAMSPACE                    owner/teamspace
     PROOFSHAPE_ENDPOINT_TOKEN              bearer token callers must send (start only)
     PROOFSHAPE_IMAGE                       image pinned by digest, repo@sha256:... (start only)
+    GEMINI_API_KEY                         VLM Developer API key (start only)
     GITHUB_REF                             must be refs/heads/main
 """
 
@@ -78,7 +79,9 @@ def require_pinned_image(image: str) -> None:
         )
 
 
-def start_command(*, exists: bool, teamspace: str, image: str, token: str) -> list[str]:
+def start_command(
+    *, exists: bool, teamspace: str, image: str, token: str, gemini_api_key: str
+) -> list[str]:
     """The `lightning deployment create|update` call; update if the deployment already exists."""
     require_pinned_image(image)
     if exists:
@@ -101,11 +104,13 @@ def start_command(*, exists: bool, teamspace: str, image: str, token: str) -> li
         str(MAX_RUNTIME_S),
         "--token-auth",
         token,
+        "--env",
+        f"GEMINI_API_KEY={gemini_api_key}",
     ]
 
 
 def configure_public_url_command(
-    *, teamspace: str, image: str, token: str, url: str
+    *, teamspace: str, image: str, token: str, url: str, gemini_api_key: str
 ) -> list[str]:
     """Tell the running service its own real public URL.
 
@@ -122,7 +127,13 @@ def configure_public_url_command(
     the deployment off its pinned image digest (which would break D-042's guarantees).
     """
     return [
-        *start_command(exists=True, teamspace=teamspace, image=image, token=token),
+        *start_command(
+            exists=True,
+            teamspace=teamspace,
+            image=image,
+            token=token,
+            gemini_api_key=gemini_api_key,
+        ),
         "--env",
         f"{PUBLIC_URL_ENV_NAME}={url}",
     ]
@@ -151,8 +162,13 @@ def inspect_command(*, teamspace: str) -> list[str]:
     ]
 
 
-def redact(command: Sequence[str], secret: str) -> str:
-    return " ".join("***" if part == secret else part for part in command)
+def redact(command: Sequence[str], *secrets: str) -> str:
+    text = " ".join(command)
+    # Longest first: overlapping secrets must not leave a suffix of the longer one.
+    for secret in sorted(set(secrets), key=len, reverse=True):
+        if secret:
+            text = text.replace(secret, "***")
+    return text
 
 
 def ready_url(info: Mapping[str, Any]) -> str | None:
@@ -228,12 +244,17 @@ def start(env: Mapping[str, str], run: Runner = subprocess.run) -> str:
     teamspace = require_env(env, "LIGHTNING_TEAMSPACE")
     token = require_env(env, "PROOFSHAPE_ENDPOINT_TOKEN")
     image = require_env(env, "PROOFSHAPE_IMAGE")
+    gemini_api_key = require_env(env, "GEMINI_API_KEY")
     exists = inspect_deployment(teamspace, run) is not None
     command = start_command(
-        exists=exists, teamspace=teamspace, image=image, token=token
+        exists=exists,
+        teamspace=teamspace,
+        image=image,
+        token=token,
+        gemini_api_key=gemini_api_key,
     )
-    print("Running:", redact(command, token), flush=True)
-    completed = run(command)
+    print("Running:", redact(command, token, gemini_api_key), flush=True)
+    completed = run(command, capture_output=True, text=True)
     if completed.returncode != 0:
         raise DeployError(f"`lightning deployment` exited with {completed.returncode}.")
     url = wait_until_ready(lambda: inspect_deployment(teamspace, run))
@@ -241,10 +262,14 @@ def start(env: Mapping[str, str], run: Runner = subprocess.run) -> str:
     # Now that the real public URL is known, configure the service to use it explicitly (see
     # configure_public_url_command) and wait for the resulting restart to come back ready.
     configure = configure_public_url_command(
-        teamspace=teamspace, image=image, token=token, url=url
+        teamspace=teamspace,
+        image=image,
+        token=token,
+        url=url,
+        gemini_api_key=gemini_api_key,
     )
-    print("Running:", redact(configure, token), flush=True)
-    completed = run(configure)
+    print("Running:", redact(configure, token, gemini_api_key), flush=True)
+    completed = run(configure, capture_output=True, text=True)
     if completed.returncode != 0:
         raise DeployError(
             f"Setting {PUBLIC_URL_ENV_NAME} failed (exit {completed.returncode})."
@@ -283,7 +308,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             stop(os.environ)
             print("R-15 DEPLOY: STOPPED")
     except DeployError as exc:
-        print(f"R-15 DEPLOY: FAILED - {exc}", file=sys.stderr)
+        print(
+            "R-15 DEPLOY: FAILED - "
+            + redact(
+                [str(exc)],
+                os.environ.get("GEMINI_API_KEY", ""),
+                os.environ.get("PROOFSHAPE_ENDPOINT_TOKEN", ""),
+            ),
+            file=sys.stderr,
+        )
         return 1
     return 0
 

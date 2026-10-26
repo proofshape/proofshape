@@ -60,5 +60,6 @@ jobs:
           LIGHTNING_API_KEY: ${{ secrets.LIGHTNING_API_KEY }}
           LIGHTNING_TEAMSPACE: ${{ vars.LIGHTNING_TEAMSPACE }}
           PROOFSHAPE_ENDPOINT_TOKEN: ${{ secrets.PROOFSHAPE_ENDPOINT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ACTION: ${{ inputs.action }}
         run: python scripts/deploy_recon.py "$ACTION"

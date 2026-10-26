@@ -309,7 +309,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Claimed | @mbj1994 |
+| [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | In review | @mbj1994 |
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Ready | _unclaimed_ |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Blocked | _unclaimed_ |
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Ready | _unclaimed_ |

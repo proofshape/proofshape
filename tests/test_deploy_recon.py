@@ -13,6 +13,7 @@ DeployError = NS["DeployError"]
 
 PINNED = "ghcr.io/proofshape/proofshape-recon@sha256:" + "a" * 64
 TOKEN = "s3cret-token-value"
+GEMINI_KEY = "fake-gemini-key"
 READY = {
     "status": {"ready_replicas": 1, "urls": ["https://recon.example.lightning.ai"]}
 }
@@ -24,6 +25,7 @@ def _env(**overrides):
         "LIGHTNING_TEAMSPACE": "owner/proofshape",
         "PROOFSHAPE_ENDPOINT_TOKEN": TOKEN,
         "PROOFSHAPE_IMAGE": PINNED,
+        "GEMINI_API_KEY": GEMINI_KEY,
     }
     env.update(overrides)
     return env
@@ -52,8 +54,7 @@ class FakeLightning:
         # None here means "simulate genuine absence"; any other string means "inspect itself is
         # broken" (auth, network, rate limit) -- the distinction the fix is about.
         self.inspect_failure_stderr = inspect_failure_stderr
-        # The configure-public-URL step is a second, distinct `update` call (the first deploy
-        # call never has --env); kept separate so a failure there can be tested without also
+        # The configure-public-URL step is a second, distinct `update` call; kept separate so a failure there can be tested without also
         # failing the initial create/update.
         self.configure_exit_code = configure_exit_code
         self.calls: list[list[str]] = []
@@ -75,7 +76,9 @@ class FakeLightning:
                 else self.inspect_results[0]
             )
             return subprocess.CompletedProcess(command, 0, json.dumps(result), "")
-        if command[2] == "update" and "--env" in command:
+        if command[2] == "update" and any(
+            part.startswith("PROOFSHAPE_PUBLIC_BASE_URL=") for part in command
+        ):
             return subprocess.CompletedProcess(
                 command, self.configure_exit_code, "", ""
             )
@@ -97,12 +100,17 @@ def test_refuses_a_moving_tag():
             teamspace="o/t",
             image="ghcr.io/proofshape/proofshape-recon:main",
             token=TOKEN,
+            gemini_api_key=GEMINI_KEY,
         )
 
 
 def test_start_command_pins_one_t4_replica_on_the_service_port_with_token_auth():
     command = NS["start_command"](
-        exists=False, teamspace="o/t", image=PINNED, token=TOKEN
+        exists=False,
+        teamspace="o/t",
+        image=PINNED,
+        token=TOKEN,
+        gemini_api_key=GEMINI_KEY,
     )
 
     assert command[:4] == ["lightning", "deployment", "create", "proofshape-recon"]
@@ -121,7 +129,11 @@ def test_start_command_pins_one_t4_replica_on_the_service_port_with_token_auth()
 
 def test_existing_deployment_is_updated_not_recreated():
     command = NS["start_command"](
-        exists=True, teamspace="o/t", image=PINNED, token=TOKEN
+        exists=True,
+        teamspace="o/t",
+        image=PINNED,
+        token=TOKEN,
+        gemini_api_key=GEMINI_KEY,
     )
     assert command[:4] == ["lightning", "deployment", "update", "proofshape-recon"]
 
@@ -183,14 +195,13 @@ def test_configure_public_url_command_sets_the_env_var_on_the_right_deployment()
         teamspace="o/t",
         image=PINNED,
         token=TOKEN,
+        gemini_api_key=GEMINI_KEY,
         url="https://recon.example.lightning.ai",
     )
 
     assert command[:4] == ["lightning", "deployment", "update", "proofshape-recon"]
     assert command[command.index("--teamspace") + 1] == "o/t"
-    assert command[command.index("--env") + 1] == (
-        f"{NS['PUBLIC_URL_ENV_NAME']}=https://recon.example.lightning.ai"
-    )
+    assert f"{NS['PUBLIC_URL_ENV_NAME']}=https://recon.example.lightning.ai" in command
 
 
 def test_configure_public_url_command_resends_the_full_deploy_config():
@@ -201,6 +212,7 @@ def test_configure_public_url_command_resends_the_full_deploy_config():
         teamspace="o/t",
         image=PINNED,
         token=TOKEN,
+        gemini_api_key=GEMINI_KEY,
         url="https://recon.example.lightning.ai",
     )
 
@@ -224,10 +236,14 @@ def test_start_configures_the_service_with_its_own_real_public_url():
     configure_call = fake.calls[3]
     assert configure_call[2] == "update"
     assert "--env" in configure_call
-    env_value = configure_call[configure_call.index("--env") + 1]
+    env_values = []
+    for index, part in enumerate(configure_call):
+        if part == "--env":
+            env_values.append(configure_call[index + 1])
     assert (
-        env_value == f"{NS['PUBLIC_URL_ENV_NAME']}=https://recon.example.lightning.ai"
+        f"{NS['PUBLIC_URL_ENV_NAME']}=https://recon.example.lightning.ai" in env_values
     )
+    assert f"GEMINI_API_KEY={GEMINI_KEY}" in env_values
     # dalwalyk's PR #94 review: the configure call must also carry the full deploy config, not
     # just --env, so it can't silently drop auth or the pinned image on a real deployment.
     assert configure_call[configure_call.index("--token-auth") + 1] == TOKEN
@@ -263,6 +279,7 @@ def test_start_reports_which_setting_is_missing():
         "LIGHTNING_TEAMSPACE",
         "PROOFSHAPE_ENDPOINT_TOKEN",
         "PROOFSHAPE_IMAGE",
+        "GEMINI_API_KEY",
     ):
         with pytest.raises(DeployError, match=name):
             NS["start"](_env(**{name: ""}), run=FakeLightning(exists=False))
@@ -325,3 +342,21 @@ def test_main_exits_nonzero_off_main(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "R-15 DEPLOY: FAILED" in err
     assert "only from refs/heads/main" in err
+
+
+def test_both_deployment_calls_keep_key_and_never_print_it(capsys):
+    fake = FakeLightning(exists=False)
+    NS["start"](_env(), run=fake)
+    calls = [call for call in fake.calls if call[2] in ("create", "update")]
+    assert len(calls) == 2
+    for command in calls:
+        assert f"GEMINI_API_KEY={GEMINI_KEY}" in command
+    output = capsys.readouterr().out
+    assert TOKEN not in output and GEMINI_KEY not in output
+
+
+def test_redaction_masks_multiple_embedded_and_overlapping_secrets():
+    assert (
+        NS["redact"](["--env", "KEY=abcdef", "token=abc"], "abc", "abcdef", "")
+        == "--env KEY=*** token=***"
+    )
