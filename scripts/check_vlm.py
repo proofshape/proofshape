@@ -40,10 +40,15 @@ def run_check(
         raise ValueError(
             "Set GEMINI_API_KEY and explicitly identify API tier/billing account"
         )
-    frames = sorted(capture_dir.glob("*.jpg"))
+    # The golden capture uses .jpeg; other cameras use .jpg or uppercase suffixes.
+    # Keep the original names/bytes intact for the manifest's content-hash check.
+    frames = []
+    for path in sorted(capture_dir.iterdir()):
+        if path.is_file() and path.suffix.lower() in (".jpg", ".jpeg"):
+            frames.append(path)
     if not frames or not screen_photo.is_file() or not wrong_part.is_file():
         raise ValueError(
-            "Need golden JPG frames, a screen photograph and a wrong-part photograph"
+            "Need golden JPEG frames (.jpg/.jpeg), a screen photograph and a wrong-part photograph"
         )
     inspect = inspector or GeminiInspector(api_key)
     runs = []

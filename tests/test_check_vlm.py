@@ -15,8 +15,13 @@ RUN_CHECK = runpy.run_path(
 def test_manual_check_records_calls_replies_and_account_without_the_key(tmp_path):
     capture = tmp_path / "capture"
     capture.mkdir()
+    extensions = (".jpg", ".jpeg", ".JPG", ".JPEG")
     for i in range(7):
-        (capture / f"frame_{i:04d}.jpg").write_bytes(b"golden")
+        (capture / f"frame_{i:04d}{extensions[i % len(extensions)]}").write_bytes(
+            b"golden"
+        )
+    (capture / "not-an-image.txt").write_text("ignore")
+    (capture / "not-a-file.jpg").mkdir()
     screen, wrong = tmp_path / "screen.jpg", tmp_path / "wrong.jpg"
     screen.write_bytes(b"screen")
     wrong.write_bytes(b"wrong")
@@ -51,6 +56,7 @@ def test_manual_check_records_calls_replies_and_account_without_the_key(tmp_path
         inspector=fake,
     )
     assert [run["api_requests_started"] for run in evidence["runs"]] == [3, 2, 2]
+    assert evidence["runs"][0]["frame_count"] == 7
     assert evidence["runs"][1]["checks"][1]["observation"]["screen_photo"]
     assert evidence["runs"][2]["checks"][1]["observation"]["same_part"] is False
     assert "private-key" not in output.read_text()
