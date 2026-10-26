@@ -1437,3 +1437,23 @@ response failures, join timeouts, lifecycle and key preservation. Real API/Light
 checks and account/tier confirmation remain pending; no measured result is claimed.
 **Next:** draft implementation PR, live evidence, second-member run and measured hours
 before the D-038 Done commit and final approval.
+
+## 2026-10-26 — A-01 owner-run Gemini manual check passed
+
+**Who:** @mbj1994, from a fresh Windows checkout, Python 3.11.6, project `ProofShape`,
+free API tier. The owner ran the API check and pasted the saved report's parsed results;
+the assistant reviewed and recorded that evidence rather than executing the API calls.
+**What was measured:** s-04's 30 JPEGs matched the manifest content hash. Sampling checked
+frames 0, 5, 10, 15, 20, 25 and 29 (7 calls). A real phone photograph of the screen and
+the s-05 red rectangular prism each used a reference/control pair (2 calls each).
+All 11 replies were checked, with returned model `gemini-3.5-flash-lite`, no failure
+reason, and reported token counts: 21,356 prompt + 699 candidate = 22,055 total tokens.
+**Result:** all six later golden samples reported the same part and no screen; the
+screen control reported `screen_photo: true`; the red prism reported `same_part: false`.
+Exact observations, token counts and hints are in `stories/A/A-01.md`. This is one manual
+control run, not a general accuracy, latency or cost measurement. Photographs and the
+original JSON remain ignored local data; no key or photograph is committed.
+**Next:** second-member clean-checkout evidence and measured owner hours, then the D-038
+Done/index commit before final approval on #207. This owner's run does not satisfy the
+second-member requirement. Normal production smoke testing follows merge; no Lightning
+deployment or A-02 veto policy was tested here.

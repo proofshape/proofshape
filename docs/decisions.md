@@ -840,9 +840,12 @@ version and reported token counts; absent counts stay unknown, never zero-filled
 **Owner-confirmed setup (2026-10-26):** Google project name `ProofShape`, **free** API
 tier. @mbj1994 reports that the `GEMINI_API_KEY` GitHub Actions secret is saved. The key
 has not been read or copied into source code. No paid billing account is used for this
-free-tier check; identify the project and tier in the local evidence report. Local
-Lightning key loading and the real API check are still pending. No real Gemini request
-or production rollout is claimed. Private account identifiers and keys stay out of git.
+free-tier check; identify the project and tier in the local evidence report. The real
+API check subsequently ran from the owner's Windows checkout: 11 checked replies,
+correct screen/different-part controls, and returned model/token metadata recorded in
+`stories/A/A-01.md`. The key was loaded privately in that PowerShell session. Lightning
+key loading and the production rollout remain unverified; the smoke check follows merge.
+Private account identifiers and keys stay out of git.
 
 Two app-owned executor workers have at most 16 jobs running/queued across all sessions.
 An upload never waits for API work or capacity. Full queues, missing keys, API failures,
@@ -866,8 +869,9 @@ and counts are evidence rather than a fabricated pass. Supplier frames, includin
 as a reference for later checks, are sent to Google only after key setup.
 *Checked against D-028:* fetched all origin branches, inspected their decisions logs;
 D-054 was the highest number anywhere. D-048–D-050 remain on C-13's open branch and are
-not reused. Live Gemini evidence is pending. Production Lightning smoke testing follows
-merge under D-013; repeated --env support was checked in the pinned SDK source.
+not reused. The owner-run live Gemini evidence is recorded in A-01. Production Lightning
+smoke testing follows merge under D-013; repeated --env support was checked in the pinned
+SDK source.
 
 ---
 
