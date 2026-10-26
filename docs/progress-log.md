@@ -1242,6 +1242,82 @@ I-06..I-10 stay titles-only behind G-04 and D-032, and I-11 (OBJ loading) is add
 and `--fix` changes nothing. P-25 closed at 2 h actual (no estimate was made before the work).
 **Next:** I-01 and I-02 can start now and in parallel. I-03 needs both.
 
+
+
+## 2026-10-20 — P-21 midterm report opened for review (PR #160)
+
+**Who:** @TabeenRaoof, drafted with Claude; review requested from @dalwalyk and @mbj1994.
+**What changed:** the midterm report draft (started locally 2026-10-16) lands in the repository,
+so the team can review it as a pull request instead of a shared file. `scripts/build_midterm_report.js`
+is the committed generator (the review artifact, same pattern as `scripts/build_review_deck.js`),
+`submissions/midterm-report-draft.docx` its output, and figures in `submissions/assets/2026-10-16/`.
+Content was refreshed against `main` on this date rather than left at its 16 October numbers: 41 of
+44 foundations/reconstruction/capture stories done (was 40–42, hedged), 141 pull requests merged
+(was 131), 656 tests passing (was 680, which had assumed two still-open pull requests merged),
+48 decisions (was 49, same reason), C-08 shown merged rather than in review, and R-23 shown as its
+own open pull request (#152) rather than "the next story." The figures were also recompressed from
+print resolution to what a Word page actually needs, 8.7 MB to 1.6 MB, which is why the acceptance
+criterion's "8 MB" note in `stories/P/P-21.md` is now "1.6 MB."
+**Result:** `node scripts/build_midterm_report.js` runs clean; the `.docx` passes schema/relationship
+validation. Full Python suite 475 passed on `main`; capture suite 181 passed. `check_story_states.py`
+reports no change (P-21 stays `Claimed`; this PR advances it without closing it, same precedent as
+R-15's and C-13's own non-closing pull requests).
+**Next:** @dalwalyk and @mbj1994 read their own sections (Table 2 in the report names which), fill in
+their student ID and surname, and fact-check their section against the code before approving — that
+review also stands in for @dalwalyk's still-outstanding P-21 co-ownership confirmation (D-052).
+Section 10's "C-13, pull request #146" wording, and the capture/progress/appendix numbers that
+depend on it, need a follow-up pass once #146 or #152 actually merges.
+
+
+
+## 2026-10-20 — P-21 correction: the report's content window is the start of term through Thursday 15 October, nothing after (PR #160)
+
+**Who:** @TabeenRaoof, with Claude.
+**What changed:** the entry directly above this one refreshed the report against `main` as it stood
+when PR #160 was opened — which pulled in facts that landed *after* Thursday 15 October, the
+content boundary this deliverable is supposed to hold to. Specifically it reported C-08 as merged,
+R-23 as claimed with its own open pull request, the P/G/I lanes as existing, and — the one that
+mattered most — C-13's phone session (order 600) as a **successful** real-phone reconstruction.
+That session's own close-out commit is timestamped 2026-10-16 00:17 PDT, seventeen minutes past
+the boundary; nothing in the report should have cited it.
+Corrected against the verified state at the boundary: `main` at commit `3a373ed` (2026-10-15
+21:52 PDT, the day's last commit) and C-13's own branch at `d296be9` (23:29 PDT, its last commit
+before the post-boundary close-out) — not from memory. Section 10 now stops at the diagnosis (two
+real-phone sessions, 19 and 17 frames, zero poses — frames from the live preview carry no EXIF
+focal length) and the fix (D-050: calibrate from the board), with the fix validated only by
+reprocessing the first failed session's own saved frames offline (0.20 px calibration RMS, 18/19
+posed, observed fraction 0.17) — a live device confirmation was still pending as of this report.
+Counts corrected to the boundary's real numbers: 40 of 44 stories, 130 merged pull requests, 45
+decisions, 585 tests (404 Python + 181 TypeScript on `main`; C-13's own branch separately 418
+Python + 203 TypeScript). `stories/P/P-21.md` gets a new acceptance criterion stating the boundary
+explicitly, so it doesn't drift again on the next push.
+**Flagged, not fixed here:** Figure 13 (the Gantt chart) is a cropped image from the midterm slide
+deck and still shows "Today · 16 Oct" with the capture app marked fully done — its own caption now
+says so plainly. The deck itself has the same post-boundary content throughout and has not been
+corrected.
+**Result:** `node scripts/build_midterm_report.js` builds clean (13 figures, 10 tables, down from
+14/11 — the phone-session figure and the sessions table are gone, and the now-orphaned
+`fig_phone_session.jpg` asset is removed); the `.docx` passes schema/relationship validation. Full
+Python suite 475 passed; `ruff` clean; `check_story_states.py` consistent.
+**Next:** same as before — @dalwalyk and @mbj1994 read their sections and fill in student ID and
+surname. Additionally: whoever picks up C-13 next should know its live device confirmation is the
+thing this report is explicitly *not* claiming yet, and the deck (P-20) needs the same correction
+pass before it's fit to open for review.
+**Review:** @mbj1994 requested changes on four wordings that overstated the 15 October
+state, all fixed: the Tier 1 row now says the components were built but the end-to-end phone
+connection was not yet confirmed and the VLM is not built; Figure 1's caption says the same
+about the live link (Section 10.3); Stage 1 detects the board and solves pose where enough
+corners are found, matching §5.1's 138 of 142; and R-05 compares three scale sources, not three
+independent ones, since D-039 makes the board pitch the anchor. The team table's surnames and
+student IDs are still for @mbj1994 and @dalwalyk to fill in.
+**Close-out (2026-10-23):** @dalwalyk filled in their name and ID, and one team list now feeds
+both the cover page and Table 2, with @TabeenRaoof's ID added. P-21 is `Done` at 10 h actual
+(4 h @TabeenRaoof, 3 h each @dalwalyk and @mbj1994, as @TabeenRaoof reported). @dalwalyk
+confirmed their share directly; @mbj1994's is unconfirmed. The final report shows Mamadou without
+a surname or student ID, which were never supplied, and drops the cover's instructor and date
+lines. Figure 13 now comes from #165's corrected timeline slide. @mbj1994's 10-21 change request,
+whose four points were all fixed in `c1729ac`, was dismissed so the report could close.
+
 ## 2026-10-22 — I-01 synthetic mesh generator and the `inspection` package (merged)
 
 **Who:** @dalwalyk (PR #170), reviewed by @TabeenRaoof and @mbj1994.
@@ -1333,3 +1409,19 @@ capture app's link to the service in the same solid "Done" style as the built st
 caveat only in the presenter notes. That connector now uses slide 13's "In progress" style
 (amber, dashed) and says "live link not yet confirmed" on the slide itself. The deck was
 presented, and P-20 closed at 3 h actual (no estimate was made before the work).
+
+
+
+## 2026-10-23 — P-21 final midterm report
+
+**Who:** @TabeenRaoof.
+**What changed:** @TabeenRaoof reviewed the whole report and edited it in Google Docs, kept as
+`submissions/midterm-report-draft-v2.docx`. A review against the code produced
+`submissions/midterm-report.docx`, the version to submit. Five corrections: the board-visibility
+note (R-02 needs 6 of 35 corners, not all of them), the M2 Max sentence pointed at §10.3, two
+rewordings restored, and the reference-list tabs the Google Docs round trip dropped.
+**Result:** the final validates as a Word document, has all 13 figures at their original
+resolution, and differs from v2 only in those five places. Mamadou Jallow's name and student ID
+are filled in.
+**Next:** the generator script no longer reproduces the final; regenerating would lose the hand
+edits. Submit `submissions/midterm-report.docx`.
