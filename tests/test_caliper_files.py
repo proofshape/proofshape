@@ -245,7 +245,11 @@ def _readings_problems(
     for key, value in expected.items():
         stated = feature.get(key)
         if not _is_number(stated):
-            problems.append(f"{label}.{key} must be a number, got {stated!r}")
+            # Say what it should be, so a blank in the readings template can be filled by
+            # copying this rather than by computing it by hand.
+            problems.append(
+                f"{label}.{key} must be a number, got {stated!r}; its readings give {value:.4f}"
+            )
         elif abs(stated - value) > SUMMARY_TOLERANCE_MM:
             problems.append(
                 f"{label}.{key} is {stated}, but its readings give {value:.4f}"
@@ -336,6 +340,16 @@ def test_a_standard_deviation_from_the_wrong_formula_is_reported():
     readings = _feature()["readings_mm"]
     broken = _valid_file(features=[_feature(std_mm=statistics.pstdev(readings))])
     assert _problems_mentioning(broken, "std_mm")
+
+
+def test_a_blank_summary_reports_the_value_its_readings_give():
+    """The readings template (caliper_g-06.json) ships with blank summaries, so whoever types the
+    ten readings can copy the four summary figures from this message instead of computing them by
+    hand, which is where a slip would otherwise creep in."""
+    readings = _feature()["readings_mm"]
+    broken = _valid_file(features=[_feature(mean_mm=None, std_mm=None)])
+    assert _problems_mentioning(broken, f"{statistics.fmean(readings):.4f}")
+    assert _problems_mentioning(broken, f"{statistics.stdev(readings):.4f}")
 
 
 def test_min_and_max_must_match_the_readings():
