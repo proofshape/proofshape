@@ -63,7 +63,12 @@ manual step.
    python3 -c "import secrets; print(secrets.token_urlsafe(32))"
    gh secret set PROOFSHAPE_ENDPOINT_TOKEN
    ```
-3. **Make the image public**, once, after the first `recon-image` run on `main`. Go to GitHub →
+3. **Gemini Developer API key (A-01).** Confirm the API tier and owning Google
+   project/billing account (D-055), then `gh secret set GEMINI_API_KEY`. The deployment
+   script requires this for `start`, passes it on both create/update calls and redacts it
+   from logs. `stop` needs no Gemini key. The service itself can start without a key,
+   recording sampled checks as `unchecked` rather than inventing success.
+4. **Make the image public**, once, after the first `recon-image` run on `main`. Go to GitHub →
    `proofshape` organisation → Packages → `proofshape-recon` → Package settings → Change
    visibility → Public. Lightning pulls it without registry credentials. Check that it worked
    while logged out:
@@ -74,7 +79,7 @@ manual step.
    a separate org-level policy, not the package's own settings — an organisation **owner** needs
    to go to `https://github.com/organizations/proofshape/settings/packages` first and allow
    `Public` under "Package creation," then return to the package page and change its visibility.
-4. **Lightning teamspace credits.** A Lightning account can hold credits without any being
+5. **Lightning teamspace credits.** A Lightning account can hold credits without any being
    usable: if the org's total credits are sitting **unallocated** rather than assigned to the
    teamspace the deployment runs in, the T4 itself still starts and runs, but the public endpoint
    never answers — TCP connects, every TLS handshake resets instantly, and this can persist for
@@ -330,3 +335,62 @@ The hemisphere is centred on the part's footprint, not on the board's corner ori
 count are broken by how square-on the view is. Open3D is a pinned `requirements.txt` dependency
 for this (D-047). The reasoning for each of these choices is in `stories/C/C-08.md`. The scorer
 isn't wired into C-07's arrow yet; that's a separate step no story owns.
+
+## A-01 · sampled VLM observations
+
+Install the pinned `requirements.txt`. For local use, copy `.env.example` to `.env.local`,
+fill `GEMINI_API_KEY` in a private editor, then load it into the **server's** environment:
+
+```bash
+set -a
+. ./.env.local
+set +a
+uvicorn recon.service:app --host 0.0.0.0 --port 8000
+```
+
+Never put the key in `capture/`, a browser environment, command output, a screenshot or git.
+Without a key the service starts and records `missing_api_key`; deployment `start` refuses
+an absent key before touching Lightning. Existing environment credentials do not choose
+another Google backend: this code explicitly uses the Developer API.
+
+Samples are frame 0, indices divisible by 5, and the final accepted frame exactly once.
+Frame 0 is the reference; a wrong reference cannot be detected merely by comparing later
+frames against it. Each worker writes `<session>/vlm/frame_NNNN.json`; `run_session` writes
+`<session>/vlm_checks.json` after the pipeline, including failure paths. API/parse failures
+are `unchecked`, never guessed observations. Empty `token_usage` means usage was not
+reported, not a zero-cost call. Queue and time bounds are in D-055.
+
+The frozen HTTP responses stay unchanged. These observations do not veto reconstruction,
+set a verdict or alter measured geometry. A-11 will expose hints in the phone UI; A-02
+will define policy. If A-02 makes `unchecked` block a Pass, an outage or missing key will
+turn affected sessions into Rescan; that choice is not made here.
+
+### Real API and deployment check — pending
+
+This check sends photographs to Google and may incur charges under the chosen API tier.
+Before running, confirm the API tier and account/project. Use an approved golden capture,
+a real photograph of a screen, and a real photograph of a different part; keep them out
+of git. Run from the installed repository root after loading `.env.local`:
+
+```bash
+python scripts/check_vlm.py fixtures/data/golden_capture/s-04 \
+  --screen-photo /absolute/private/screen.jpg \
+  --wrong-part /absolute/private/different-part.jpg \
+  --api-tier paid --billing-account '<confirmed-project-or-account>' \
+  --output /absolute/private/a01-vlm-evidence.json
+```
+
+Select the actual `free` or `paid` tier; for a free project identify that project and state
+that no billing account is linked. The script records sample indices, replies, actual model
+versions, API requests started and returned token counts for three runs: golden frames,
+reference+screen photo and reference+wrong part. Exit 0 means complete valid replies, **not**
+that the semantic check was correct. Read the report: screen_photo must be true for the
+screen photograph and same_part false for the wrong part. Record any negative result;
+do not claim a measured accuracy/cost/latency from this small check. Share only a redacted
+summary in the story notes, not private account identifiers or images.
+
+For deployment, run the existing main-only start/stop runbook after this PR merges. The
+pinned Lightning SDK 2026.10.1 source was inspected: both create and update declare
+`--env` with `multiple=True`. The live check must still confirm both GEMINI_API_KEY and
+PROOFSHAPE_PUBLIC_BASE_URL survive the second update, with logs containing neither key
+nor endpoint token. Never deploy this branch, and stop the billed GPU after the check.

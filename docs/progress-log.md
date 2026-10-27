@@ -1426,6 +1426,47 @@ are filled in.
 **Next:** the generator script no longer reproduces the final; regenerating would lose the hand
 edits. Submit `submissions/midterm-report.docx`.
 
+## 2026-10-26 — A-01 claim merged and VLM implementation prepared
+
+**Who:** @mbj1994.
+**What changed:** claim #206 merged after syncing main and passing Python/Ruff/TypeScript CI.
+A-01 now samples asynchronous Gemini observations into separate atomic evidence, with
+strict validation, bounded work, explicit unchecked paths and deployment-key redaction.
+**Validation:** fake-client tests cover blocked uploads, sampling/reference selection,
+response failures, join timeouts, lifecycle and key preservation. Real API/Lightning
+checks and account/tier confirmation remain pending; no measured result is claimed.
+**Next:** draft implementation PR, live evidence, second-member run and measured hours
+before the D-038 Done commit and final approval.
+
+## 2026-10-26 — A-01 owner-run Gemini manual check passed
+
+**Who:** @mbj1994, from a fresh Windows checkout, Python 3.11.6, project `ProofShape`,
+free API tier. The owner ran the API check and pasted the saved report's parsed results;
+the assistant reviewed and recorded that evidence rather than executing the API calls.
+**What was measured:** s-04's 30 JPEGs matched the manifest content hash. Sampling checked
+frames 0, 5, 10, 15, 20, 25 and 29 (7 calls). A real phone photograph of the screen and
+the s-05 red rectangular prism each used a reference/control pair (2 calls each).
+All 11 replies were checked, with returned model `gemini-3.5-flash-lite`, no failure
+reason, and reported token counts: 21,356 prompt + 699 candidate = 22,055 total tokens.
+**Result:** all six later golden samples reported the same part and no screen; the
+screen control reported `screen_photo: true`; the red prism reported `same_part: false`.
+Exact observations, token counts and hints are in `stories/A/A-01.md`. This is one manual
+control run, not a general accuracy, latency or cost measurement. Photographs and the
+original JSON remain ignored local data; no key or photograph is committed.
+**Next:** second-member clean-checkout evidence and measured owner hours, then the D-038
+Done/index commit before final approval on #207. This owner's run does not satisfy the
+second-member requirement. Normal production smoke testing follows merge; no Lightning
+deployment or A-02 veto policy was tested here.
+
+## 2026-10-26 — A-01 actual hours confirmed
+
+**Who:** @mbj1994.
+**Record:** the owner confirmed 4 h actual for A-01, including setup and testing, against
+the 7 h estimate. The story and PR #207 now record that measured actual; no completion
+date or second-member evidence is inferred from the hours confirmation.
+**Next:** second-member clean-checkout run, then the D-038 Done/index commit and teammate
+approval on the final head. The story remains In review until that evidence is available.
+
 ## 2026-10-26 — P-27 review of every Done story: issues #178–#201 and ten follow-up stories
 
 **Who:** @TabeenRaoof (PR #204, approved by @dalwalyk; @mbj1994 reviewed with comments). The
@@ -1461,3 +1502,24 @@ code (D-031, via A-11's request).
 documentation drift, `pytest` missing from `main`'s required checks, the PR template's
 superseded test wording, and the midterm deck and report. The report findings predate the final
 report (#202) and haven't been checked against it.
+
+## 2026-10-26 — A-01 second-member evidence and review close-out prepared
+
+**Who:** @mbj1994; second-member checkout/review by @TabeenRaoof on PR #207.
+**Evidence:** the review records a fresh clone/new venv on macOS 26.6.2 arm64, Python
+3.11.14, commit `65c81d5`: 593 tests passed, Ruff lint and format passed, consistent story
+states, clean worktree. The owner's earlier Windows run separately checked 11 real
+Gemini replies and the screen/different-part controls. Actual hours remain the owner's
+confirmed 4 h (est 7), not a new inferred measurement.
+**Review fixes:** both Lightning mutation calls now preserve useful redacted stdout and
+put redacted provider stderr in failures. Regression tests cover both secrets in each
+stream and initial/create/update/public-URL failures; all 29 deployment tests pass.
+D-055 and the manual now limit the free tier to team-owned, non-confidential test parts;
+real supplier photographs require the paid tier. No deployment or billing change was made.
+**Close-out:** synced `main` at `14a06a7`, retained both progress-log additions and P-27/I-11
+updates, set A-01 and its index row to Done, and filled the completion record with 4 h
+actual. This update must receive final teammate approval after CI; the review on
+`65c81d5` requested these fixes and is not approval of the close-out head.
+**Validation:** after the sync and fixes, 597 Python tests passed on Python 3.11.17;
+Ruff lint and format (190 files), whitespace checks and the story-state checker with
+`--fix` passed. No additional dependency states needed updating.
