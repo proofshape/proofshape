@@ -290,6 +290,44 @@ def test_start_fails_loudly_when_the_cli_fails():
         NS["start"](_env(), run=FakeLightning(exists=False, exit_code=2))
 
 
+@pytest.mark.parametrize("exists", [False, True])
+@pytest.mark.parametrize("fail_public_url", [False, True])
+def test_deploy_failure_preserves_redacted_provider_diagnostics(
+    exists, fail_public_url, capsys
+):
+    fake = FakeLightning(exists=exists)
+
+    def diagnostic_run(command, **kwargs):
+        completed = fake(command, **kwargs)
+        if command[2] not in ("create", "update"):
+            return completed
+        # Both initial deployment and public-URL configuration can fail and echo secrets.
+        assert kwargs == {"capture_output": True, "text": True}
+        is_public_url = any(
+            part.startswith("PROOFSHAPE_PUBLIC_BASE_URL=") for part in command
+        )
+        failed = is_public_url == fail_public_url
+        return subprocess.CompletedProcess(
+            command,
+            2 if failed else 0,
+            f"Provider operation output: token={TOKEN}, key={GEMINI_KEY}\n",
+            f"quota exhausted: token={TOKEN}, key={GEMINI_KEY}\n" if failed else "",
+        )
+
+    with pytest.raises(DeployError) as failure:
+        NS["start"](_env(), run=diagnostic_run)
+    error = str(failure.value)
+    assert "quota exhausted: token=***, key=***" in error
+    if fail_public_url:
+        assert f"Setting {NS['PUBLIC_URL_ENV_NAME']} failed (exit 2)" in error
+    else:
+        assert "`lightning deployment` exited with 2" in error
+    output = capsys.readouterr().out
+    assert "Provider operation output: token=***, key=***" in output
+    assert TOKEN not in error + output
+    assert GEMINI_KEY not in error + output
+
+
 def test_inspect_does_not_mistake_a_broken_cli_call_for_absence():
     """dalwalyk's PR #83 review: a transient inspect failure must not read as 'doesn't exist'."""
     broken = FakeLightning(
@@ -346,12 +384,24 @@ def test_main_exits_nonzero_off_main(monkeypatch, capsys):
 
 def test_both_deployment_calls_keep_key_and_never_print_it(capsys):
     fake = FakeLightning(exists=False)
-    NS["start"](_env(), run=fake)
+
+    def diagnostic_run(command, **kwargs):
+        completed = fake(command, **kwargs)
+        if command[2] in ("create", "update"):
+            assert kwargs == {"capture_output": True, "text": True}
+            completed.stdout = (
+                f"Provider {command[2]} succeeded: token={TOKEN}, key={GEMINI_KEY}\n"
+            )
+        return completed
+
+    NS["start"](_env(), run=diagnostic_run)
     calls = [call for call in fake.calls if call[2] in ("create", "update")]
     assert len(calls) == 2
     for command in calls:
         assert f"GEMINI_API_KEY={GEMINI_KEY}" in command
     output = capsys.readouterr().out
+    assert "Provider create succeeded: token=***, key=***" in output
+    assert "Provider update succeeded: token=***, key=***" in output
     assert TOKEN not in output and GEMINI_KEY not in output
 
 

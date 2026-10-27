@@ -481,6 +481,10 @@ With GEMINI_API_KEY configured on the server, sampled accepted photographs are s
 Google's Gemini Developer API (`gemini-3.5-flash-lite`), including the first photograph
 as the reference for later samples. The operator must confirm the API tier and account
 before enabling it; see D-055 and recon/README.md. The key never reaches the phone app.
+The free tier is acceptable only for team-owned, non-confidential test parts: under
+[Google's API terms](https://ai.google.dev/gemini-api/terms), unpaid inputs/outputs may be
+used for product improvement and human review. Real supplier photographs require the paid
+tier, whose prompts/images/responses Google does not use for product improvement.
 Without a key, or on errors/timeouts, evidence explicitly says `unchecked` with its reason.
 These checks describe the same part, hands blocking it, screen photographs, lighting and
 a coaching hint. They do not decide Pass/Fail, alter geometry or reject the upload.

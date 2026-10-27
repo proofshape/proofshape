@@ -847,6 +847,14 @@ correct screen/different-part controls, and returned model/token metadata record
 key loading and the production rollout remain unverified; the smoke check follows merge.
 Private account identifiers and keys stay out of git.
 
+**Data-use limit:** the free tier is permitted here only for team-owned, non-confidential
+test parts. Google's [Gemini API terms](https://ai.google.dev/gemini-api/terms), checked
+2026-10-26, allow unpaid inputs/outputs to be used for product improvement, including
+human review, and prohibit submitting confidential information. Real supplier photographs
+require a paid-tier project: Google says paid prompts, images and responses are not used
+for product improvement. This is a condition of enabling supplier use, not evidence that
+the current free project has been upgraded.
+
 Two app-owned executor workers have at most 16 jobs running/queued across all sessions.
 An upload never waits for API work or capacity. Full queues, missing keys, API failures,
 invalid/blocked/empty responses, shutdown and missing join results become `unchecked` with

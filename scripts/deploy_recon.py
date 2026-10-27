@@ -255,8 +255,17 @@ def start(env: Mapping[str, str], run: Runner = subprocess.run) -> str:
     )
     print("Running:", redact(command, token, gemini_api_key), flush=True)
     completed = run(command, capture_output=True, text=True)
+    # The CLI can echo --env values in either stream. Keep useful provider diagnostics,
+    # but redact them before anything reaches logs or a caller's DeployError handler.
+    if completed.stdout:
+        print(redact([completed.stdout.rstrip()], token, gemini_api_key), flush=True)
     if completed.returncode != 0:
-        raise DeployError(f"`lightning deployment` exited with {completed.returncode}.")
+        raise DeployError(
+            f"`lightning deployment` exited with {completed.returncode}: "
+            + redact(
+                [completed.stderr.strip() or "no error output"], token, gemini_api_key
+            )
+        )
     url = wait_until_ready(lambda: inspect_deployment(teamspace, run))
 
     # Now that the real public URL is known, configure the service to use it explicitly (see
@@ -270,9 +279,14 @@ def start(env: Mapping[str, str], run: Runner = subprocess.run) -> str:
     )
     print("Running:", redact(configure, token, gemini_api_key), flush=True)
     completed = run(configure, capture_output=True, text=True)
+    if completed.stdout:
+        print(redact([completed.stdout.rstrip()], token, gemini_api_key), flush=True)
     if completed.returncode != 0:
         raise DeployError(
-            f"Setting {PUBLIC_URL_ENV_NAME} failed (exit {completed.returncode})."
+            f"Setting {PUBLIC_URL_ENV_NAME} failed (exit {completed.returncode}): "
+            + redact(
+                [completed.stderr.strip() or "no error output"], token, gemini_api_key
+            )
         )
     return wait_until_ready(lambda: inspect_deployment(teamspace, run))
 

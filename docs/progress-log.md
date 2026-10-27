@@ -1466,3 +1466,60 @@ the 7 h estimate. The story and PR #207 now record that measured actual; no comp
 date or second-member evidence is inferred from the hours confirmation.
 **Next:** second-member clean-checkout run, then the D-038 Done/index commit and teammate
 approval on the final head. The story remains In review until that evidence is available.
+
+## 2026-10-26 — P-27 review of every Done story: issues #178–#201 and ten follow-up stories
+
+**Who:** @TabeenRaoof (PR #204, approved by @dalwalyk; @mbj1994 reviewed with comments). The
+claim was #203.
+**What changed:** all 69 Done stories were reviewed against `main` at `82b10f4` on 2026-10-23.
+The suites were green there (509 Python and 181 capture tests; lint, format, typecheck and the
+story checker clean), so the defects sit in behaviour the tests don't cover. The 24 code bugs
+became issues #178–#201, each re-checked at `bb75a63` with file and line links, then bundled
+into ten stories in a new Review follow-ups section of `stories/README.md`:
+- R-25: provenance's occlusion check has no facing test, so surface less than 5 mm behind a seen
+  surface is labelled Observed (#178, the hard rule). Bundled with σ capped by the same gate
+  (#185) and `observed_fraction` taken before R-10's downgrade (#179).
+- R-26: flat parts under about 10 mm are cut away as board layer, and the height override can't
+  bypass the search (#180). Its rerun also records R-21's per-object board check.
+- R-27: hole fills wound inward, extra components dropped, the size limit unenforced, Poisson on
+  unoriented normals (#183, #184).
+- R-28: the portrait VGGT intrinsics rescale and R-02's board metadata (#182, #188).
+- R-29: contract-shaped validation errors, and a hard-rule test that covers Inferred (#187, the
+  validation half of #186).
+- C-19: the viewer is silent when a model has no provenance, and the mock has drifted from the
+  service (#192, #193).
+- C-20: heading wrap, roll and gate order (#189, #190, #191).
+- F-08: downloader verification, uppercase photo ignores, image path filters (#196, #197, #198).
+- I-12: synthetic-generator tests that pin noise, seed and the board frame (#199).
+- P-28: checker exit codes, the decision-number snippet, a portable deck build (#194, #195,
+  #201).
+
+**Result:** nine stories Ready and C-19 Blocked on C-13; none claimed; 31 h of estimates. P-27
+closed at 2.5 h actual. No code, no new decision. Waiting on a decision, with no story: #181
+(D-039's formula), #200 (Python 3.12 vs the open3d pin, D-047) and #186's internal-failure error
+code (D-031, via A-11's request).
+**Next:** R-25 first. The review's other findings aren't filed yet: completion records,
+documentation drift, `pytest` missing from `main`'s required checks, the PR template's
+superseded test wording, and the midterm deck and report. The report findings predate the final
+report (#202) and haven't been checked against it.
+
+## 2026-10-26 — A-01 second-member evidence and review close-out prepared
+
+**Who:** @mbj1994; second-member checkout/review by @TabeenRaoof on PR #207.
+**Evidence:** the review records a fresh clone/new venv on macOS 26.6.2 arm64, Python
+3.11.14, commit `65c81d5`: 593 tests passed, Ruff lint and format passed, consistent story
+states, clean worktree. The owner's earlier Windows run separately checked 11 real
+Gemini replies and the screen/different-part controls. Actual hours remain the owner's
+confirmed 4 h (est 7), not a new inferred measurement.
+**Review fixes:** both Lightning mutation calls now preserve useful redacted stdout and
+put redacted provider stderr in failures. Regression tests cover both secrets in each
+stream and initial/create/update/public-URL failures; all 29 deployment tests pass.
+D-055 and the manual now limit the free tier to team-owned, non-confidential test parts;
+real supplier photographs require the paid tier. No deployment or billing change was made.
+**Close-out:** synced `main` at `14a06a7`, retained both progress-log additions and P-27/I-11
+updates, set A-01 and its index row to Done, and filled the completion record with 4 h
+actual. This update must receive final teammate approval after CI; the review on
+`65c81d5` requested these fixes and is not approval of the close-out head.
+**Validation:** after the sync and fixes, 597 Python tests passed on Python 3.11.17;
+Ruff lint and format (190 files), whitespace checks and the story-state checker with
+`--fix` passed. No additional dependency states needed updating.
