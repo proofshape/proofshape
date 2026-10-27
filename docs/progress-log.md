@@ -1425,3 +1425,39 @@ resolution, and differs from v2 only in those five places. Mamadou Jallow's name
 are filled in.
 **Next:** the generator script no longer reproduces the final; regenerating would lose the hand
 edits. Submit `submissions/midterm-report.docx`.
+
+## 2026-10-26 — P-27 review of every Done story: issues #178–#201 and ten follow-up stories
+
+**Who:** @TabeenRaoof (PR #204, approved by @dalwalyk; @mbj1994 reviewed with comments). The
+claim was #203.
+**What changed:** all 69 Done stories were reviewed against `main` at `82b10f4` on 2026-10-23.
+The suites were green there (509 Python and 181 capture tests; lint, format, typecheck and the
+story checker clean), so the defects sit in behaviour the tests don't cover. The 24 code bugs
+became issues #178–#201, each re-checked at `bb75a63` with file and line links, then bundled
+into ten stories in a new Review follow-ups section of `stories/README.md`:
+- R-25: provenance's occlusion check has no facing test, so surface less than 5 mm behind a seen
+  surface is labelled Observed (#178, the hard rule). Bundled with σ capped by the same gate
+  (#185) and `observed_fraction` taken before R-10's downgrade (#179).
+- R-26: flat parts under about 10 mm are cut away as board layer, and the height override can't
+  bypass the search (#180). Its rerun also records R-21's per-object board check.
+- R-27: hole fills wound inward, extra components dropped, the size limit unenforced, Poisson on
+  unoriented normals (#183, #184).
+- R-28: the portrait VGGT intrinsics rescale and R-02's board metadata (#182, #188).
+- R-29: contract-shaped validation errors, and a hard-rule test that covers Inferred (#187, the
+  validation half of #186).
+- C-19: the viewer is silent when a model has no provenance, and the mock has drifted from the
+  service (#192, #193).
+- C-20: heading wrap, roll and gate order (#189, #190, #191).
+- F-08: downloader verification, uppercase photo ignores, image path filters (#196, #197, #198).
+- I-12: synthetic-generator tests that pin noise, seed and the board frame (#199).
+- P-28: checker exit codes, the decision-number snippet, a portable deck build (#194, #195,
+  #201).
+
+**Result:** nine stories Ready and C-19 Blocked on C-13; none claimed; 31 h of estimates. P-27
+closed at 2.5 h actual. No code, no new decision. Waiting on a decision, with no story: #181
+(D-039's formula), #200 (Python 3.12 vs the open3d pin, D-047) and #186's internal-failure error
+code (D-031, via A-11's request).
+**Next:** R-25 first. The review's other findings aren't filed yet: completion records,
+documentation drift, `pytest` missing from `main`'s required checks, the PR template's
+superseded test wording, and the midterm deck and report. The report findings predate the final
+report (#202) and haven't been checked against it.
