@@ -1523,3 +1523,23 @@ actual. This update must receive final teammate approval after CI; the review on
 **Validation:** after the sync and fixes, 597 Python tests passed on Python 3.11.17;
 Ruff lint and format (190 files), whitespace checks and the story-state checker with
 `--fix` passed. No additional dependency states needed updating.
+
+## 2026-10-26 — A-01 merged: sampled VLM supervision
+
+**Who:** @mbj1994; approved by @TabeenRaoof. PR #207 merged to `main` at `2c8369a`.
+**What changed:** asynchronous sampled Gemini observations, strict response validation,
+atomic per-frame and aggregate evidence, explicit unchecked failure paths, service/agent
+integration, deployment-key propagation/redaction and a reproducible real-API check.
+Review fixes preserve redacted Lightning diagnostics and document the free tier's
+restriction to team-owned, non-confidential test parts; supplier photographs need paid-tier
+data handling. A-02's veto policy and A-11's phone hint delivery remain separate work.
+**Final verification:** @TabeenRaoof approved `f29d3de` and reran a fresh-venv checkout on
+macOS 26.6.2 arm64 / Python 3.11.14: 597 tests passed, Ruff lint/format clean, consistent
+story states and a clean worktree. GitHub pytest, Ruff, TypeScript and container image
+build/smoke checks all passed on that same head before merge. The owner-run Windows
+real-API check separately recorded 11 valid Gemini replies, correct screen/different-part
+controls and actual token usage; exact observations are in the story.
+**Record:** A-01 and its index row landed Done together; completion records PR #207 and
+the owner's measured 4 h actual against 7 h estimated.
+**Next:** normal main-only production smoke testing when Lightning is available. No live
+Lightning deployment or production verification is claimed by these results.
