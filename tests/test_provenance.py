@@ -639,7 +639,6 @@ def test_main_passes_min_confidence_through_and_reports_its_source(tmp_path, cap
     )  # the override really reached provenance_run
 
 
-
 def test_main_passes_depth_consistency_tolerance_through(tmp_path):
     mesh_ply_path, run_dir, alignment_json = _write_two_frame_scene_run(tmp_path)
     out_dir = tmp_path / "out"
