@@ -88,6 +88,37 @@ def vertex_normals(vertices_mm: np.ndarray, faces: np.ndarray) -> np.ndarray:
     return normals
 
 
+def orient_vertex_normals_to_cameras(
+    normals: np.ndarray,
+    vertices_mm: np.ndarray,
+    camera_centers_mm: np.ndarray,
+) -> np.ndarray:
+    """Resolve a possible *global* winding inversion without destroying signed facing.
+
+    Mesh exporters may reverse every triangle winding. That flips every vertex normal and would
+    make an otherwise valid mesh appear entirely back-facing. Choose only between the raw normals
+    and one global sign flip using the aggregate camera-facing score. This is deliberately not
+    abs(dot): opposite sides of a thin wall still keep opposite signs and remain distinguishable.
+    If the aggregate score is exactly ambiguous, retain the mesh sign rather than invent one.
+    """
+    normals = np.asarray(normals, dtype=np.float64)
+    vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
+    camera_centers_mm = np.asarray(camera_centers_mm, dtype=np.float64)
+    if normals.shape != vertices_mm.shape:
+        raise ValueError("normals must match vertices_mm shape")
+    if camera_centers_mm.ndim != 2 or camera_centers_mm.shape[1] != 3:
+        raise ValueError("camera_centers_mm must have shape (S,3)")
+    if not len(camera_centers_mm) or not len(vertices_mm):
+        return normals.copy()
+    valid = np.linalg.norm(normals, axis=1) > 0.0
+    if not np.any(valid):
+        return normals.copy()
+    to_camera = camera_centers_mm[:, None, :] - vertices_mm[None, :, :]
+    signed = np.einsum("vij,ij->vi", to_camera[:, valid, :], normals[valid])
+    score = float(np.sum(signed))
+    return -normals if score < 0.0 else normals.copy()
+
+
 def observed_surface_area_fraction(
     vertices_mm: np.ndarray, faces: np.ndarray, vertex_labels: np.ndarray
 ) -> float:
@@ -509,7 +540,9 @@ def provenance_run(
     depth_mm = scale * depth
     camera_centers_mm = camera_centres(board_extrinsic)
 
-    normals_mm = vertex_normals(vertices_mm, faces)
+    normals_mm = orient_vertex_normals_to_cameras(
+        vertex_normals(vertices_mm, faces), vertices_mm, camera_centers_mm
+    )
     observations = compute_observations(
         vertices_mm,
         board_extrinsic,
