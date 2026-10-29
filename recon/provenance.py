@@ -166,7 +166,9 @@ def _mesh_is_watertight(faces: np.ndarray) -> bool:
     return bool(edge_counts) and all(count == 2 for count in edge_counts.values())
 
 
-def _signed_mesh_volume(vertices_mm: np.ndarray, faces: np.ndarray) -> tuple[float, float]:
+def _signed_mesh_volume(
+    vertices_mm: np.ndarray, faces: np.ndarray
+) -> tuple[float, float]:
     """Signed volume plus an absolute scale used to decide whether its sign is meaningful."""
     centre = np.mean(vertices_mm, axis=0)
     centred = vertices_mm - centre
@@ -216,6 +218,7 @@ def oriented_vertex_normals(
     if score_scale <= 0.0 or abs(score) <= 1e-9 * score_scale:
         return np.zeros_like(normals)
     return -normals if score < 0.0 else normals
+
 
 def observed_surface_area_fraction(
     vertices_mm: np.ndarray, faces: np.ndarray, vertex_labels: np.ndarray
