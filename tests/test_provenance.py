@@ -639,6 +639,28 @@ def test_main_passes_min_confidence_through_and_reports_its_source(tmp_path, cap
     )  # the override really reached provenance_run
 
 
+
+def test_main_passes_depth_consistency_tolerance_through(tmp_path):
+    mesh_ply_path, run_dir, alignment_json = _write_two_frame_scene_run(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = provenance.main(
+        [
+            str(mesh_ply_path),
+            str(run_dir),
+            str(alignment_json),
+            "--out-dir",
+            str(out_dir),
+            "--depth-consistency-tolerance-mm",
+            "0.01",
+        ]
+    )
+
+    assert exit_code == 0
+    report = json.loads((out_dir / "provenance.json").read_text())
+    assert report["depth_consistency_tolerance_mm"] == pytest.approx(0.01)
+
+
 def test_main_reports_a_named_failure_when_run_json_predates_the_field(
     tmp_path, capsys
 ):
