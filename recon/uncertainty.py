@@ -210,7 +210,11 @@ def uncertainty_run(
     depth_gate_rejected_count = observations.get(
         "depth_gate_rejected_count", np.zeros(len(vertices), dtype=np.int64)
     )
-    if depth_gate_rejected_count.shape != (len(vertices),):
+    # Pre-R-25 observation files have no per-vertex rejection vector. Treat that legacy absence
+    # as all-zero evidence; non-empty mismatched vectors are corruption and stay an error.
+    if depth_gate_rejected_count.size == 0:
+        depth_gate_rejected_count = np.zeros(len(vertices), dtype=np.int64)
+    elif depth_gate_rejected_count.shape != (len(vertices),):
         raise ValueError(
             "depth_gate_rejected_count must have one entry per vertex; got "
             f"{depth_gate_rejected_count.shape} for {len(vertices)} vertices"
