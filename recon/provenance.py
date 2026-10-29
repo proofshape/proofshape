@@ -700,6 +700,16 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MIN_TRIANGULATION_ANGLE_DEG,
     )
     parser.add_argument(
+        "--depth-consistency-tolerance-mm",
+        type=float,
+        default=DEFAULT_DEPTH_CONSISTENCY_TOLERANCE_MM,
+        help=(
+            "maximum absolute mesh-vs-measured-depth residual that can count as an "
+            "observation; default 5 mm is an explicit unmeasured assumption, not a "
+            "calibrated accuracy claim"
+        ),
+    )
+    parser.add_argument(
         "--min-confidence",
         type=float,
         default=None,
@@ -724,6 +734,7 @@ def main(argv: list[str] | None = None) -> int:
             alignment_json,
             out_dir,
             min_triangulation_angle_deg=args.min_triangulation_angle_deg,
+            depth_consistency_tolerance_mm=args.depth_consistency_tolerance_mm,
             min_confidence=args.min_confidence,
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
