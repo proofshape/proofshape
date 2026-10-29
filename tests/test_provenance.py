@@ -355,7 +355,7 @@ def _build_two_frame_scene():
     depth[1, 10, 6] = 50.0  # frame 1 sees vertex 0 at pixel (6,10)
     depth[0, 12, 12] = 30.0  # frame 0 sees vertex 1 at pixel (12,12)
     vertices = np.array(
-        [[0.0, 0.0, 50.0], [5.0, 5.0, 30.0], [1000.0, 1000.0, 1000.0]], dtype=np.float32
+        [[0.0, 0.0, 50.0], [5.0, 5.0, 30.0], [1000.0, 0.0, 50.0]], dtype=np.float32
     )
     faces = np.array([[0, 1, 2]], dtype=np.int32)
     return extrinsic, intrinsic, depth, vertices, faces
@@ -661,12 +661,10 @@ def test_main_reports_a_named_failure_when_run_json_predates_the_field(
 
 def test_compute_observations_distinguishes_front_and_back_facing_vertices():
     vertices = np.array([[0.0, 0.0, 50.0], [1.0, 0.0, 50.0]])
-    extrinsic = np.array([[[1.0, 0.0, 0.0, 0.0],
-                           [0.0, 1.0, 0.0, 0.0],
-                           [0.0, 0.0, 1.0, 0.0]]])
-    intrinsic = np.array([[[10.0, 0.0, 5.0],
-                           [0.0, 10.0, 5.0],
-                           [0.0, 0.0, 1.0]]])
+    extrinsic = np.array(
+        [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]
+    )
+    intrinsic = np.array([[[10.0, 0.0, 5.0], [0.0, 10.0, 5.0], [0.0, 0.0, 1.0]]])
     depth = np.full((1, 11, 11), 50.0)
     trusted = np.ones_like(depth, dtype=bool)
     # Camera is at the origin looking +z. The -z normal faces it; +z points away.
@@ -715,8 +713,12 @@ def test_observed_surface_area_fraction_is_area_weighted():
     # Separate triangles with areas 1 and 9 square mm.
     vertices = np.array(
         [
-            [0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 1.0, 0.0],
-            [10.0, 0.0, 0.0], [16.0, 0.0, 0.0], [10.0, 3.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [16.0, 0.0, 0.0],
+            [10.0, 3.0, 0.0],
         ]
     )
     faces = np.array([[0, 1, 2], [3, 4, 5]])
