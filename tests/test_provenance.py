@@ -820,7 +820,9 @@ def test_oriented_vertex_normals_on_upstream_marching_cubes_mesh():
     reversed_faces = faces[:, [0, 2, 1]]
     camera_centres = np.array([[4.0, 4.0, -20.0], [4.0, 4.0, 20.0]])
 
-    normals = provenance.oriented_vertex_normals(vertices, reversed_faces, camera_centres)
+    normals = provenance.oriented_vertex_normals(
+        vertices, reversed_faces, camera_centres
+    )
 
     mesh_centre = vertices.mean(axis=0)
     radial = vertices - mesh_centre
