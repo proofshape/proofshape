@@ -656,7 +656,9 @@ def test_main_reports_a_named_failure_when_run_json_predates_the_field(
     assert "R-09 PROVENANCE: FAIL" in error_output
     assert "min_confidence" in error_output
 
+
 # --- R-25: signed camera-facing gate and explicit depth-gate evidence -----------------------------
+
 
 def test_compute_observations_distinguishes_front_and_back_facing_vertices():
     vertices = np.array([[0.0, 0.0, 50.0], [1.0, 0.0, 50.0]])
