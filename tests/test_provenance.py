@@ -656,7 +656,6 @@ def test_main_reports_a_named_failure_when_run_json_predates_the_field(
     assert "R-09 PROVENANCE: FAIL" in error_output
     assert "min_confidence" in error_output
 
-
 # --- R-25: signed camera-facing gate and explicit depth-gate evidence -----------------------------
 
 def test_compute_observations_distinguishes_front_and_back_facing_vertices():
@@ -685,12 +684,10 @@ def test_compute_observations_distinguishes_front_and_back_facing_vertices():
 
 def test_compute_observations_counts_depth_gate_rejection_per_vertex():
     vertices = np.array([[0.0, 0.0, 53.0]])
-    extrinsic = np.array([[[1.0, 0.0, 0.0, 0.0],
-                           [0.0, 1.0, 0.0, 0.0],
-                           [0.0, 0.0, 1.0, 0.0]]])
-    intrinsic = np.array([[[10.0, 0.0, 5.0],
-                           [0.0, 10.0, 5.0],
-                           [0.0, 0.0, 1.0]]])
+    extrinsic = np.array(
+        [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]
+    )
+    intrinsic = np.array([[[10.0, 0.0, 5.0], [0.0, 10.0, 5.0], [0.0, 0.0, 1.0]]])
     depth = np.full((1, 11, 11), 50.0)
     trusted = np.ones_like(depth, dtype=bool)
     normals = np.array([[0.0, 0.0, -1.0]])
