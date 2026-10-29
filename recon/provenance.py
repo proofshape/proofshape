@@ -59,6 +59,54 @@ LABEL_OBSERVED = "Observed"
 LABEL_UNOBSERVED = "Unobserved"
 
 
+def vertex_normals(vertices_mm: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Area-weighted unit vertex normals. Degenerate/unreferenced vertices keep a zero normal.
+
+    This is the same cross-product accumulation used by recon.next_view. The sign follows mesh
+    winding; R-25 intentionally uses that sign for the camera-facing test rather than abs(dot).
+    """
+    vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
+    faces = np.asarray(faces, dtype=np.int64)
+    if vertices_mm.ndim != 2 or vertices_mm.shape[1] != 3:
+        raise ValueError(f"vertices_mm must have shape (N,3), got {vertices_mm.shape}")
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"faces must have shape (F,3), got {faces.shape}")
+    if len(faces) and (faces.min() < 0 or faces.max() >= len(vertices_mm)):
+        raise ValueError("faces reference a vertex outside vertices_mm")
+    normals = np.zeros_like(vertices_mm)
+    if not len(faces):
+        return normals
+    a = vertices_mm[faces[:, 0]]
+    b = vertices_mm[faces[:, 1]]
+    c = vertices_mm[faces[:, 2]]
+    face_normals = np.cross(b - a, c - a)
+    for corner in range(3):
+        np.add.at(normals, faces[:, corner], face_normals)
+    lengths = np.linalg.norm(normals, axis=1)
+    valid = lengths > 0.0
+    normals[valid] /= lengths[valid, None]
+    return normals
+
+
+def observed_surface_area_fraction(
+    vertices_mm: np.ndarray, faces: np.ndarray, vertex_labels: np.ndarray
+) -> float:
+    """Observed surface-area share using the final labels that are encoded in the served GLB."""
+    vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
+    faces = np.asarray(faces, dtype=np.int64)
+    if len(faces) == 0:
+        return 0.0
+    face_labels = label_faces(faces, np.asarray(vertex_labels, dtype=object))
+    a = vertices_mm[faces[:, 0]]
+    b = vertices_mm[faces[:, 1]]
+    c = vertices_mm[faces[:, 2]]
+    areas = 0.5 * np.linalg.norm(np.cross(b - a, c - a), axis=1)
+    total_area = float(np.sum(areas))
+    if total_area <= 0.0:
+        return 0.0
+    return float(np.sum(areas[face_labels == LABEL_OBSERVED]) / total_area)
+
+
 def compute_observations(
     vertices_mm: np.ndarray,
     extrinsic_board: np.ndarray,
@@ -67,6 +115,7 @@ def compute_observations(
     tolerance_mm: float = DEFAULT_DEPTH_CONSISTENCY_TOLERANCE_MM,
     *,
     trusted_pixel_mask: np.ndarray,
+    vertex_normals_mm: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """For every (vertex, frame) pair where that frame actually observes that vertex, record it.
 
@@ -118,10 +167,25 @@ def compute_observations(
             f"{trusted_pixel_mask.shape}"
         )
 
+    if vertex_normals_mm is None:
+        # Backward-compatible helper behaviour for direct callers. The production provenance_run
+        # always supplies mesh-derived normals; R-25's hard-rule path therefore cannot skip facing.
+        vertex_normals_mm = np.zeros_like(vertices_mm)
+        enforce_facing = False
+    else:
+        vertex_normals_mm = np.asarray(vertex_normals_mm, dtype=np.float64)
+        if vertex_normals_mm.shape != vertices_mm.shape:
+            raise ValueError(
+                f"vertex_normals_mm must match vertices_mm shape {vertices_mm.shape}, got "
+                f"{vertex_normals_mm.shape}"
+            )
+        enforce_facing = True
+
     vertex_indices: list[np.ndarray] = []
     frame_indices: list[np.ndarray] = []
     z_cam_values: list[np.ndarray] = []
     measured_depth_values: list[np.ndarray] = []
+    depth_gate_rejected_count = np.zeros(len(vertices_mm), dtype=np.int64)
 
     all_vertex_indices = np.arange(len(vertices_mm))
 
@@ -151,9 +215,18 @@ def compute_observations(
         # refers to the exact depth sample being compared, never a neighbour. Out-of-bounds
         # vertices read pixel (0,0) here, but in_bounds (inside has_depth) already excludes them.
         pixel_trusted = trusted_pixel_mask[frame_index, clamped_v, clamped_u]
-        depth_consistent = (
-            has_depth & pixel_trusted & (np.abs(measured_depth - z_cam) <= tolerance_mm)
-        )
+        if enforce_facing:
+            rotation_t = rotation.T
+            camera_center_mm = -(rotation_t @ translation)
+            to_camera = camera_center_mm[None, :] - vertices_mm
+            facing = np.einsum("ij,ij->i", vertex_normals_mm, to_camera) > 0.0
+        else:
+            facing = np.ones(len(vertices_mm), dtype=bool)
+        eligible_before_depth_gate = has_depth & pixel_trusted & facing
+        residual_mm = np.abs(measured_depth - z_cam)
+        depth_rejected = eligible_before_depth_gate & (residual_mm > tolerance_mm)
+        depth_gate_rejected_count += depth_rejected.astype(np.int64)
+        depth_consistent = eligible_before_depth_gate & (residual_mm <= tolerance_mm)
 
         observed_here = all_vertex_indices[depth_consistent]
         if len(observed_here) == 0:
@@ -169,12 +242,14 @@ def compute_observations(
             "frame_index": np.concatenate(frame_indices),
             "z_cam_mm": np.concatenate(z_cam_values),
             "measured_depth_mm": np.concatenate(measured_depth_values),
+            "depth_gate_rejected_count": depth_gate_rejected_count,
         }
     return {
         "vertex_index": np.empty(0, dtype=np.int64),
         "frame_index": np.empty(0, dtype=np.int64),
         "z_cam_mm": np.empty(0, dtype=np.float64),
         "measured_depth_mm": np.empty(0, dtype=np.float64),
+        "depth_gate_rejected_count": depth_gate_rejected_count,
     }
 
 
@@ -300,15 +375,21 @@ def write_observations_npz(path: Path, observations: dict[str, np.ndarray]) -> N
         frame_index=observations["frame_index"],
         z_cam_mm=observations["z_cam_mm"],
         measured_depth_mm=observations["measured_depth_mm"],
+        depth_gate_rejected_count=observations.get(
+            "depth_gate_rejected_count", np.zeros(0, dtype=np.int64)
+        ),
     )
 
 
 def read_observations_npz(path: Path) -> dict[str, np.ndarray]:
     with np.load(path) as data:
-        return {
+        result = {
             key: data[key]
             for key in ("vertex_index", "frame_index", "z_cam_mm", "measured_depth_mm")
         }
+        if "depth_gate_rejected_count" in data.files:
+            result["depth_gate_rejected_count"] = data["depth_gate_rejected_count"]
+        return result
 
 
 def write_provenance_report(
@@ -428,6 +509,7 @@ def provenance_run(
     depth_mm = scale * depth
     camera_centers_mm = camera_centres(board_extrinsic)
 
+    normals_mm = vertex_normals(vertices_mm, faces)
     observations = compute_observations(
         vertices_mm,
         board_extrinsic,
@@ -435,6 +517,7 @@ def provenance_run(
         depth_mm,
         depth_consistency_tolerance_mm,
         trusted_pixel_mask=trusted_pixel_mask,
+        vertex_normals_mm=normals_mm,
     )
     vertex_results = label_vertices(
         len(vertices_mm),
