@@ -775,3 +775,34 @@ def test_oriented_vertex_normals_open_mesh_ambiguous_vote_stays_conservative():
     normals = provenance.oriented_vertex_normals(vertices, faces, cameras)
 
     np.testing.assert_array_equal(normals, np.zeros_like(normals))
+
+
+def test_oriented_vertex_normals_on_upstream_marching_cubes_mesh():
+    grid_size = 9
+    coordinates = np.indices((grid_size, grid_size, grid_size), dtype=np.float64)
+    centre = np.array([(grid_size - 1) / 2.0] * 3)[:, None, None, None]
+    radius = 2.5
+    signed_distance = np.linalg.norm(coordinates - centre, axis=0) - radius
+    weight = np.ones_like(signed_distance)
+    vertices, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        signed_distance.ravel(),
+        weight.ravel(),
+        signed_distance.shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+    assert len(vertices) > 0
+    assert len(faces) > 0
+
+    # Simulate the global winding inversion that can be introduced by a mesh-producing backend.
+    reversed_faces = faces[:, [0, 2, 1]]
+    camera_centres = np.array([[4.0, 4.0, -20.0], [4.0, 4.0, 20.0]])
+
+    normals = provenance.oriented_vertex_normals(vertices, reversed_faces, camera_centres)
+
+    mesh_centre = vertices.mean(axis=0)
+    radial = vertices - mesh_centre
+    valid = np.linalg.norm(normals, axis=1) > 0.0
+    # Marching cubes produced a closed sphere-like surface; after orientation the normals should
+    # point away from its interior, independent of the global face sign we supplied.
+    assert np.mean(np.einsum("ij,ij->i", normals[valid], radial[valid]) > 0.0) > 0.95
