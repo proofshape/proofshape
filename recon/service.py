@@ -358,7 +358,7 @@ def run_reconstruction_pipeline(
     stage_timings_s["export"] = time.perf_counter() - started
 
     started = time.perf_counter()
-    provenance_report = provenance.provenance_run(
+    provenance.provenance_run(
         model_path,
         reconstruction_dir,
         alignment_path,
