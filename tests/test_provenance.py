@@ -655,3 +655,75 @@ def test_main_reports_a_named_failure_when_run_json_predates_the_field(
     error_output = capsys.readouterr().err
     assert "R-09 PROVENANCE: FAIL" in error_output
     assert "min_confidence" in error_output
+
+
+# --- R-25: signed camera-facing gate and explicit depth-gate evidence -----------------------------
+
+def test_compute_observations_distinguishes_front_and_back_facing_vertices():
+    vertices = np.array([[0.0, 0.0, 50.0], [1.0, 0.0, 50.0]])
+    extrinsic = np.array([[[1.0, 0.0, 0.0, 0.0],
+                           [0.0, 1.0, 0.0, 0.0],
+                           [0.0, 0.0, 1.0, 0.0]]])
+    intrinsic = np.array([[[10.0, 0.0, 5.0],
+                           [0.0, 10.0, 5.0],
+                           [0.0, 0.0, 1.0]]])
+    depth = np.full((1, 11, 11), 50.0)
+    trusted = np.ones_like(depth, dtype=bool)
+    # Camera is at the origin looking +z. The -z normal faces it; +z points away.
+    normals = np.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
+
+    observations = provenance.compute_observations(
+        vertices,
+        extrinsic,
+        intrinsic,
+        depth,
+        trusted_pixel_mask=trusted,
+        vertex_normals_mm=normals,
+    )
+
+    np.testing.assert_array_equal(observations["vertex_index"], [0])
+    np.testing.assert_array_equal(observations["depth_gate_rejected_count"], [0, 0])
+
+
+def test_compute_observations_counts_depth_gate_rejection_per_vertex():
+    vertices = np.array([[0.0, 0.0, 53.0]])
+    extrinsic = np.array([[[1.0, 0.0, 0.0, 0.0],
+                           [0.0, 1.0, 0.0, 0.0],
+                           [0.0, 0.0, 1.0, 0.0]]])
+    intrinsic = np.array([[[10.0, 0.0, 5.0],
+                           [0.0, 10.0, 5.0],
+                           [0.0, 0.0, 1.0]]])
+    depth = np.full((1, 11, 11), 50.0)
+    trusted = np.ones_like(depth, dtype=bool)
+    normals = np.array([[0.0, 0.0, -1.0]])
+
+    observations = provenance.compute_observations(
+        vertices,
+        extrinsic,
+        intrinsic,
+        depth,
+        tolerance_mm=2.0,
+        trusted_pixel_mask=trusted,
+        vertex_normals_mm=normals,
+    )
+
+    assert observations["vertex_index"].size == 0
+    np.testing.assert_array_equal(observations["depth_gate_rejected_count"], [1])
+
+
+def test_observed_surface_area_fraction_is_area_weighted():
+    # Separate triangles with areas 1 and 9 square mm.
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 1.0, 0.0],
+            [10.0, 0.0, 0.0], [16.0, 0.0, 0.0], [10.0, 3.0, 0.0],
+        ]
+    )
+    faces = np.array([[0, 1, 2], [3, 4, 5]])
+    labels = np.array(
+        [provenance.LABEL_OBSERVED] * 3 + [provenance.LABEL_UNOBSERVED] * 3
+    )
+
+    fraction = provenance.observed_surface_area_fraction(vertices, faces, labels)
+
+    assert fraction == pytest.approx(0.1)
