@@ -39,6 +39,7 @@ from recon.provenance import (
     LABEL_UNOBSERVED,
     colors_to_labels,
     labels_to_colors,
+    observed_surface_area_fraction,
     read_observations_npz,
 )
 
@@ -218,9 +219,7 @@ def uncertainty_run(
         labels, sigma_result["sigma_mm"], sigma_downgrade_threshold_mm
     )
     distribution = compute_sigma_distribution(sigma_result["sigma_mm"], new_labels)
-    observed_fraction = provenance.observed_surface_area_fraction(
-        vertices, faces, new_labels
-    )
+    observed_fraction = observed_surface_area_fraction(vertices, faces, new_labels)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     write_glb(
