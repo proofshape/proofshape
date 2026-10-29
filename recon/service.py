@@ -367,7 +367,7 @@ def run_reconstruction_pipeline(
     stage_timings_s["provenance"] = time.perf_counter() - started
 
     started = time.perf_counter()
-    uncertainty.uncertainty_run(provenance_dir, uncertainty_dir)
+    uncertainty_report = uncertainty.uncertainty_run(provenance_dir, uncertainty_dir)
     stage_timings_s["uncertainty"] = time.perf_counter() - started
     final_model_path = uncertainty_dir / "mesh_uncertainty.glb"
 
@@ -375,7 +375,8 @@ def run_reconstruction_pipeline(
         "glb_path": str(final_model_path),
         "reference_tier_used": "charuco_board",
         "metric": True,
-        "observed_fraction": provenance_report.get("observed_fraction"),
+        # R-25: report coverage from the same post-downgrade labels encoded in the GLB we serve.
+        "observed_fraction": uncertainty_report.get("observed_fraction"),
         "stage_timings_s": stage_timings_s,
         "warnings": [],
     }
