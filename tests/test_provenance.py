@@ -728,3 +728,50 @@ def test_observed_surface_area_fraction_is_area_weighted():
     fraction = provenance.observed_surface_area_fraction(vertices, faces, labels)
 
     assert fraction == pytest.approx(0.1)
+
+
+def test_oriented_vertex_normals_recovers_reversed_closed_mesh_winding():
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    # Outward tetrahedron winding, then reverse every face to simulate an upstream global flip.
+    outward_faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+    reversed_faces = outward_faces[:, [0, 2, 1]]
+    cameras = np.array([[2.0, 2.0, 2.0]])
+
+    normals = provenance.oriented_vertex_normals(vertices, reversed_faces, cameras)
+
+    centre = vertices.mean(axis=0)
+    outward_vectors = vertices - centre
+    assert np.all(np.einsum("ij,ij->i", normals, outward_vectors) > 0.0)
+
+
+def test_orient_faces_consistently_fixes_one_reversed_neighbour():
+    faces = np.array([[0, 1, 2], [2, 3, 0]])
+    inconsistent = faces.copy()
+    inconsistent[1] = inconsistent[1][[0, 2, 1]]
+
+    oriented = provenance.orient_faces_consistently(inconsistent)
+
+    shared_edge_directions = []
+    for triangle in oriented:
+        for corner in range(3):
+            edge = (int(triangle[corner]), int(triangle[(corner + 1) % 3]))
+            if set(edge) == {0, 2}:
+                shared_edge_directions.append(edge)
+    assert sorted(shared_edge_directions) == [(0, 2), (2, 0)]
+
+
+def test_oriented_vertex_normals_open_mesh_ambiguous_vote_stays_conservative():
+    vertices = np.array([[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0]])
+    faces = np.array([[0, 1, 2]])
+    cameras = np.array([[0.0, 0.0, 10.0], [0.0, 0.0, -10.0]])
+
+    normals = provenance.oriented_vertex_normals(vertices, faces, cameras)
+
+    np.testing.assert_array_equal(normals, np.zeros_like(normals))
