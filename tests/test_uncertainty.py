@@ -260,12 +260,18 @@ def test_uncertainty_run_rejects_mesh_without_colors(tmp_path):
         uncertainty.uncertainty_run(provenance_dir, tmp_path / "out")
 
 
-def test_uncertainty_run_reports_depth_gate_rejections_and_final_area_fraction(tmp_path):
+def test_uncertainty_run_reports_depth_gate_rejections_and_final_area_fraction(
+    tmp_path,
+):
     provenance_dir = tmp_path / "provenance"
     vertices = np.array(
         [
-            [0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 1.0, 0.0],
-            [10.0, 0.0, 0.0], [16.0, 0.0, 0.0], [10.0, 3.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [16.0, 0.0, 0.0],
+            [10.0, 3.0, 0.0],
         ],
         dtype=np.float32,
     )
@@ -278,8 +284,7 @@ def test_uncertainty_run_reports_depth_gate_rejections_and_final_area_fraction(t
         "frame_index": np.tile([0, 1], 6),
         "z_cam_mm": np.full(12, 50.0),
         "measured_depth_mm": np.array(
-            [50.0, 50.2, 50.0, 50.2, 50.0, 50.2,
-             50.0, 50.2, 50.0, 50.2, 40.0, 60.0]
+            [50.0, 50.2, 50.0, 50.2, 50.0, 50.2, 50.0, 50.2, 50.0, 50.2, 40.0, 60.0]
         ),
         "depth_gate_rejected_count": np.array([0, 0, 0, 1, 0, 2]),
     }
