@@ -140,7 +140,10 @@ def write_sigma_npz(
 
 def read_sigma_npz(path: Path) -> dict[str, np.ndarray]:
     with np.load(path) as data:
-        result = {"sigma_mm": data["sigma_mm"], "residual_count": data["residual_count"]}
+        result = {
+            "sigma_mm": data["sigma_mm"],
+            "residual_count": data["residual_count"],
+        }
         if "depth_gate_rejected_count" in data.files:
             result["depth_gate_rejected_count"] = data["depth_gate_rejected_count"]
         return result
