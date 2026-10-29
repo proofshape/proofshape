@@ -122,14 +122,27 @@ def compute_sigma_distribution(
 
 
 def write_sigma_npz(
-    path: Path, sigma_mm: np.ndarray, residual_count: np.ndarray
+    path: Path,
+    sigma_mm: np.ndarray,
+    residual_count: np.ndarray,
+    depth_gate_rejected_count: np.ndarray | None = None,
 ) -> None:
-    np.savez_compressed(path, sigma_mm=sigma_mm, residual_count=residual_count)
+    if depth_gate_rejected_count is None:
+        depth_gate_rejected_count = np.zeros(len(sigma_mm), dtype=np.int64)
+    np.savez_compressed(
+        path,
+        sigma_mm=sigma_mm,
+        residual_count=residual_count,
+        depth_gate_rejected_count=np.asarray(depth_gate_rejected_count, dtype=np.int64),
+    )
 
 
 def read_sigma_npz(path: Path) -> dict[str, np.ndarray]:
     with np.load(path) as data:
-        return {"sigma_mm": data["sigma_mm"], "residual_count": data["residual_count"]}
+        result = {"sigma_mm": data["sigma_mm"], "residual_count": data["residual_count"]}
+        if "depth_gate_rejected_count" in data.files:
+            result["depth_gate_rejected_count"] = data["depth_gate_rejected_count"]
+        return result
 
 
 def write_uncertainty_report(
@@ -139,6 +152,9 @@ def write_uncertainty_report(
     downgraded_vertex_count: int,
     threshold_mm: float,
     distribution: dict[str, Any],
+    *,
+    depth_gate_rejected_count: np.ndarray,
+    observed_fraction: float,
 ) -> dict[str, Any]:
     report = {
         "story": "R-10",
@@ -147,6 +163,18 @@ def write_uncertainty_report(
         "downgraded_vertex_count": downgraded_vertex_count,
         "sigma_downgrade_threshold_mm": threshold_mm,
         "sigma_distribution_mm": distribution,
+        "depth_gate_rejected_observation_count": int(np.sum(depth_gate_rejected_count)),
+        "vertices_with_depth_gate_rejections": int(
+            np.count_nonzero(depth_gate_rejected_count)
+        ),
+        "max_depth_gate_rejections_per_vertex": int(
+            np.max(depth_gate_rejected_count) if len(depth_gate_rejected_count) else 0
+        ),
+        "sigma_note": (
+            "sigma uses only depth-consistent residuals; depth-gate rejections are reported "
+            "separately so truncation at the provenance tolerance is explicit"
+        ),
+        "observed_fraction": observed_fraction,
     }
     path = Path(path)
     path.write_text(
@@ -178,10 +206,21 @@ def uncertainty_run(
     observations = read_observations_npz(provenance_dir / "observations.npz")
 
     sigma_result = compute_vertex_sigma(len(vertices), observations)
+    depth_gate_rejected_count = observations.get(
+        "depth_gate_rejected_count", np.zeros(len(vertices), dtype=np.int64)
+    )
+    if depth_gate_rejected_count.shape != (len(vertices),):
+        raise ValueError(
+            "depth_gate_rejected_count must have one entry per vertex; got "
+            f"{depth_gate_rejected_count.shape} for {len(vertices)} vertices"
+        )
     new_labels, downgraded_mask = downgrade_high_sigma_vertices(
         labels, sigma_result["sigma_mm"], sigma_downgrade_threshold_mm
     )
     distribution = compute_sigma_distribution(sigma_result["sigma_mm"], new_labels)
+    observed_fraction = provenance.observed_surface_area_fraction(
+        vertices, faces, new_labels
+    )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     write_glb(
@@ -191,6 +230,7 @@ def uncertainty_run(
         out_dir / "sigma_mm.npz",
         sigma_result["sigma_mm"],
         sigma_result["residual_count"],
+        depth_gate_rejected_count,
     )
     return write_uncertainty_report(
         out_dir / "uncertainty.json",
@@ -199,6 +239,8 @@ def uncertainty_run(
         downgraded_vertex_count=int(np.count_nonzero(downgraded_mask)),
         threshold_mm=sigma_downgrade_threshold_mm,
         distribution=distribution,
+        depth_gate_rejected_count=depth_gate_rejected_count,
+        observed_fraction=observed_fraction,
     )
 
 
