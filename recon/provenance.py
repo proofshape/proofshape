@@ -88,36 +88,134 @@ def vertex_normals(vertices_mm: np.ndarray, faces: np.ndarray) -> np.ndarray:
     return normals
 
 
-def orient_vertex_normals_to_cameras(
-    normals: np.ndarray,
+def orient_faces_consistently(faces: np.ndarray) -> np.ndarray:
+    """Return triangle winding made locally consistent across every shared manifold edge.
+
+    R-25 needs the *sign* of a mesh normal, unlike C-08's absolute-dot tie-break. A raw mesh can
+    arrive globally reversed or with a neighbour reversed, so signed facing is unsafe until edge
+    orientation is propagated. Non-manifold or contradictory topology is refused rather than
+    guessed: the hard rule prefers Unobserved/a loud failure to a fabricated facing direction.
+    """
+    faces = np.asarray(faces, dtype=np.int64)
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"faces must have shape (F,3), got {faces.shape}")
+    if len(faces) == 0:
+        return faces.copy()
+
+    edge_owners: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for face_index, triangle in enumerate(faces):
+        for corner in range(3):
+            start = int(triangle[corner])
+            end = int(triangle[(corner + 1) % 3])
+            edge = (start, end) if start < end else (end, start)
+            direction = 1 if (start, end) == edge else -1
+            edge_owners.setdefault(edge, []).append((face_index, direction))
+
+    adjacency: list[list[tuple[int, bool]]] = [[] for _ in range(len(faces))]
+    for edge, owners in edge_owners.items():
+        if len(owners) > 2:
+            raise ValueError(
+                f"non-manifold edge {edge} belongs to {len(owners)} faces; "
+                "cannot establish reliable signed facing"
+            )
+        if len(owners) != 2:
+            continue
+        (left_face, left_direction), (right_face, right_direction) = owners
+        toggle = left_direction == right_direction
+        adjacency[left_face].append((right_face, toggle))
+        adjacency[right_face].append((left_face, toggle))
+
+    flip = np.zeros(len(faces), dtype=bool)
+    assigned = np.zeros(len(faces), dtype=bool)
+    for root in range(len(faces)):
+        if assigned[root]:
+            continue
+        assigned[root] = True
+        stack = [root]
+        while stack:
+            current = stack.pop()
+            for neighbour, toggle in adjacency[current]:
+                required = bool(flip[current] ^ toggle)
+                if assigned[neighbour]:
+                    if bool(flip[neighbour]) != required:
+                        raise ValueError(
+                            "mesh winding is topologically contradictory; "
+                            "cannot establish reliable signed facing"
+                        )
+                    continue
+                flip[neighbour] = required
+                assigned[neighbour] = True
+                stack.append(neighbour)
+
+    oriented = faces.copy()
+    if np.any(flip):
+        oriented[flip] = oriented[flip][:, [0, 2, 1]]
+    return oriented
+
+
+def _mesh_is_watertight(faces: np.ndarray) -> bool:
+    if len(faces) == 0:
+        return False
+    edge_counts: dict[tuple[int, int], int] = {}
+    for triangle in faces:
+        for corner in range(3):
+            first = int(triangle[corner])
+            second = int(triangle[(corner + 1) % 3])
+            edge = (first, second) if first < second else (second, first)
+            edge_counts[edge] = edge_counts.get(edge, 0) + 1
+    return bool(edge_counts) and all(count == 2 for count in edge_counts.values())
+
+
+def _signed_mesh_volume(vertices_mm: np.ndarray, faces: np.ndarray) -> tuple[float, float]:
+    """Signed volume plus an absolute scale used to decide whether its sign is meaningful."""
+    centre = np.mean(vertices_mm, axis=0)
+    centred = vertices_mm - centre
+    a = centred[faces[:, 0]]
+    b = centred[faces[:, 1]]
+    c = centred[faces[:, 2]]
+    contributions = np.einsum("ij,ij->i", a, np.cross(b, c)) / 6.0
+    return float(np.sum(contributions)), float(np.sum(np.abs(contributions)))
+
+
+def oriented_vertex_normals(
     vertices_mm: np.ndarray,
+    faces: np.ndarray,
     camera_centers_mm: np.ndarray,
 ) -> np.ndarray:
-    """Resolve a possible *global* winding inversion without destroying signed facing.
+    """Normals with a defensible sign for R-25's camera-facing test.
 
-    Mesh exporters may reverse every triangle winding. That flips every vertex normal and would
-    make an otherwise valid mesh appear entirely back-facing. Choose only between the raw normals
-    and one global sign flip using the aggregate camera-facing score. This is deliberately not
-    abs(dot): opposite sides of a thin wall still keep opposite signs and remain distinguishable.
-    If the aggregate score is exactly ambiguous, retain the mesh sign rather than invent one.
+    1. Propagate face winding so adjacent manifold triangles agree.
+    2. For a closed mesh, use signed volume to choose the outward global sign.
+    3. For an open mesh, choose between the two global signs using the aggregate camera-facing
+       evidence. If that vote is numerically ambiguous, return zero normals so provenance stays
+       conservative: those vertices cannot become Observed from a guessed sign.
     """
-    normals = np.asarray(normals, dtype=np.float64)
     vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
     camera_centers_mm = np.asarray(camera_centers_mm, dtype=np.float64)
-    if normals.shape != vertices_mm.shape:
-        raise ValueError("normals must match vertices_mm shape")
+    oriented_faces = orient_faces_consistently(faces)
+    normals = vertex_normals(vertices_mm, oriented_faces)
+
     if camera_centers_mm.ndim != 2 or camera_centers_mm.shape[1] != 3:
         raise ValueError("camera_centers_mm must have shape (S,3)")
-    if not len(camera_centers_mm) or not len(vertices_mm):
-        return normals.copy()
     valid = np.linalg.norm(normals, axis=1) > 0.0
     if not np.any(valid):
-        return normals.copy()
-    to_camera = camera_centers_mm[:, None, :] - vertices_mm[None, :, :]
-    signed = np.einsum("vij,ij->vi", to_camera[:, valid, :], normals[valid])
-    score = float(np.sum(signed))
-    return -normals if score < 0.0 else normals.copy()
+        return normals
 
+    if _mesh_is_watertight(oriented_faces):
+        signed_volume, volume_scale = _signed_mesh_volume(vertices_mm, oriented_faces)
+        if volume_scale <= 0.0 or abs(signed_volume) <= 1e-12 * volume_scale:
+            return np.zeros_like(normals)
+        return -normals if signed_volume < 0.0 else normals
+
+    if not len(camera_centers_mm):
+        return np.zeros_like(normals)
+    to_camera = camera_centers_mm[:, None, :] - vertices_mm[None, :, :]
+    signed_terms = np.einsum("vij,ij->vi", to_camera[:, valid, :], normals[valid])
+    score = float(np.sum(signed_terms))
+    score_scale = float(np.sum(np.abs(signed_terms)))
+    if score_scale <= 0.0 or abs(score) <= 1e-9 * score_scale:
+        return np.zeros_like(normals)
+    return -normals if score < 0.0 else normals
 
 def observed_surface_area_fraction(
     vertices_mm: np.ndarray, faces: np.ndarray, vertex_labels: np.ndarray
@@ -540,9 +638,7 @@ def provenance_run(
     depth_mm = scale * depth
     camera_centers_mm = camera_centres(board_extrinsic)
 
-    normals_mm = orient_vertex_normals_to_cameras(
-        vertex_normals(vertices_mm, faces), vertices_mm, camera_centers_mm
-    )
+    normals_mm = oriented_vertex_normals(vertices_mm, faces, camera_centers_mm)
     observations = compute_observations(
         vertices_mm,
         board_extrinsic,
