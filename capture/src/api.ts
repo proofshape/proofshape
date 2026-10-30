@@ -29,13 +29,21 @@ function unexpectedStatus(operation: string, response: Response, body: unknown):
   );
 }
 
+// C-13: `authToken`, when present, is sent as `Authorization: Bearer <token>` -- the bearer
+// token Lightning's deployment proxy requires (D-042). Omitted entirely against the contract
+// stub, which expects no auth header.
+function authHeaders(authToken: string | undefined): Record<string, string> {
+  return authToken === undefined ? {} : { Authorization: `Bearer ${authToken}` };
+}
+
 export async function createSession(
   baseUrl: string,
   orderCode: string,
+  authToken?: string,
 ): Promise<ApiResult<Session>> {
   const response = await fetch(`${baseUrl}/v1/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders(authToken) },
     body: JSON.stringify({ order_code: orderCode }),
   });
   const body = await readJsonBody(response, "createSession");
@@ -53,6 +61,7 @@ export async function uploadFrame(
   sessionId: string,
   frame: Blob,
   gyro: Gyro,
+  authToken?: string,
 ): Promise<ApiResult<UploadFrameResult>> {
   const form = new FormData();
   form.set("frame", frame, "frame.jpg");
@@ -60,6 +69,7 @@ export async function uploadFrame(
 
   const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/frames`, {
     method: "POST",
+    headers: authHeaders(authToken),
     body: form,
   });
   const body = await readJsonBody(response, "uploadFrame");
@@ -75,9 +85,11 @@ export async function uploadFrame(
 export async function finishSession(
   baseUrl: string,
   sessionId: string,
+  authToken?: string,
 ): Promise<ApiResult<Session>> {
   const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/finish`, {
     method: "POST",
+    headers: authHeaders(authToken),
   });
   const body = await readJsonBody(response, "finishSession");
   if (response.status === 202) {
@@ -92,9 +104,11 @@ export async function finishSession(
 export async function getReconstruction(
   baseUrl: string,
   sessionId: string,
+  authToken?: string,
 ): Promise<ApiResult<ReconstructionResult>> {
   const response = await fetch(
     `${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/reconstruction`,
+    { headers: authHeaders(authToken) },
   );
   const body = await readJsonBody(response, "getReconstruction");
   if (response.status === 200) {

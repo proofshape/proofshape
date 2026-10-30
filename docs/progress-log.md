@@ -1548,3 +1548,24 @@ deviations from it.
 
 **Next:** G-04 uses these readings as truth and the measured pitches instead of 20 mm (its second
 criterion). G-08 still waits on G-02, which waits on G-01.
+
+## 2026-10-29 — C-13 review close-out: second-member clean-checkout run and updated hours (PR #146)
+
+**Who:** @dalwalyk; @mbj1994 reviewed.
+**What changed:** @mbj1994's second review of PR #146 left two Definition-of-Done items open:
+the completion record's `<n> h actual` for @dalwalyk's share, and an unrecorded second-member
+clean-checkout run. Both are closed now:
+- A fresh clone at the PR's head (`595f540`) ran the full automated suite (562 Python, 203
+  TypeScript, ruff/`tsc` clean, `check_story_states.py` consistent) plus the GPU path
+  (`torch.mps.recommended_max_memory()` measured 13.3 GB on this run).
+- Two real-phone sessions against the live two-terminal dev flow: one failed honestly
+  (`metric_alignment_failed`, 0 usable board views — no printed reference board under the part),
+  one succeeded after reshooting with the board present (`sess_a3aa04c05ffc`: 14 frames, metric
+  reconstruction complete, charuco-calibrated, a genuine 638 KB GLB on disk).
+- The completion record now reads 7 h actual (est 3): @dalwalyk's own measured figure is 4 h (up
+  from the 3 h originally reported on their behalf), covering this close-out work; @TabeenRaoof's
+  3 h is unchanged.
+**Result:** branch synced with `main` (two real conflicts resolved — `recon/service.py`'s CORS
+middleware alongside A-01's VLM-supervisor lifespan, and `docs/manual.md`'s C-13 footnote
+alongside A-01's new section — both independent additions, not competing changes).
+**Next:** awaiting @mbj1994's re-review and final approval on the synced head.

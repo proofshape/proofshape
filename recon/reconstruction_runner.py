@@ -15,6 +15,15 @@ BACKENDS = ("vggt", "mast3r", "colmap")
 DEFAULT_BACKEND = "vggt"
 BACKEND_ENV = "PROOFSHAPE_RECON_BACKEND"
 
+# C-13 (D-049): the service has no CLI, so the device it reconstructs on comes from the
+# environment, same pattern as BACKEND_ENV. cuda stays the default so the container (a T4)
+# behaves exactly as before; the M2 Max sets mps (D-010), which VGGT already runs on in fp16
+# (D-011, vggt_runner.choose_dtype_name). MASt3R and COLMAP still refuse anything but cuda
+# themselves, so mps with those backends fails loudly there rather than here.
+DEVICES = ("cuda", "mps")
+DEFAULT_DEVICE = "cuda"
+DEVICE_ENV = "PROOFSHAPE_RECON_DEVICE"
+
 
 def resolve_backend(value: str | None = None) -> str:
     """Return the requested backend; VGGT remains the default required by D-009."""
@@ -25,6 +34,23 @@ def resolve_backend(value: str | None = None) -> str:
             f"Unsupported reconstruction backend {backend!r}; choose one of {choices}."
         )
     return backend
+
+
+def resolve_device(value: str | None = None) -> str:
+    """Return the requested torch device type; cuda unless PROOFSHAPE_RECON_DEVICE says otherwise.
+
+    An unrecognised value is refused by name rather than passed on, so a typo like "metal" stops
+    the service at the first session with a message naming the variable, instead of surfacing
+    later as an unrelated torch error.
+    """
+    device = value or os.environ.get(DEVICE_ENV, DEFAULT_DEVICE)
+    if device not in DEVICES:
+        choices = ", ".join(DEVICES)
+        raise ValueError(
+            f"Unsupported reconstruction device {device!r} (from {DEVICE_ENV} or --device); "
+            f"choose one of {choices}."
+        )
+    return device
 
 
 def run_on_capture(
@@ -91,7 +117,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="output folder (default: fixtures/data/recon_runs/<capture folder name>)",
     )
-    parser.add_argument("--device", choices=("cuda", "mps"), default="cuda")
+    parser.add_argument(
+        "--device",
+        choices=DEVICES,
+        default=None,
+        help="torch device (default: PROOFSHAPE_RECON_DEVICE or cuda)",
+    )
     parser.add_argument(
         "--min-confidence",
         type=float,
@@ -110,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
             args.capture_dir,
             out_dir,
             backend=backend,
-            device_type=args.device,
+            device_type=resolve_device(args.device),
             min_confidence=args.min_confidence,
         )
     except (FileNotFoundError, FileExistsError, RuntimeError, ValueError) as exc:
