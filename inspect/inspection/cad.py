@@ -1,6 +1,6 @@
-"""I-02: load buyer CAD meshes without silently changing their coordinate scale.
+"""I-02/I-11: load buyer CAD meshes without silently changing their coordinate scale.
 
-STL has no unit metadata, so ProofShape treats STL coordinates as millimetres by project
+Neither STL nor OBJ has unit metadata, so ProofShape treats both as millimetres by project
 convention. glTF/GLB nominally uses metres, but ProofShape's own reconstruction GLBs store raw
 millimetres; I-02 therefore reads GLB coordinates exactly as stored and reports ``assumed_mm``.
 A caller that knows an input needs conversion must pass an explicit ``scale``.
@@ -18,8 +18,9 @@ import pygltflib
 from recon.cad_size_check import read_ascii_stl
 
 _STL_UNITS = "mm"
+_OBJ_UNITS = "mm"
 _GLB_UNITS = "assumed_mm"
-_SUPPORTED_MESSAGE = "Supported formats are ASCII STL, binary STL, and GLB."
+_SUPPORTED_MESSAGE = "Supported formats are ASCII STL, binary STL, OBJ, and GLB."
 
 _GLTF_COMPONENT_DTYPES: dict[int, np.dtype] = {
     pygltflib.BYTE: np.dtype(np.int8),
@@ -123,6 +124,81 @@ def _load_stl(path: Path) -> tuple[np.ndarray, np.ndarray, str]:
 
     vertices, faces = _deduplicate_triangle_soup(soup)
     return vertices, faces, _STL_UNITS
+
+
+def _load_obj(path: Path) -> tuple[np.ndarray, np.ndarray, str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError) as exc:
+        raise ValueError(f"Could not read {path} as OBJ. {_SUPPORTED_MESSAGE}") from exc
+
+    positions: list[tuple[float, float, float]] = []
+    triangles: list[tuple[int, int, int]] = []
+
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        tokens = line.split()
+        tag, parts = tokens[0], tokens[1:]
+
+        if tag == "v":
+            if len(parts) < 3:
+                raise ValueError(
+                    f"{path}:{line_number}: OBJ 'v' line needs at least 3 coordinates."
+                )
+            try:
+                positions.append(tuple(float(value) for value in parts[:3]))
+            except ValueError as exc:
+                raise ValueError(
+                    f"{path}:{line_number}: OBJ 'v' line has a non-numeric coordinate."
+                ) from exc
+        elif tag == "f":
+            if len(parts) < 3:
+                raise ValueError(
+                    f"{path}:{line_number}: OBJ 'f' line needs at least 3 vertices."
+                )
+            face_indices: list[int] = []
+            for corner in parts:
+                # `v`, `v/vt`, `v/vt/vn`, and `v//vn` all name the vertex in the first slot;
+                # only that index is used (I-11: vt/vn are parsed past, not acted on).
+                vertex_token = corner.split("/", 1)[0]
+                try:
+                    vertex_index = int(vertex_token)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"{path}:{line_number}: OBJ 'f' line has a non-integer vertex index."
+                    ) from exc
+                if vertex_index <= 0:
+                    raise ValueError(
+                        f"{path}:{line_number}: negative or relative OBJ face indices are "
+                        "not supported."
+                    )
+                face_indices.append(vertex_index - 1)
+            # Fan triangulation from the face's first vertex (I-11: adequate for this
+            # project's convex prism-shaped specimens, not a general polygon triangulator).
+            for i in range(1, len(face_indices) - 1):
+                triangles.append(
+                    (face_indices[0], face_indices[i], face_indices[i + 1])
+                )
+        # vn, vt, g, o, mtllib, usemtl, and any other OBJ directive: parsed past, not acted on.
+
+    if not positions or not triangles:
+        raise ValueError(
+            f"{path} contains no usable OBJ geometry. {_SUPPORTED_MESSAGE}"
+        )
+
+    vertex_array = np.asarray(positions, dtype=np.float64)
+    if not np.isfinite(vertex_array).all():
+        raise ValueError(f"{path} has a non-finite OBJ vertex coordinate.")
+
+    face_array = np.asarray(triangles, dtype=np.int64)
+    if face_array.min() < 0 or face_array.max() >= len(vertex_array):
+        raise ValueError(f"{path} has an OBJ face index outside the vertex list.")
+
+    soup = vertex_array[face_array.reshape(-1)]
+    vertices, faces = _deduplicate_triangle_soup(soup)
+    return vertices, faces, _OBJ_UNITS
 
 
 def _accessor_array(
@@ -346,6 +422,11 @@ def load_mesh(
     ``.stl`` may be ASCII or binary. STL has no units in the format, so ProofShape's project
     convention is millimetres and the returned units string is ``"mm"``.
 
+    ``.obj`` is read for its ``v``/``f`` lines only; ``vn``, ``vt``, and other directives
+    (``g``, ``o``, ``mtllib``, ``usemtl``, comments) are parsed past, not acted on. A face with
+    more than 3 vertices is triangulated by a simple fan from its first vertex. OBJ has no unit
+    metadata either, so it is treated as millimetres by the same convention as STL.
+
     ``.glb`` coordinates are read exactly as stored and reported as ``"assumed_mm"``. This is
     deliberate: ProofShape's own GLBs contain raw millimetres even though glTF normally defines
     metres. If a caller knows a buyer file requires conversion, it must opt in with ``scale``
@@ -358,6 +439,8 @@ def load_mesh(
 
     if suffix == ".stl":
         vertices, faces, units = _load_stl(path)
+    elif suffix == ".obj":
+        vertices, faces, units = _load_obj(path)
     elif suffix == ".glb":
         vertices, faces, units = _load_glb(path)
     else:

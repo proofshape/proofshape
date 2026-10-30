@@ -1524,6 +1524,22 @@ actual. This update must receive final teammate approval after CI; the review on
 Ruff lint and format (190 files), whitespace checks and the story-state checker with
 `--fix` passed. No additional dependency states needed updating.
 
+## 2026-10-27 — I-11 OBJ loading, extending I-02's loader (PR #210)
+
+**Who:** @dalwalyk. Claimed in #208 (merged separately per D-037).
+**What changed:** `inspection.cad.load_mesh` gained an `.obj` branch alongside its `.stl`/`.glb`
+ones: `v`/`f` lines only, `vn`/`vt`/`g`/`o`/`mtllib`/`usemtl` and comments parsed past, faces
+fan-triangulated from their first vertex, millimetres by the same no-unit-metadata convention as
+STL. `_SUPPORTED_MESSAGE` and I-02's wording test were updated in the same commit.
+@TabeenRaoof's review caught a real bug: the tag/argument split used `line.partition(" ")`,
+which only splits on a single space, so a tab after the tag silently dropped the line and shifted
+every later vertex — a quiet wrong answer. Fixed by splitting on any whitespace instead.
+**Result:** 5 new tests plus the tab-separated regression test (6 total), full suite 571 passed
+(was 545). Both the fan-triangulation and vertex-token-split logic, and the tab-split fix, were
+mutation-tested by hand; each failed exactly its own test. `ruff check`/`ruff format --check` and
+`check_story_states.py` clean.
+**Next:** nothing outstanding for I-11.
+
 ## 2026-10-29 — G-06 caliper truth for the golden-set parts and the printed board (PR #215)
 
 **Who:** @TabeenRaoof (PR #215). Claimed in P-24's pull request.
