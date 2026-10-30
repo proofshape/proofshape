@@ -263,26 +263,84 @@ def calibrate_from_board(session: BoardSession) -> IntrinsicsResult:
 
 def rescale_vggt_intrinsic(
     intrinsic: np.ndarray,
-    processed_size_hw: tuple[int, int],
-    full_size_hw: tuple[int, int],
+    scale_x: float,
+    scale_y: float,
+    crop_left_px: float = 0.0,
+    crop_top_px: float = 0.0,
 ) -> np.ndarray:
-    """Convert VGGT K from resized-image pixels to full-resolution sensor pixels."""
+    """Convert VGGT K from its processed-image pixels to full-resolution sensor pixels.
 
-    processed_height, processed_width = processed_size_hw
-    full_height, full_width = full_size_hw
-    if min(processed_height, processed_width, full_height, full_width) <= 0:
-        raise ValueError("Image dimensions must be positive.")
+    R-28: inverts `vggt_runner.describe_vggt_crop_preprocess`'s resize-then-centre-crop map,
+    not a plain per-axis resize ratio -- VGGT centre-crops portrait frames after resizing, so a
+    plain `full/processed` ratio silently folds the crop into the scale and returns a focal
+    length that is wrong by the crop's own fraction (confirmed: about 1.78x on a 1080x1920
+    frame). `scale_x`/`scale_y`/`crop_left_px`/`crop_top_px` are the same fields
+    `describe_vggt_crop_preprocess` records per frame; `crop_left_px`/`crop_top_px` default to 0
+    for a plain-resize caller (landscape frames are never cropped).
+
+    Matches `recon.metric_alignment.lift_board_corner_observations`'s own half-pixel-correct
+    forward map (`u_processed = (u_full + 0.5) * scale_x - 0.5 - crop_left`) exactly, inverted,
+    so the two directions of the same transform agree to the same convention.
+    """
+    if scale_x <= 0 or scale_y <= 0:
+        raise ValueError("scale_x and scale_y must be positive.")
 
     scaled = _valid_intrinsic(intrinsic, "VGGT").copy()
-    scale_x = full_width / processed_width
-    scale_y = full_height / processed_height
-    scaled[0, 0] *= scale_x
-    scaled[0, 1] *= scale_x
-    scaled[0, 2] *= scale_x
-    scaled[1, 0] *= scale_y
-    scaled[1, 1] *= scale_y
-    scaled[1, 2] *= scale_y
+    fx, skew, cx = scaled[0, 0], scaled[0, 1], scaled[0, 2]
+    skew_y, fy, cy = scaled[1, 0], scaled[1, 1], scaled[1, 2]
+    scaled[0, 0] = fx / scale_x
+    scaled[0, 1] = skew / scale_x
+    scaled[0, 2] = (cx + 0.5 + crop_left_px) / scale_x - 0.5
+    scaled[1, 0] = skew_y / scale_y
+    scaled[1, 1] = fy / scale_y
+    scaled[1, 2] = (cy + 0.5 + crop_top_px) / scale_y - 0.5
     return scaled
+
+
+def resolve_vggt_frame_scale(
+    frame_name: str,
+    preprocess_geometry: list[dict[str, Any]] | None,
+    processed_size_hw: tuple[int, int],
+    full_size_hw: tuple[int, int],
+) -> tuple[float, float, float, float]:
+    """Per-frame (scale_x, scale_y, crop_left_px, crop_top_px) for `rescale_vggt_intrinsic`.
+
+    Prefers the frame's own recorded `preprocess_geometry` entry (R-23). Without one -- a
+    pre-R-23 run -- falls back to a plain resize ratio, but only for a frame that is clearly
+    uncropped landscape, the same condition
+    `recon.metric_alignment.lift_board_corner_observations` already requires for its own
+    backward-compat path (R-28). Anything else is refused by name, not guessed.
+    """
+    full_height, full_width = full_size_hw
+    processed_height, processed_width = processed_size_hw
+
+    description = None
+    if preprocess_geometry is not None:
+        by_name = {
+            str(entry.get("frame_name", "")): entry for entry in preprocess_geometry
+        }
+        description = by_name.get(frame_name)
+
+    if description is not None:
+        if description.get("supported_for_metric_alignment") is False:
+            raise CalibrationFailure(
+                f"{frame_name}: recorded reconstruction preprocessing is not supported for "
+                "metric alignment: "
+                f"{description.get('unsupported_reason', 'unknown reason')}"
+            )
+        return (
+            float(description["scale_x"]),
+            float(description["scale_y"]),
+            float(description.get("crop_left_px", 0)),
+            float(description.get("crop_top_px", 0)),
+        )
+
+    if full_height >= full_width or processed_height >= processed_width:
+        raise CalibrationFailure(
+            f"{frame_name}: reconstruction predates preprocess_geometry and is not a "
+            "clearly uncropped landscape frame; rerun R-01 to record resize/crop metadata."
+        )
+    return processed_width / full_width, processed_height / full_height, 0.0, 0.0
 
 
 def load_vggt_fallback(model_run_dir: Path, session: BoardSession) -> np.ndarray:
@@ -303,6 +361,7 @@ def load_vggt_fallback(model_run_dir: Path, session: BoardSession) -> np.ndarray
     if not isinstance(processed, list) or len(processed) != 2:
         raise ValueError(f"{run_path}: processed_image_size_hw is missing or invalid")
     processed_size = (int(processed[0]), int(processed[1]))
+    preprocess_geometry = run_info.get("preprocess_geometry")
 
     with np.load(poses_path) as data:
         _require_keys(data, poses_path, ("frame_names", "intrinsic"))
@@ -316,8 +375,13 @@ def load_vggt_fallback(model_run_dir: Path, session: BoardSession) -> np.ndarray
     predictions: list[np.ndarray] = []
     for frame_name, intrinsic in zip(model_names, model_intrinsics, strict=True):
         if frame_name in wanted:
+            scale_x, scale_y, crop_left_px, crop_top_px = resolve_vggt_frame_scale(
+                frame_name, preprocess_geometry, processed_size, session.image_size_hw
+            )
             predictions.append(
-                rescale_vggt_intrinsic(intrinsic, processed_size, session.image_size_hw)
+                rescale_vggt_intrinsic(
+                    intrinsic, scale_x, scale_y, crop_left_px, crop_top_px
+                )
             )
     if not predictions:
         raise CalibrationFailure(
