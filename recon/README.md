@@ -364,9 +364,10 @@ frames against it. Each worker writes `<session>/vlm/frame_NNNN.json`; `run_sess
 are `unchecked`, never guessed observations. Empty `token_usage` means usage was not
 reported, not a zero-cost call. Queue and time bounds are in D-055.
 
-The frozen HTTP responses stay unchanged. These observations do not veto reconstruction,
-set a verdict or alter measured geometry. A-11 will expose hints in the phone UI; A-02
-will define policy. If A-02 makes `unchecked` block a Pass, an outage or missing key will
+Since contract v1.1 (A-11, D-056), each upload's 202 response carries the newest *checked*
+result as `vlm_feedback` (`vlm_check.latest_checked`, read from disk, never waiting on the
+model); model, token and `unchecked` details stay server-side. These observations do not
+veto reconstruction, set a verdict or alter measured geometry. A-02 will define policy. If A-02 makes `unchecked` block a Pass, an outage or missing key will
 turn affected sessions into Rescan; that choice is not made here.
 
 ### Real API and deployment check — pending

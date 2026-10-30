@@ -84,6 +84,41 @@ describe("contract-stub shapes match the committed examples", () => {
     expect(body["message"]).toBe(example["message"]);
   });
 
+  it("uploadFrame 202 carries vlm_feedback from the committed examples once switched on", async () => {
+    const reference = loadExample("uploadFrame.response-202-vlm-feedback-reference");
+    const later = loadExample("uploadFrame.response-202-vlm-feedback");
+    const createResponse = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_code: "PO-48213-A" }),
+    });
+    const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
+
+    stub.useVlmFeedback();
+    const bodies: Record<string, unknown>[] = [];
+    for (let i = 0; i < 7; i++) {
+      const form = new FormData();
+      form.set("frame", new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
+      form.set("gyro", new Blob([JSON.stringify({ alpha: 1, beta: 2, gamma: 3 })]));
+      const response = await fetch(`${baseUrl}/v1/sessions/${sessionId}/frames`, {
+        method: "POST",
+        body: form,
+      });
+      expect(response.status).toBe(202);
+      bodies.push((await response.json()) as Record<string, unknown>);
+    }
+
+    // Frame 0 has nothing earlier to report; frames 1-5 report frame 0 (the reference, with
+    // same_part null); frame 6 reports frame 5, using the later example's hint and checks.
+    expect(bodies[0]).not.toHaveProperty("vlm_feedback");
+    expect(bodies[1]?.["vlm_feedback"]).toEqual(reference["vlm_feedback"]);
+    expect(bodies[5]?.["vlm_feedback"]).toEqual(reference["vlm_feedback"]);
+    expect(bodies[6]?.["vlm_feedback"]).toEqual({
+      ...(later["vlm_feedback"] as Record<string, unknown>),
+      frame_index: 5,
+    });
+  });
+
   it("finishSession 409 (too few frames) matches the committed example exactly", async () => {
     const example = loadExample("finishSession.response-409");
     const createResponse = await fetch(`${baseUrl}/v1/sessions`, {

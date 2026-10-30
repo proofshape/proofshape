@@ -14,6 +14,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 CONTRACT_PATH = REPO_ROOT / "contracts" / "openapi.yaml"
 
 
+@pytest.fixture(autouse=True)
+def _no_gemini_key(monkeypatch):
+    # create_app's default supervisor reads GEMINI_API_KEY. A developer's real key must not
+    # turn these tests into paid API calls, or let a finished check add vlm_feedback (A-11)
+    # to responses the tests compare exactly.
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
 def _fake_pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
     assert len(list(capture_dir.glob("*.jpg"))) == 3
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -323,7 +331,7 @@ def test_missing_multipart_part_uses_error_detail_contract(tmp_path):
 
         assert response.status_code == 422
         _validate_contract_response("uploadFrame", "422", response.json())
-        assert response.json()["code"] == "vlm_veto"
+        assert response.json()["code"] == "malformed_request"
         assert "frame and gyro" in response.json()["message"]
 
 
@@ -339,7 +347,7 @@ def test_pending_reconstruction_is_failed_after_service_restart(tmp_path):
 
     assert restarted_app.state.orphaned_pending_failed == 1
     assert recovered["reconstruction"]["status"] == "failed"
-    assert recovered["reconstruction"]["failure"]["code"] == "metric_alignment_failed"
+    assert recovered["reconstruction"]["failure"]["code"] == "internal_error"
     assert "service restart" in recovered["reconstruction"]["failure"]["message"]
 
 
@@ -592,7 +600,7 @@ def test_pipeline_reads_the_calibrated_board_poses_downstream(tmp_path, monkeypa
     assert seen["board_pose_path"] == calibrated_dir / "board_poses.npz"
 
 
-def test_malformed_gyro_is_contract_valid_and_explicitly_not_a_vlm_decision(tmp_path):
+def test_malformed_gyro_returns_malformed_request_not_a_vlm_code(tmp_path):
     app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         created = client.post("/v1/sessions", json={"order_code": "PO-1"})
@@ -607,10 +615,8 @@ def test_malformed_gyro_is_contract_valid_and_explicitly_not_a_vlm_decision(tmp_
 
         assert response.status_code == 422
         _validate_contract_response("uploadFrame", "422", response.json())
-        assert response.json()["code"] == "vlm_veto"
-        assert (
-            "Malformed frame upload (not a VLM decision)" in response.json()["message"]
-        )
+        assert response.json()["code"] == "malformed_request"
+        assert "gyro part is invalid" in response.json()["message"]
 
 
 def test_empty_frame_is_rejected_with_contract_error(tmp_path):
@@ -632,7 +638,7 @@ def test_empty_frame_is_rejected_with_contract_error(tmp_path):
 
         assert response.status_code == 422
         _validate_contract_response("uploadFrame", "422", response.json())
-        assert response.json()["code"] == "frame_rejected_exposure"
+        assert response.json()["code"] == "malformed_request"
 
 
 def test_upload_race_after_finish_returns_422_not_500(tmp_path, monkeypatch):
@@ -709,7 +715,10 @@ def test_unexpected_pipeline_exception_becomes_terminal_failure(tmp_path):
         result = client.get(f"/v1/sessions/{session_id}/reconstruction")
         assert result.status_code == 200
         assert result.json()["status"] == "failed"
-        assert "synthetic unexpected model failure" in result.json()["warnings"][0]
+        warning = result.json()["warnings"][0]
+        assert warning.startswith("internal_error:")
+        # #186: the crash's text goes to the operator's log, never to the supplier.
+        assert "synthetic unexpected model failure" not in warning
 
 
 def test_model_404_uses_error_detail_envelope(tmp_path):
@@ -789,3 +798,134 @@ def test_glb_url_env_override_wins_over_everything(tmp_path, monkeypatch):
     assert body["glb_url"] == (
         f"https://recon.proofshape.example/v1/sessions/{session_id}/model.glb"
     )
+
+
+# A-11: the upload response carries the newest checked VLM result (contract v1.1).
+
+
+def _no_key_app(tmp_path):
+    from recon.vlm_check import VlmSupervisor
+
+    # No key, so uploads only ever write `unchecked` results; tests add checked ones by hand.
+    return service.create_app(
+        tmp_path, pipeline_runner=_fake_pipeline, vlm_supervisor=VlmSupervisor()
+    )
+
+
+def _write_checked(
+    app, session_id, frame_index, hint="Turn the part so the hole faces you."
+):
+    from types import SimpleNamespace
+
+    from recon.vlm_check import VlmSupervisor, atomic_json, parse_response
+
+    observation = {
+        "same_part": None if frame_index == 0 else True,
+        "hands_occluding": False,
+        "screen_photo": False,
+        "lighting_adequate": True,
+        "hint": hint,
+    }
+    response = SimpleNamespace(
+        text=json.dumps(observation),
+        model_version="test-model",
+        candidates=[SimpleNamespace(finish_reason="STOP")],
+        prompt_feedback=None,
+        usage_metadata=None,
+    )
+    check = parse_response(frame_index, response)
+    assert check.status == "checked"
+    session_dir = app.state.store.session_dir(session_id)
+    atomic_json(VlmSupervisor.result_path(session_dir, frame_index), check.model_dump())
+
+
+def _upload(client, session_id):
+    return client.post(
+        f"/v1/sessions/{session_id}/frames",
+        files={
+            "frame": ("frame.jpg", b"jpeg-data", "image/jpeg"),
+            "gyro": (
+                "blob",
+                json.dumps({"alpha": 1, "beta": 2, "gamma": 3}),
+                "application/json",
+            ),
+        },
+    )
+
+
+def test_upload_has_no_vlm_feedback_until_a_check_has_completed(tmp_path):
+    app = _no_key_app(tmp_path)
+    with TestClient(app) as client:
+        session_id = client.post("/v1/sessions", json={"order_code": "PO-1"}).json()[
+            "session_id"
+        ]
+
+        body = _upload(client, session_id).json()
+
+        # Frame 0's own check is only `unchecked` (no key), so there's nothing to show.
+        assert "vlm_feedback" not in body
+        _validate_contract_response("uploadFrame", "202", body)
+
+
+def test_upload_carries_the_newest_checked_result_and_skips_unchecked(tmp_path):
+    from recon.vlm_check import VlmSupervisor, atomic_json, unchecked
+
+    app = _no_key_app(tmp_path)
+    with TestClient(app) as client:
+        session_id = client.post("/v1/sessions", json={"order_code": "PO-1"}).json()[
+            "session_id"
+        ]
+        _upload(client, session_id)
+        _write_checked(app, session_id, 5, hint="Move left so the hole is visible.")
+        session_dir = app.state.store.session_dir(session_id)
+        atomic_json(
+            VlmSupervisor.result_path(session_dir, 10),
+            unchecked(10, "api_error").model_dump(),
+        )
+
+        body = _upload(client, session_id).json()
+
+        assert body["vlm_feedback"] == {
+            "frame_index": 5,
+            "hint": "Move left so the hole is visible.",
+            "same_part": True,
+            "hands_occluding": False,
+            "screen_photo": False,
+            "lighting_adequate": True,
+        }
+        _validate_contract_response("uploadFrame", "202", body)
+
+
+def test_reference_frame_feedback_keeps_same_part_present_and_null(tmp_path):
+    app = _no_key_app(tmp_path)
+    with TestClient(app) as client:
+        session_id = client.post("/v1/sessions", json={"order_code": "PO-1"}).json()[
+            "session_id"
+        ]
+        _upload(client, session_id)
+        _write_checked(app, session_id, 0)
+
+        body = _upload(client, session_id).json()
+
+        # Frame 0 is the reference: same_part must be sent as null, not dropped.
+        assert "same_part" in body["vlm_feedback"]
+        assert body["vlm_feedback"]["same_part"] is None
+        _validate_contract_response("uploadFrame", "202", body)
+
+
+def test_crash_is_logged_for_the_operator(tmp_path, caplog):
+    def failing_pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
+        raise RuntimeError("secret internal path /srv/models")
+
+    app = service.create_app(tmp_path, pipeline_runner=failing_pipeline)
+    with TestClient(app) as client, caplog.at_level("ERROR", logger="recon.service"):
+        session_id = client.post("/v1/sessions", json={"order_code": "PO-1"}).json()[
+            "session_id"
+        ]
+        _upload_three_frames(client, session_id)
+        client.post(f"/v1/sessions/{session_id}/finish")
+        result = client.get(f"/v1/sessions/{session_id}/reconstruction").json()
+
+    assert result["warnings"][0].startswith("internal_error:")
+    assert "/srv/models" not in result["warnings"][0]
+    assert "/srv/models" in caplog.text

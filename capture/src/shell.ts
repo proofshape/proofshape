@@ -15,7 +15,12 @@ import { createSession, finishSession, getReconstruction, uploadFrame } from "./
 import { requireElement, requireTyped } from "./dom.js";
 import { checkBlur, checkDuplicate, checkExposure, type FramePixels } from "./frame_gate.js";
 import { requestGyroPermission } from "./gyro.js";
-import { describeCreateSession, describeFinishSession, describeUploadFrame } from "./messages.js";
+import {
+  describeCreateSession,
+  describeFinishSession,
+  describeUploadFrame,
+  describeVlmFeedback,
+} from "./messages.js";
 import {
   mountModelViewer,
   type ModelViewerOptions,
@@ -70,6 +75,7 @@ export const APP_SHELL_HTML = `
     <video id="shell-camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
     <button id="shell-capture-button" type="button" disabled>Capture frame</button>
     <p id="shell-capture-status"></p>
+    <p id="shell-vlm-hint"></p>
     <div id="shell-gyro-overlay"></div>
   </section>
   <section>
@@ -104,6 +110,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const cameraPreview = requireTyped(root, "#shell-camera-preview", HTMLVideoElement, "<video>");
   const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
   const captureStatus = requireElement(root, "#shell-capture-status");
+  const vlmHint = requireElement(root, "#shell-vlm-hint");
   const gyroOverlayContainer = requireElement(root, "#shell-gyro-overlay");
   const finishButton = requireTyped(root, "#shell-finish-button", HTMLButtonElement, "<button>");
   const retryReconstructionButton = requireTyped(
@@ -231,6 +238,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     setStatus(sessionStatus, "", "info");
     setStatus(cameraStatus, "", "info");
     setStatus(gyroStatus, "", "info");
+    // A-11: a previous session's tip is about a different part. Start stays disabled once a
+    // session exists, so today this only guards a future flow that re-enables it.
+    setStatus(vlmHint, "", "info");
     startButton.disabled = true;
     // Fresh coverage tracking and gate-dedup state for this attempt -- without this, a frame
     // locally accepted under an abandoned session (e.g. a bad order code, then retried) would
@@ -468,6 +478,13 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
           gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
+          // A-11: the newest VLM tip, if a check has finished. It stays until a newer one
+          // arrives (a later 202 without feedback leaves it alone) and never blocks capture.
+          // setStatus writes textContent: the hint is model output, never HTML.
+          const feedback = result.body.vlm_feedback;
+          if (feedback !== undefined) {
+            setStatus(vlmHint, describeVlmFeedback(feedback), "info");
+          }
         } else {
           lastAcceptedForGate = previousAcceptedForGate;
         }

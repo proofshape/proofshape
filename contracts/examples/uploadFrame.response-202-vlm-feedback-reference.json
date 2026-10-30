@@ -1,0 +1,12 @@
+{
+  "accepted": true,
+  "frame_index": 2,
+  "vlm_feedback": {
+    "frame_index": 0,
+    "hint": "Good start: the part and the reference sheet are both in view.",
+    "same_part": null,
+    "hands_occluding": false,
+    "screen_photo": false,
+    "lighting_adequate": true
+  }
+}

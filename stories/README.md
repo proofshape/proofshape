@@ -312,7 +312,7 @@ Full detail in each story file.
 | [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Done | @mbj1994 |
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Ready | _unclaimed_ |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Blocked | _unclaimed_ |
-| [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Claimed | @TabeenRaoof |
+| [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | In review | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
 
@@ -332,8 +332,8 @@ Poisson fallback) change what the supplier gets back.
 **Waiting on a decision, no story yet:**
 - #181 changes D-039's scale-agreement formula.
 - #200 (Python 3.12 vs the open3d pin) touches D-047.
-- The internal-failure error code in #186 is a contract change and belongs in A-11's D-031
-  request.
+- The internal-failure error code in #186 is a contract change; A-11's D-031 request carries
+  it (`internal_error`, D-056).
 
 **Closing issues.** In the pull request, write the keyword before each number
 (`Fixes #189, fixes #191`). GitHub closes only the first of a comma list, which is how PR #45 left

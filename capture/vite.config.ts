@@ -13,6 +13,10 @@ function contractStubPlugin(): Plugin {
     name: "proofshape-contract-stub",
     configureServer(server) {
       const stub = createContractStub();
+      // A-11: PROOFSHAPE_STUB_VLM_FEEDBACK=1 npm run dev shows the VLM tip without a real service.
+      if (process.env.PROOFSHAPE_STUB_VLM_FEEDBACK === "1") {
+        stub.useVlmFeedback();
+      }
       server.middlewares.use(stub.handle);
     },
   };

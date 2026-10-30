@@ -85,6 +85,36 @@ def sampled_indices(frame_count: int) -> list[int]:
     return indices
 
 
+def latest_checked(session_dir: Path) -> FrameCheck | None:
+    """A-11: the newest *checked* result already on disk, or None.
+
+    This runs on the upload request path, so it only reads files that exist and never waits on
+    the VLM. It skips `unchecked` results (their reasons, like `missing_api_key`, are for the
+    operator, not the supplier) and anything that can't be trusted: unreadable or invalid files,
+    and files whose stored index doesn't match their name, the same checks `join` applies. The
+    index comes from the file name, not a name sort, because 4-digit padding stops sorting
+    correctly at 10000. A-01's temporary files (`.frame_NNNN.json.<hex>.tmp`) can't match.
+    """
+    vlm_dir = Path(session_dir) / "vlm"
+    if not vlm_dir.is_dir():
+        return None
+    candidates: list[tuple[int, Path]] = []
+    for path in vlm_dir.glob("frame_*.json"):
+        try:
+            index = int(path.stem.removeprefix("frame_"))
+        except ValueError:
+            continue
+        candidates.append((index, path))
+    for index, path in sorted(candidates, reverse=True):
+        try:
+            result = FrameCheck.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if result.frame_index == index and result.status == "checked":
+            return result
+    return None
+
+
 def unchecked(frame_index: int, reason: str, **metadata: Any) -> FrameCheck:
     return FrameCheck(
         frame_index=frame_index, status="unchecked", reason=reason, **metadata

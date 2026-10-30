@@ -136,7 +136,10 @@ def test_examples_validate_against_their_schema(spec):
 
 
 def test_unobserved_regions_never_contribute_to_a_verdict():
-    """D-005, the hard rule, made structural: enforced over every committed verdict example."""
+    """D-005, the hard rule, made structural: enforced over every committed verdict example.
+
+    Covers every provenance other than `observed` (v1.1 wording), so `inferred` too.
+    """
     verdict_examples = list(EXAMPLES_DIR.glob("getVerdict.response-*.json"))
     assert verdict_examples, "expected at least one getVerdict example to check"
 
@@ -146,13 +149,13 @@ def test_unobserved_regions_never_contribute_to_a_verdict():
             body = json.load(f)
         for region in body.get("regions", []):
             if (
-                region["provenance"] == "unobserved"
+                region["provenance"] != "observed"
                 and region["contributes_to_verdict"] is not False
             ):
                 violations.append(f"{path.name}: region {region['name']!r}")
 
     assert not violations, (
-        "unobserved region(s) marked as contributing to a verdict — this violates the hard "
+        "non-observed region(s) marked as contributing to a verdict — this violates the hard "
         "rule (D-005): " + ", ".join(violations)
     )
 

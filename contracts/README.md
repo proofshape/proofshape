@@ -10,5 +10,10 @@ codes that existing decisions already settle. Tolerance-table internals, `k` and
 deliberately left as extension points, marked `x-proofshape-extends-at` in the spec, for the
 inspection stories (Phase 3, not yet written) once the October calibration study has real numbers.
 
+**v1.1.0** (A-11, D-056, merged at a sprint boundary under D-031): additive only. The upload
+response may carry an optional `vlm_feedback` (the newest completed VLM hint and its four
+checks), and `ErrorDetail.code` gains `malformed_request` and `internal_error`. Still under
+`/v1`; a v1.0 client keeps working unchanged.
+
 **Changing this file needs both other team members' approval, at a sprint boundary only** — see
 `CONTRIBUTING.md` and D-031.
