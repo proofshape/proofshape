@@ -274,7 +274,7 @@ Full detail in each story file.
 | [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Ready | _unclaimed_ |
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Blocked | _unclaimed_ |
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 10% | 3 h | I-04 | Blocked | _unclaimed_ |
-| [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Ready | _unclaimed_ |
+| [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Claimed | @dalwalyk |
 
 ---
 
@@ -309,12 +309,62 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Ready | _unclaimed_ |
+| [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Done | @mbj1994 |
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Ready | _unclaimed_ |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Blocked | _unclaimed_ |
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Ready | _unclaimed_ |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
+
+---
+
+## Review follow-ups
+
+Fixes for the code bugs P-27's review of every Done story found on 2026-10-23. Each bug is a
+GitHub issue, verified against `main` with file and line links (#178–#201). Fixes that touch the
+same code are bundled into one story, and nothing that waits on a decision is bundled with a fix
+that is ready. These ten total 31 h, planning estimates like every other row.
+
+**Start with R-25.** It is the hard-rule fix: surface no camera saw can be labelled Observed
+today (#178). R-26 (flat parts cut away by segmentation) and R-27 (inward-facing hole fills, the
+Poisson fallback) change what the supplier gets back.
+
+**Waiting on a decision, no story yet:**
+- #181 changes D-039's scale-agreement formula.
+- #200 (Python 3.12 vs the open3d pin) touches D-047.
+- The internal-failure error code in #186 is a contract change and belongs in A-11's D-031
+  request.
+
+**Closing issues.** In the pull request, write the keyword before each number
+(`Fixes #189, fixes #191`). GitHub closes only the first of a comma list, which is how PR #45 left
+two of its three issues open.
+
+Issues per story:
+- R-25 #178, #185, #179
+- R-26 #180
+- R-27 #183, #184
+- R-28 #182, #188
+- R-29 #187, plus the validation half of #186
+- C-19 #192, #193
+- C-20 #189, #190, #191
+- F-08 #196, #197, #198
+- I-12 #199
+- P-28 #194, #195, #201
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [R-25](R/R-25.md) | Provenance occlusion: facing test, σ window, `observed_fraction` from final labels | 5 h | R-09, R-10, R-14 | Claimed | @mbj1994 |
+| [R-26](R/R-26.md) | Segmentation keeps flat parts; the height override bypasses the layer search | 3 h | R-21 | Ready | _unclaimed_ |
+| [R-27](R/R-27.md) | Mesh cleanup and the Poisson fallback: winding, components, size limit, oriented normals | 5 h | R-07, R-08 | Ready | _unclaimed_ |
+| [R-28](R/R-28.md) | Portrait-safe VGGT intrinsics rescale and correct board metadata | 2 h | R-02, R-03, R-22, R-23 | Ready | _unclaimed_ |
+| [R-29](R/R-29.md) | Contract-shaped validation errors and an Inferred-aware hard-rule test | 2 h | F-03, R-14 | Ready | _unclaimed_ |
+| [C-19](C/C-19.md) | The viewer says when a model has no provenance; the mock matches the service | 3 h | C-10, C-12, C-13 | Blocked | _unclaimed_ |
+| [C-20](C/C-20.md) | Capture gate and orbit maths: heading wrap, roll, gate order | 3 h | C-06, C-07, C-09 | Ready | _unclaimed_ |
+| [F-08](F/F-08.md) | Fixture and image safety: downloader verification, case-insensitive photo ignores, image path filters | 3 h | F-06, R-15 | Ready | _unclaimed_ |
+| [I-12](I/I-12.md) | Synthetic-generator tests that pin noise, seed and the board frame | 2 h | I-01 | Ready | _unclaimed_ |
+| [P-28](P/P-28.md) | Process tooling: checker exit codes, the decision-number snippet, a portable deck build | 3 h | nothing | Ready | _unclaimed_ |
 
 ---
 
@@ -399,7 +449,7 @@ Full detail in each story file.
 | [P-24](P/P-24.md) | Write up the ground-truth lane | — | nothing | Done | @TabeenRaoof |
 | [P-25](P/P-25.md) | Write up the inspection lane | — | nothing | Done | @TabeenRaoof |
 | [P-26](P/P-26.md) | Write up the first generative-AI stories | — | nothing | Done | @TabeenRaoof |
-| [P-27](P/P-27.md) | Review every Done story; file its code bugs and write up the follow-up stories | — | nothing | Claimed | @TabeenRaoof |
+| [P-27](P/P-27.md) | Review every Done story; file its code bugs and write up the follow-up stories | — | nothing | Done | @TabeenRaoof |
 
 ---
 
