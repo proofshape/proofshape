@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -18,6 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from recon import agent_tools
+from recon.vlm_check import VlmSupervisor
 
 MIN_FINISH_FRAMES = 3
 
@@ -402,12 +404,25 @@ def create_app(
     data_dir: Path | None = None,
     pipeline_runner: PipelineRunner = run_reconstruction_pipeline,
     known_order_codes: set[str] | None = None,
+    vlm_supervisor: VlmSupervisor | None = None,
 ) -> FastAPI:
     root = Path(
         data_dir or os.environ.get("PROOFSHAPE_DATA_DIR", "proofshape-data/sessions")
     )
     store = SessionStore(root)
-    app = FastAPI(title="ProofShape reconstruction service", version="1.0.0")
+    supervisor = vlm_supervisor or VlmSupervisor(os.environ.get("GEMINI_API_KEY", ""))
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        try:
+            yield
+        finally:
+            supervisor.close()
+
+    app = FastAPI(
+        title="ProofShape reconstruction service", version="1.0.0", lifespan=lifespan
+    )
+    app.state.vlm_supervisor = supervisor
     app.state.store = store
     app.state.orphaned_pending_failed = store.fail_orphaned_pending()
 
@@ -515,6 +530,9 @@ def create_app(
                     message="The session is already finished.",
                 ),
             )
+        # No Google call (or capacity wait) occurs on this request path. The saved files
+        # are the source of truth, including after a restart or upload/finish race.
+        supervisor.submit(store.session_dir(session_id), frame_index)
         return UploadFrameResult(accepted=True, frame_index=frame_index)
 
     def run_session(session_id: str) -> None:
@@ -523,6 +541,7 @@ def create_app(
             return
         session_dir = store.session_dir(session_id)
         try:
+            supervisor.schedule_finish(session_dir, int(record["frame_count"]))
             result = pipeline_runner(session_dir / "frames", session_dir / "artifacts")
             glb_path = Path(result["glb_path"])
             if not glb_path.exists():
@@ -552,6 +571,9 @@ def create_app(
                     "message": f"Reconstruction failed: {exc}",
                 },
             }
+        # Join even when reconstruction fails. Results never enter session.json: workers
+        # cannot overwrite reconstruction state, nor can this stale record lose their work.
+        supervisor.join(session_dir, int(record["frame_count"]))
         store.save(record)
 
     @app.post(

@@ -168,9 +168,12 @@ def test_check_frame_is_deterministic():
 # --- vlm_inspect ---------------------------------------------------------------------------
 
 
-def test_vlm_inspect_is_always_unavailable():
+def test_vlm_inspect_needs_an_explicit_session_directory():
     assert agent_tools.vlm_inspect({}).available is False
-    assert agent_tools.vlm_inspect({"anything": "here"}).reason == "A-01 not yet built"
+    assert (
+        agent_tools.vlm_inspect({"anything": "here"}).reason
+        == "session directory is required for VLM evidence"
+    )
 
 
 # --- finish_session --------------------------------------------------------------------------
@@ -268,3 +271,29 @@ def test_finish_session_respects_custom_min_frames(tmp_path, min_frames):
         store, record["session_id"], lambda sid: None, min_frames=min_frames
     )
     assert result.ok is True
+
+
+def test_vlm_inspect_uses_separate_evidence_not_fabricated_record(tmp_path):
+    from recon.vlm_check import FrameCheck, FrameObservation, atomic_json, unchecked
+
+    assert agent_tools.vlm_inspect({}, tmp_path).reason == "no VLM result yet"
+    result = FrameCheck(
+        frame_index=0,
+        status="checked",
+        model_version="real-version",
+        observation=FrameObservation(
+            same_part=None,
+            hands_occluding=False,
+            screen_photo=True,
+            lighting_adequate=True,
+            hint="Photograph the physical part.",
+        ),
+    )
+    atomic_json(tmp_path / "vlm" / "frame_0000.json", result.model_dump())
+    tool = agent_tools.vlm_inspect({}, tmp_path)
+    assert tool.available and tool.data["observation"]["screen_photo"] is True
+    atomic_json(
+        tmp_path / "vlm" / "frame_0005.json", unchecked(5, "api_timeout").model_dump()
+    )
+    tool = agent_tools.vlm_inspect({"vlm": "pretend pass"}, tmp_path)
+    assert not tool.available and tool.reason == "unchecked: api_timeout"

@@ -208,11 +208,33 @@ def check_frame(record: dict[str, Any]) -> ToolResult:
 # --- vlm_inspect -------------------------------------------------------------------------------
 
 
-def vlm_inspect(record: dict[str, Any]) -> ToolResult:
-    """A-01 isn't built yet, so this is `unavailable` for every call. The one-line seam A-01
-    fills in: reading `record`'s own VLM results once they exist."""
+def vlm_inspect(record: dict[str, Any], session_dir: Path | None = None) -> ToolResult:
+    """Read A-01's separate evidence, including during capture; never trust session.json.
+
+    The path is explicit because the data root is app-owned and cannot be inferred from
+    a record. Old callers remain unavailable until they supply that path (A-07).
+    """
+    from recon.vlm_check import FrameCheck
+
     del record
-    return ToolResult(available=False, reason="A-01 not yet built")
+    if session_dir is None:
+        return ToolResult(
+            available=False, reason="session directory is required for VLM evidence"
+        )
+    paths = sorted((Path(session_dir) / "vlm").glob("frame_*.json"))
+    if not paths:
+        return ToolResult(available=False, reason="no VLM result yet")
+    try:
+        result = FrameCheck.model_validate_json(paths[-1].read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ToolResult(available=False, reason="invalid VLM result file")
+    if result.status == "unchecked":
+        return ToolResult(
+            available=False,
+            reason=f"unchecked: {result.reason}",
+            data=result.model_dump(),
+        )
+    return ToolResult(available=True, data=result.model_dump())
 
 
 # --- finish_session ------------------------------------------------------------------------

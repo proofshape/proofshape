@@ -309,7 +309,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Claimed | @mbj1994 |
+| [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Done | @mbj1994 |
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Ready | _unclaimed_ |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Blocked | _unclaimed_ |
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Ready | _unclaimed_ |
@@ -355,7 +355,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [R-25](R/R-25.md) | Provenance occlusion: facing test, σ window, `observed_fraction` from final labels | 5 h | R-09, R-10, R-14 | Ready | _unclaimed_ |
+| [R-25](R/R-25.md) | Provenance occlusion: facing test, σ window, `observed_fraction` from final labels | 5 h | R-09, R-10, R-14 | Claimed | @mbj1994 |
 | [R-26](R/R-26.md) | Segmentation keeps flat parts; the height override bypasses the layer search | 3 h | R-21 | Ready | _unclaimed_ |
 | [R-27](R/R-27.md) | Mesh cleanup and the Poisson fallback: winding, components, size limit, oriented normals | 5 h | R-07, R-08 | Ready | _unclaimed_ |
 | [R-28](R/R-28.md) | Portrait-safe VGGT intrinsics rescale and correct board metadata | 2 h | R-02, R-03, R-22, R-23 | Ready | _unclaimed_ |
