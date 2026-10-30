@@ -1523,3 +1523,28 @@ actual. This update must receive final teammate approval after CI; the review on
 **Validation:** after the sync and fixes, 597 Python tests passed on Python 3.11.17;
 Ruff lint and format (190 files), whitespace checks and the story-state checker with
 `--fix` passed. No additional dependency states needed updating.
+
+## 2026-10-29 — G-06 caliper truth for the golden-set parts and the printed board (PR #215)
+
+**Who:** @TabeenRaoof (PR #215). Claimed in P-24's pull request.
+**What changed:** `fixtures/caliper_g-06.json` holds the first caliper truth for the golden
+set, ten placements per feature, on a caliper that displays 0.1 mm (stated accuracy ±0.02 mm):
+- s-04's three footprint edges and its height;
+- s-05's two widths and its height;
+- the printed board's three squares, each read across and down, and the whole pattern's width
+  and height.
+
+`tests/test_caliper_files.py` checks every `fixtures/caliper_*.json` against the format in
+`fixtures/README.md`. The method was committed before any reading, and G-06 records the
+deviations from it.
+**Result:**
+- **The parts.** s-04 is 0.13–0.41 mm over its CAD (+1.4% on its short side), and s-05's widths
+  are within 0.03 mm. R-22's 15–19% shortfall on s-05's reconstructed walls therefore comes from
+  the reconstruction, not the parts.
+- **The board.** The printed sheet is about 0.1% large across (160.16 mm over 8 squares) and
+  0.45% large down (120.55 mm over 6). Reconstructions scaled to the nominal 20 mm read that much
+  small, and a single similarity scale (R-23) can't represent both directions.
+- **Hours.** G-06 closed at 3.5 h actual against 1.5 h estimated.
+
+**Next:** G-04 uses these readings as truth and the measured pitches instead of 20 mm (its second
+criterion). G-08 still waits on G-02, which waits on G-01.
