@@ -47,7 +47,7 @@ venv/
 build/
 
 # node
-node_modules/
+node_modules
 dist/
 .vite/
 
