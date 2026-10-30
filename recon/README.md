@@ -20,6 +20,10 @@ Run the API locally with:
 uvicorn recon.service:app --host 0.0.0.0 --port 8000
 ```
 
+The backend reconstructs on `cuda` unless `PROOFSHAPE_RECON_DEVICE` says otherwise. On the M2 Max
+set `PROOFSHAPE_RECON_DEVICE=mps` (D-010, D-049); C-13's phone check runs this way, see
+`capture/README.md`.
+
 `finishSession` hands the saved frames to the existing R-02 → selected reconstruction backend →
 R-04 → R-07 → R-08 chain in a FastAPI background task. The resulting GLB is served from the
 URL returned by `getReconstruction`. Order-code validation is injectable because buyer/order
