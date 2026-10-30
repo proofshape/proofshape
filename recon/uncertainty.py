@@ -128,14 +128,15 @@ def write_sigma_npz(
     residual_count: np.ndarray,
     depth_gate_rejected_count: np.ndarray | None = None,
 ) -> None:
-    if depth_gate_rejected_count is None:
-        depth_gate_rejected_count = np.zeros(len(sigma_mm), dtype=np.int64)
-    np.savez_compressed(
-        path,
-        sigma_mm=sigma_mm,
-        residual_count=residual_count,
-        depth_gate_rejected_count=np.asarray(depth_gate_rejected_count, dtype=np.int64),
-    )
+    payload: dict[str, np.ndarray] = {
+        "sigma_mm": sigma_mm,
+        "residual_count": residual_count,
+    }
+    if depth_gate_rejected_count is not None:
+        payload["depth_gate_rejected_count"] = np.asarray(
+            depth_gate_rejected_count, dtype=np.int64
+        )
+    np.savez_compressed(path, **payload)
 
 
 def read_sigma_npz(path: Path) -> dict[str, np.ndarray]:
@@ -157,9 +158,28 @@ def write_uncertainty_report(
     threshold_mm: float,
     distribution: dict[str, Any],
     *,
-    depth_gate_rejected_count: np.ndarray,
+    depth_gate_rejected_count: np.ndarray | None,
     observed_fraction: float,
 ) -> dict[str, Any]:
+    if depth_gate_rejected_count is None:
+        rejected_observation_count = None
+        vertices_with_rejections = None
+        max_rejections_per_vertex = None
+        sigma_note = (
+            "sigma uses only depth-consistent residuals; this legacy provenance input did not "
+            "record depth-gate rejection counts, so truncation counts are not available"
+        )
+    else:
+        rejected_observation_count = int(np.sum(depth_gate_rejected_count))
+        vertices_with_rejections = int(np.count_nonzero(depth_gate_rejected_count))
+        max_rejections_per_vertex = int(
+            np.max(depth_gate_rejected_count) if len(depth_gate_rejected_count) else 0
+        )
+        sigma_note = (
+            "sigma uses only depth-consistent residuals; depth-gate rejections are reported "
+            "separately so truncation at the provenance tolerance is explicit"
+        )
+
     report = {
         "story": "R-10",
         "source_provenance_dir": str(provenance_dir),
@@ -167,17 +187,10 @@ def write_uncertainty_report(
         "downgraded_vertex_count": downgraded_vertex_count,
         "sigma_downgrade_threshold_mm": threshold_mm,
         "sigma_distribution_mm": distribution,
-        "depth_gate_rejected_observation_count": int(np.sum(depth_gate_rejected_count)),
-        "vertices_with_depth_gate_rejections": int(
-            np.count_nonzero(depth_gate_rejected_count)
-        ),
-        "max_depth_gate_rejections_per_vertex": int(
-            np.max(depth_gate_rejected_count) if len(depth_gate_rejected_count) else 0
-        ),
-        "sigma_note": (
-            "sigma uses only depth-consistent residuals; depth-gate rejections are reported "
-            "separately so truncation at the provenance tolerance is explicit"
-        ),
+        "depth_gate_rejected_observation_count": rejected_observation_count,
+        "vertices_with_depth_gate_rejections": vertices_with_rejections,
+        "max_depth_gate_rejections_per_vertex": max_rejections_per_vertex,
+        "sigma_note": sigma_note,
         "observed_fraction": observed_fraction,
     }
     path = Path(path)
@@ -210,18 +223,22 @@ def uncertainty_run(
     observations = read_observations_npz(provenance_dir / "observations.npz")
 
     sigma_result = compute_vertex_sigma(len(vertices), observations)
-    depth_gate_rejected_count = observations.get(
-        "depth_gate_rejected_count", np.zeros(len(vertices), dtype=np.int64)
-    )
-    # Pre-R-25 observation files have no per-vertex rejection vector. Treat that legacy absence
-    # as all-zero evidence; non-empty mismatched vectors are corruption and stay an error.
-    if depth_gate_rejected_count.size == 0:
-        depth_gate_rejected_count = np.zeros(len(vertices), dtype=np.int64)
-    elif depth_gate_rejected_count.shape != (len(vertices),):
-        raise ValueError(
-            "depth_gate_rejected_count must have one entry per vertex; got "
-            f"{depth_gate_rejected_count.shape} for {len(vertices)} vertices"
+    raw_depth_gate_rejected_count = observations.get("depth_gate_rejected_count")
+    if raw_depth_gate_rejected_count is None or (
+        len(vertices) and raw_depth_gate_rejected_count.size == 0
+    ):
+        # Pre-R-25 observation files never recorded this evidence. Preserve that distinction
+        # instead of turning "not recorded" into a misleading numeric zero.
+        depth_gate_rejected_count = None
+    else:
+        depth_gate_rejected_count = np.asarray(
+            raw_depth_gate_rejected_count, dtype=np.int64
         )
+        if depth_gate_rejected_count.shape != (len(vertices),):
+            raise ValueError(
+                "depth_gate_rejected_count must have one entry per vertex; got "
+                f"{depth_gate_rejected_count.shape} for {len(vertices)} vertices"
+            )
     new_labels, downgraded_mask = downgrade_high_sigma_vertices(
         labels, sigma_result["sigma_mm"], sigma_downgrade_threshold_mm
     )
