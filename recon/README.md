@@ -20,6 +20,10 @@ Run the API locally with:
 uvicorn recon.service:app --host 0.0.0.0 --port 8000
 ```
 
+The backend reconstructs on `cuda` unless `PROOFSHAPE_RECON_DEVICE` says otherwise. On the M2 Max
+set `PROOFSHAPE_RECON_DEVICE=mps` (D-010, D-049); C-13's phone check runs this way, see
+`capture/README.md`.
+
 `finishSession` hands the saved frames to the existing R-02 → selected reconstruction backend →
 R-04 → R-07 → R-08 → R-09 → R-10 chain in a FastAPI background task. The resulting GLB is served from the
 URL returned by `getReconstruction`. R-25 makes R-09 require a signed camera-facing surface
@@ -397,7 +401,6 @@ pinned Lightning SDK 2026.10.1 source was inspected: both create and update decl
 `--env` with `multiple=True`. The live check must still confirm both GEMINI_API_KEY and
 PROOFSHAPE_PUBLIC_BASE_URL survive the second update, with logs containing neither key
 nor endpoint token. Never deploy this branch, and stop the billed GPU after the check.
-
 
 ## R-25 · provenance occlusion and final coverage
 

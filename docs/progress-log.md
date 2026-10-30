@@ -1523,3 +1523,86 @@ actual. This update must receive final teammate approval after CI; the review on
 **Validation:** after the sync and fixes, 597 Python tests passed on Python 3.11.17;
 Ruff lint and format (190 files), whitespace checks and the story-state checker with
 `--fix` passed. No additional dependency states needed updating.
+
+## 2026-10-27 — I-11 OBJ loading, extending I-02's loader (PR #210)
+
+**Who:** @dalwalyk. Claimed in #208 (merged separately per D-037).
+**What changed:** `inspection.cad.load_mesh` gained an `.obj` branch alongside its `.stl`/`.glb`
+ones: `v`/`f` lines only, `vn`/`vt`/`g`/`o`/`mtllib`/`usemtl` and comments parsed past, faces
+fan-triangulated from their first vertex, millimetres by the same no-unit-metadata convention as
+STL. `_SUPPORTED_MESSAGE` and I-02's wording test were updated in the same commit.
+@TabeenRaoof's review caught a real bug: the tag/argument split used `line.partition(" ")`,
+which only splits on a single space, so a tab after the tag silently dropped the line and shifted
+every later vertex — a quiet wrong answer. Fixed by splitting on any whitespace instead.
+**Result:** 5 new tests plus the tab-separated regression test (6 total), full suite 571 passed
+(was 545). Both the fan-triangulation and vertex-token-split logic, and the tab-split fix, were
+mutation-tested by hand; each failed exactly its own test. `ruff check`/`ruff format --check` and
+`check_story_states.py` clean.
+**Next:** nothing outstanding for I-11.
+
+## 2026-10-29 — G-06 caliper truth for the golden-set parts and the printed board (PR #215)
+
+**Who:** @TabeenRaoof (PR #215). Claimed in P-24's pull request.
+**What changed:** `fixtures/caliper_g-06.json` holds the first caliper truth for the golden
+set, ten placements per feature, on a caliper that displays 0.1 mm (stated accuracy ±0.02 mm):
+- s-04's three footprint edges and its height;
+- s-05's two widths and its height;
+- the printed board's three squares, each read across and down, and the whole pattern's width
+  and height.
+
+`tests/test_caliper_files.py` checks every `fixtures/caliper_*.json` against the format in
+`fixtures/README.md`. The method was committed before any reading, and G-06 records the
+deviations from it.
+**Result:**
+- **The parts.** s-04 is 0.13–0.41 mm over its CAD (+1.4% on its short side), and s-05's widths
+  are within 0.03 mm. R-22's 15–19% shortfall on s-05's reconstructed walls therefore comes from
+  the reconstruction, not the parts.
+- **The board.** The printed sheet is about 0.1% large across (160.16 mm over 8 squares) and
+  0.45% large down (120.55 mm over 6). Reconstructions scaled to the nominal 20 mm read that much
+  small, and a single similarity scale (R-23) can't represent both directions.
+- **Hours.** G-06 closed at 3.5 h actual against 1.5 h estimated.
+
+**Next:** G-04 uses these readings as truth and the measured pitches instead of 20 mm (its second
+criterion). G-08 still waits on G-02, which waits on G-01.
+
+## 2026-10-29 — C-13 review close-out: second-member clean-checkout run and updated hours (PR #146)
+
+**Who:** @dalwalyk; @mbj1994 reviewed.
+**What changed:** @mbj1994's second review of PR #146 left two Definition-of-Done items open:
+the completion record's `<n> h actual` for @dalwalyk's share, and an unrecorded second-member
+clean-checkout run. Both are closed now:
+- A fresh clone at the PR's head (`595f540`) ran the full automated suite (562 Python, 203
+  TypeScript, ruff/`tsc` clean, `check_story_states.py` consistent) plus the GPU path
+  (`torch.mps.recommended_max_memory()` measured 13.3 GB on this run).
+- Two real-phone sessions against the live two-terminal dev flow: one failed honestly
+  (`metric_alignment_failed`, 0 usable board views — no printed reference board under the part),
+  one succeeded after reshooting with the board present (`sess_a3aa04c05ffc`: 14 frames, metric
+  reconstruction complete, charuco-calibrated, a genuine 638 KB GLB on disk).
+- The completion record now reads 7 h actual (est 3): @dalwalyk's own measured figure is 4 h (up
+  from the 3 h originally reported on their behalf), covering this close-out work; @TabeenRaoof's
+  3 h is unchanged.
+**Result:** branch synced with `main` (two real conflicts resolved — `recon/service.py`'s CORS
+middleware alongside A-01's VLM-supervisor lifespan, and `docs/manual.md`'s C-13 footnote
+alongside A-01's new section — both independent additions, not competing changes).
+**Next:** awaiting @mbj1994's re-review and final approval on the synced head.
+
+
+## 2026-10-26 — A-01 merged: sampled VLM supervision
+
+**Who:** @mbj1994; approved by @TabeenRaoof. PR #207 merged to `main` at `2c8369a`.
+**What changed:** asynchronous sampled Gemini observations, strict response validation,
+atomic per-frame and aggregate evidence, explicit unchecked failure paths, service/agent
+integration, deployment-key propagation/redaction and a reproducible real-API check.
+Review fixes preserve redacted Lightning diagnostics and document the free tier's
+restriction to team-owned, non-confidential test parts; supplier photographs need paid-tier
+data handling. A-02's veto policy and A-11's phone hint delivery remain separate work.
+**Final verification:** @TabeenRaoof approved `f29d3de` and reran a fresh-venv checkout on
+macOS 26.6.2 arm64 / Python 3.11.14: 597 tests passed, Ruff lint/format clean, consistent
+story states and a clean worktree. GitHub pytest, Ruff, TypeScript and container image
+build/smoke checks all passed on that same head before merge. The owner-run Windows
+real-API check separately recorded 11 valid Gemini replies, correct screen/different-part
+controls and actual token usage; exact observations are in the story.
+**Record:** A-01 and its index row landed Done together; completion records PR #207 and
+the owner's measured 4 h actual against 7 h estimated.
+**Next:** normal main-only production smoke testing when Lightning is available. No live
+Lightning deployment or production verification is claimed by these results.
