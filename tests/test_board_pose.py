@@ -6,6 +6,7 @@ capture can't serve that role — it has no ground-truth poses, and it lives out
 can't see it. The real-frame check is recorded in stories/R-02.md instead.
 """
 
+import json
 from pathlib import Path
 
 import cv2
@@ -517,3 +518,50 @@ def test_main_exit_codes(capture_dir: Path, tmp_path: Path, capsys) -> None:
     no_board.mkdir()
     save_jpeg(no_board / "a.jpg", np.full((64, 64), 128, np.uint8))
     assert main([str(no_board), "--out-dir", str(tmp_path / "nb")]) == 1
+
+
+# Five oblique views of the same board, varied enough for R-03 to solve a camera from them.
+CALIBRATION_VIEWS = (
+    (0.4, -0.2, 0.1),
+    (-0.35, 0.25, 0.0),
+    (0.2, 0.4, -0.1),
+    (-0.3, -0.3, 0.2),
+    (0.3, 0.3, -0.15),
+)
+
+
+def test_frames_without_exif_are_posed_once_the_service_calibrates_from_the_board(
+    tmp_path: Path,
+) -> None:
+    # C-13: the capture app's frames come from a canvas, so they carry no EXIF focal length and
+    # R-02 alone poses none of them. The service now calibrates K from the board (R-03) and runs
+    # R-02 again. Real OpenCV end to end here, on synthetic frames with a known K.
+    from recon import service
+
+    capture_dir = tmp_path / "frames"
+    capture_dir.mkdir()
+    true_intrinsic = None
+    for index, rotation in enumerate(CALIBRATION_VIEWS):
+        gray, _, true_intrinsic = render_board(rotation_vector=rotation)
+        save_jpeg(capture_dir / f"frame_{index:04d}.jpg", gray, focal_35mm=None)
+
+    artifact_dir = tmp_path / "artifacts"
+    board_dir = artifact_dir / "board_pose"
+    first = estimate_board_poses(capture_dir, board_dir)
+    assert first["posed_count"] == 0
+    assert first["failure_counts"] == {
+        REASON_INTRINSICS_UNAVAILABLE: len(CALIBRATION_VIEWS)
+    }
+
+    posed_dir, report = service._pose_board_with_session_intrinsics(
+        capture_dir, artifact_dir, board_dir, first
+    )
+
+    assert posed_dir == artifact_dir / service.CALIBRATED_BOARD_DIR_NAME
+    assert report["posed_count"] == len(CALIBRATION_VIEWS)
+    record = json.loads((artifact_dir / service.BOARD_CALIBRATION_RECORD).read_text())
+    assert record["posed_count_before"] == 0
+    assert record["posed_count_after"] == len(CALIBRATION_VIEWS)
+    # A noise-free synthetic render, so this is a test tolerance, not a real-frame accuracy claim.
+    assert record["intrinsic"][0][0] == pytest.approx(true_intrinsic[0, 0], rel=0.02)
+    assert record["intrinsic"][1][1] == pytest.approx(true_intrinsic[1, 1], rel=0.02)

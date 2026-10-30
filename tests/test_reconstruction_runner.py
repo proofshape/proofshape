@@ -26,6 +26,70 @@ def test_resolve_backend_rejects_unknown(monkeypatch):
         reconstruction_runner.resolve_backend()
 
 
+def test_resolve_device_defaults_to_cuda_so_the_container_is_unchanged(monkeypatch):
+    monkeypatch.delenv(reconstruction_runner.DEVICE_ENV, raising=False)
+
+    assert reconstruction_runner.resolve_device() == "cuda"
+
+
+def test_resolve_device_reads_mps_from_the_environment(monkeypatch):
+    # C-13 / D-049: the service has no CLI, so the M2 Max selects Metal through this variable.
+    monkeypatch.setenv(reconstruction_runner.DEVICE_ENV, "mps")
+
+    assert reconstruction_runner.resolve_device() == "mps"
+
+
+def test_resolve_device_explicit_value_wins_over_the_environment(monkeypatch):
+    monkeypatch.setenv(reconstruction_runner.DEVICE_ENV, "mps")
+
+    assert reconstruction_runner.resolve_device("cuda") == "cuda"
+
+
+def test_resolve_device_rejects_unknown_and_names_the_variable(monkeypatch):
+    monkeypatch.setenv(reconstruction_runner.DEVICE_ENV, "metal")
+
+    with pytest.raises(ValueError, match="PROOFSHAPE_RECON_DEVICE"):
+        reconstruction_runner.resolve_device()
+
+
+def test_main_uses_the_environment_device_when_no_flag_is_given(tmp_path, monkeypatch):
+    monkeypatch.setenv(reconstruction_runner.DEVICE_ENV, "mps")
+    seen = {}
+
+    def fake_run_on_capture(
+        capture_dir, out_dir, backend=None, device_type="cuda", **kwargs
+    ):
+        seen["device_type"] = device_type
+        return {
+            "backend": "vggt",
+            "frame_count": 1,
+            "point_count": 1,
+            "timings": {"total_s": 1.0},
+        }
+
+    monkeypatch.setattr(reconstruction_runner, "run_on_capture", fake_run_on_capture)
+
+    exit_code = reconstruction_runner.main(
+        [str(tmp_path / "capture"), "--out-dir", str(tmp_path / "out")]
+    )
+
+    assert exit_code == 0
+    assert seen["device_type"] == "mps"
+
+
+def test_main_reports_a_bad_device_variable_as_a_failed_run(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv(reconstruction_runner.DEVICE_ENV, "metal")
+
+    exit_code = reconstruction_runner.main(
+        [str(tmp_path / "capture"), "--out-dir", str(tmp_path / "out")]
+    )
+
+    assert exit_code == 1
+    assert "PROOFSHAPE_RECON_DEVICE" in capsys.readouterr().err
+
+
 def test_run_selected_backend_calls_only_mast3r(tmp_path, monkeypatch):
     seen = []
 
