@@ -139,11 +139,10 @@ def _load_obj(path: Path) -> tuple[np.ndarray, np.ndarray, str]:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        tag, _, rest = line.partition(" ")
-        rest = rest.strip()
+        tokens = line.split()
+        tag, parts = tokens[0], tokens[1:]
 
         if tag == "v":
-            parts = rest.split()
             if len(parts) < 3:
                 raise ValueError(
                     f"{path}:{line_number}: OBJ 'v' line needs at least 3 coordinates."
@@ -155,13 +154,12 @@ def _load_obj(path: Path) -> tuple[np.ndarray, np.ndarray, str]:
                     f"{path}:{line_number}: OBJ 'v' line has a non-numeric coordinate."
                 ) from exc
         elif tag == "f":
-            corners = rest.split()
-            if len(corners) < 3:
+            if len(parts) < 3:
                 raise ValueError(
                     f"{path}:{line_number}: OBJ 'f' line needs at least 3 vertices."
                 )
             face_indices: list[int] = []
-            for corner in corners:
+            for corner in parts:
                 # `v`, `v/vt`, `v/vt/vn`, and `v//vn` all name the vertex in the first slot;
                 # only that index is used (I-11: vt/vn are parsed past, not acted on).
                 vertex_token = corner.split("/", 1)[0]

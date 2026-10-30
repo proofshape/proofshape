@@ -274,7 +274,7 @@ Full detail in each story file.
 | [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Ready | _unclaimed_ |
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Blocked | _unclaimed_ |
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 10% | 3 h | I-04 | Blocked | _unclaimed_ |
-| [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | In review | @dalwalyk |
+| [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
 
 ---
 

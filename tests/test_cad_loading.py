@@ -92,6 +92,26 @@ def test_load_obj_triangle(tmp_path):
     )
 
 
+def test_obj_vertex_and_face_lines_may_be_tab_separated(tmp_path):
+    # @TabeenRaoof's review of PR #210: `line.partition(" ")` only split on a single space, so
+    # a tab after the tag merged into the keyword and silently dropped the line, shifting every
+    # later vertex. Reproduces their exact repro: a 10x20 rectangle with a tab after `v`.
+    path = tmp_path / "mesh.obj"
+    path.write_text(
+        "v\t0 0 0\nv\t10 0 0\nv\t10 20 0\nv\t0 20 0\nf\t1 2 3 4\n",
+        encoding="ascii",
+    )
+
+    vertices, faces, _units = load_mesh(path)
+
+    assert vertices.shape == (4, 3)
+    np.testing.assert_allclose(
+        vertices,
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 20.0, 0.0], [0.0, 20.0, 0.0]],
+    )
+    np.testing.assert_allclose(faces, [[0, 1, 2], [0, 2, 3]])
+
+
 def test_load_obj_quad_face_is_fan_triangulated(tmp_path):
     path = tmp_path / "mesh.obj"
     path.write_text(
