@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, finishSession, getReconstruction, uploadFrame } from "./api.js";
 import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
 
@@ -153,5 +153,50 @@ describe("api against the contract stub", () => {
     await expect(
       uploadFrame(baseUrl, session.body.session_id, notAJpeg, { alpha: 1, beta: 2, gamma: 3 }),
     ).rejects.toThrow(/unexpected status 500/);
+  });
+
+  // C-13: the deployed service is behind Lightning's bearer-token gate (D-042); the stub is not.
+  // The spy wraps the real fetch (not a mock replacement) so the stub still answers every call —
+  // only the request actually sent is inspected.
+  describe("authorization header (C-13)", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function authorizationHeaderOf(init: RequestInit | undefined): string | null {
+      return new Headers(init?.headers).get("Authorization");
+    }
+
+    it("attaches Authorization: Bearer <token> to every call when a token is given", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      const session = await createSession(baseUrl, "PO-48213-A", "the-token");
+      if (!session.ok) throw new Error("setup: createSession failed");
+      const frame = new Blob([FAKE_JPEG_BYTES], { type: "image/jpeg" });
+      await uploadFrame(
+        baseUrl,
+        session.body.session_id,
+        frame,
+        { alpha: 1, beta: 2, gamma: 3 },
+        "the-token",
+      );
+      await getReconstruction(baseUrl, session.body.session_id, "the-token");
+      await finishSession(baseUrl, session.body.session_id, "the-token");
+
+      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      for (const call of fetchSpy.mock.calls) {
+        expect(authorizationHeaderOf(call[1])).toBe("Bearer the-token");
+      }
+    });
+
+    it("sends no Authorization header when no token is given", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      const session = await createSession(baseUrl, "PO-48213-A");
+      if (!session.ok) throw new Error("setup: createSession failed");
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(authorizationHeaderOf(fetchSpy.mock.calls[0]?.[1])).toBeNull();
+    });
   });
 });
