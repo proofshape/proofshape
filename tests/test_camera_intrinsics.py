@@ -199,9 +199,165 @@ def test_falls_back_to_rescaled_vggt_intrinsics_when_views_insufficient(
     assert "at least 3 usable board views" in (result.fallback_reason)
     assert result.intrinsic[0, 0] == pytest.approx(800.0)
     assert result.intrinsic[1, 1] == pytest.approx(820.0)
-    assert result.intrinsic[0, 2] == pytest.approx(520.0)
-    assert result.intrinsic[1, 2] == pytest.approx(392.0)
+    # R-28: 520.5/392.5, not 520.0/392.0 -- rescale_vggt_intrinsic now matches
+    # lift_board_corner_observations's own half-pixel-correct convention
+    # ((px + 0.5) * scale - 0.5), which shifts the principal point by half a pixel versus the
+    # old direct-ratio formula. Focal length is unaffected by that shift.
+    assert result.intrinsic[0, 2] == pytest.approx(520.5)
+    assert result.intrinsic[1, 2] == pytest.approx(392.5)
     assert session.image_size_hw == (900, 1200)
+
+
+# --- R-28: rescale_vggt_intrinsic's own crop-aware contract (#182) -----------------------------
+
+
+def test_rescale_vggt_intrinsic_identity_is_a_noop():
+    k = np.array([[500.0, 0.0, 260.0], [0.0, 510.0, 190.0], [0.0, 0.0, 1.0]])
+    rescaled = camera_intrinsics.rescale_vggt_intrinsic(k, 1.0, 1.0)
+    np.testing.assert_allclose(rescaled, k)
+
+
+def test_rescale_vggt_intrinsic_rejects_non_positive_scale():
+    k = np.eye(3)
+    with pytest.raises(ValueError, match="scale_x and scale_y"):
+        camera_intrinsics.rescale_vggt_intrinsic(k, 0.0, 1.0)
+    with pytest.raises(ValueError, match="scale_x and scale_y"):
+        camera_intrinsics.rescale_vggt_intrinsic(k, 1.0, -1.0)
+
+
+def test_rescale_vggt_intrinsic_recovers_a_square_pixel_camera_through_a_real_portrait_crop(
+    tmp_path,
+):
+    # #182: a 1080x1920 portrait frame is resized (width to 518) then centre-cropped (height to
+    # at most 518) by VGGT's own preprocessing -- describe_vggt_crop_preprocess, already on
+    # main (R-23), records exactly that geometry. A plain full/processed ratio (the old,
+    # buggy rescale_vggt_intrinsic) ignores the crop and returns fy about 1.78x too large.
+    from PIL import Image
+
+    from recon.vggt_runner import describe_vggt_crop_preprocess
+
+    frame_path = tmp_path / "portrait.jpg"
+    Image.new("RGB", (1080, 1920)).save(frame_path)
+    [geometry] = describe_vggt_crop_preprocess([frame_path])
+    assert geometry["crop_top_px"] > 0  # sanity: this frame really does get cropped
+
+    # A known square-pixel full-resolution camera, centred in the frame.
+    full_fx = full_fy = 1500.0
+    full_cx, full_cy = 540.0, 960.0
+
+    # The forward map VGGT's own preprocessing induces on a projected pixel (same pixel-centre
+    # convention as recon.metric_alignment.lift_board_corner_observations's own forward formula),
+    # applied to the principal point; focal length scales by the same per-axis factor.
+    scale_x, scale_y = geometry["scale_x"], geometry["scale_y"]
+    crop_left, crop_top = geometry["crop_left_px"], geometry["crop_top_px"]
+    processed_k = np.array(
+        [
+            [full_fx * scale_x, 0.0, (full_cx + 0.5) * scale_x - 0.5 - crop_left],
+            [0.0, full_fy * scale_y, (full_cy + 0.5) * scale_y - 0.5 - crop_top],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+
+    rescaled = camera_intrinsics.rescale_vggt_intrinsic(
+        processed_k, scale_x, scale_y, crop_left, crop_top
+    )
+
+    assert rescaled[0, 0] == pytest.approx(rescaled[1, 1])  # square pixels recovered
+    assert rescaled[0, 0] == pytest.approx(full_fx)
+    assert rescaled[1, 1] == pytest.approx(full_fy)
+    assert rescaled[0, 2] == pytest.approx(full_cx)
+    assert rescaled[1, 2] == pytest.approx(
+        full_cy
+    )  # principal point lands where the crop puts it
+
+
+def test_resolve_vggt_frame_scale_prefers_the_frames_own_recorded_geometry():
+    geometry = [
+        {
+            "frame_name": "frame_00.jpg",
+            "original_size_hw": [1920, 1080],
+            "processed_size_hw": [518, 518],
+            "scale_x": 0.48,
+            "scale_y": 0.50,
+            "crop_left_px": 0,
+            "crop_top_px": 203,
+        }
+    ]
+    scale_x, scale_y, crop_left, crop_top = camera_intrinsics.resolve_vggt_frame_scale(
+        "frame_00.jpg", geometry, (518, 518), (1920, 1080)
+    )
+    assert (scale_x, scale_y, crop_left, crop_top) == (0.48, 0.50, 0.0, 203.0)
+
+
+def test_resolve_vggt_frame_scale_refuses_a_recorded_frame_for_a_different_image_size():
+    # Review of #223: a description recorded for one frame size must not be silently applied
+    # when the caller's actual full/processed size differs -- the same guard
+    # recon.metric_alignment.lift_board_corner_observations already has, copied here.
+    geometry = [
+        {
+            "frame_name": "frame_00.jpg",
+            "original_size_hw": [1920, 1080],
+            "processed_size_hw": [518, 518],
+            "scale_x": 0.48,
+            "scale_y": 0.50,
+            "crop_left_px": 0,
+            "crop_top_px": 203,
+        }
+    ]
+    with pytest.raises(camera_intrinsics.CalibrationFailure, match="frame_00.jpg"):
+        camera_intrinsics.resolve_vggt_frame_scale(
+            "frame_00.jpg", geometry, (518, 518), (3840, 2160)
+        )
+
+
+def test_resolve_vggt_frame_scale_refuses_an_unsupported_recorded_frame():
+    geometry = [
+        {
+            "frame_name": "frame_00.jpg",
+            "supported_for_metric_alignment": False,
+            "unsupported_reason": "mixed-shape batch padding",
+        }
+    ]
+    with pytest.raises(camera_intrinsics.CalibrationFailure, match="frame_00.jpg"):
+        camera_intrinsics.resolve_vggt_frame_scale(
+            "frame_00.jpg", geometry, (518, 518), (1920, 1080)
+        )
+
+
+def test_resolve_vggt_frame_scale_falls_back_to_plain_resize_for_landscape_without_geometry():
+    scale_x, scale_y, crop_left, crop_top = camera_intrinsics.resolve_vggt_frame_scale(
+        "frame_00.jpg", None, (450, 600), (900, 1200)
+    )
+    assert (scale_x, scale_y, crop_left, crop_top) == (0.5, 0.5, 0.0, 0.0)
+
+
+def test_resolve_vggt_frame_scale_refuses_a_portrait_frame_with_no_recorded_geometry():
+    # #182/AC: without preprocess_geometry, a portrait run is refused rather than guessed, the
+    # same backward-compat boundary recon.metric_alignment.lift_board_corner_observations
+    # already draws.
+    with pytest.raises(camera_intrinsics.CalibrationFailure, match="frame_00.jpg"):
+        camera_intrinsics.resolve_vggt_frame_scale(
+            "frame_00.jpg", None, (518, 518), (1920, 1080)
+        )
+
+
+def test_load_vggt_fallback_refuses_an_ambiguous_run_with_no_recorded_geometry(
+    tmp_path,
+):
+    board_dir, _ = _synthetic_board_session(tmp_path, view_count=1)
+    model_dir = tmp_path / "recon_runs" / "s-test"
+    model_k = np.array(
+        [[400.0, 0.0, 260.0], [0.0, 410.0, 196.0], [0.0, 0.0, 1.0]], dtype=np.float64
+    )
+    # The board session (_synthetic_board_session) is landscape, (900, 1200), but this run's
+    # processed_image_size_hw is portrait-shaped, (1200, 900) -- not a "clearly uncropped
+    # landscape" run by resolve_vggt_frame_scale's own check -- and it carries no
+    # preprocess_geometry, so the real load_vggt_fallback path must refuse it rather than guess,
+    # naming the frame.
+    _write_vggt_run(model_dir, ["frame_00.jpg"], model_k, processed_size_hw=(1200, 900))
+
+    with pytest.raises(camera_intrinsics.CalibrationFailure, match="frame_00.jpg"):
+        camera_intrinsics.estimate_session_intrinsics(board_dir, model_dir)
 
 
 def test_missing_vggt_outputs_make_failed_calibration_loud(

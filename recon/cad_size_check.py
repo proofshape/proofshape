@@ -43,7 +43,11 @@ import cv2
 import numpy as np
 
 from recon.board_pose import MIN_CORNERS_FOR_POSE
-from recon.camera_intrinsics import CalibrationFailure, rescale_vggt_intrinsic
+from recon.camera_intrinsics import (
+    CalibrationFailure,
+    rescale_vggt_intrinsic,
+    resolve_vggt_frame_scale,
+)
 from recon.metric_alignment import (
     align_camera_centres,
     apply_similarity_transform,
@@ -773,10 +777,18 @@ def _measure_board_scale_after_transform(
         if board_frame_index is None or not bundle.board_pose_found[board_frame_index]:
             continue
         full_height, full_width = bundle.board_image_size_hw[board_frame_index]
-        rescaled = rescale_vggt_intrinsic(
-            bundle.poses_intrinsic[frame_index],
+        scale_x, scale_y, crop_left_px, crop_top_px = resolve_vggt_frame_scale(
+            frame_name,
+            bundle.preprocess_geometry,
             bundle.processed_size_hw,
             (int(full_height), int(full_width)),
+        )
+        rescaled = rescale_vggt_intrinsic(
+            bundle.poses_intrinsic[frame_index],
+            scale_x,
+            scale_y,
+            crop_left_px,
+            crop_top_px,
         )
         vggt_focals.extend([rescaled[0, 0], rescaled[1, 1]])
         board_focals.extend(
