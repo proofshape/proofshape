@@ -396,7 +396,7 @@ reference sheet was used**, which regions were observed, and any limits declared
 | `too_few_frames` | Not enough accepted frames to reconstruct. The real service needs at least 3. | Keep going around the part. |
 | `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
-| `vlm_veto` | **Today this means a malformed upload, not a semantic check** — the VLM is not built (A-01, A-02). The contract has no dedicated code for a malformed request yet, and adding one goes through the contract-change process (D-031). Once the VLM exists, this will mean the semantic check rejected the session: wrong part, hands in shot, a photo of a screen. | Reshoot; if it repeats, tell the team, since it points at an app bug. |
+| `vlm_veto` | **Today this means a malformed upload, not a semantic check** — A-01 records asynchronous observations, but A-02's veto policy is not built. The contract has no dedicated code for a malformed request yet, and adding one goes through the contract-change process (D-031). Once the VLM exists, this will mean the semantic check rejected the session: wrong part, hands in shot, a photo of a screen. | Reshoot; if it repeats, tell the team, since it points at an app bug. |
 
 **From the reconstruction, after you finish (works now):**
 
@@ -479,3 +479,20 @@ that will produce it.
 nothing here updated since 2026-09-25, while most of the capture app and the reconstruction
 engine had landed. C-13's lines were flipped from In review to Works now in the pull request that
 merged it (#146).*
+
+
+## VLM capture observations (A-01)
+
+With GEMINI_API_KEY configured on the server, sampled accepted photographs are sent to
+Google's Gemini Developer API (`gemini-3.5-flash-lite`), including the first photograph
+as the reference for later samples. The operator must confirm the API tier and account
+before enabling it; see D-055 and recon/README.md. The key never reaches the phone app.
+The free tier is acceptable only for team-owned, non-confidential test parts: under
+[Google's API terms](https://ai.google.dev/gemini-api/terms), unpaid inputs/outputs may be
+used for product improvement and human review. Real supplier photographs require the paid
+tier, whose prompts/images/responses Google does not use for product improvement.
+Without a key, or on errors/timeouts, evidence explicitly says `unchecked` with its reason.
+These checks describe the same part, hands blocking it, screen photographs, lighting and
+a coaching hint. They do not decide Pass/Fail, alter geometry or reject the upload.
+Hints are not displayed in capture yet (A-11). An incorrect part in the first reference
+frame can still look consistent in later frames; CAD registration must catch that case.

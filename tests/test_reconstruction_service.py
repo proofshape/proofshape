@@ -64,6 +64,69 @@ def _validate_contract_response(operation_id: str, status: str, body: dict) -> N
     raise AssertionError(f"No contract response found for {operation_id} {status}")
 
 
+def test_vlm_never_blocks_upload_and_timeout_evidence_survives_session_save(tmp_path):
+    import threading
+    import time
+
+    from recon.vlm_check import VlmSupervisor
+
+    entered, release = threading.Event(), threading.Event()
+
+    def blocked(frame, reference):
+        entered.set()
+        assert release.wait(5)
+        raise TimeoutError("private-api-key")
+
+    supervisor = VlmSupervisor(inspector=blocked, join_timeout_s=0.02)
+    app = service.create_app(
+        tmp_path, pipeline_runner=_fake_pipeline, vlm_supervisor=supervisor
+    )
+    try:
+        with TestClient(app) as client:
+            session_id = client.post(
+                "/v1/sessions", json={"order_code": "PO-1"}
+            ).json()["session_id"]
+            started = time.monotonic()
+            _upload_three_frames(client, session_id)
+            assert time.monotonic() - started < 1
+            assert entered.wait(
+                1
+            )  # API is still blocked after every upload returned 202.
+            assert client.post(f"/v1/sessions/{session_id}/finish").status_code == 202
+            session_dir = tmp_path / session_id
+            report = json.loads((session_dir / "vlm_checks.json").read_text())
+            assert report["sampled_indices"] == [0, 2]
+            assert all(c["reason"] == "join_timeout" for c in report["checks"])
+            record = app.state.store.load(session_id)
+            assert record["reconstruction"]["status"] == "complete"
+            assert "vlm" not in record and "vlm_checks" not in record
+            assert "private-api-key" not in json.dumps(report)
+    finally:
+        release.set()
+        supervisor.close()
+
+
+def test_vlm_join_is_written_even_if_reconstruction_fails_without_key(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    def broken(*args):
+        raise RuntimeError("pipeline failed")
+
+    app = service.create_app(tmp_path, pipeline_runner=broken)
+    with TestClient(app) as client:
+        sid = client.post("/v1/sessions", json={"order_code": "PO-1"}).json()[
+            "session_id"
+        ]
+        _upload_three_frames(client, sid)
+        client.post(f"/v1/sessions/{sid}/finish")
+        report = json.loads((tmp_path / sid / "vlm_checks.json").read_text())
+        assert report["sampled_indices"] == [0, 2]
+        assert all(c["reason"] == "missing_api_key" for c in report["checks"])
+        assert app.state.store.load(sid)["reconstruction"]["status"] == "failed"
+
+
 def test_session_frames_finish_and_reconstruction_match_contract(tmp_path):
     app = service.create_app(
         tmp_path,
