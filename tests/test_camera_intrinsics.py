@@ -275,6 +275,8 @@ def test_resolve_vggt_frame_scale_prefers_the_frames_own_recorded_geometry():
     geometry = [
         {
             "frame_name": "frame_00.jpg",
+            "original_size_hw": [1920, 1080],
+            "processed_size_hw": [518, 518],
             "scale_x": 0.48,
             "scale_y": 0.50,
             "crop_left_px": 0,
@@ -285,6 +287,27 @@ def test_resolve_vggt_frame_scale_prefers_the_frames_own_recorded_geometry():
         "frame_00.jpg", geometry, (518, 518), (1920, 1080)
     )
     assert (scale_x, scale_y, crop_left, crop_top) == (0.48, 0.50, 0.0, 203.0)
+
+
+def test_resolve_vggt_frame_scale_refuses_a_recorded_frame_for_a_different_image_size():
+    # Review of #223: a description recorded for one frame size must not be silently applied
+    # when the caller's actual full/processed size differs -- the same guard
+    # recon.metric_alignment.lift_board_corner_observations already has, copied here.
+    geometry = [
+        {
+            "frame_name": "frame_00.jpg",
+            "original_size_hw": [1920, 1080],
+            "processed_size_hw": [518, 518],
+            "scale_x": 0.48,
+            "scale_y": 0.50,
+            "crop_left_px": 0,
+            "crop_top_px": 203,
+        }
+    ]
+    with pytest.raises(camera_intrinsics.CalibrationFailure, match="frame_00.jpg"):
+        camera_intrinsics.resolve_vggt_frame_scale(
+            "frame_00.jpg", geometry, (518, 518), (3840, 2160)
+        )
 
 
 def test_resolve_vggt_frame_scale_refuses_an_unsupported_recorded_frame():

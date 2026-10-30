@@ -305,11 +305,15 @@ def resolve_vggt_frame_scale(
 ) -> tuple[float, float, float, float]:
     """Per-frame (scale_x, scale_y, crop_left_px, crop_top_px) for `rescale_vggt_intrinsic`.
 
-    Prefers the frame's own recorded `preprocess_geometry` entry (R-23). Without one -- a
-    pre-R-23 run -- falls back to a plain resize ratio, but only for a frame that is clearly
-    uncropped landscape, the same condition
-    `recon.metric_alignment.lift_board_corner_observations` already requires for its own
-    backward-compat path (R-28). Anything else is refused by name, not guessed.
+    Prefers the frame's own recorded `preprocess_geometry` entry (R-23), but only once its
+    `original_size_hw`/`processed_size_hw` are confirmed to match what the caller actually has
+    (`full_size_hw`/`processed_size_hw`) -- the same two checks
+    `recon.metric_alignment.lift_board_corner_observations` already makes before trusting a
+    recorded entry, copied here rather than silently applying a record for a different frame
+    size (review, PR #223). Without a usable entry -- a pre-R-23 run -- falls back to a plain
+    resize ratio, but only for a frame that is clearly uncropped landscape, the same condition
+    `lift_board_corner_observations` already requires for its own backward-compat path (R-28).
+    Anything else is refused by name, not guessed.
     """
     full_height, full_width = full_size_hw
     processed_height, processed_width = processed_size_hw
@@ -327,6 +331,23 @@ def resolve_vggt_frame_scale(
                 f"{frame_name}: recorded reconstruction preprocessing is not supported for "
                 "metric alignment: "
                 f"{description.get('unsupported_reason', 'unknown reason')}"
+            )
+        recorded_original = tuple(
+            int(value) for value in description["original_size_hw"]
+        )
+        if recorded_original != (int(full_height), int(full_width)):
+            raise CalibrationFailure(
+                f"{frame_name}: image size {int(full_height)}x{int(full_width)} does not "
+                f"match reconstruction preprocessing metadata {recorded_original}."
+            )
+        recorded_processed = tuple(
+            int(value) for value in description["processed_size_hw"]
+        )
+        if recorded_processed != (int(processed_height), int(processed_width)):
+            raise CalibrationFailure(
+                f"{frame_name}: preprocessing metadata says processed size "
+                f"{recorded_processed}, but the caller uses "
+                f"{(int(processed_height), int(processed_width))}."
             )
         return (
             float(description["scale_x"]),
