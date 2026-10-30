@@ -1606,3 +1606,25 @@ controls and actual token usage; exact observations are in the story.
 the owner's measured 4 h actual against 7 h estimated.
 **Next:** normal main-only production smoke testing when Lightning is available. No live
 Lightning deployment or production verification is claimed by these results.
+
+## 2026-10-30 — I-12 synthetic-generator tests that pin noise, seed and the board frame (PR #220)
+
+**Who:** @dalwalyk. Claimed in #218 (merged separately per D-037).
+**What changed:** closed #199 — P-27's review found I-01's generator tests still passed under
+six real mutations. Six new tests in `tests/test_synthetic.py`, each mapped to one: noise
+magnitude and direction (decomposed along-normal vs tangential, not just a zero/6σ bound);
+seed and yaw, which needed two tests rather than one — the first drove `board_frame_transform`
+directly and missed that `generate_synthetic_sample` itself could ignore its own `seed`
+argument, caught only by deliberately applying that exact mutation during the mutation-testing
+pass; output z bounds against a known fixture height; the sidecar's `sigma_mm` against an
+explicit non-default value. Also adds `_validate_base_at_zero`, raising on a CAD whose minimum z
+isn't 0, matching this module's existing strict-validation style (confirmed with the team over
+the AC's other option, recording it instead).
+**Result:** all seven checks (the six from #199 plus the new validation) mutation-tested by hand;
+each mutation fails exactly its own test, nothing else. Full suite 639 passed (was 633), ruff and
+`ruff format --check` clean, `check_story_states.py` consistent.
+**Process note:** PR #220 merged with the story still `In review` and the completion record's PR
+number still `#nn` — the Done-state commit should have landed inside the PR before the approval
+it merged on (D-038) but wasn't pushed in time. Corrected after the fact in its own small PR
+rather than silently.
+**Next:** nothing outstanding for I-12.
