@@ -62,8 +62,10 @@ LABEL_UNOBSERVED = "Unobserved"
 def vertex_normals(vertices_mm: np.ndarray, faces: np.ndarray) -> np.ndarray:
     """Area-weighted unit vertex normals. Degenerate/unreferenced vertices keep a zero normal.
 
-    This is the same cross-product accumulation used by recon.next_view. The sign follows mesh
-    winding; R-25 intentionally uses that sign for the camera-facing test rather than abs(dot).
+    This is the same cross-product accumulation used by recon.next_view. It is kept local here
+    so provenance does not import next_view's module-level Open3D dependency into the service
+    path. The sign follows mesh winding; R-25 intentionally uses that sign for the camera-facing
+    test rather than abs(dot).
     """
     vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
     faces = np.asarray(faces, dtype=np.int64)
@@ -183,14 +185,21 @@ def oriented_vertex_normals(
     vertices_mm: np.ndarray,
     faces: np.ndarray,
     camera_centers_mm: np.ndarray,
+    *,
+    visible_vertex_index: np.ndarray | None = None,
+    visible_frame_index: np.ndarray | None = None,
 ) -> np.ndarray:
     """Normals with a defensible sign for R-25's camera-facing test.
 
     1. Propagate face winding so adjacent manifold triangles agree.
     2. For a closed mesh, use signed volume to choose the outward global sign.
-    3. For an open mesh, choose between the two global signs using the aggregate camera-facing
-       evidence. If that vote is numerically ambiguous, return zero normals so provenance stays
-       conservative: those vertices cannot become Observed from a guessed sign.
+    3. For an open mesh, choose between the two global signs only from vertex/frame pairs that
+       already passed the in-bounds, trusted-pixel and depth-consistency gates *without* using
+       facing. Those are actual surface observations, so their outward normal must point toward
+       the observing camera. Voting over every vertex/camera pair is invalid: hidden back faces
+       can dominate the sum and make the sign depend on part size or camera height.
+       If there is no usable visible-pair evidence, return zero normals so provenance remains
+       conservative: no vertex can become Observed from a guessed sign.
     """
     vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
     camera_centers_mm = np.asarray(camera_centers_mm, dtype=np.float64)
@@ -209,10 +218,32 @@ def oriented_vertex_normals(
             return np.zeros_like(normals)
         return -normals if signed_volume < 0.0 else normals
 
-    if not len(camera_centers_mm):
+    if visible_vertex_index is None or visible_frame_index is None:
         return np.zeros_like(normals)
-    to_camera = camera_centers_mm[:, None, :] - vertices_mm[None, :, :]
-    signed_terms = np.einsum("vij,ij->vi", to_camera[:, valid, :], normals[valid])
+    visible_vertex_index = np.asarray(visible_vertex_index, dtype=np.int64)
+    visible_frame_index = np.asarray(visible_frame_index, dtype=np.int64)
+    if visible_vertex_index.ndim != 1 or visible_frame_index.ndim != 1:
+        raise ValueError("visible vertex/frame indices must be one-dimensional")
+    if visible_vertex_index.shape != visible_frame_index.shape:
+        raise ValueError("visible vertex/frame indices must have matching shapes")
+    if len(visible_vertex_index) == 0:
+        return np.zeros_like(normals)
+    if (
+        np.any(visible_vertex_index < 0)
+        or np.any(visible_vertex_index >= len(vertices_mm))
+        or np.any(visible_frame_index < 0)
+        or np.any(visible_frame_index >= len(camera_centers_mm))
+    ):
+        raise ValueError("visible vertex/frame indices are out of range")
+
+    pair_normals = normals[visible_vertex_index]
+    pair_valid = np.linalg.norm(pair_normals, axis=1) > 0.0
+    if not np.any(pair_valid):
+        return np.zeros_like(normals)
+    pair_vertices = visible_vertex_index[pair_valid]
+    pair_frames = visible_frame_index[pair_valid]
+    to_camera = camera_centers_mm[pair_frames] - vertices_mm[pair_vertices]
+    signed_terms = np.einsum("ij,ij->i", normals[pair_vertices], to_camera)
     score = float(np.sum(signed_terms))
     score_scale = float(np.sum(np.abs(signed_terms)))
     if score_scale <= 0.0 or abs(score) <= 1e-9 * score_scale:
@@ -641,7 +672,32 @@ def provenance_run(
     depth_mm = scale * depth
     camera_centers_mm = camera_centres(board_extrinsic)
 
-    normals_mm = oriented_vertex_normals(vertices_mm, faces, camera_centers_mm)
+    # Closed meshes have a volume-defined outward direction. Open meshes need evidence for the
+    # global sign: first project without a facing gate and keep only trusted, depth-consistent
+    # pairs. This is deliberately the same depth tolerance as the final observation pass; hidden
+    # back faces must not get a vote merely because a camera exists on their side of the object.
+    orientation_evidence = None
+    oriented_faces = orient_faces_consistently(faces)
+    if not _mesh_is_watertight(oriented_faces):
+        orientation_evidence = compute_observations(
+            vertices_mm,
+            board_extrinsic,
+            intrinsic,
+            depth_mm,
+            depth_consistency_tolerance_mm,
+            trusted_pixel_mask=trusted_pixel_mask,
+        )
+    normals_mm = oriented_vertex_normals(
+        vertices_mm,
+        faces,
+        camera_centers_mm,
+        visible_vertex_index=(
+            orientation_evidence["vertex_index"] if orientation_evidence is not None else None
+        ),
+        visible_frame_index=(
+            orientation_evidence["frame_index"] if orientation_evidence is not None else None
+        ),
+    )
     observations = compute_observations(
         vertices_mm,
         board_extrinsic,

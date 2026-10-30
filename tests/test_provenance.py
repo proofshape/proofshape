@@ -788,12 +788,143 @@ def test_orient_faces_consistently_fixes_one_reversed_neighbour():
     assert sorted(shared_edge_directions) == [(0, 2), (2, 0)]
 
 
+def _open_bottom_box(width_mm=80.0, depth_mm=80.0, height_mm=120.0):
+    half_w = width_mm / 2.0
+    half_d = depth_mm / 2.0
+    vertices = np.array(
+        [
+            [-half_w, -half_d, 0.0],
+            [half_w, -half_d, 0.0],
+            [half_w, half_d, 0.0],
+            [-half_w, half_d, 0.0],
+            [-half_w, -half_d, height_mm],
+            [half_w, -half_d, height_mm],
+            [half_w, half_d, height_mm],
+            [-half_w, half_d, height_mm],
+        ]
+    )
+    # Outward side/top winding; the bottom is intentionally open, like a cleaned TSDF part where
+    # it meets the board.
+    faces = np.array(
+        [
+            [0, 1, 5],
+            [0, 5, 4],
+            [1, 2, 6],
+            [1, 6, 5],
+            [2, 3, 7],
+            [2, 7, 6],
+            [3, 0, 4],
+            [3, 4, 7],
+            [4, 5, 6],
+            [4, 6, 7],
+        ]
+    )
+    return vertices, faces
+
+
+def _c07_like_camera_orbit(radius_mm=250.0):
+    cameras = []
+    for azimuth in np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False):
+        elevation = np.deg2rad(45.0)
+        cameras.append(
+            [
+                radius_mm * np.cos(elevation) * np.cos(azimuth),
+                radius_mm * np.cos(elevation) * np.sin(azimuth),
+                radius_mm * np.sin(elevation),
+            ]
+        )
+    for azimuth in np.linspace(0.0, 2.0 * np.pi, 4, endpoint=False):
+        elevation = np.deg2rad(70.0)
+        cameras.append(
+            [
+                radius_mm * np.cos(elevation) * np.cos(azimuth),
+                radius_mm * np.cos(elevation) * np.sin(azimuth),
+                radius_mm * np.sin(elevation),
+            ]
+        )
+    cameras.append([0.0, 0.0, radius_mm])
+    return np.asarray(cameras)
+
+
+def _visible_pairs_for_expected_outward_normals(vertices, faces, cameras):
+    expected = provenance.vertex_normals(vertices, faces)
+    dots = np.einsum(
+        "vij,ij->vi",
+        cameras[:, None, :] - vertices[None, :, :],
+        expected,
+    )
+    frame_index, vertex_index = np.nonzero(dots > 0.0)
+    return vertex_index, frame_index, expected
+
+
+def test_open_mesh_sign_uses_visible_pairs_not_all_camera_vertex_pairs():
+    vertices, faces = _open_bottom_box()
+    cameras = _c07_like_camera_orbit()
+    vertex_index, frame_index, expected = _visible_pairs_for_expected_outward_normals(
+        vertices, faces, cameras
+    )
+
+    # Regression for the review finding: the old all-camera/all-vertex vote is negative for this
+    # 80 x 80 x 120 mm open part and therefore flips a correctly wound mesh inward.
+    all_pair_score = float(
+        np.sum(
+            np.einsum(
+                "vij,ij->vi",
+                cameras[:, None, :] - vertices[None, :, :],
+                expected,
+            )
+        )
+    )
+    assert all_pair_score < 0.0
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=vertex_index,
+        visible_frame_index=frame_index,
+    )
+
+    np.testing.assert_allclose(normals, expected)
+    visible_dots = np.einsum(
+        "ij,ij->i",
+        normals[vertex_index],
+        cameras[frame_index] - vertices[vertex_index],
+    )
+    assert np.all(visible_dots > 0.0)
+
+
+def test_open_mesh_visible_pairs_flip_globally_reversed_winding():
+    vertices, outward_faces = _open_bottom_box()
+    cameras = _c07_like_camera_orbit()
+    vertex_index, frame_index, expected = _visible_pairs_for_expected_outward_normals(
+        vertices, outward_faces, cameras
+    )
+    reversed_faces = outward_faces[:, [0, 2, 1]]
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        reversed_faces,
+        cameras,
+        visible_vertex_index=vertex_index,
+        visible_frame_index=frame_index,
+    )
+
+    np.testing.assert_allclose(normals, expected)
+
+
 def test_oriented_vertex_normals_open_mesh_ambiguous_vote_stays_conservative():
     vertices = np.array([[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0]])
     faces = np.array([[0, 1, 2]])
     cameras = np.array([[0.0, 0.0, 10.0], [0.0, 0.0, -10.0]])
 
-    normals = provenance.oriented_vertex_normals(vertices, faces, cameras)
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=np.array([0, 0]),
+        visible_frame_index=np.array([0, 1]),
+    )
 
     np.testing.assert_array_equal(normals, np.zeros_like(normals))
 
