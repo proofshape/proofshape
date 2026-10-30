@@ -231,7 +231,7 @@ Full detail in each story file.
 | [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
 | [G-05](G/G-05.md) | Defect ladder at 2 / 4 / 8 mm | 4 h | G-01 | Blocked | _unclaimed_ |
-| [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Claimed | @TabeenRaoof |
+| [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Blocked | _unclaimed_ |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
