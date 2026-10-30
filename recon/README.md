@@ -25,8 +25,11 @@ set `PROOFSHAPE_RECON_DEVICE=mps` (D-010, D-049); C-13's phone check runs this w
 `capture/README.md`.
 
 `finishSession` hands the saved frames to the existing R-02 → selected reconstruction backend →
-R-04 → R-07 → R-08 chain in a FastAPI background task. The resulting GLB is served from the
-URL returned by `getReconstruction`. Order-code validation is injectable because buyer/order
+R-04 → R-07 → R-08 → R-09 → R-10 chain in a FastAPI background task. The resulting GLB is served from the
+URL returned by `getReconstruction`. R-25 makes R-09 require a signed camera-facing surface
+normal as well as trusted depth agreement, records how many otherwise-eligible observations the
+depth gate rejected, and makes `observed_fraction` an area-weighted share from R-10's final
+post-downgrade labels — the same labels encoded in the served GLB. Order-code validation is injectable because buyer/order
 storage does not exist yet; the default service accepts any non-empty code rather than inventing
 a buyer database.
 
@@ -398,3 +401,12 @@ pinned Lightning SDK 2026.10.1 source was inspected: both create and update decl
 `--env` with `multiple=True`. The live check must still confirm both GEMINI_API_KEY and
 PROOFSHAPE_PUBLIC_BASE_URL survive the second update, with logs containing neither key
 nor endpoint token. Never deploy this branch, and stop the billed GPU after the check.
+
+## R-25 · provenance occlusion and final coverage
+
+A vertex can only be Observed by a frame when its mesh normal faces that camera and its trusted
+pixel depth agrees within the configurable provenance tolerance (default 5 mm; an unmeasured
+assumption, not a calibrated accuracy claim). Residuals rejected by that depth gate are counted
+per vertex and carried into `uncertainty.json`; sigma still uses only accepted residuals, so the
+truncation is explicit rather than hidden. Final `observed_fraction` is weighted by triangle area
+after R-10's sigma downgrade and therefore describes the GLB the service actually returns.

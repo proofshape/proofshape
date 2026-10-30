@@ -398,7 +398,9 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
         seen["uncertainty_input"] = provenance_dir
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "mesh_uncertainty.glb").write_bytes(b"uncertainty")
-        return {}
+        # Different from provenance's 0.75: R-25 requires the service to report coverage from
+        # the post-downgrade labels in the GLB it actually serves.
+        return {"observed_fraction": 0.25}
 
     monkeypatch.setattr(provenance, "provenance_run", fake_provenance)
     monkeypatch.setattr(uncertainty, "uncertainty_run", fake_uncertainty)
@@ -410,7 +412,7 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
     assert result["glb_path"] == str(
         artifact_dir / "uncertainty" / "mesh_uncertainty.glb"
     )
-    assert result["observed_fraction"] == 0.75
+    assert result["observed_fraction"] == 0.25
     assert "provenance" in result["stage_timings_s"]
     assert "uncertainty" in result["stage_timings_s"]
 

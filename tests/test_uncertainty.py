@@ -258,3 +258,79 @@ def test_uncertainty_run_rejects_mesh_without_colors(tmp_path):
 
     with pytest.raises(ValueError, match="no vertex colors"):
         uncertainty.uncertainty_run(provenance_dir, tmp_path / "out")
+
+
+def test_uncertainty_run_reports_legacy_missing_depth_gate_counts_as_unknown(tmp_path):
+    provenance_dir = tmp_path / "provenance"
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        dtype=np.float32,
+    )
+    faces = np.array([[0, 1, 2]], dtype=np.int32)
+    labels = np.array([provenance.LABEL_OBSERVED] * 3)
+    observations = {
+        "vertex_index": np.array([0, 0, 1, 1, 2, 2]),
+        "frame_index": np.tile([0, 1], 3),
+        "z_cam_mm": np.full(6, 50.0),
+        "measured_depth_mm": np.array([50.0, 50.2, 50.0, 50.2, 50.0, 50.2]),
+    }
+    _write_synthetic_provenance_output(
+        provenance_dir, vertices, faces, labels, observations
+    )
+
+    report = uncertainty.uncertainty_run(provenance_dir, tmp_path / "uncertainty")
+
+    assert report["depth_gate_rejected_observation_count"] is None
+    assert report["vertices_with_depth_gate_rejections"] is None
+    assert report["max_depth_gate_rejections_per_vertex"] is None
+    assert "did not record" in report["sigma_note"]
+
+    sigma_data = uncertainty.read_sigma_npz(tmp_path / "uncertainty" / "sigma_mm.npz")
+    assert "depth_gate_rejected_count" not in sigma_data
+
+
+def test_uncertainty_run_reports_depth_gate_rejections_and_final_area_fraction(
+    tmp_path,
+):
+    provenance_dir = tmp_path / "provenance"
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [16.0, 0.0, 0.0],
+            [10.0, 3.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    faces = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int32)
+    labels = np.array([provenance.LABEL_OBSERVED] * 6)
+    # First small triangle stays Observed. One vertex of the large triangle has high sigma,
+    # so R-10 downgrades it and the whole large face becomes Unobserved.
+    observations = {
+        "vertex_index": np.array([0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]),
+        "frame_index": np.tile([0, 1], 6),
+        "z_cam_mm": np.full(12, 50.0),
+        "measured_depth_mm": np.array(
+            [50.0, 50.2, 50.0, 50.2, 50.0, 50.2, 50.0, 50.2, 50.0, 50.2, 40.0, 60.0]
+        ),
+        "depth_gate_rejected_count": np.array([0, 0, 0, 1, 0, 2]),
+    }
+    _write_synthetic_provenance_output(
+        provenance_dir, vertices, faces, labels, observations
+    )
+
+    report = uncertainty.uncertainty_run(
+        provenance_dir, tmp_path / "uncertainty", sigma_downgrade_threshold_mm=3.0
+    )
+
+    assert report["depth_gate_rejected_observation_count"] == 3
+    assert report["vertices_with_depth_gate_rejections"] == 2
+    assert report["max_depth_gate_rejections_per_vertex"] == 2
+    assert report["observed_fraction"] == pytest.approx(0.1)
+
+    sigma_data = uncertainty.read_sigma_npz(tmp_path / "uncertainty" / "sigma_mm.npz")
+    np.testing.assert_array_equal(
+        sigma_data["depth_gate_rejected_count"], [0, 0, 0, 1, 0, 2]
+    )

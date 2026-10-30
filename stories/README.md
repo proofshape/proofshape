@@ -355,7 +355,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [R-25](R/R-25.md) | Provenance occlusion: facing test, σ window, `observed_fraction` from final labels | 5 h | R-09, R-10, R-14 | Claimed | @mbj1994 |
+| [R-25](R/R-25.md) | Provenance occlusion: facing test, σ window, `observed_fraction` from final labels | 5 h | R-09, R-10, R-14 | Done | @mbj1994 |
 | [R-26](R/R-26.md) | Segmentation keeps flat parts; the height override bypasses the layer search | 3 h | R-21 | Ready | _unclaimed_ |
 | [R-27](R/R-27.md) | Mesh cleanup and the Poisson fallback: winding, components, size limit, oriented normals | 5 h | R-07, R-08 | Ready | _unclaimed_ |
 | [R-28](R/R-28.md) | Portrait-safe VGGT intrinsics rescale and correct board metadata | 2 h | R-02, R-03, R-22, R-23 | Claimed | @dalwalyk |

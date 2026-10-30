@@ -355,7 +355,7 @@ def _build_two_frame_scene():
     depth[1, 10, 6] = 50.0  # frame 1 sees vertex 0 at pixel (6,10)
     depth[0, 12, 12] = 30.0  # frame 0 sees vertex 1 at pixel (12,12)
     vertices = np.array(
-        [[0.0, 0.0, 50.0], [5.0, 5.0, 30.0], [1000.0, 1000.0, 1000.0]], dtype=np.float32
+        [[0.0, 0.0, 50.0], [5.0, 5.0, 30.0], [1000.0, 0.0, 50.0]], dtype=np.float32
     )
     faces = np.array([[0, 1, 2]], dtype=np.int32)
     return extrinsic, intrinsic, depth, vertices, faces
@@ -639,6 +639,27 @@ def test_main_passes_min_confidence_through_and_reports_its_source(tmp_path, cap
     )  # the override really reached provenance_run
 
 
+def test_main_passes_depth_consistency_tolerance_through(tmp_path):
+    mesh_ply_path, run_dir, alignment_json = _write_two_frame_scene_run(tmp_path)
+    out_dir = tmp_path / "out"
+
+    exit_code = provenance.main(
+        [
+            str(mesh_ply_path),
+            str(run_dir),
+            str(alignment_json),
+            "--out-dir",
+            str(out_dir),
+            "--depth-consistency-tolerance-mm",
+            "0.01",
+        ]
+    )
+
+    assert exit_code == 0
+    report = json.loads((out_dir / "provenance.json").read_text())
+    assert report["depth_consistency_tolerance_mm"] == pytest.approx(0.01)
+
+
 def test_main_reports_a_named_failure_when_run_json_predates_the_field(
     tmp_path, capsys
 ):
@@ -655,3 +676,287 @@ def test_main_reports_a_named_failure_when_run_json_predates_the_field(
     error_output = capsys.readouterr().err
     assert "R-09 PROVENANCE: FAIL" in error_output
     assert "min_confidence" in error_output
+
+
+# --- R-25: signed camera-facing gate and explicit depth-gate evidence -----------------------------
+
+
+def test_compute_observations_distinguishes_front_and_back_facing_vertices():
+    vertices = np.array([[0.0, 0.0, 50.0], [1.0, 0.0, 50.0]])
+    extrinsic = np.array(
+        [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]
+    )
+    intrinsic = np.array([[[10.0, 0.0, 5.0], [0.0, 10.0, 5.0], [0.0, 0.0, 1.0]]])
+    depth = np.full((1, 11, 11), 50.0)
+    trusted = np.ones_like(depth, dtype=bool)
+    # Camera is at the origin looking +z. The -z normal faces it; +z points away.
+    normals = np.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0]])
+
+    observations = provenance.compute_observations(
+        vertices,
+        extrinsic,
+        intrinsic,
+        depth,
+        trusted_pixel_mask=trusted,
+        vertex_normals_mm=normals,
+    )
+
+    np.testing.assert_array_equal(observations["vertex_index"], [0])
+    np.testing.assert_array_equal(observations["depth_gate_rejected_count"], [0, 0])
+
+
+def test_compute_observations_counts_depth_gate_rejection_per_vertex():
+    vertices = np.array([[0.0, 0.0, 53.0]])
+    extrinsic = np.array(
+        [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]]]
+    )
+    intrinsic = np.array([[[10.0, 0.0, 5.0], [0.0, 10.0, 5.0], [0.0, 0.0, 1.0]]])
+    depth = np.full((1, 11, 11), 50.0)
+    trusted = np.ones_like(depth, dtype=bool)
+    normals = np.array([[0.0, 0.0, -1.0]])
+
+    observations = provenance.compute_observations(
+        vertices,
+        extrinsic,
+        intrinsic,
+        depth,
+        tolerance_mm=2.0,
+        trusted_pixel_mask=trusted,
+        vertex_normals_mm=normals,
+    )
+
+    assert observations["vertex_index"].size == 0
+    np.testing.assert_array_equal(observations["depth_gate_rejected_count"], [1])
+
+
+def test_observed_surface_area_fraction_is_area_weighted():
+    # Separate triangles with areas 1 and 9 square mm.
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [16.0, 0.0, 0.0],
+            [10.0, 3.0, 0.0],
+        ]
+    )
+    faces = np.array([[0, 1, 2], [3, 4, 5]])
+    labels = np.array(
+        [provenance.LABEL_OBSERVED] * 3 + [provenance.LABEL_UNOBSERVED] * 3
+    )
+
+    fraction = provenance.observed_surface_area_fraction(vertices, faces, labels)
+
+    assert fraction == pytest.approx(0.1)
+
+
+def test_oriented_vertex_normals_recovers_reversed_closed_mesh_winding():
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    # Outward tetrahedron winding, then reverse every face to simulate an upstream global flip.
+    outward_faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+    reversed_faces = outward_faces[:, [0, 2, 1]]
+    cameras = np.array([[2.0, 2.0, 2.0]])
+
+    normals = provenance.oriented_vertex_normals(vertices, reversed_faces, cameras)
+
+    centre = vertices.mean(axis=0)
+    outward_vectors = vertices - centre
+    assert np.all(np.einsum("ij,ij->i", normals, outward_vectors) > 0.0)
+
+
+def test_orient_faces_consistently_fixes_one_reversed_neighbour():
+    faces = np.array([[0, 1, 2], [2, 3, 0]])
+    inconsistent = faces.copy()
+    inconsistent[1] = inconsistent[1][[0, 2, 1]]
+
+    oriented = provenance.orient_faces_consistently(inconsistent)
+
+    shared_edge_directions = []
+    for triangle in oriented:
+        for corner in range(3):
+            edge = (int(triangle[corner]), int(triangle[(corner + 1) % 3]))
+            if set(edge) == {0, 2}:
+                shared_edge_directions.append(edge)
+    assert sorted(shared_edge_directions) == [(0, 2), (2, 0)]
+
+
+def _open_bottom_box(width_mm=80.0, depth_mm=80.0, height_mm=120.0):
+    half_w = width_mm / 2.0
+    half_d = depth_mm / 2.0
+    vertices = np.array(
+        [
+            [-half_w, -half_d, 0.0],
+            [half_w, -half_d, 0.0],
+            [half_w, half_d, 0.0],
+            [-half_w, half_d, 0.0],
+            [-half_w, -half_d, height_mm],
+            [half_w, -half_d, height_mm],
+            [half_w, half_d, height_mm],
+            [-half_w, half_d, height_mm],
+        ]
+    )
+    # Outward side/top winding; the bottom is intentionally open, like a cleaned TSDF part where
+    # it meets the board.
+    faces = np.array(
+        [
+            [0, 1, 5],
+            [0, 5, 4],
+            [1, 2, 6],
+            [1, 6, 5],
+            [2, 3, 7],
+            [2, 7, 6],
+            [3, 0, 4],
+            [3, 4, 7],
+            [4, 5, 6],
+            [4, 6, 7],
+        ]
+    )
+    return vertices, faces
+
+
+def _c07_like_camera_orbit(radius_mm=250.0):
+    cameras = []
+    for azimuth in np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False):
+        elevation = np.deg2rad(45.0)
+        cameras.append(
+            [
+                radius_mm * np.cos(elevation) * np.cos(azimuth),
+                radius_mm * np.cos(elevation) * np.sin(azimuth),
+                radius_mm * np.sin(elevation),
+            ]
+        )
+    for azimuth in np.linspace(0.0, 2.0 * np.pi, 4, endpoint=False):
+        elevation = np.deg2rad(70.0)
+        cameras.append(
+            [
+                radius_mm * np.cos(elevation) * np.cos(azimuth),
+                radius_mm * np.cos(elevation) * np.sin(azimuth),
+                radius_mm * np.sin(elevation),
+            ]
+        )
+    cameras.append([0.0, 0.0, radius_mm])
+    return np.asarray(cameras)
+
+
+def _visible_pairs_for_expected_outward_normals(vertices, faces, cameras):
+    expected = provenance.vertex_normals(vertices, faces)
+    dots = np.einsum(
+        "vij,ij->vi",
+        cameras[:, None, :] - vertices[None, :, :],
+        expected,
+    )
+    frame_index, vertex_index = np.nonzero(dots > 0.0)
+    return vertex_index, frame_index, expected
+
+
+def test_open_mesh_sign_uses_visible_pairs_not_all_camera_vertex_pairs():
+    vertices, faces = _open_bottom_box()
+    cameras = _c07_like_camera_orbit()
+    vertex_index, frame_index, expected = _visible_pairs_for_expected_outward_normals(
+        vertices, faces, cameras
+    )
+
+    # Regression for the review finding: the old all-camera/all-vertex vote is negative for this
+    # 80 x 80 x 120 mm open part and therefore flips a correctly wound mesh inward.
+    all_pair_score = float(
+        np.sum(
+            np.einsum(
+                "vij,ij->vi",
+                cameras[:, None, :] - vertices[None, :, :],
+                expected,
+            )
+        )
+    )
+    assert all_pair_score < 0.0
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=vertex_index,
+        visible_frame_index=frame_index,
+    )
+
+    np.testing.assert_allclose(normals, expected)
+    visible_dots = np.einsum(
+        "ij,ij->i",
+        normals[vertex_index],
+        cameras[frame_index] - vertices[vertex_index],
+    )
+    assert np.all(visible_dots > 0.0)
+
+
+def test_open_mesh_visible_pairs_flip_globally_reversed_winding():
+    vertices, outward_faces = _open_bottom_box()
+    cameras = _c07_like_camera_orbit()
+    vertex_index, frame_index, expected = _visible_pairs_for_expected_outward_normals(
+        vertices, outward_faces, cameras
+    )
+    reversed_faces = outward_faces[:, [0, 2, 1]]
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        reversed_faces,
+        cameras,
+        visible_vertex_index=vertex_index,
+        visible_frame_index=frame_index,
+    )
+
+    np.testing.assert_allclose(normals, expected)
+
+
+def test_oriented_vertex_normals_open_mesh_ambiguous_vote_stays_conservative():
+    vertices = np.array([[-1.0, -1.0, 0.0], [1.0, -1.0, 0.0], [0.0, 1.0, 0.0]])
+    faces = np.array([[0, 1, 2]])
+    cameras = np.array([[0.0, 0.0, 10.0], [0.0, 0.0, -10.0]])
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=np.array([0, 0]),
+        visible_frame_index=np.array([0, 1]),
+    )
+
+    np.testing.assert_array_equal(normals, np.zeros_like(normals))
+
+
+def test_oriented_vertex_normals_on_upstream_marching_cubes_mesh():
+    grid_size = 9
+    coordinates = np.indices((grid_size, grid_size, grid_size), dtype=np.float64)
+    centre = np.array([(grid_size - 1) / 2.0] * 3)[:, None, None, None]
+    radius = 2.5
+    signed_distance = np.linalg.norm(coordinates - centre, axis=0) - radius
+    weight = np.ones_like(signed_distance)
+    vertices, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        signed_distance.ravel(),
+        weight.ravel(),
+        signed_distance.shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+    assert len(vertices) > 0
+    assert len(faces) > 0
+
+    # Simulate the global winding inversion that can be introduced by a mesh-producing backend.
+    reversed_faces = faces[:, [0, 2, 1]]
+    camera_centres = np.array([[4.0, 4.0, -20.0], [4.0, 4.0, 20.0]])
+
+    normals = provenance.oriented_vertex_normals(
+        vertices, reversed_faces, camera_centres
+    )
+
+    mesh_centre = vertices.mean(axis=0)
+    radial = vertices - mesh_centre
+    valid = np.linalg.norm(normals, axis=1) > 0.0
+    # Marching cubes produced a closed sphere-like surface; after orientation the normals should
+    # point away from its interior, independent of the global face sign we supplied.
+    assert np.mean(np.einsum("ij,ij->i", normals[valid], radial[valid]) > 0.0) > 0.95
