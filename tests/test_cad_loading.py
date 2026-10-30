@@ -74,6 +74,124 @@ def test_binary_stl_header_may_begin_with_solid(tmp_path):
     np.testing.assert_allclose(vertices[faces], triangles)
 
 
+def test_load_obj_triangle(tmp_path):
+    path = tmp_path / "mesh.obj"
+    path.write_text(
+        "v 0 0 0\nv 10 0 0\nv 0 10 0\nf 1 2 3\n",
+        encoding="ascii",
+    )
+
+    vertices, faces, units = load_mesh(path)
+
+    assert units == "mm"
+    assert vertices.shape == (3, 3)
+    assert faces.shape == (1, 3)
+    np.testing.assert_allclose(
+        vertices[faces[0]],
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+    )
+
+
+def test_obj_vertex_and_face_lines_may_be_tab_separated(tmp_path):
+    # @TabeenRaoof's review of PR #210: `line.partition(" ")` only split on a single space, so
+    # a tab after the tag merged into the keyword and silently dropped the line, shifting every
+    # later vertex. Reproduces their exact repro: a 10x20 rectangle with a tab after `v`.
+    path = tmp_path / "mesh.obj"
+    path.write_text(
+        "v\t0 0 0\nv\t10 0 0\nv\t10 20 0\nv\t0 20 0\nf\t1 2 3 4\n",
+        encoding="ascii",
+    )
+
+    vertices, faces, _units = load_mesh(path)
+
+    assert vertices.shape == (4, 3)
+    np.testing.assert_allclose(
+        vertices,
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 20.0, 0.0], [0.0, 20.0, 0.0]],
+    )
+    np.testing.assert_allclose(faces, [[0, 1, 2], [0, 2, 3]])
+
+
+def test_load_obj_quad_face_is_fan_triangulated(tmp_path):
+    path = tmp_path / "mesh.obj"
+    path.write_text(
+        "v 0 0 0\nv 10 0 0\nv 10 10 0\nv 0 10 0\nf 1 2 3 4\n",
+        encoding="ascii",
+    )
+
+    vertices, faces, _units = load_mesh(path)
+
+    assert vertices.shape == (4, 3)
+    assert faces.shape == (2, 3)
+    np.testing.assert_allclose(faces, [[0, 1, 2], [0, 2, 3]])
+
+
+def test_obj_vn_vt_and_comments_do_not_affect_geometry(tmp_path):
+    path = tmp_path / "mesh.obj"
+    path.write_text(
+        "# a reference comment\n"
+        "o specimen\n"
+        "mtllib unused.mtl\n"
+        "usemtl unused\n"
+        "v 0 0 0\n"
+        "vn 0 0 1\n"
+        "v 10 0 0\n"
+        "vt 1 0\n"
+        "v 0 10 0\n"
+        "g geometry\n"
+        "f 1 2 3\n",
+        encoding="ascii",
+    )
+
+    vertices, faces, units = load_mesh(path)
+
+    assert units == "mm"
+    assert vertices.shape == (3, 3)
+    assert faces.shape == (1, 3)
+    np.testing.assert_allclose(
+        vertices[faces[0]],
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+    )
+
+
+def test_obj_face_uses_only_the_vertex_index(tmp_path):
+    path = tmp_path / "mesh.obj"
+    path.write_text(
+        "v 0 0 0\nv 10 0 0\nv 0 10 0\nvt 0 0\nvn 0 0 1\nf 1/1/1 2/1/1 3/1/1\n",
+        encoding="ascii",
+    )
+
+    vertices, faces, _units = load_mesh(path)
+
+    assert vertices.shape == (3, 3)
+    np.testing.assert_allclose(
+        vertices[faces[0]],
+        [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]],
+    )
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "",
+        "# nothing but a comment\n",
+        "v 0 0 0\nv 1 0 0\nv 0 1 0\n",  # vertices with no face
+    ],
+)
+def test_malformed_or_empty_obj_is_rejected(tmp_path, contents):
+    path = tmp_path / "mesh.obj"
+    path.write_text(contents, encoding="ascii")
+
+    with pytest.raises(ValueError) as exc_info:
+        load_mesh(path)
+
+    message = str(exc_info.value)
+    assert "ASCII STL" in message
+    assert "binary STL" in message
+    assert "OBJ" in message
+    assert "GLB" in message
+
+
 def test_write_glb_output_round_trips_coordinates_unchanged(tmp_path):
     vertices = np.array(
         [
@@ -238,8 +356,8 @@ def test_unreferenced_glb_mesh_is_rejected(tmp_path):
         load_mesh(path)
 
 
-@pytest.mark.parametrize("suffix", [".obj", ".ply", ".gltf", ""])
-def test_unsupported_formats_name_the_three_supported_inputs(tmp_path, suffix):
+@pytest.mark.parametrize("suffix", [".ply", ".gltf", ""])
+def test_unsupported_formats_name_the_four_supported_inputs(tmp_path, suffix):
     path = tmp_path / ("mesh" + suffix)
     path.write_bytes(b"not a supported mesh")
 
@@ -249,6 +367,7 @@ def test_unsupported_formats_name_the_three_supported_inputs(tmp_path, suffix):
     message = str(exc_info.value)
     assert "ASCII STL" in message
     assert "binary STL" in message
+    assert "OBJ" in message
     assert "GLB" in message
 
 
