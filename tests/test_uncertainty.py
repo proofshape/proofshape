@@ -260,6 +260,35 @@ def test_uncertainty_run_rejects_mesh_without_colors(tmp_path):
         uncertainty.uncertainty_run(provenance_dir, tmp_path / "out")
 
 
+def test_uncertainty_run_reports_legacy_missing_depth_gate_counts_as_unknown(tmp_path):
+    provenance_dir = tmp_path / "provenance"
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        dtype=np.float32,
+    )
+    faces = np.array([[0, 1, 2]], dtype=np.int32)
+    labels = np.array([provenance.LABEL_OBSERVED] * 3)
+    observations = {
+        "vertex_index": np.array([0, 0, 1, 1, 2, 2]),
+        "frame_index": np.tile([0, 1], 3),
+        "z_cam_mm": np.full(6, 50.0),
+        "measured_depth_mm": np.array([50.0, 50.2, 50.0, 50.2, 50.0, 50.2]),
+    }
+    _write_synthetic_provenance_output(
+        provenance_dir, vertices, faces, labels, observations
+    )
+
+    report = uncertainty.uncertainty_run(provenance_dir, tmp_path / "uncertainty")
+
+    assert report["depth_gate_rejected_observation_count"] is None
+    assert report["vertices_with_depth_gate_rejections"] is None
+    assert report["max_depth_gate_rejections_per_vertex"] is None
+    assert "did not record" in report["sigma_note"]
+
+    sigma_data = uncertainty.read_sigma_npz(tmp_path / "uncertainty" / "sigma_mm.npz")
+    assert "depth_gate_rejected_count" not in sigma_data
+
+
 def test_uncertainty_run_reports_depth_gate_rejections_and_final_area_fraction(
     tmp_path,
 ):
