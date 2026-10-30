@@ -692,10 +692,14 @@ def provenance_run(
         faces,
         camera_centers_mm,
         visible_vertex_index=(
-            orientation_evidence["vertex_index"] if orientation_evidence is not None else None
+            orientation_evidence["vertex_index"]
+            if orientation_evidence is not None
+            else None
         ),
         visible_frame_index=(
-            orientation_evidence["frame_index"] if orientation_evidence is not None else None
+            orientation_evidence["frame_index"]
+            if orientation_evidence is not None
+            else None
         ),
     )
     observations = compute_observations(
