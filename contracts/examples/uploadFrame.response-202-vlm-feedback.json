@@ -1,0 +1,12 @@
+{
+  "accepted": true,
+  "frame_index": 12,
+  "vlm_feedback": {
+    "frame_index": 10,
+    "hint": "Your hand is covering the left edge of the part; hold it by the base instead.",
+    "same_part": true,
+    "hands_occluding": true,
+    "screen_photo": false,
+    "lighting_adequate": true
+  }
+}

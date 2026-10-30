@@ -1,5 +1,5 @@
-// Hand-written from contracts/openapi.yaml (F-03, frozen). Keep these in sync with the spec
-// by hand — there is no code generator wired up yet.
+// Hand-written from contracts/openapi.yaml (F-03, frozen; v1.1 since A-11, D-056). Keep these
+// in sync with the spec by hand — there is no code generator wired up yet.
 
 export interface Session {
   session_id: string;
@@ -7,9 +7,23 @@ export interface Session {
   status: "capturing" | "finished";
 }
 
+// v1.1 (A-11): the newest completed VLM check. It describes an earlier sampled frame, named by
+// its own frame_index. `hint` is model output, so it is only ever shown as plain text.
+export interface VlmFeedback {
+  frame_index: number;
+  hint: string;
+  // Null for frame 0, the reference the other frames are compared against.
+  same_part: boolean | null;
+  hands_occluding: boolean;
+  screen_photo: boolean;
+  lighting_adequate: boolean;
+}
+
 export interface UploadFrameResult {
   accepted: boolean;
   frame_index: number;
+  // Absent (never null) until a check of this session has completed.
+  vlm_feedback?: VlmFeedback;
 }
 
 export type ErrorCode =
@@ -27,7 +41,9 @@ export type ErrorCode =
   | "session_already_finished"
   | "too_few_frames"
   | "order_code_unknown"
-  | "no_cad_uploaded";
+  | "no_cad_uploaded"
+  | "malformed_request"
+  | "internal_error";
 
 export interface ErrorDetail {
   code: ErrorCode;

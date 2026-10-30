@@ -332,8 +332,8 @@ Poisson fallback) change what the supplier gets back.
 **Waiting on a decision, no story yet:**
 - #181 changes D-039's scale-agreement formula.
 - #200 (Python 3.12 vs the open3d pin) touches D-047.
-- The internal-failure error code in #186 is a contract change and belongs in A-11's D-031
-  request.
+- The internal-failure error code in #186 is a contract change; A-11's D-031 request carries
+  it (`internal_error`, D-056).
 
 **Closing issues.** In the pull request, write the keyword before each number
 (`Fixes #189, fixes #191`). GitHub closes only the first of a comma list, which is how PR #45 left

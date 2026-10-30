@@ -233,6 +233,15 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    changed). A rejected frame shows the reason and its code (§9), nothing is uploaded, and the
    counter does not move. An accepted frame is uploaded with its gyro reading, and its orbit
    position only counts as covered once the service accepts it.
+
+   **A tip may appear under the capture status** (A-11), such as "Tip (from frame 5): your hand
+   is covering the left edge of the part". It comes from the vision-language model's check
+   (see "VLM capture observations" below), which runs in the background on frames 0, 5, 10 and
+   so on. A tip is about the frame it names, not the photo you just took, and it shows up on the
+   first upload after that check finishes. So in a 13-position orbit expect up to three tips,
+   each a few frames late; the last frame's check finishes after you've stopped uploading, so
+   it is never shown. A tip stays until a newer one replaces it. It is advice only: it never
+   rejects a frame or blocks capture. With no Gemini key on the server, no tips appear.
 5. **Tap Finish.** The camera turns off (the phone's green camera indicator goes away), and
    reconstruction runs once, on the whole set. The page waits for the result and shows it (§8.1).
    The real service needs at least 3 accepted frames; the full orbit is what the guidance is for.
@@ -385,7 +394,7 @@ reference sheet was used**, which regions were observed, and any limits declared
 | Code | What happened | What to do |
 |---|---|---|
 | `frame_rejected_blur` | Motion blur or soft focus. | Hold steadier; pause before each shot. |
-| `frame_rejected_exposure` | Too many pixels are pure black or pure white. The service also uses this code for an empty upload. | Diffuse the light; avoid direct glare on glossy parts. |
+| `frame_rejected_exposure` | Too many pixels are pure black or pure white. | Diffuse the light; avoid direct glare on glossy parts. |
 | `frame_rejected_duplicate` | You barely moved and the picture barely changed. | Move to the next orbit position. |
 
 **From the service, when you start, upload or finish (works now):**
@@ -396,7 +405,7 @@ reference sheet was used**, which regions were observed, and any limits declared
 | `too_few_frames` | Not enough accepted frames to reconstruct. The real service needs at least 3. | Keep going around the part. |
 | `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
-| `vlm_veto` | **Today this means a malformed upload, not a semantic check** — A-01 records asynchronous observations, but A-02's veto policy is not built. The contract has no dedicated code for a malformed request yet, and adding one goes through the contract-change process (D-031). Once the VLM exists, this will mean the semantic check rejected the session: wrong part, hands in shot, a photo of a screen. | Reshoot; if it repeats, tell the team, since it points at an app bug. |
+| `malformed_request` | The request itself was broken: an upload with an empty photo, a missing part or an unreadable gyro reading (D-056). It is not about what the photo shows. | Retry; if it repeats, tell the team, since it points at an app bug. |
 
 **From the reconstruction, after you finish (works now):**
 
@@ -406,6 +415,7 @@ reference sheet was used**, which regions were observed, and any limits declared
 | `board_partially_occluded` | Too little of the board visible to compute poses. | Move the part toward the centre of the pattern, or shoot from a higher angle. |
 | `insufficient_baseline` | Fewer than 3 frames could be posed from the board. | Move further between shots and follow the orbit. |
 | `metric_alignment_failed` | The model could not be locked to the board's metric frame. **If the message starts "Fusion failed:"**, the board surface around the part could not be measured: too few board points near it, or the fitted board tilted more than 2° (R-21). It caused 4 of the 5 failed phone sessions in C-13's test, and why phone frames hit it more than the golden photos is not yet known. **If it says the frames carry no EXIF focal length and calibrating from the board failed**, the camera could not be calibrated from the board (D-050), most often because too few frames showed enough of it. The rest of the message gives the exact reason. | Lay the sheet flat, keep as much board visible around the part as possible (§3.4), and shoot the full orbit. |
+| `internal_error` | The service itself crashed while reconstructing, or was restarted while your session was still reconstructing (D-056). It is not a problem with your photos. The page shows it as "Reconstruction failed." followed by `internal_error:` and a short message; the details are in the service's log, not on the phone. | Start a new session and reshoot; tell the team, since the log says what went wrong. |
 | `no_cad_uploaded` | A verdict was requested for an order with no CAD. Today that is every order (§8.2). | Expected — no CAD, no verdict (D-004). The model is still valid. |
 
 **Not produced yet** (frozen in the contract, nothing raises them):
@@ -414,6 +424,7 @@ reference sheet was used**, which regions were observed, and any limits declared
 |---|---|---|
 | `scale_disagreement` | The independent scale sources disagreed (§7). | Check the printed square size with calipers. Suspect a rescaled printout first. |
 | `no_reference_detected` | No reference of any tier in frame (§6). | You get a model with no dimensional claims. Add a reference sheet and reshoot. |
+| `vlm_veto` | The vision-language model's semantic check rejected the session: wrong part, hands in shot, a photo of a screen (A-02, not built). Until v1.1 the service borrowed this code for malformed uploads; that is now `malformed_request` (D-056). | Reshoot with the problem the message names fixed. |
 
 **Every failure names its reason.** If something fails without one, that is a bug — report it
 rather than reshooting blindly.
@@ -494,5 +505,7 @@ tier, whose prompts/images/responses Google does not use for product improvement
 Without a key, or on errors/timeouts, evidence explicitly says `unchecked` with its reason.
 These checks describe the same part, hands blocking it, screen photographs, lighting and
 a coaching hint. They do not decide Pass/Fail, alter geometry or reject the upload.
-Hints are not displayed in capture yet (A-11). An incorrect part in the first reference
+Since A-11 (contract v1.1, D-056), each upload's response carries the newest completed
+check (its hint and the four checks, never the model name, token counts or `unchecked`
+reasons), and the capture page shows the hint as a tip (§5). An incorrect part in the first reference
 frame can still look consistent in later frames; CAD registration must catch that case.

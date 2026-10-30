@@ -968,6 +968,45 @@ SDK source.
 
 ---
 
+**D-056 · Contract v1.1: the VLM hint on the upload response, and two error codes.** (2026-10-29)
+The first change to the frozen contract, made under D-031 by A-11. `info.version` goes from
+1.0.0 to 1.1.0 and the path stays `/v1`: a change that only adds an optional field or an enum
+value is a minor bump under the same path, and D-032's `/v2` stays for a breaking change.
+An optional field that has nothing to say is left out of the response, never sent as `null`.
+Three things change:
+
+- `UploadFrameResult.vlm_feedback` carries the newest *checked* A-01 result for the session:
+  its `frame_index`, `hint` and the four checks (`same_part`, null for frame 0, the reference;
+  `hands_occluding`; `screen_photo`; `lighting_adequate`). It is read from the per-frame files
+  on disk after the upload is queued, so an upload never waits for the model. The model name,
+  token counts and `unchecked` reasons stay on the server. The hint is coaching only: it never
+  rejects a frame or affects a verdict, and capture shows it as plain text.
+- `malformed_request` is for a request that is itself broken: a missing multipart part, an empty
+  photo, an unreadable gyro reading. It replaces the borrowed `vlm_veto` and
+  `frame_rejected_exposure` (R-14's recorded debt), so `vlm_veto` now means only A-02's semantic
+  check. It is described for any route, so another route can use it without a new D-031 round.
+- `internal_error` is for a crash unrelated to the photos: an unexpected exception during
+  reconstruction, or a session left pending by a restart. Until now these were reported as
+  `metric_alignment_failed`, whose advice (lay the sheet flat) was wrong for them. The
+  supplier gets a fixed message; the exception text goes to the server log only (#186). Today it
+  reaches the phone only inside `ReconstructionResult.warnings` (`internal_error: ...`), because
+  a failed reconstruction has no `ErrorDetail` of its own in v1.
+
+The same change widens `Region.contributes_to_verdict`'s wording from `unobserved` to every
+provenance other than `observed`, which D-005 already required, and `tests/test_contract.py`
+now checks it that way.
+
+*Why:* the hint can't reach the phone without a field, and the app polls nothing during capture,
+so the upload response is the only place for it. Sending only the newest checked result keeps
+the response small and avoids showing a stale `unchecked` placeholder as advice. The two codes
+ride along because each needs the same two approvals, and holding them for separate rounds
+would cost a sprint boundary each. They are not generative AI; A-11's completion record notes
+their share of the hours.
+*Checked against D-028:* fetched every origin branch and read its decisions log on 2026-10-29;
+D-055 was the highest number anywhere, so D-056 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
