@@ -358,7 +358,7 @@ Full detail in each story file.
 | [R-25](R/R-25.md) | Provenance occlusion: facing test, σ window, `observed_fraction` from final labels | 5 h | R-09, R-10, R-14 | Claimed | @mbj1994 |
 | [R-26](R/R-26.md) | Segmentation keeps flat parts; the height override bypasses the layer search | 3 h | R-21 | Ready | _unclaimed_ |
 | [R-27](R/R-27.md) | Mesh cleanup and the Poisson fallback: winding, components, size limit, oriented normals | 5 h | R-07, R-08 | Ready | _unclaimed_ |
-| [R-28](R/R-28.md) | Portrait-safe VGGT intrinsics rescale and correct board metadata | 2 h | R-02, R-03, R-22, R-23 | Ready | _unclaimed_ |
+| [R-28](R/R-28.md) | Portrait-safe VGGT intrinsics rescale and correct board metadata | 2 h | R-02, R-03, R-22, R-23 | Claimed | @dalwalyk |
 | [R-29](R/R-29.md) | Contract-shaped validation errors and an Inferred-aware hard-rule test | 2 h | F-03, R-14 | Ready | _unclaimed_ |
 | [C-19](C/C-19.md) | The viewer says when a model has no provenance; the mock matches the service | 3 h | C-10, C-12, C-13 | Ready | _unclaimed_ |
 | [C-20](C/C-20.md) | Capture gate and orbit maths: heading wrap, roll, gate order | 3 h | C-06, C-07, C-09 | Ready | _unclaimed_ |
