@@ -1569,3 +1569,24 @@ clean-checkout run. Both are closed now:
 middleware alongside A-01's VLM-supervisor lifespan, and `docs/manual.md`'s C-13 footnote
 alongside A-01's new section — both independent additions, not competing changes).
 **Next:** awaiting @mbj1994's re-review and final approval on the synced head.
+
+
+## 2026-10-26 — A-01 merged: sampled VLM supervision
+
+**Who:** @mbj1994; approved by @TabeenRaoof. PR #207 merged to `main` at `2c8369a`.
+**What changed:** asynchronous sampled Gemini observations, strict response validation,
+atomic per-frame and aggregate evidence, explicit unchecked failure paths, service/agent
+integration, deployment-key propagation/redaction and a reproducible real-API check.
+Review fixes preserve redacted Lightning diagnostics and document the free tier's
+restriction to team-owned, non-confidential test parts; supplier photographs need paid-tier
+data handling. A-02's veto policy and A-11's phone hint delivery remain separate work.
+**Final verification:** @TabeenRaoof approved `f29d3de` and reran a fresh-venv checkout on
+macOS 26.6.2 arm64 / Python 3.11.14: 597 tests passed, Ruff lint/format clean, consistent
+story states and a clean worktree. GitHub pytest, Ruff, TypeScript and container image
+build/smoke checks all passed on that same head before merge. The owner-run Windows
+real-API check separately recorded 11 valid Gemini replies, correct screen/different-part
+controls and actual token usage; exact observations are in the story.
+**Record:** A-01 and its index row landed Done together; completion records PR #207 and
+the owner's measured 4 h actual against 7 h estimated.
+**Next:** normal main-only production smoke testing when Lightning is available. No live
+Lightning deployment or production verification is claimed by these results.
