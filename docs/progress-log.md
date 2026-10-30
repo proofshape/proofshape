@@ -1606,3 +1606,53 @@ controls and actual token usage; exact observations are in the story.
 the owner's measured 4 h actual against 7 h estimated.
 **Next:** normal main-only production smoke testing when Lightning is available. No live
 Lightning deployment or production verification is claimed by these results.
+
+## 2026-10-30 — I-12 synthetic-generator tests that pin noise, seed and the board frame (PR #220)
+
+**Who:** @dalwalyk. Claimed in #218 (merged separately per D-037).
+**What changed:** closed #199 — P-27's review found I-01's generator tests still passed under
+six real mutations. Six new tests in `tests/test_synthetic.py`, each mapped to one: noise
+magnitude and direction (decomposed along-normal vs tangential, not just a zero/6σ bound);
+seed and yaw, which needed two tests rather than one — the first drove `board_frame_transform`
+directly and missed that `generate_synthetic_sample` itself could ignore its own `seed`
+argument, caught only by deliberately applying that exact mutation during the mutation-testing
+pass; output z bounds against a known fixture height; the sidecar's `sigma_mm` against an
+explicit non-default value. Also adds `_validate_base_at_zero`, raising on a CAD whose minimum z
+isn't 0, matching this module's existing strict-validation style (confirmed with the team over
+the AC's other option, recording it instead).
+**Result:** all seven checks (the six from #199 plus the new validation) mutation-tested by hand;
+each mutation fails exactly its own test, nothing else. Full suite 639 passed (was 633), ruff and
+`ruff format --check` clean, `check_story_states.py` consistent.
+**Process note:** PR #220 merged with the story still `In review` and the completion record's PR
+number still `#nn` — the Done-state commit should have landed inside the PR before the approval
+it merged on (D-038) but wasn't pushed in time. Corrected after the fact in its own small PR
+rather than silently.
+**Next:** nothing outstanding for I-12.
+
+## 2026-10-29 — R-25 provenance occlusion and final coverage (PR #213)
+
+**Who:** @mbj1994; independent five-object validation by @TabeenRaoof.
+**What changed:** provenance now requires signed camera-facing geometry as well as trusted depth
+agreement; open meshes choose their global normal sign only from trusted, in-bounds,
+depth-consistent visible pairs. Depth-gate rejections are recorded explicitly instead of silently
+disappearing from sigma, and the service's `observed_fraction` now comes from final post-R-10
+labels weighted by triangle area on the GLB it serves. Legacy pre-R-25 files report missing
+depth-gate rejection evidence as `null`, not a false numeric zero.
+
+**Golden measurement:** on the same R-23-aligned cleaned mesh before/after, R-09 Observed counts
+fell on all five objects (s-01 1,521→1,443; s-02 2,960→2,744; s-03 8,059→7,488; s-04
+5,566→5,159; s-05 3,141→3,007). Final area-weighted coverage remained close to main:
+7.92%→7.83%, 11.95%→11.50%, 36.72%→35.64%, 24.92%→25.18%, and 17.73%→18.41%.
+Sigma downgrades decreased on every object. The real-data open-mesh orientation fix therefore
+held without collapsing coverage.
+
+**Tolerance note:** the existing 5 mm depth gate remains an explicit unmeasured assumption. The
+measurement showed that roughly 54–86% of camera-facing, trusted, in-bounds pairs fail that gate
+across the five objects; R-25 exposes this instead of changing the tolerance. Calibration remains
+future work.
+
+**Validation/close-out:** owner reported 4.5 h actual against 5 h estimated. Tabeen's validation
+used the synced R-25 head and the same-mesh before/after method; no teammate time is included
+because no separate measured duration was reported. R-25 and its index row are marked Done on
+this final close-out head before final approval, per D-038.
+

@@ -78,6 +78,17 @@ def _validate_mesh(
     return vertices_mm, faces
 
 
+def _validate_base_at_zero(vertices_mm: np.ndarray) -> None:
+    """Ordinary CAD practice (this module's own docstring) is base at z = 0. I-02 loads
+    coordinates exactly as stored, so a centred or offset CAD would otherwise silently produce
+    output outside the stated board frame instead of failing loudly."""
+    min_z = float(vertices_mm[:, 2].min())
+    if abs(min_z) > 1e-6:
+        raise ValueError(
+            f"CAD minimum z must be 0 (base resting on the board), got {min_z} mm"
+        )
+
+
 def _edge_lengths(vertices_mm: np.ndarray, faces: np.ndarray) -> np.ndarray:
     a, b, c = (
         vertices_mm[faces[:, 0]],
@@ -247,6 +258,7 @@ def generate_synthetic_sample(
     """Load CAD -> densify -> pose (fixed z-flip + random yaw/xy) -> add noise -> label a patch
     Unobserved -> ready to export. Deterministic for a given seed and the same inputs."""
     vertices_mm, faces = _validate_mesh(vertices_mm, faces)
+    _validate_base_at_zero(vertices_mm)
     rng = np.random.default_rng(seed)
 
     dense_vertices, dense_faces = densify_mesh(
