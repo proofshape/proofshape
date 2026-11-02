@@ -48,6 +48,15 @@ sample_content_hash() {
     | sha256_stdin
 }
 
+sample_ids() {
+  python3 -c "
+import json, sys
+data = json.load(open(sys.argv[1]))
+for c in data['captures']:
+    print(c['sample_id'])
+" "$MANIFEST"
+}
+
 expected_count() {
   python3 -c "
 import json, sys
@@ -89,28 +98,41 @@ download_sample() {
   local folder_id="$2"
   local expected="$3"
   local dest="$OUT_DIR/$sample"
+  local tmp_dest="$dest.tmp.$$"
 
-  rm -rf "$dest"
-  mkdir -p "$dest"
-  gdown --folder "https://drive.google.com/drive/folders/$folder_id" -O "$dest"
+  # Download into a sibling temp directory and verify there first, so a failed or partial
+  # download never destroys the last verified copy at $dest. Only swapped in on success; left
+  # in place on failure for inspection rather than cleaned up silently.
+  rm -rf "$tmp_dest"
+  mkdir -p "$tmp_dest"
+  gdown --folder "https://drive.google.com/drive/folders/$folder_id" -O "$tmp_dest"
 
   local count
-  count="$(find "$dest" -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l | tr -d ' ')"
+  count="$(find "$tmp_dest" -type f \( -iname '*.jpg' -o -iname '*.jpeg' \) | wc -l | tr -d ' ')"
   if [[ "$count" != "$expected" ]]; then
-    echo "$sample: expected $expected JPEGs, found $count"
+    echo "$sample: expected $expected JPEGs, found $count (in $tmp_dest, not swapped in)"
     exit 1
   fi
 
   local expected_hash actual_hash
   expected_hash="$(expected_content_sha256 "$sample")"
-  actual_hash="$(sample_content_hash "$dest")"
-  if [[ -n "$expected_hash" && "$actual_hash" != "$expected_hash" ]]; then
+  actual_hash="$(sample_content_hash "$tmp_dest")"
+  if [[ -z "$expected_hash" ]]; then
+    rm -rf "$dest"
+    mv "$tmp_dest" "$dest"
+    echo "$sample: $count JPEGs, no content hash recorded in the manifest; count-only check"
+    return 0
+  fi
+  if [[ "$actual_hash" != "$expected_hash" ]]; then
     echo "$sample: content hash mismatch (expected $expected_hash, got $actual_hash)."
     echo "$sample: this means the downloaded bytes differ from what the manifest recorded,"
     echo "$sample: e.g. a Drive file was replaced or corrupted without changing the frame count."
+    echo "$sample: left at $tmp_dest, not swapped in."
     exit 1
   fi
 
+  rm -rf "$dest"
+  mv "$tmp_dest" "$dest"
   echo "$sample: $count JPEGs, content hash verified"
 }
 
@@ -122,9 +144,9 @@ main() {
 
   mkdir -p "$OUT_DIR"
 
-  for sample in s-01 s-02 s-03 s-04 s-05; do
+  while IFS= read -r sample; do
     download_sample "$sample" "$(expected_folder_id "$sample")" "$(expected_count "$sample")"
-  done
+  done < <(sample_ids)
 
   (
     cd "$OUT_DIR"
