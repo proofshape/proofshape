@@ -493,6 +493,22 @@ def test_estimate_board_poses_writes_outputs(capture_dir: Path, tmp_path: Path) 
     assert (out_dir / "board_poses.json").is_file()
 
 
+def test_estimate_board_poses_records_the_same_legacy_pattern_make_board_uses(
+    capture_dir: Path, tmp_path: Path
+) -> None:
+    # R-28 (#188): make_board() and the written metadata had drifted to disagree (True vs a
+    # hardcoded False) before BOARD_LEGACY_PATTERN became the one place this is decided.
+    from recon.board_pose import BOARD_LEGACY_PATTERN
+
+    out_dir = tmp_path / "out"
+    run_info = estimate_board_poses(capture_dir, out_dir)
+
+    assert run_info["board"]["legacy_pattern"] is BOARD_LEGACY_PATTERN
+    assert (
+        BOARD_LEGACY_PATTERN is True
+    )  # pins the real, empirically-required value (#188)
+
+
 def test_estimate_board_poses_refuses_to_overwrite(
     capture_dir: Path, tmp_path: Path
 ) -> None:
