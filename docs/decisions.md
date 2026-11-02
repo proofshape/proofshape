@@ -968,6 +968,48 @@ SDK source.
 
 ---
 
+**D-057 · Shape completion uses LaS-Comp on a T4, installed at build time, in its own environment.** (2026-11-02)
+A-10's spike chose [LaS-Comp](https://github.com/DavidYan2001/LaS-Comp) (CVPR 2026) for the
+completion stage. It is pinned to commit `0da46f2569b484986d3737d97213428db962161f` and runs on the
+`microsoft/TRELLIS-image-large` weights at revision `25e0d31ffbebe4b5a97464dd851910efc3002d96`
+(MIT). Input is the observed part surface as points, in board-frame millimetres turned z-up, plus
+one capture photo. Output is a mesh in the same coordinates.
+
+What it does on our data, measured on a T4 with golden part s-04 and five seeds (A-10's notes):
+- about 5 min per sample, plus 48 s to load;
+- 11.3 GB peak GPU memory;
+- 94.5–100% of observed points within 1 mm of the completion;
+- seeds differ by a median of 1.19 mm, and up to 9.9 mm, in the surface that wasn't seen, against
+  0.36 mm where it was seen.
+
+Different seeds give different surfaces, and the differences sit in the unseen surface.
+
+Three conditions apply to A-04:
+- **Installed at build time, never vendored.** The repository has no LICENSE file; only its README
+  says MIT. Nothing of it is copied into this public repository until a licence file exists.
+- **Its own environment.** It needs Python 3.10, torch 2.4.0+cu121, spconv, kaolin, pytorch3d and
+  xformers. That conflicts with this project's Python ≥3.11 and with the Lightning Studio's torch
+  2.8, so the stage runs as a separate process, not inside the service's interpreter.
+- **After finishing only, one at a time, with K measured against time.** It can't share a 15 GB T4
+  with VGGT at the same moment. At about 5 min a sample, the proposal's final-pass K of 8–10 would
+  take 40–50 min. A-04 sets K from a measured time budget, and fewer sampling steps (it uses 100
+  sparse-structure steps) may be worth testing there.
+
+*Why:* it was the only candidate that takes a partial point cloud directly, works without being
+trained on our part's class, gives different surfaces per seed, has released weights and code, and
+carries no non-commercial or territorial licence restriction. The candidates screened out, and
+why, are in A-10.
+
+**What this changes in the plan:** the proposal's in-loop K of 3–5 (§6.6) can't run during capture
+on this hardware. Completion runs once, after the session is finished. Capture guidance during the
+session stays with coverage and next-view (proposal §9's fallback). That is a change from the
+proposal, so it is raised with the team, not settled here. D-017 still holds: completion isn't
+cut.
+*Checked against D-028:* fetched every origin branch on 2026-11-02; D-056 (A-11's open PR) was the
+highest number anywhere, so D-057 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
