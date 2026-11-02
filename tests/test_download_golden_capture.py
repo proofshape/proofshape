@@ -66,12 +66,19 @@ def _write_fake_gdown(bin_dir: Path, files_by_sample: dict[str, list[str]]) -> N
 
 
 def _content_sha256(files: list[tuple[str, str]]) -> str:
-    """Mirror the script's sample_content_hash(): sha256 of the sorted
-    "<sha256 of file>  <basename>" lines, hashed again as one blob."""
-    entries = sorted(
+    """Mirror the script's sample_content_hash(): sha256 of the "<sha256 of file>  <basename>"
+    lines, in filename order (the script's `find | sort` sorts paths, then hashes each file --
+    it never sorts by hash), hashed again as one blob.
+
+    F-08 (#196): sorting the combined "hash  name" strings instead, as this helper used to,
+    sorts primarily by hash -- a different order from the script's whenever a hash's lexicographic
+    order doesn't happen to match its file's name order. The two only agreed before by chance of
+    the specific fixture names/content used here.
+    """
+    entries = [
         f"{hashlib.sha256(content.encode()).hexdigest()}  {name}"
-        for name, content in files
-    )
+        for name, content in sorted(files, key=lambda pair: pair[0])
+    ]
     return hashlib.sha256(("\n".join(entries) + "\n").encode()).hexdigest()
 
 
@@ -90,6 +97,12 @@ def _manifest(
     }
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(manifest))
+    return path
+
+
+def _multi_manifest(tmp_path: Path, captures: list[dict]) -> Path:
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps({"captures": captures}))
     return path
 
 
@@ -126,11 +139,57 @@ download_sample "{sample}" "{folder_id}" "{expected}"
     )
 
 
+def _run_sample_ids(tmp_path: Path, manifest: Path) -> subprocess.CompletedProcess[str]:
+    wrapper = tmp_path / "run_sample_ids.sh"
+    wrapper.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+source "{SCRIPT}"
+sample_ids
+"""
+    )
+    wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
+    env = dict(os.environ)
+    env["GOLDEN_CAPTURE_MANIFEST"] = str(manifest)
+    env["GOLDEN_CAPTURE_OUT_DIR"] = str(tmp_path / "out")
+    return subprocess.run(
+        ["bash", str(wrapper)], env=env, capture_output=True, text=True, check=False
+    )
+
+
+def _run_main(
+    bin_dir: Path, manifest: Path, out_dir: Path
+) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["GOLDEN_CAPTURE_MANIFEST"] = str(manifest)
+    return subprocess.run(
+        ["bash", str(SCRIPT), str(out_dir)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 @pytest.fixture()
 def bin_dir(tmp_path: Path) -> Path:
     d = tmp_path / "bin"
     d.mkdir()
     return d
+
+
+def test_committed_manifest_matches_its_committed_sha256() -> None:
+    # F-08: fixtures/golden_capture_manifest.sha256 is the committed checksum of the versioned
+    # inventory manifest (fixtures/README.md) -- it only catches an accidental edit to the
+    # manifest if something actually checks the two still agree.
+    manifest_path = REPO_ROOT / "fixtures" / "golden_capture_manifest.json"
+    sha_path = REPO_ROOT / "fixtures" / "golden_capture_manifest.sha256"
+    expected_line = sha_path.read_text(encoding="utf-8").strip()
+    expected_hash, _, expected_name = expected_line.partition("  ")
+    assert expected_name == "golden_capture_manifest.json"
+    actual_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    assert actual_hash == expected_hash
 
 
 def test_missing_gdown_fails_with_install_hint(tmp_path: Path) -> None:
@@ -188,3 +247,179 @@ def test_download_sample_fails_on_content_hash_mismatch(
 
     assert result.returncode == 1
     assert "content hash mismatch" in result.stdout
+
+
+def test_sample_ids_reads_every_sample_from_the_manifest(tmp_path: Path) -> None:
+    # #196: main() looped over a hardcoded s-01..s-05 list instead of the manifest.
+    manifest = _multi_manifest(
+        tmp_path,
+        [
+            {"sample_id": "s-01", "drive_folder_id": "f1", "frames": 1},
+            {"sample_id": "s-02", "drive_folder_id": "f2", "frames": 1},
+            {"sample_id": "s-09", "drive_folder_id": "f9", "frames": 1},
+        ],
+    )
+
+    result = _run_sample_ids(tmp_path, manifest)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == ["s-01", "s-02", "s-09"]
+
+
+def test_main_downloads_exactly_the_manifests_samples_not_a_hardcoded_list(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # #196: main()'s own loop (not just sample_ids() in isolation) must actually drive off the
+    # manifest -- reverting its `for sample in $samples` back to a literal `s-01 s-02 s-03 s-04
+    # s-05` list passes every other test in this file, since none of them exercise main() end to
+    # end. A manifest using sample ids outside that hardcoded set is the only way to prove it:
+    # this would fail looking up a hardcoded id's manifest entry if the old behaviour ever came
+    # back.
+    files_a = [("x.jpg", "AAA")]
+    files_b = [("y.jpg", "BBB")]
+    _write_fake_gdown(bin_dir, {"folderA": files_a, "folderB": files_b})
+    manifest = _multi_manifest(
+        tmp_path,
+        [
+            {
+                "sample_id": "zz-alpha",
+                "drive_folder_id": "folderA",
+                "frames": 1,
+                "content_sha256": _content_sha256(files_a),
+            },
+            {
+                "sample_id": "zz-beta",
+                "drive_folder_id": "folderB",
+                "frames": 1,
+                "content_sha256": _content_sha256(files_b),
+            },
+        ],
+    )
+    out_dir = tmp_path / "out"
+    result = _run_main(bin_dir, manifest, out_dir)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "zz-alpha: 1 JPEGs, content hash verified" in result.stdout
+    assert "zz-beta: 1 JPEGs, content hash verified" in result.stdout
+    assert (out_dir / "zz-alpha" / "x.jpg").is_file()
+    assert (out_dir / "zz-beta" / "y.jpg").is_file()
+
+
+def test_main_fails_loudly_when_the_manifest_has_no_captures_key(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # Review of PR #226: `done < <(sample_ids)` (a process substitution) hid sample_ids()'s exit
+    # status from both `set -e` and `pipefail`. With a misspelled "captures" key, sample_ids()'s
+    # own python -c raised KeyError and exited non-zero, but the loop still ran zero times and
+    # main() printed "Golden capture download complete" and exited 0.
+    #
+    # Second round of review: main() checks `command -v gdown` before it ever reads the
+    # manifest, so without a fake gdown on PATH this test either fails for the wrong reason (no
+    # gdown locally) or -- worse -- passes for the wrong reason (exits at the gdown check,
+    # never actually reaching sample_ids() at all, so it wouldn't catch the regression it's named
+    # for). A fake gdown, even an empty one, makes the test exercise the real path regardless of
+    # whether a real gdown happens to be on the machine running it.
+    _write_fake_gdown(bin_dir, {})
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"capture": []}))  # misspelled on purpose
+    out_dir = tmp_path / "out"
+
+    result = _run_main(bin_dir, manifest, out_dir)
+
+    assert result.returncode != 0
+    assert (
+        "KeyError" in result.stderr
+    )  # not just "didn't print success" -- the real cause
+    assert "Golden capture download complete" not in result.stdout
+
+
+def test_main_fails_loudly_on_an_empty_captures_list(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    _write_fake_gdown(bin_dir, {})
+    manifest = _multi_manifest(tmp_path, [])
+    out_dir = tmp_path / "out"
+
+    result = _run_main(bin_dir, manifest, out_dir)
+
+    assert result.returncode != 0
+    assert "No samples listed" in result.stdout
+    assert "Golden capture download complete" not in result.stdout
+
+
+def test_download_sample_fails_when_the_manifest_has_no_hash_recorded(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # #196: a sample with no content_sha256 recorded printed "content hash verified" even
+    # though the comparison was silently skipped -- the hash check never ran. F-08's own
+    # acceptance criteria is explicit that this must fail ("The downloader fails when a sample
+    # has no hash"), not just report accurately and continue (review of PR #226).
+    files = [("a.jpg", "AAA"), ("b.jpg", "BBB")]
+    _write_fake_gdown(bin_dir, {"folder123": files})
+    manifest = _manifest(tmp_path, "s-test", "folder123", 2, "")
+
+    result = _run_download_sample(tmp_path, bin_dir, manifest, "s-test", "folder123", 2)
+
+    assert result.returncode == 1
+    assert "content hash verified" not in result.stdout
+    assert "no content_sha256 recorded" in result.stdout
+    assert not (tmp_path / "out" / "s-test").exists()  # never swapped in
+
+
+def test_download_sample_leaves_the_old_copy_untouched_on_count_mismatch(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # #196: download_sample deleted $dest before downloading, so a failed/partial download
+    # destroyed the last verified copy instead of leaving it in place.
+    dest = tmp_path / "out" / "s-test"
+    dest.mkdir(parents=True)
+    (dest / "old.jpg").write_text("OLD")
+
+    files = [("a.jpg", "AAA")]  # only 1 file, but expected below says 2
+    _write_fake_gdown(bin_dir, {"folder123": files})
+    manifest = _manifest(tmp_path, "s-test", "folder123", 2, _content_sha256(files))
+
+    result = _run_download_sample(tmp_path, bin_dir, manifest, "s-test", "folder123", 2)
+
+    assert result.returncode == 1
+    assert (dest / "old.jpg").read_text() == "OLD"  # untouched
+    assert not (dest / "a.jpg").exists()  # the bad download never got swapped in
+
+
+def test_download_sample_leaves_the_old_copy_untouched_when_gdown_fails(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    dest = tmp_path / "out" / "s-test"
+    dest.mkdir(parents=True)
+    (dest / "old.jpg").write_text("OLD")
+
+    fake = bin_dir / "gdown"
+    fake.write_text("#!/usr/bin/env bash\necho 'drive error' >&2\nexit 1\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    manifest = _manifest(tmp_path, "s-test", "folder123", 1, "")
+
+    result = _run_download_sample(tmp_path, bin_dir, manifest, "s-test", "folder123", 1)
+
+    assert result.returncode != 0
+    assert (dest / "old.jpg").read_text() == "OLD"  # untouched
+
+
+def test_download_sample_clears_a_stale_temp_folder_from_an_older_failed_run(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # Review of PR #226: a temp folder left behind by an older failed run (a different PID)
+    # kept getting listed in SHA256SUMS.local next to the real sample on every later run,
+    # since nothing ever cleaned it up. download_sample clears any `$dest.tmp.*` for this
+    # sample at the start of its own next attempt.
+    stale = tmp_path / "out" / "s-test.tmp.99999"
+    stale.mkdir(parents=True)
+    (stale / "stale.jpg").write_text("STALE")
+
+    files = [("a.jpg", "AAA")]
+    _write_fake_gdown(bin_dir, {"folder123": files})
+    manifest = _manifest(tmp_path, "s-test", "folder123", 1, _content_sha256(files))
+
+    result = _run_download_sample(tmp_path, bin_dir, manifest, "s-test", "folder123", 1)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not stale.exists()

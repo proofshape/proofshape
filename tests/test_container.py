@@ -43,6 +43,24 @@ def test_only_the_service_files_are_copied_never_the_whole_context():
     assert not re.search(r"^ADD ", DOCKERFILE, re.MULTILINE)
 
 
+def test_every_copied_directory_is_in_both_image_workflow_path_filters():
+    # F-08 (#198): since I-01, the Dockerfile has copied inspect/inspection/, but the image
+    # workflow's path filters didn't list it, so an inspection-only merge neither tested nor
+    # republished the image. A single-file COPY (requirements.txt, pyproject.toml, the
+    # entrypoint script) doesn't have this failure mode the same way a whole directory does, so
+    # only directory sources (COPY <src>/ <dst>/) are checked here.
+    copied_dirs = re.findall(r"^COPY (\S+/) \S+/?$", DOCKERFILE, re.MULTILINE)
+    assert copied_dirs  # sanity: the pattern still matches something real
+
+    workflow = _workflow("recon-image.yml")
+    pull_request_paths = workflow[True]["pull_request"]["paths"]
+    push_paths = workflow[True]["push"]["paths"]
+    for source in copied_dirs:
+        filter_pattern = f"{source}**"
+        assert filter_pattern in pull_request_paths, (source, pull_request_paths)
+        assert filter_pattern in push_paths, (source, push_paths)
+
+
 def test_secrets_captures_and_local_state_stay_out_of_the_build_context():
     for pattern in (
         ".env",
