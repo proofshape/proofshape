@@ -157,6 +157,21 @@ sample_ids
     )
 
 
+def _run_main(
+    bin_dir: Path, manifest: Path, out_dir: Path
+) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["GOLDEN_CAPTURE_MANIFEST"] = str(manifest)
+    return subprocess.run(
+        ["bash", str(SCRIPT), str(out_dir)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 @pytest.fixture()
 def bin_dir(tmp_path: Path) -> Path:
     d = tmp_path / "bin"
@@ -255,11 +270,11 @@ def test_main_downloads_exactly_the_manifests_samples_not_a_hardcoded_list(
     tmp_path: Path, bin_dir: Path
 ) -> None:
     # #196: main()'s own loop (not just sample_ids() in isolation) must actually drive off the
-    # manifest -- reverting its `for sample in $(sample_ids)` back to a literal `s-01 s-02 s-03
-    # s-04 s-05` list passes every other test in this file, since none of them exercise main()
-    # end to end. A manifest using sample ids outside that hardcoded set is the only way to
-    # prove it: this would fail looking up a hardcoded id's manifest entry if the old behaviour
-    # ever came back.
+    # manifest -- reverting its `for sample in $samples` back to a literal `s-01 s-02 s-03 s-04
+    # s-05` list passes every other test in this file, since none of them exercise main() end to
+    # end. A manifest using sample ids outside that hardcoded set is the only way to prove it:
+    # this would fail looking up a hardcoded id's manifest entry if the old behaviour ever came
+    # back.
     files_a = [("x.jpg", "AAA")]
     files_b = [("y.jpg", "BBB")]
     _write_fake_gdown(bin_dir, {"folderA": files_a, "folderB": files_b})
@@ -281,17 +296,7 @@ def test_main_downloads_exactly_the_manifests_samples_not_a_hardcoded_list(
         ],
     )
     out_dir = tmp_path / "out"
-    env = dict(os.environ)
-    env["PATH"] = f"{bin_dir}:{env['PATH']}"
-    env["GOLDEN_CAPTURE_MANIFEST"] = str(manifest)
-
-    result = subprocess.run(
-        ["bash", str(SCRIPT), str(out_dir)],
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = _run_main(bin_dir, manifest, out_dir)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "zz-alpha: 1 JPEGs, content hash verified" in result.stdout
@@ -300,21 +305,53 @@ def test_main_downloads_exactly_the_manifests_samples_not_a_hardcoded_list(
     assert (out_dir / "zz-beta" / "y.jpg").is_file()
 
 
-def test_download_sample_reports_when_the_manifest_has_no_hash_recorded(
+def test_main_fails_loudly_when_the_manifest_has_no_captures_key(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # Review of PR #226: `done < <(sample_ids)` (a process substitution) hid sample_ids()'s exit
+    # status from both `set -e` and `pipefail`. With a misspelled "captures" key, sample_ids()'s
+    # own python -c raised KeyError and exited non-zero, but the loop still ran zero times and
+    # main() printed "Golden capture download complete" and exited 0.
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"capture": []}))  # misspelled on purpose
+    out_dir = tmp_path / "out"
+
+    result = _run_main(bin_dir, manifest, out_dir)
+
+    assert result.returncode != 0
+    assert "Golden capture download complete" not in result.stdout
+
+
+def test_main_fails_loudly_on_an_empty_captures_list(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    manifest = _multi_manifest(tmp_path, [])
+    out_dir = tmp_path / "out"
+
+    result = _run_main(bin_dir, manifest, out_dir)
+
+    assert result.returncode != 0
+    assert "No samples listed" in result.stdout
+    assert "Golden capture download complete" not in result.stdout
+
+
+def test_download_sample_fails_when_the_manifest_has_no_hash_recorded(
     tmp_path: Path, bin_dir: Path
 ) -> None:
     # #196: a sample with no content_sha256 recorded printed "content hash verified" even
-    # though the comparison was silently skipped -- the hash check never ran.
+    # though the comparison was silently skipped -- the hash check never ran. F-08's own
+    # acceptance criteria is explicit that this must fail ("The downloader fails when a sample
+    # has no hash"), not just report accurately and continue (review of PR #226).
     files = [("a.jpg", "AAA"), ("b.jpg", "BBB")]
     _write_fake_gdown(bin_dir, {"folder123": files})
     manifest = _manifest(tmp_path, "s-test", "folder123", 2, "")
 
     result = _run_download_sample(tmp_path, bin_dir, manifest, "s-test", "folder123", 2)
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 1
     assert "content hash verified" not in result.stdout
-    assert "no content hash recorded" in result.stdout
-    assert (tmp_path / "out" / "s-test" / "a.jpg").is_file()  # still swapped in
+    assert "no content_sha256 recorded" in result.stdout
+    assert not (tmp_path / "out" / "s-test").exists()  # never swapped in
 
 
 def test_download_sample_leaves_the_old_copy_untouched_on_count_mismatch(
@@ -353,3 +390,24 @@ def test_download_sample_leaves_the_old_copy_untouched_when_gdown_fails(
 
     assert result.returncode != 0
     assert (dest / "old.jpg").read_text() == "OLD"  # untouched
+
+
+def test_download_sample_clears_a_stale_temp_folder_from_an_older_failed_run(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # Review of PR #226: a temp folder left behind by an older failed run (a different PID)
+    # kept getting listed in SHA256SUMS.local next to the real sample on every later run,
+    # since nothing ever cleaned it up. download_sample clears any `$dest.tmp.*` for this
+    # sample at the start of its own next attempt.
+    stale = tmp_path / "out" / "s-test.tmp.99999"
+    stale.mkdir(parents=True)
+    (stale / "stale.jpg").write_text("STALE")
+
+    files = [("a.jpg", "AAA")]
+    _write_fake_gdown(bin_dir, {"folder123": files})
+    manifest = _manifest(tmp_path, "s-test", "folder123", 1, _content_sha256(files))
+
+    result = _run_download_sample(tmp_path, bin_dir, manifest, "s-test", "folder123", 1)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not stale.exists()

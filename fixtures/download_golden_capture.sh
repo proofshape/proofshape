@@ -102,7 +102,11 @@ download_sample() {
 
   # Download into a sibling temp directory and verify there first, so a failed or partial
   # download never destroys the last verified copy at $dest. Only swapped in on success; left
-  # in place on failure for inspection rather than cleaned up silently.
+  # in place on failure for inspection rather than cleaned up silently. A leftover temp
+  # directory from an *older* failed run of this same sample is cleared first, so it doesn't
+  # keep getting listed in SHA256SUMS.local next to the real sample on every later run; the
+  # directory this run itself may leave behind on failure is still there for inspection.
+  rm -rf "$dest".tmp.*
   rm -rf "$tmp_dest"
   mkdir -p "$tmp_dest"
   gdown --folder "https://drive.google.com/drive/folders/$folder_id" -O "$tmp_dest"
@@ -116,13 +120,14 @@ download_sample() {
 
   local expected_hash actual_hash
   expected_hash="$(expected_content_sha256 "$sample")"
-  actual_hash="$(sample_content_hash "$tmp_dest")"
   if [[ -z "$expected_hash" ]]; then
-    rm -rf "$dest"
-    mv "$tmp_dest" "$dest"
-    echo "$sample: $count JPEGs, no content hash recorded in the manifest; count-only check"
-    return 0
+    echo "$sample: no content_sha256 recorded in the manifest; refusing rather than a"
+    echo "$sample: count-only check (fixtures/README.md: the hash catches a same-count"
+    echo "$sample: Drive file swap or corruption the count alone would miss)."
+    echo "$sample: left at $tmp_dest, not swapped in."
+    exit 1
   fi
+  actual_hash="$(sample_content_hash "$tmp_dest")"
   if [[ "$actual_hash" != "$expected_hash" ]]; then
     echo "$sample: content hash mismatch (expected $expected_hash, got $actual_hash)."
     echo "$sample: this means the downloaded bytes differ from what the manifest recorded,"
@@ -144,9 +149,18 @@ main() {
 
   mkdir -p "$OUT_DIR"
 
-  while IFS= read -r sample; do
+  # Command substitution, not `done < <(sample_ids)`: a process substitution's exit status is
+  # invisible to both `set -e` and `pipefail`, so a broken manifest (a KeyError from a misspelled
+  # "captures", or an empty list) would otherwise run the loop zero times and still exit 0.
+  local samples
+  samples="$(sample_ids)"
+  if [[ -z "$samples" ]]; then
+    echo "No samples listed in $MANIFEST"
+    exit 1
+  fi
+  for sample in $samples; do
     download_sample "$sample" "$(expected_folder_id "$sample")" "$(expected_count "$sample")"
-  done < <(sample_ids)
+  done
 
   (
     cd "$OUT_DIR"
