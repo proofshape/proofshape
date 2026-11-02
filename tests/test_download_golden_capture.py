@@ -312,6 +312,14 @@ def test_main_fails_loudly_when_the_manifest_has_no_captures_key(
     # status from both `set -e` and `pipefail`. With a misspelled "captures" key, sample_ids()'s
     # own python -c raised KeyError and exited non-zero, but the loop still ran zero times and
     # main() printed "Golden capture download complete" and exited 0.
+    #
+    # Second round of review: main() checks `command -v gdown` before it ever reads the
+    # manifest, so without a fake gdown on PATH this test either fails for the wrong reason (no
+    # gdown locally) or -- worse -- passes for the wrong reason (exits at the gdown check,
+    # never actually reaching sample_ids() at all, so it wouldn't catch the regression it's named
+    # for). A fake gdown, even an empty one, makes the test exercise the real path regardless of
+    # whether a real gdown happens to be on the machine running it.
+    _write_fake_gdown(bin_dir, {})
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps({"capture": []}))  # misspelled on purpose
     out_dir = tmp_path / "out"
@@ -319,12 +327,16 @@ def test_main_fails_loudly_when_the_manifest_has_no_captures_key(
     result = _run_main(bin_dir, manifest, out_dir)
 
     assert result.returncode != 0
+    assert (
+        "KeyError" in result.stderr
+    )  # not just "didn't print success" -- the real cause
     assert "Golden capture download complete" not in result.stdout
 
 
 def test_main_fails_loudly_on_an_empty_captures_list(
     tmp_path: Path, bin_dir: Path
 ) -> None:
+    _write_fake_gdown(bin_dir, {})
     manifest = _multi_manifest(tmp_path, [])
     out_dir = tmp_path / "out"
 
