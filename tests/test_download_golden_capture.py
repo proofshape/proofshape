@@ -164,6 +164,19 @@ def bin_dir(tmp_path: Path) -> Path:
     return d
 
 
+def test_committed_manifest_matches_its_committed_sha256() -> None:
+    # F-08: fixtures/golden_capture_manifest.sha256 is the committed checksum of the versioned
+    # inventory manifest (fixtures/README.md) -- it only catches an accidental edit to the
+    # manifest if something actually checks the two still agree.
+    manifest_path = REPO_ROOT / "fixtures" / "golden_capture_manifest.json"
+    sha_path = REPO_ROOT / "fixtures" / "golden_capture_manifest.sha256"
+    expected_line = sha_path.read_text(encoding="utf-8").strip()
+    expected_hash, _, expected_name = expected_line.partition("  ")
+    assert expected_name == "golden_capture_manifest.json"
+    actual_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    assert actual_hash == expected_hash
+
+
 def test_missing_gdown_fails_with_install_hint(tmp_path: Path) -> None:
     env = dict(os.environ)
     env["PATH"] = "/usr/bin:/bin"  # deliberately exclude any gdown on PATH
