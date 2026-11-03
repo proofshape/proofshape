@@ -59,7 +59,7 @@ jobs:
           node-version: 24
 
       - name: Install scripts/ dependencies
-        run: npm install
+        run: npm ci
         working-directory: scripts
 
       - name: Run tests

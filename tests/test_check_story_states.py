@@ -215,13 +215,14 @@ def test_fix_exits_nonzero_when_an_unrelated_problem_remains(css, capsys, monkey
     assert rows["F-02"]["index_state"] == "Ready"
 
 
-def test_fix_reports_an_error_when_the_index_row_does_not_match(
+def test_fix_is_a_noop_on_an_index_row_that_already_says_ready(
     css, capsys, monkeypatch
 ):
-    """#194: the story file can say Blocked while the index row's State cell already says
-    something else (its own, separately-reported mismatch). --fix's index substitution then
-    silently matches nothing; it must say so, not print "Blocked -> Ready (file + index)" for
-    an index edit that never happened."""
+    """#194 (review on #229): the story file can say Blocked while the index row's State
+    cell already (wrongly) says Ready -- its own, separately-reported mismatch. Once the
+    file side is fixed to Ready, the two agree, so this is NOT a surviving problem: the
+    exit code must come from re-checking the real post-fix state, not from counting this
+    index-side no-op as an extra failure on top of the mismatch it resolves."""
     _write_story(css, "F-01", "Done", "nothing")
     _write_story(
         css, "F-04", "Blocked", "F-01"
@@ -233,18 +234,46 @@ def test_fix_reports_an_error_when_the_index_row_does_not_match(
     exit_code = css.main()
     out = capsys.readouterr().out
 
-    assert exit_code == 1
-    assert "F-04" in out
-    assert "index row was not changed" in out
+    assert exit_code == 0
+    assert "ERROR" not in out
     assert (
         "Blocked -> Ready (file + index)" not in out
-    )  # never claim an edit that didn't happen
+    )  # never claim an index edit that didn't happen
+    assert "index already said Ready" in out
     file_state, _ = css.file_state("F-04.md")
+    assert file_state == "Ready"
+    rows, _ = css.parse_index()
+    assert rows["F-04"]["index_state"] == "Ready"
+
+
+def test_fix_reports_an_error_when_the_index_row_says_something_else(
+    css, capsys, monkeypatch
+):
+    """#194: when the index row's State cell holds neither Blocked nor Ready -- a real,
+    separate mismatch this script can't resolve by guessing -- --fix must say so and leave
+    the index row untouched, and the mismatch must still count as a real, surviving
+    problem in the exit code."""
+    _write_story(css, "F-01", "Done", "nothing")
+    _write_story(
+        css, "F-05", "Blocked", "F-01"
+    )  # dependency is Done -> auto-fixable by file
+    # ...but the index row says something else entirely, not Blocked or Ready.
+    _write_index(css, [("F-01", "nothing", "Done"), ("F-05", "F-01", "In review")])
+
+    monkeypatch.setattr(sys, "argv", ["check_story_states.py", "--fix"])
+    exit_code = css.main()
+    out = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "F-05" in out
+    assert "ERROR" in out
+    assert (
+        "Blocked -> Ready (file + index)" not in out
+    )  # never claim an index edit that didn't happen
+    file_state, _ = css.file_state("F-05.md")
     assert file_state == "Ready"  # the file side still succeeds
     rows, _ = css.parse_index()
-    assert (
-        rows["F-04"]["index_state"] == "Ready"
-    )  # unchanged (it already said Ready, by luck)
+    assert rows["F-05"]["index_state"] == "In review"  # left untouched, not guessed at
 
 
 def test_fix_never_changes_done_or_claimed(css, monkeypatch):
