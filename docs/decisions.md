@@ -1007,6 +1007,46 @@ proposal, so it is raised with the team, not settled here. D-017 still holds: co
 cut.
 *Checked against D-028:* fetched every origin branch on 2026-11-02; D-056 (A-11's open PR) was the
 highest number anywhere, so D-057 was free.
+*Narrowed by D-058 (2026-11-03):* "installed at build time" now means installed by A-12's setup
+script on the CUDA host, not built into the service image. It is still never vendored.
+
+**D-058 · A-04 is split: the service side builds the completion stage around a runner contract,
+A-12 builds the real runner.** (2026-11-03)
+@TabeenRaoof, A-04's owner, settled this while planning A-04. The team's review of the pull
+request that splits the story is its agreement.
+
+D-057 left A-04 with a model the service can't run. LaS-Comp is CUDA-only and needs Python 3.10
+and torch 2.4. The service runs on the M2 Max (D-049), and the image's torch is 2.8. So:
+- **A-04** builds the stage inside `run_reconstruction_pipeline`, after R-10, and everything
+  around the model:
+  - part isolation and the partial point cloud;
+  - one cropped capture photo;
+  - a versioned file contract with a runner run as a separate process, whose command comes from
+    `PROOFSHAPE_COMPLETION_RUNNER`;
+  - ingesting K samples, and `LABEL_INFERRED`.
+
+  It is tested in CI against a stub runner.
+- **A-12** builds the real LaS-Comp runner and a setup script for a CUDA host. It measures them on
+  the golden set and sets K and the time budget from that measurement.
+- **Neither changes the image.** Adding a second Python and torch 2.4 to the image is a later
+  follow-up with no story yet. `tests/test_container.py`'s one-torch rule stands until then.
+- **No runner, no warning.** A host without a runner (every session on the Mac today) still
+  prepares the inputs and records `unavailable` in `completion.json`, but adds no warning. A runner
+  that is configured and then fails adds one fixed warning. `PROOFSHAPE_COMPLETION=0` turns the
+  stage off.
+
+*Why inline:* A-04's criteria already asked for it, it keeps GPU use one stage after another, and
+no host runs the model today, so nobody waits yet.
+*Why no warning without a runner:* capture shows `warnings` to the supplier
+(`capture/src/shell.ts`). A stage that isn't installed on the host isn't something the supplier
+can act on, and `completion.json` still records why it didn't run.
+*The known cost:* once a runner is configured, the served model waits for completion's budget. At
+A-10's measured ~5 min a sample, that's longer than capture polls for: 300 polls 2 s apart, so it
+gives up after 10 min. It's also longer than `smoke_r14` waits (15 min). Whoever first configures
+a runner for suppliers must shorten the budget or move the stage after the result is saved. That
+is a change to this decision, not a tuning of it.
+*Checked against D-028:* fetched every origin branch on 2026-11-03; D-057 was the highest number
+anywhere, so D-058 was free.
 
 ---
 

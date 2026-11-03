@@ -312,6 +312,7 @@ Full detail in each story file.
 | [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Done | @mbj1994 |
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Done | @TabeenRaoof |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Claimed | @TabeenRaoof |
+| [A-12](A/A-12.md) | LaS-Comp runner and CUDA setup: the real model behind A-04's contract | 5 h | A-04, A-10 | Blocked | _unclaimed_ |
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Claimed | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
@@ -458,7 +459,7 @@ Full detail in each story file.
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
 The thin capture thread (C-01–C-13), ground truth (G-01–G-09), the first half of inspection
-(I-01–I-05) and the first generative-AI stories (A-01, A-04, A-06, A-08, A-10, A-11) are the
+(I-01–I-05) and the first generative-AI stories (A-01, A-04, A-06, A-08, A-10, A-11, A-12) are the
 exceptions — all written up above, not here: the capture thread is meant to run early, ground
 truth sits on the critical path, inspection's sprint has started, and generative AI is overdue
 from S2/S3.
