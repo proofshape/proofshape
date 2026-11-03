@@ -262,6 +262,7 @@ def main():
     if args.fix and fixes:
         print(f"\nApplying {len(fixes)} Blocked -> Ready fix(es)...")
         new_index_text = index_text
+        fix_errors = []
         for sid in fixes:
             # story file
             path = STORIES_DIR / rows[sid]["path"]
@@ -269,8 +270,12 @@ def main():
             text = FILE_STATE_RE.sub("**State:** Ready", text, count=1)
             path.write_text(text, encoding="utf-8")
             # index row: replace only the State cell (the fifth) for this ID's row. It is no
-            # longer the last cell, since the Owner column follows it (D-037).
-            new_index_text = re.sub(
+            # longer the last cell, since the Owner column follows it (D-037). count is checked
+            # (re.subn, not re.sub) rather than assumed: the row's State cell might not literally
+            # read "Blocked" even though the story file does (that disagreement is its own,
+            # separately-reported problem above) -- silently matching nothing there must not be
+            # reported as a successful "file + index" fix.
+            new_index_text, count = re.subn(
                 rf"^(\|\s*\[{re.escape(sid)}\]\({re.escape(rows[sid]['path'])}\)\s*\|(?:[^|\n]*\|){{3}}\s*)"
                 r"Blocked(\s*\|)",
                 r"\1Ready\2",
@@ -278,8 +283,22 @@ def main():
                 count=1,
                 flags=re.MULTILINE,
             )
-            print(f"  {sid}: Blocked -> Ready (file + index)")
+            if count == 0:
+                fix_errors.append(
+                    f"{sid}: wrote State: Ready to the story file, but its stories/README.md "
+                    "row's State cell did not literally read 'Blocked', so the index row was "
+                    "not changed -- fix it by hand"
+                )
+            else:
+                print(f"  {sid}: Blocked -> Ready (file + index)")
         INDEX.write_text(new_index_text, encoding="utf-8")
+        for error in fix_errors:
+            print(f"  ERROR: {error}")
+
+        unresolved = len(problems) - len(fixes) + len(fix_errors)
+        if unresolved > 0:
+            print(f"\n{unresolved} problem(s) could not be fixed automatically.")
+            return 1
         print("\nDone. Review the diff, then commit.")
         return 0
 

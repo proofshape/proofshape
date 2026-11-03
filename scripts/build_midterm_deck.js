@@ -22,9 +22,23 @@ const React = require("react");
 const ReactDOMServer = require("react-dom/server");
 const sharp = require("sharp");
 const fa = require("react-icons/fa6");
-const { applyTheme } = require(
-  "/Users/tabeenraoof/.claude/skills/synced/cb535dfd-926e-4d3f-b0be-d6153353e121_491b23fa-de91-41e9-ac36-4b59d163395f/pptx/scripts/apply_theme.js",
-);
+// P-28 (#201): this theming pass is a local Claude Code skill asset, present only on the
+// machine that originally wrote this script -- requiring it unconditionally made the build
+// crash with MODULE_NOT_FOUND for every other team member. pres.writeFile() below already
+// writes a complete, valid .pptx before applyTheme ever runs, so this cosmetic pass is made
+// optional: it runs when the tool is present locally, and is a clear no-op otherwise.
+let applyTheme = async () => {
+  console.log(
+    "apply_theme.js not found locally; skipping the theme pass -- deck content is unaffected.",
+  );
+};
+try {
+  ({ applyTheme } = require(
+    "/Users/tabeenraoof/.claude/skills/synced/cb535dfd-926e-4d3f-b0be-d6153353e121_491b23fa-de91-41e9-ac36-4b59d163395f/pptx/scripts/apply_theme.js",
+  ));
+} catch (e) {
+  if (e.code !== "MODULE_NOT_FOUND") throw e;
+}
 
 const SCRATCH = path.join(__dirname, "..");
 const FIG = path.join(SCRATCH, "submissions", "assets", "2026-10-16");

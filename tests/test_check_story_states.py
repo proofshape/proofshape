@@ -184,6 +184,69 @@ def test_fix_updates_both_the_story_file_and_the_index(css, monkeypatch):
     assert rows["F-02"]["index_owner"] == "_unclaimed_"
 
 
+def test_fix_exits_nonzero_when_an_unrelated_problem_remains(css, capsys, monkeypatch):
+    """#194: --fix used to exit 0 as soon as it applied any Blocked -> Ready fix, even with
+    other, non-auto-fixable problems still outstanding. It must still fix what it can, but
+    report failure overall when something is left over."""
+    _write_story(css, "F-01", "Done", "nothing")
+    _write_story(css, "F-02", "Blocked", "F-01")  # auto-fixable
+    _write_story(
+        css, "F-03", "Claimed", owner="@dalwalyk"
+    )  # owner mismatch, not fixable
+    _write_index(
+        css,
+        [
+            ("F-01", "nothing", "Done"),
+            ("F-02", "F-01", "Blocked"),
+            ("F-03", "nothing", "Claimed", "_unclaimed_"),
+        ],
+    )
+
+    monkeypatch.setattr(sys, "argv", ["check_story_states.py", "--fix"])
+    exit_code = css.main()
+    out = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "F-03" in out  # the remaining problem is still named
+    # The fixable one was still applied, not held back just because another problem remains.
+    file_state, _ = css.file_state("F-02.md")
+    assert file_state == "Ready"
+    rows, _ = css.parse_index()
+    assert rows["F-02"]["index_state"] == "Ready"
+
+
+def test_fix_reports_an_error_when_the_index_row_does_not_match(
+    css, capsys, monkeypatch
+):
+    """#194: the story file can say Blocked while the index row's State cell already says
+    something else (its own, separately-reported mismatch). --fix's index substitution then
+    silently matches nothing; it must say so, not print "Blocked -> Ready (file + index)" for
+    an index edit that never happened."""
+    _write_story(css, "F-01", "Done", "nothing")
+    _write_story(
+        css, "F-04", "Blocked", "F-01"
+    )  # dependency is Done -> auto-fixable by file
+    # ...but the index row already (wrongly) says Ready, not Blocked.
+    _write_index(css, [("F-01", "nothing", "Done"), ("F-04", "F-01", "Ready")])
+
+    monkeypatch.setattr(sys, "argv", ["check_story_states.py", "--fix"])
+    exit_code = css.main()
+    out = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "F-04" in out
+    assert "index row was not changed" in out
+    assert (
+        "Blocked -> Ready (file + index)" not in out
+    )  # never claim an edit that didn't happen
+    file_state, _ = css.file_state("F-04.md")
+    assert file_state == "Ready"  # the file side still succeeds
+    rows, _ = css.parse_index()
+    assert (
+        rows["F-04"]["index_state"] == "Ready"
+    )  # unchanged (it already said Ready, by luck)
+
+
 def test_fix_never_changes_done_or_claimed(css, monkeypatch):
     """--fix must never touch a Done or Claimed story, even one with an unrelated mismatch."""
     _write_story(css, "F-01", "Claimed", "nothing")  # index disagrees on purpose, below

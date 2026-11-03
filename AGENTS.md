@@ -240,7 +240,7 @@ picks up any story in any of them.
   git for-each-ref --format='%(refname)' refs/remotes/origin/ | grep -v '^refs/remotes/origin/HEAD$' \
     | sed 's#^refs/remotes/##' | while read -r ref; do
       printf '%s: ' "$ref"
-      git show "$ref:docs/decisions.md" 2>/dev/null | grep -oE '^\*\*D-[0-9]+' | tail -1
+      git show "$ref:docs/decisions.md" 2>/dev/null | grep -oE '^\*\*D-[0-9]+' | sort -t- -k2,2n | tail -1
     done
   ```
   and take the next number free everywhere. If a collision turns up anyway, don't silently pick
