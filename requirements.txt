@@ -46,3 +46,9 @@ httpx==0.28.1
 
 # A-01 sampled VLM supervision; SDK pinned for reproducible structured-output calls.
 google-genai==2.33.0
+
+# F-06's golden-capture downloader (fixtures/download_golden_capture.sh) shells out to gdown,
+# but nothing installed it (#106) -- hit repeatedly on fresh Lightning Studio sessions. Declaring
+# it here means scripts/bootstrap_dev_env.sh's existing `pip install -r requirements.txt` covers
+# every call site, not just the one recon/README.md's R-15 runbook already works around locally.
+gdown==6.5.1

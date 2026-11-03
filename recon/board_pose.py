@@ -57,6 +57,9 @@ BOARD_SQUARES_Y = 6
 BOARD_SQUARE_MM = 20.0
 BOARD_MARKER_MM = 15.0
 BOARD_INTERIOR_CORNERS = (BOARD_SQUARES_X - 1) * (BOARD_SQUARES_Y - 1)
+# R-28 (#188): the one place this is decided. make_board() and the written board_poses.json
+# metadata both read this, so they cannot drift apart the way they already had once.
+BOARD_LEGACY_PATTERN = True
 
 # A planar pose is solvable from four non-collinear points, but four leaves no redundancy to
 # average out corner noise. Six is a chosen guard, not a measured threshold; revisit once R-03/R-04
@@ -98,7 +101,7 @@ def make_board() -> cv2.aruco.CharucoBoard:
     # 35/35 corners with setLegacyPattern(True) and 0/35 with False, and the real golden frames
     # behave the same way. With the wrong flag the markers are still found but no corners are
     # interpolated, so every frame fails. tests/test_board_pose.py checks this against the PDF.
-    board.setLegacyPattern(True)
+    board.setLegacyPattern(BOARD_LEGACY_PATTERN)
     return board
 
 
@@ -514,7 +517,7 @@ def estimate_board_poses(
             "squares_xy": [BOARD_SQUARES_X, BOARD_SQUARES_Y],
             "square_mm": BOARD_SQUARE_MM,
             "marker_mm": BOARD_MARKER_MM,
-            "legacy_pattern": False,
+            "legacy_pattern": BOARD_LEGACY_PATTERN,
         },
         "units": "mm",
         "extrinsic_convention": "camera-from-board, x_cam = R @ x_board + t (OpenCV)",

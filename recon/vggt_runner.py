@@ -21,8 +21,11 @@ measurement.
 The intrinsics are NOT in full-resolution photo pixels. VGGT sees each frame resized (e.g.
 5712x4284 -> 518x392), so its focal length is roughly 400 px where R-02's board-derived K is
 roughly 4,300 px. The two axes are also scaled slightly differently (518/5712 in x, 392/4284 in
-y), because VGGT rounds the height to a multiple of 14. Anything comparing this K with R-02/R-03's
-must rescale each axis separately using processed_image_size_hw, or it gets a silent unit bug.
+y), because VGGT rounds the height to a multiple of 14. A portrait frame is also centre-cropped
+after that resize (height down to at most 518px), which a plain per-axis ratio against
+processed_image_size_hw does not account for (R-28, #182) -- anything comparing this K with
+R-02/R-03's must go through `recon.camera_intrinsics.rescale_vggt_intrinsic`, using each frame's
+own `preprocess_geometry` entry (scale and crop offset), not processed_image_size_hw directly.
 """
 
 from __future__ import annotations
