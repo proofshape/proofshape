@@ -333,7 +333,7 @@ The model is coloured by **what was actually seen**:
 |---|---|---|
 | **Blue** | **Observed** | Seen in at least two frames whose viewpoints are at least 2° apart, through pixels the reconstruction model is confident about (R-24, D-045), with the mesh surface facing each camera, and not hidden behind other surface in those frames: its position agrees with the depth each frame actually measured (R-09/R-25). The spread of that depth across the frames (σ) must also be 3 mm or less, or it is downgraded to Unobserved (R-10). This is the only geometry that can produce a Pass or a Fail. |
 | **Slate grey** | **Unobserved** | Not properly seen. Can only ever trigger a Rescan. |
-| **Orange** | **Inferred** | Reserved: filled in by generative shape completion (**Planned**, A-04). Will be excluded from every deviation calculation and will **never** contribute to a verdict. Nothing produces it yet. |
+| **Orange** | **Inferred** | Reserved: surface filled in by generative shape completion. The service-side stage exists (A-04), but completion samples stay on the server for the disagreement map (A-05) and are never part of the model you see. The model itself needs A-12's runner and a CUDA host, so on the M2 Max nothing is produced yet. Inferred surface is excluded from every deviation calculation and **never** contributes to a verdict. |
 | **Magenta** | **Unknown** | A colour the viewer did not expect. Should never appear; if it does, the viewer also shows a warning. |
 
 The 2° and 3 mm limits are the code's current defaults, chosen by the team, not measured values —
@@ -341,6 +341,11 @@ the calibration study will set real ones. The provenance depth-agreement gate al
 5 mm and is likewise an unmeasured assumption. If a residual is outside that gate it is excluded
 from sigma, but R-25 records the rejected count so this truncation is visible in the uncertainty
 evidence instead of silently disappearing.
+
+A warning beginning `completion_failed` or `completion_partial` means the server's shape-completion
+step (A-04) didn't finish. The model, its colours and its observed fraction are exactly the same
+either way, so there's nothing to redo. On the M2 Max this warning never appears, because
+completion isn't set up there (D-058).
 
 **Expect a lot of slate grey on today's models.** Fusion still leaves wall-like artifact surfaces
 around the part (R-18, R-20). They come out Unobserved, which is the hard rule working, but they
