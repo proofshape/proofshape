@@ -215,6 +215,32 @@ def test_fix_exits_nonzero_when_an_unrelated_problem_remains(css, capsys, monkey
     assert rows["F-02"]["index_state"] == "Ready"
 
 
+def test_fix_exits_nonzero_when_an_unparsed_row_remains(css, capsys, monkeypatch):
+    """#194 (review on #229, @TabeenRaoof): the post-fix recheck called collect_problems
+    alone, which never runs the unparsed-row check -- that check needs the raw index text,
+    not the already-parsed rows, so a row --fix can't even read stayed invisible after a
+    fix, even though a plain run straight after it still reports it. Same shape as
+    test_fix_exits_nonzero_when_an_unrelated_problem_remains, for the other problem class."""
+    _write_story(css, "F-01", "Done", "nothing")
+    _write_story(css, "F-02", "Blocked", "F-01")  # auto-fixable
+    _write_story(css, "F-09", "Ready", "nothing")
+    _write_index(css, [("F-01", "nothing", "Done"), ("F-02", "F-01", "Blocked")])
+    with css.INDEX.open("a", encoding="utf-8") as index:
+        # missing the Owner cell -> unparsed, same as test_row_the_parser_cannot_read_...
+        index.write("| [F-09](F-09.md) | a test story | 1 h | nothing | Ready |\n")
+
+    monkeypatch.setattr(sys, "argv", ["check_story_states.py", "--fix"])
+    exit_code = css.main()
+    out = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "F-09" in out  # the unparsed row is still named after --fix
+    file_state, _ = css.file_state("F-02.md")
+    assert file_state == "Ready"  # the fixable one was still applied
+    rows, _ = css.parse_index()
+    assert rows["F-02"]["index_state"] == "Ready"
+
+
 def test_fix_is_a_noop_on_an_index_row_that_already_says_ready(
     css, capsys, monkeypatch
 ):

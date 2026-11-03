@@ -13,6 +13,7 @@ Node tooling at all, so the skip only has to protect that one, local-only gap.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -25,6 +26,13 @@ pytestmark = pytest.mark.skipif(
     not (SCRIPTS_DIR / "node_modules").is_dir(),
     reason="scripts/node_modules not installed; run `npm install` in scripts/",
 )
+
+# PPTX_APPLY_THEME is a personal, opt-in theming tool (#201) -- whether it's set depends on
+# the machine, not on anything these tests are checking, so it's removed from every subprocess
+# here. Without this, these tests would pass or fail differently depending on whose machine
+# runs them (review on #229, @TabeenRaoof): confirmed on a machine where the variable points at
+# a real but broken theme setup, build_midterm_deck.js's exit code and output both changed.
+_ENV_WITHOUT_THEME = {k: v for k, v in os.environ.items() if k != "PPTX_APPLY_THEME"}
 
 
 @pytest.mark.parametrize(
@@ -45,6 +53,7 @@ def test_generator_script_builds_a_nonempty_file(tmp_path, script_name, out_name
         text=True,
         timeout=60,
         check=False,
+        env=_ENV_WITHOUT_THEME,
     )
 
     assert result.returncode == 0, result.stderr
@@ -53,11 +62,9 @@ def test_generator_script_builds_a_nonempty_file(tmp_path, script_name, out_name
 
 
 def test_build_midterm_deck_skips_the_theme_pass_without_crashing(tmp_path):
-    """#201: apply_theme.js is a local-machine-only tool (an absolute path under
-    one developer's own home directory, which won't exist on CI or on any
-    other contributor's machine). Confirms the fix's no-op fallback actually
-    runs end to end -- not just that the deck gets written -- by checking for
-    its one-line skip message."""
+    """#201: PPTX_APPLY_THEME is a personal, opt-in theming tool, unset for most team
+    members and for CI. Confirms the fix's no-op fallback actually runs end to end -- not
+    just that the deck gets written -- by checking for its one-line skip message."""
     out_path = tmp_path / "midterm.pptx"
 
     result = subprocess.run(
@@ -67,9 +74,10 @@ def test_build_midterm_deck_skips_the_theme_pass_without_crashing(tmp_path):
         text=True,
         timeout=60,
         check=False,
+        env=_ENV_WITHOUT_THEME,
     )
 
     assert result.returncode == 0, result.stderr
-    assert "apply_theme.js not found locally" in result.stdout
+    assert "PPTX_APPLY_THEME not set" in result.stdout
     assert out_path.is_file()
     assert out_path.stat().st_size > 0

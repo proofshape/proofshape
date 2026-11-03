@@ -22,22 +22,19 @@ const React = require("react");
 const ReactDOMServer = require("react-dom/server");
 const sharp = require("sharp");
 const fa = require("react-icons/fa6");
-// P-28 (#201): this theming pass is a local Claude Code skill asset, present only on the
-// machine that originally wrote this script -- requiring it unconditionally made the build
-// crash with MODULE_NOT_FOUND for every other team member. pres.writeFile() below already
-// writes a complete, valid .pptx before applyTheme ever runs, so this cosmetic pass is made
-// optional: it runs when the tool is present locally, and is a clear no-op otherwise.
+// P-28 (#201, review on #229): this theming pass is a local Claude Code skill asset, not
+// something every team member has, so it's opt-in via PPTX_APPLY_THEME rather than a
+// hardcoded path under one person's home directory. pres.writeFile() below already writes
+// a complete, valid .pptx before applyTheme ever runs, so skipping it is always safe. When
+// the variable is set, any error it throws (a broken theme setup, not a missing one) is
+// left to throw rather than swallowed as "not found".
 let applyTheme = async () => {
   console.log(
-    "apply_theme.js not found locally; skipping the theme pass -- deck content is unaffected.",
+    "PPTX_APPLY_THEME not set; skipping the theme pass -- deck content is unaffected.",
   );
 };
-try {
-  ({ applyTheme } = require(
-    "/Users/tabeenraoof/.claude/skills/synced/cb535dfd-926e-4d3f-b0be-d6153353e121_491b23fa-de91-41e9-ac36-4b59d163395f/pptx/scripts/apply_theme.js",
-  ));
-} catch (e) {
-  if (e.code !== "MODULE_NOT_FOUND") throw e;
+if (process.env.PPTX_APPLY_THEME) {
+  ({ applyTheme } = require(process.env.PPTX_APPLY_THEME));
 }
 
 const SCRATCH = path.join(__dirname, "..");

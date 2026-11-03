@@ -238,6 +238,24 @@ def collect_problems(rows):
     return problems, fixes
 
 
+def all_problems(index_text, rows):
+    """Every check this script runs, including the one that needs the raw index text
+    rather than the already-parsed rows (#194 review on TabeenRaoof's #229 comment: the
+    post-fix recompute called collect_problems alone, so a row --fix can't even parse
+    stayed invisible after a fix, even though a plain run straight after still reported
+    it). Used for both the as-read pass and --fix's post-fix recompute, so neither one can
+    drift out of sync with what the other checks."""
+    problems = [
+        f"{sid}: its row in stories/README.md doesn't match the expected "
+        '| ID | Story | Est | Depends on | State | Owner | layout (Est is "3 h", or "—" '
+        "for a P story's past work never estimated), so none of the other checks can see it"
+        for sid in unparsed_rows(index_text, rows)
+    ]
+    file_problems, fixes = collect_problems(rows)
+    problems.extend(file_problems)
+    return problems, fixes
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -255,15 +273,7 @@ def main():
         )
         return 2
 
-    problems = []
-    for sid in unparsed_rows(index_text, rows):
-        problems.append(
-            f"{sid}: its row in stories/README.md doesn't match the expected "
-            '| ID | Story | Est | Depends on | State | Owner | layout (Est is "3 h", or "—" '
-            "for a P story's past work never estimated), so none of the other checks can see it"
-        )
-    file_problems, fixes = collect_problems(rows)
-    problems.extend(file_problems)
+    problems, fixes = all_problems(index_text, rows)
 
     if not problems:
         print(
@@ -319,8 +329,8 @@ def main():
         # counts from the original problem count: a fix that turned out to be a no-op above
         # (index already said Ready) resolves the one mismatch that flagged it, rather than
         # adding a new, separately-counted failure.
-        rows_after, _ = parse_index()
-        problems_after, _ = collect_problems(rows_after)
+        rows_after, index_text_after = parse_index()
+        problems_after, _ = all_problems(index_text_after, rows_after)
         if problems_after:
             print(f"\n{len(problems_after)} problem(s) remain:\n")
             for p in problems_after:
