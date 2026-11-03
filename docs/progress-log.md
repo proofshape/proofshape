@@ -1628,3 +1628,31 @@ number still `#nn` — the Done-state commit should have landed inside the PR be
 it merged on (D-038) but wasn't pushed in time. Corrected after the fact in its own small PR
 rather than silently.
 **Next:** nothing outstanding for I-12.
+
+## 2026-10-29 — R-25 provenance occlusion and final coverage (PR #213)
+
+**Who:** @mbj1994; independent five-object validation by @TabeenRaoof.
+**What changed:** provenance now requires signed camera-facing geometry as well as trusted depth
+agreement; open meshes choose their global normal sign only from trusted, in-bounds,
+depth-consistent visible pairs. Depth-gate rejections are recorded explicitly instead of silently
+disappearing from sigma, and the service's `observed_fraction` now comes from final post-R-10
+labels weighted by triangle area on the GLB it serves. Legacy pre-R-25 files report missing
+depth-gate rejection evidence as `null`, not a false numeric zero.
+
+**Golden measurement:** on the same R-23-aligned cleaned mesh before/after, R-09 Observed counts
+fell on all five objects (s-01 1,521→1,443; s-02 2,960→2,744; s-03 8,059→7,488; s-04
+5,566→5,159; s-05 3,141→3,007). Final area-weighted coverage remained close to main:
+7.92%→7.83%, 11.95%→11.50%, 36.72%→35.64%, 24.92%→25.18%, and 17.73%→18.41%.
+Sigma downgrades decreased on every object. The real-data open-mesh orientation fix therefore
+held without collapsing coverage.
+
+**Tolerance note:** the existing 5 mm depth gate remains an explicit unmeasured assumption. The
+measurement showed that roughly 54–86% of camera-facing, trusted, in-bounds pairs fail that gate
+across the five objects; R-25 exposes this instead of changing the tolerance. Calibration remains
+future work.
+
+**Validation/close-out:** owner reported 4.5 h actual against 5 h estimated. Tabeen's validation
+used the synced R-25 head and the same-mesh before/after method; no teammate time is included
+because no separate measured duration was reported. R-25 and its index row are marked Done on
+this final close-out head before final approval, per D-038.
+
