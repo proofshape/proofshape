@@ -14,6 +14,7 @@ on:
       - requirements-gpu.txt
       - pyproject.toml
       - recon/**
+      - inspect/inspection/**
       - .github/workflows/recon-image.yml
   push:
     branches: [main]
@@ -25,6 +26,7 @@ on:
       - requirements-gpu.txt
       - pyproject.toml
       - recon/**
+      - inspect/inspection/**
       - .github/workflows/recon-image.yml
 
 permissions:
