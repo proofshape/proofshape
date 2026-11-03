@@ -560,6 +560,36 @@ def test_measure_board_scale_reports_focal_ratio() -> None:
     assert result.focal_ratio_board_over_vggt == pytest.approx(0.9, rel=1e-6)
 
 
+def test_measure_board_scale_passes_each_frames_own_geometry_to_the_vggt_rescale(
+    monkeypatch,
+) -> None:
+    # R-28 (#182): before this story, the focal-ratio diagnostic rescaled every frame's VGGT K
+    # with the session-level processed_size_hw, ignoring per-frame crop. This confirms the real
+    # wiring: resolve_vggt_frame_scale is called once per matched frame, with that frame's own
+    # name and the bundle's recorded preprocess_geometry -- not bypassed.
+    bundle = _make_synthetic_board_bundle(focal_ratio=0.9)
+    calls: list[tuple] = []
+    real_resolve = cad_size_check.resolve_vggt_frame_scale
+
+    def recording_resolve(
+        frame_name, preprocess_geometry, processed_size_hw, full_size_hw
+    ):
+        calls.append((frame_name, preprocess_geometry, processed_size_hw, full_size_hw))
+        return real_resolve(
+            frame_name, preprocess_geometry, processed_size_hw, full_size_hw
+        )
+
+    monkeypatch.setattr(cad_size_check, "resolve_vggt_frame_scale", recording_resolve)
+
+    result = measure_board_scale(bundle)
+
+    assert len(calls) == len(bundle.frame_names)
+    assert {call[0] for call in calls} == set(bundle.frame_names)
+    for call in calls:
+        assert call[1] is bundle.preprocess_geometry
+    assert result.focal_ratio_board_over_vggt == pytest.approx(0.9, rel=1e-6)
+
+
 def test_measure_board_scale_rejects_too_few_observations() -> None:
     bundle = _make_synthetic_board_bundle(frame_count=1, corner_ids=range(2))
     with pytest.raises(ValueError, match="usable board corner observations"):

@@ -9,6 +9,7 @@ import pytest
 from inspection import synthetic
 
 from recon.mesh_cleanup import read_glb
+from recon.next_view import vertex_normals
 from recon.provenance import LABEL_OBSERVED, LABEL_UNOBSERVED, colors_to_labels
 
 # --- a tiny closed CAD-like solid, z-up from z = 0 (ordinary CAD convention) ----------------------
@@ -170,6 +171,21 @@ def test_board_frame_transform_is_a_proper_rotation_for_any_seed():
         assert np.linalg.det(rotation) == pytest.approx(1.0)
 
 
+def test_different_seeds_give_different_rotations():
+    # #199: two real mutations hide behind the same symptom here -- a hardcoded `default_rng(0)`
+    # makes every call identical regardless of the seed argument, and a removed random yaw makes
+    # every rotation the bare z-flip regardless of seed (only the unaffected translation would
+    # still vary). Either way, the *rotations* across many seeds collapse to one value, which
+    # neither test_board_frame_transform_flips_z_for_any_seed nor
+    # test_board_frame_transform_is_a_proper_rotation_for_any_seed (above) would catch, since both
+    # hold for the bare z-flip alone too.
+    rotations = [
+        synthetic.board_frame_transform(np.random.default_rng(seed))[0]
+        for seed in range(20)
+    ]
+    assert any(not np.allclose(rotations[0], other) for other in rotations[1:])
+
+
 def test_board_frame_transform_preserves_signed_volume():
     vertices, faces = _tetrahedron()
     original_volume = _signed_volume(vertices, faces)
@@ -190,6 +206,29 @@ def test_zero_sigma_leaves_vertices_unchanged():
     rng = np.random.default_rng(0)
     noisy = synthetic.apply_gaussian_noise(vertices, faces, 0.0, rng)
     np.testing.assert_array_equal(noisy, vertices)
+
+
+def test_noise_displacement_is_along_the_normal_at_the_given_sigma():
+    # #199: the only prior noise checks were zero-sigma and a generous 6-sigma upper bound, so a
+    # sigma scaled down 100x, or isotropic noise instead of along-normal, both passed unnoticed.
+    # Densify first for a stable sample size -- a handful of vertices gives a noisy std estimate.
+    vertices, faces = synthetic.densify_mesh(*_tetrahedron(), target_edge_length_mm=0.5)
+    sigma_mm = 0.3
+    rng = np.random.default_rng(0)
+    noisy = synthetic.apply_gaussian_noise(vertices, faces, sigma_mm, rng)
+
+    normals = vertex_normals(vertices, faces)
+    displacement = noisy - vertices
+    along_normal = np.einsum("ij,ij->i", displacement, normals)
+    tangential = displacement - along_normal[:, None] * normals
+
+    # Isotropic noise would put roughly 2/3 of the per-axis variance into the tangential plane;
+    # the correct along-normal-only noise puts none there. Machine-precision here, not a
+    # statistical bound, since displacement = offset * normal by construction.
+    assert np.abs(tangential).max() < 1e-9
+    # A 25% relative band: with several hundred vertices the sample std's own relative error is a
+    # few percent, so this is loose enough not to be flaky but easily fails a 100x-off sigma.
+    assert along_normal.std() == pytest.approx(sigma_mm, rel=0.25)
 
 
 def test_noise_rejects_negative_sigma():
@@ -314,3 +353,47 @@ def test_sidecar_transform_recovers_the_original_cad_within_noise():
     assert (
         max_distance < 6 * sigma_mm
     )  # generous: a 6-sigma miss essentially never happens
+
+
+def test_output_z_spans_from_minus_height_to_zero():
+    # #199: a stray z-translation (base no longer at z = 0) would otherwise pass unnoticed --
+    # nothing checked the output actually sits in the board frame. sigma=0 so there's no noise to
+    # smear the exact bounds; densify only adds edge-midpoints, which can't exceed the original
+    # z-range, so the bound is exact for this fixture (CAD z from 0 to 4 mm -> board z from -4 to
+    # 0, since the z-flip sends CAD z to board -z and yaw-about-z never touches z).
+    vertices, faces = _tetrahedron()
+    sample = synthetic.generate_synthetic_sample(vertices, faces, seed=5, sigma_mm=0.0)
+
+    assert sample.vertices_mm[:, 2].max() == pytest.approx(0.0, abs=1e-9)
+    assert sample.vertices_mm[:, 2].min() == pytest.approx(-4.0, abs=1e-9)
+
+
+def test_generate_synthetic_sample_rotation_varies_by_the_seed_argument():
+    # #199: a hardcoded `default_rng(0)` inside generate_synthetic_sample (ignoring its own
+    # `seed` parameter) would pass test_different_seeds_give_different_rotations above, since
+    # that test drives board_frame_transform directly and never exercises this function's own
+    # seed-to-rng wiring. This closes that gap: different `seed` arguments here must give
+    # different recorded rotations.
+    vertices, faces = _tetrahedron()
+    rotations = [
+        synthetic.generate_synthetic_sample(vertices, faces, seed=seed).sidecar[
+            "transform"
+        ]["rotation"]
+        for seed in range(10)
+    ]
+    assert any(rotations[0] != other for other in rotations[1:])
+
+
+def test_sidecar_sigma_mm_matches_the_argument():
+    # #199: a hardcoded sigma_mm in the sidecar (e.g. always the default) would pass every
+    # existing test, since none of them check the sidecar against anything other than the default.
+    vertices, faces = _tetrahedron()
+    sample = synthetic.generate_synthetic_sample(vertices, faces, seed=0, sigma_mm=0.7)
+    assert sample.sidecar["sigma_mm"] == 0.7
+
+
+def test_rejects_a_cad_whose_base_is_not_at_z_zero():
+    vertices, faces = _tetrahedron()
+    offset_vertices = vertices + np.array([0.0, 0.0, 5.0])
+    with pytest.raises(ValueError, match="minimum z"):
+        synthetic.generate_synthetic_sample(offset_vertices, faces, seed=0)

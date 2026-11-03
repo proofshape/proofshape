@@ -1524,6 +1524,22 @@ actual. This update must receive final teammate approval after CI; the review on
 Ruff lint and format (190 files), whitespace checks and the story-state checker with
 `--fix` passed. No additional dependency states needed updating.
 
+## 2026-10-27 — I-11 OBJ loading, extending I-02's loader (PR #210)
+
+**Who:** @dalwalyk. Claimed in #208 (merged separately per D-037).
+**What changed:** `inspection.cad.load_mesh` gained an `.obj` branch alongside its `.stl`/`.glb`
+ones: `v`/`f` lines only, `vn`/`vt`/`g`/`o`/`mtllib`/`usemtl` and comments parsed past, faces
+fan-triangulated from their first vertex, millimetres by the same no-unit-metadata convention as
+STL. `_SUPPORTED_MESSAGE` and I-02's wording test were updated in the same commit.
+@TabeenRaoof's review caught a real bug: the tag/argument split used `line.partition(" ")`,
+which only splits on a single space, so a tab after the tag silently dropped the line and shifted
+every later vertex — a quiet wrong answer. Fixed by splitting on any whitespace instead.
+**Result:** 5 new tests plus the tab-separated regression test (6 total), full suite 571 passed
+(was 545). Both the fan-triangulation and vertex-token-split logic, and the tab-split fix, were
+mutation-tested by hand; each failed exactly its own test. `ruff check`/`ruff format --check` and
+`check_story_states.py` clean.
+**Next:** nothing outstanding for I-11.
+
 ## 2026-10-29 — G-06 caliper truth for the golden-set parts and the printed board (PR #215)
 
 **Who:** @TabeenRaoof (PR #215). Claimed in P-24's pull request.
@@ -1590,3 +1606,25 @@ controls and actual token usage; exact observations are in the story.
 the owner's measured 4 h actual against 7 h estimated.
 **Next:** normal main-only production smoke testing when Lightning is available. No live
 Lightning deployment or production verification is claimed by these results.
+
+## 2026-10-30 — I-12 synthetic-generator tests that pin noise, seed and the board frame (PR #220)
+
+**Who:** @dalwalyk. Claimed in #218 (merged separately per D-037).
+**What changed:** closed #199 — P-27's review found I-01's generator tests still passed under
+six real mutations. Six new tests in `tests/test_synthetic.py`, each mapped to one: noise
+magnitude and direction (decomposed along-normal vs tangential, not just a zero/6σ bound);
+seed and yaw, which needed two tests rather than one — the first drove `board_frame_transform`
+directly and missed that `generate_synthetic_sample` itself could ignore its own `seed`
+argument, caught only by deliberately applying that exact mutation during the mutation-testing
+pass; output z bounds against a known fixture height; the sidecar's `sigma_mm` against an
+explicit non-default value. Also adds `_validate_base_at_zero`, raising on a CAD whose minimum z
+isn't 0, matching this module's existing strict-validation style (confirmed with the team over
+the AC's other option, recording it instead).
+**Result:** all seven checks (the six from #199 plus the new validation) mutation-tested by hand;
+each mutation fails exactly its own test, nothing else. Full suite 639 passed (was 633), ruff and
+`ruff format --check` clean, `check_story_states.py` consistent.
+**Process note:** PR #220 merged with the story still `In review` and the completion record's PR
+number still `#nn` — the Done-state commit should have landed inside the PR before the approval
+it merged on (D-038) but wasn't pushed in time. Corrected after the fact in its own small PR
+rather than silently.
+**Next:** nothing outstanding for I-12.
