@@ -1656,6 +1656,34 @@ used the synced R-25 head and the same-mesh before/after method; no teammate tim
 because no separate measured duration was reported. R-25 and its index row are marked Done on
 this final close-out head before final approval, per D-038.
 
+## 2026-11-03 — A-10 shape-completion spike: LaS-Comp chosen (PR #227, D-057)
+
+**Who:** @TabeenRaoof. Claimed in #224. Approved by @dalwalyk. @mbj1994 reviewed and agreed with
+both questions the PR put to the team. Merged to `main` at `a06dd4e`.
+**What changed:** docs only (`stories/A/A-10.md`, D-057, A-04's notes). LaS-Comp (CVPR 2026,
+zero-shot, on `TRELLIS-image-large`) completed golden part s-04 on a Colab T4, because Lightning
+still has no credits. Measured over five seeds:
+- about 5 min and 11.3 GB per sample, plus 48 s to load;
+- 94.5–100% of observed points within 1 mm of the completion;
+- seeds differ by a median of 1.19 mm in the surface the camera didn't see, against 0.36 mm where
+  it did.
+
+It can't run on the M2 Max (CUDA-only). Its repository has no LICENSE file, so D-057 installs it
+at build time in its own Python 3.10 environment and never vendors it.
+**Decided by the team in review:**
+- One candidate run plus paper screening is accepted against the story's 2–3. Hunyuan3D-Omni was
+  the only judgment call, and its territorial licence covers outputs.
+- Completion runs once, after the session finishes, with K from a measured time budget. The
+  proposal's in-loop K of 3–5 can't run on this hardware, and completion is still not cut
+  (D-017).
+**Record:** A-10 Done in the PR (4.5 h actual, est 4, 0.5 h over the timebox), and A-04 moved to
+Ready. One input-preparation flaw is recorded as such: a 6 mm cut removed the part's base, so no
+completion reaches below about 6 mm.
+**Found along the way:** the served s-04 model still carries a thin board skin, 3–5 mm above the
+board, across the whole board, and the fusion mesh has walls the size of the volume. Noted in
+A-04 for the reconstruction lane.
+**Next:** A-04 (8 h, Ready) builds the stage under D-057's conditions.
+
 ## 2026-11-03 — P-28 process tooling: checker exit codes, decision-number sort, portable deck build (PR #229)
 
 **Who:** @dalwalyk. Claimed in #228 (merged separately per D-037).
@@ -1682,4 +1710,3 @@ variable instead of a path baked into the repository.
 **Close-out:** owner reported 3 h actual against 3 h estimated, including both review-response
 rounds. P-28 and its index row are marked Done on this final close-out head before final
 approval, per D-038.
-
