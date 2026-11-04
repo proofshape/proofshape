@@ -22,9 +22,20 @@ const React = require("react");
 const ReactDOMServer = require("react-dom/server");
 const sharp = require("sharp");
 const fa = require("react-icons/fa6");
-const { applyTheme } = require(
-  "/Users/tabeenraoof/.claude/skills/synced/cb535dfd-926e-4d3f-b0be-d6153353e121_491b23fa-de91-41e9-ac36-4b59d163395f/pptx/scripts/apply_theme.js",
-);
+// P-28 (#201, review on #229): this theming pass is a local Claude Code skill asset, not
+// something every team member has, so it's opt-in via PPTX_APPLY_THEME rather than a
+// hardcoded path under one person's home directory. pres.writeFile() below already writes
+// a complete, valid .pptx before applyTheme ever runs, so skipping it is always safe. When
+// the variable is set, any error it throws (a broken theme setup, not a missing one) is
+// left to throw rather than swallowed as "not found".
+let applyTheme = async () => {
+  console.log(
+    "PPTX_APPLY_THEME not set; skipping the theme pass -- deck content is unaffected.",
+  );
+};
+if (process.env.PPTX_APPLY_THEME) {
+  ({ applyTheme } = require(process.env.PPTX_APPLY_THEME));
+}
 
 const SCRATCH = path.join(__dirname, "..");
 const FIG = path.join(SCRATCH, "submissions", "assets", "2026-10-16");
