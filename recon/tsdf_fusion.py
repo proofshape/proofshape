@@ -49,6 +49,7 @@ from recon.metric_alignment import (
 from recon.part_segmentation import (
     DEFAULT_FOOTPRINT_MM,
     DEFAULT_MAX_BOARD_TILT_DEG,
+    DEFAULT_MIN_KEPT_FRACTION,
     DEFAULT_MIN_KEPT_POINTS,
     BoardSurface,
     measure_board_surface,
@@ -431,6 +432,7 @@ def fuse_run(
     max_board_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
     min_confidence: float | None = None,
     min_kept_points: int = DEFAULT_MIN_KEPT_POINTS,
+    min_kept_fraction: float = DEFAULT_MIN_KEPT_FRACTION,
 ) -> dict[str, Any]:
     """Load R-01 depth/poses and an R-04 alignment, fuse, extract a mesh, and write the outputs.
 
@@ -513,6 +515,7 @@ def fuse_run(
         height_threshold_mm,
         footprint_mm,
         min_kept_points=min_kept_points,
+        min_kept_fraction=min_kept_fraction,
     )
     segmented_mask = segmented_flat.reshape(frame_count, height, width)
 
