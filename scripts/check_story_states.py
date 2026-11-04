@@ -181,32 +181,18 @@ def owner_problems(sid, state, owner):
     return problems
 
 
-def main():
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    ap.add_argument(
-        "--fix", action="store_true", help="apply Blocked->Ready fixes to disk"
-    )
-    args = ap.parse_args()
+def collect_problems(rows):
+    """Everything wrong across every story, plus which ones --fix can resolve.
 
-    rows, index_text = parse_index()
-    if not rows:
-        print(
-            "No story rows parsed from stories/README.md — check the table format.",
-            file=sys.stderr,
-        )
-        return 2
-
+    Returns (problems, fixes). Called once on the as-read state and, inside --fix, again
+    on the state actually written to disk -- so "what's still wrong" always comes from
+    looking at the real, current files, never from arithmetic on an earlier count (#194:
+    a fix that turns out to be a no-op, because the index already held the target value,
+    is not a surviving problem, and treating it as one double-counts the one mismatch that
+    prompted it).
+    """
     problems = []
-    fixes = []  # (sid, old_state, new_state) for stories we will flip Blocked -> Ready
-
-    for sid in unparsed_rows(index_text, rows):
-        problems.append(
-            f"{sid}: its row in stories/README.md doesn't match the expected "
-            '| ID | Story | Est | Depends on | State | Owner | layout (Est is "3 h", or "—" '
-            "for a P story's past work never estimated), so none of the other checks can see it"
-        )
+    fixes = []
 
     for sid, info in rows.items():
         problems.extend(estimate_problems(sid, info["estimate"]))
@@ -249,6 +235,46 @@ def main():
                 )
                 fixes.append(sid)
 
+    return problems, fixes
+
+
+def all_problems(index_text, rows):
+    """Every check this script runs, including the one that needs the raw index text
+    rather than the already-parsed rows (#194 review on TabeenRaoof's #229 comment: the
+    post-fix recompute called collect_problems alone, so a row --fix can't even parse
+    stayed invisible after a fix, even though a plain run straight after still reported
+    it). Used for both the as-read pass and --fix's post-fix recompute, so neither one can
+    drift out of sync with what the other checks."""
+    problems = [
+        f"{sid}: its row in stories/README.md doesn't match the expected "
+        '| ID | Story | Est | Depends on | State | Owner | layout (Est is "3 h", or "—" '
+        "for a P story's past work never estimated), so none of the other checks can see it"
+        for sid in unparsed_rows(index_text, rows)
+    ]
+    file_problems, fixes = collect_problems(rows)
+    problems.extend(file_problems)
+    return problems, fixes
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--fix", action="store_true", help="apply Blocked->Ready fixes to disk"
+    )
+    args = ap.parse_args()
+
+    rows, index_text = parse_index()
+    if not rows:
+        print(
+            "No story rows parsed from stories/README.md — check the table format.",
+            file=sys.stderr,
+        )
+        return 2
+
+    problems, fixes = all_problems(index_text, rows)
+
     if not problems:
         print(
             "All story states consistent; nothing is stuck Blocked with satisfied dependencies."
@@ -268,18 +294,48 @@ def main():
             text = path.read_text(encoding="utf-8")
             text = FILE_STATE_RE.sub("**State:** Ready", text, count=1)
             path.write_text(text, encoding="utf-8")
+
             # index row: replace only the State cell (the fifth) for this ID's row. It is no
-            # longer the last cell, since the Owner column follows it (D-037).
-            new_index_text = re.sub(
-                rf"^(\|\s*\[{re.escape(sid)}\]\({re.escape(rows[sid]['path'])}\)\s*\|(?:[^|\n]*\|){{3}}\s*)"
-                r"Blocked(\s*\|)",
-                r"\1Ready\2",
-                new_index_text,
-                count=1,
-                flags=re.MULTILINE,
-            )
-            print(f"  {sid}: Blocked -> Ready (file + index)")
+            # longer the last cell, since the Owner column follows it (D-037). What the cell
+            # currently holds (captured in `rows` before any edit) decides what happens, rather
+            # than a blind substitution's match count: "Blocked" is the only value this script
+            # ever rewrites, "Ready" already matches what the file is about to say (no edit
+            # needed, and not an error), and anything else is a real, separate problem this
+            # script can't resolve -- left untouched rather than guessed at.
+            index_state = rows[sid]["index_state"]
+            if index_state == "Blocked":
+                new_index_text = re.sub(
+                    rf"^(\|\s*\[{re.escape(sid)}\]\({re.escape(rows[sid]['path'])}\)\s*\|(?:[^|\n]*\|){{3}}\s*)"
+                    r"Blocked(\s*\|)",
+                    r"\1Ready\2",
+                    new_index_text,
+                    count=1,
+                    flags=re.MULTILINE,
+                )
+                print(f"  {sid}: Blocked -> Ready (file + index)")
+            elif index_state == "Ready":
+                print(
+                    f"  {sid}: Blocked -> Ready (file only; index already said Ready)"
+                )
+            else:
+                print(
+                    f"  ERROR: {sid}: wrote State: Ready to the story file, but its "
+                    f"stories/README.md row's State cell says '{index_state}', not 'Blocked' "
+                    "-- fix the index row by hand"
+                )
         INDEX.write_text(new_index_text, encoding="utf-8")
+
+        # What's actually still wrong is read back off disk, not derived by subtracting fix
+        # counts from the original problem count: a fix that turned out to be a no-op above
+        # (index already said Ready) resolves the one mismatch that flagged it, rather than
+        # adding a new, separately-counted failure.
+        rows_after, index_text_after = parse_index()
+        problems_after, _ = all_problems(index_text_after, rows_after)
+        if problems_after:
+            print(f"\n{len(problems_after)} problem(s) remain:\n")
+            for p in problems_after:
+                print(f"  - {p}")
+            return 1
         print("\nDone. Review the diff, then commit.")
         return 0
 

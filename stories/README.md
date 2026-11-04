@@ -364,7 +364,7 @@ Full detail in each story file.
 | [C-20](C/C-20.md) | Capture gate and orbit maths: heading wrap, roll, gate order | 3 h | C-06, C-07, C-09 | Ready | _unclaimed_ |
 | [F-08](F/F-08.md) | Fixture and image safety: downloader verification, case-insensitive photo ignores, image path filters | 3 h | F-06, R-15 | Done | @dalwalyk |
 | [I-12](I/I-12.md) | Synthetic-generator tests that pin noise, seed and the board frame | 2 h | I-01 | Done | @dalwalyk |
-| [P-28](P/P-28.md) | Process tooling: checker exit codes, the decision-number snippet, a portable deck build | 3 h | nothing | Claimed | @dalwalyk |
+| [P-28](P/P-28.md) | Process tooling: checker exit codes, the decision-number snippet, a portable deck build | 3 h | nothing | Done | @dalwalyk |
 
 ---
 

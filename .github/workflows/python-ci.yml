@@ -50,5 +50,17 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
+      # scripts/ is Node (deck/report generator scripts), not covered by requirements.txt.
+      # tests/test_generator_scripts.py shells out to `node` to build each one, so it needs
+      # scripts/node_modules installed for real here, not just locally (#201).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install scripts/ dependencies
+        run: npm ci
+        working-directory: scripts
+
       - name: Run tests
         run: python -m pytest -q
