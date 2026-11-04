@@ -9,6 +9,7 @@ import type {
   ReconstructionResult,
   Session,
   UploadFrameResult,
+  VlmFeedback,
 } from "../src/types.js";
 
 // C-01 started this as a three-route contract stub. C-10 extends it into the capture-side mock
@@ -39,6 +40,13 @@ const KNOWN_ORDER_CODE = (loadExample("createSession.request") as { order_code: 
   .order_code;
 const CREATE_SESSION_400 = loadExample("createSession.response-400") as ErrorDetail;
 const UPLOAD_FRAME_422 = loadExample("uploadFrame.response-422") as ErrorDetail;
+const VLM_FEEDBACK = (loadExample("uploadFrame.response-202-vlm-feedback") as UploadFrameResult)
+  .vlm_feedback as VlmFeedback;
+const VLM_FEEDBACK_REFERENCE = (
+  loadExample("uploadFrame.response-202-vlm-feedback-reference") as UploadFrameResult
+).vlm_feedback as VlmFeedback;
+// A-01 checks frames 0, 5, 10, … (plus the last one, which the stub can't know in advance).
+const VLM_SAMPLE_EVERY = 5;
 const FINISH_SESSION_409_TOO_FEW = loadExample("finishSession.response-409") as ErrorDetail;
 const RECONSTRUCTION_COMPLETE = loadExample(
   "getReconstruction.response-200",
@@ -71,6 +79,10 @@ export interface ContractStub {
   // Test control: the next accepted-otherwise frame upload is rejected instead, using the
   // contract's committed 422 example.
   rejectNextFrame: () => void;
+  // A-11: from now on, every accepted upload after the first carries `vlm_feedback` for the
+  // newest sampled frame before it, as if each check finished before the next upload arrived.
+  // The hint and checks come from the committed examples (frame 0 uses the reference one).
+  useVlmFeedback: () => void;
   setReconstructionPendingPolls: (count: number) => void;
   failReconstruction: () => void;
   useNoReferenceReconstruction: () => void;
@@ -79,6 +91,7 @@ export interface ContractStub {
 export function createContractStub(): ContractStub {
   const sessions = new Map<string, StubSession>();
   let rejectNext = false;
+  let vlmFeedbackOn = false;
   let sessionCounter = 0;
   let reconstructionPendingPolls = 1;
   let reconstructionShouldFail = false;
@@ -231,6 +244,11 @@ export function createContractStub(): ContractStub {
 
     session.acceptedFrameCount += 1;
     const body: UploadFrameResult = { accepted: true, frame_index: frameIndex };
+    if (vlmFeedbackOn && frameIndex > 0) {
+      const checked = Math.floor((frameIndex - 1) / VLM_SAMPLE_EVERY) * VLM_SAMPLE_EVERY;
+      const example = checked === 0 ? VLM_FEEDBACK_REFERENCE : VLM_FEEDBACK;
+      body.vlm_feedback = { ...example, frame_index: checked };
+    }
     sendJson(res, 202, body);
   }
 
@@ -380,6 +398,9 @@ export function createContractStub(): ContractStub {
     handle,
     rejectNextFrame: () => {
       rejectNext = true;
+    },
+    useVlmFeedback: () => {
+      vlmFeedbackOn = true;
     },
     setReconstructionPendingPolls: (count: number) => {
       reconstructionPendingPolls = Math.max(0, Math.floor(count));

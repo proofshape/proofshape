@@ -11,8 +11,11 @@ from recon.vlm_check import (
     MODEL,
     GeminiInspector,
     VlmSupervisor,
+    atomic_json,
+    latest_checked,
     parse_response,
     sampled_indices,
+    unchecked,
 )
 
 
@@ -281,3 +284,46 @@ def test_shutdown_cancels_queued_work_and_records_closed_submissions(tmp_path):
     finally:
         release.set()
         supervisor.close()
+
+
+# A-11: the upload response carries the newest *checked* result, read from disk only.
+
+
+def write_result(session_dir, check):
+    atomic_json(
+        VlmSupervisor.result_path(session_dir, check.frame_index), check.model_dump()
+    )
+
+
+def test_latest_checked_is_none_before_any_result(tmp_path):
+    assert latest_checked(tmp_path) is None  # no vlm/ folder yet
+
+
+def test_latest_checked_skips_newer_unchecked_results(tmp_path):
+    write_result(tmp_path, parse_response(0, reply(0)))
+    write_result(tmp_path, parse_response(5, reply(5, hint="Move left.")))
+    write_result(tmp_path, unchecked(10, "api_error"))  # newest, but not a check
+
+    result = latest_checked(tmp_path)
+
+    assert result.frame_index == 5
+    assert result.observation.hint == "Move left."
+
+
+def test_latest_checked_orders_by_index_not_file_name(tmp_path):
+    # 4-digit padding stops sorting by name once an index reaches 10000.
+    write_result(tmp_path, parse_response(9995, reply(9995, hint="Earlier.")))
+    write_result(tmp_path, parse_response(10000, reply(10000, hint="Later.")))
+
+    assert latest_checked(tmp_path).frame_index == 10000
+
+
+def test_latest_checked_ignores_corrupt_mismatched_and_temporary_files(tmp_path):
+    write_result(tmp_path, parse_response(0, reply(0)))
+    vlm_dir = tmp_path / "vlm"
+    (vlm_dir / "frame_0015.json").write_text("{not json", encoding="utf-8")
+    mismatched = parse_response(20, reply(20)).model_dump()
+    (vlm_dir / "frame_0025.json").write_text(json.dumps(mismatched), encoding="utf-8")
+    (vlm_dir / ".frame_0030.json.abc123.tmp").write_text("{}", encoding="utf-8")
+
+    assert latest_checked(tmp_path).frame_index == 0

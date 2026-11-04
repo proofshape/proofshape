@@ -1279,6 +1279,99 @@ describe("mountAppShell", () => {
     await captureAndWaitForStatus(mounted, /accepted/i);
   });
 
+  function vlmHintText(): string | null {
+    return document.getElementById("shell-vlm-hint")?.textContent ?? null;
+  }
+
+  const FEEDBACK = {
+    frame_index: 0,
+    hint: "Good start: the part and the reference sheet are both in view.",
+    same_part: null,
+    hands_occluding: false,
+    screen_photo: false,
+    lighting_adequate: true,
+  };
+
+  it("A-11: shows the VLM tip once an accepted upload carries one, naming the earlier frame", async () => {
+    stub.useVlmFeedback();
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    // Frame 0: no check has finished yet, so there's no tip.
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    expect(vlmHintText()).toBe("");
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    // Frame 1 (a different spot, so the local duplicate gate lets it through): the stub now
+    // reports frame 0's check.
+    dispatchOrientation(90, 45, 0);
+    await captureAndWaitForStatus(mounted, /frame 1/i);
+    expect(vlmHintText()).toBe(
+      "Tip (from frame 0): Good start: the part and the reference sheet are both in view.",
+    );
+  });
+
+  it("A-11: keeps the tip through a later 202 without one, shows it as text, and clears it on Start", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    const { fetchSpy, resolve } = pendingFramesFetch();
+
+    // Model output that looks like markup must stay text.
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (fetchSpy.mock.calls.length === 0) throw new Error("fetch not called yet");
+    });
+    resolve(202, {
+      accepted: true,
+      frame_index: 0,
+      vlm_feedback: { ...FEEDBACK, hint: "<img src=x onerror=alert(1)> move closer" },
+    });
+    await vi.waitFor(() => {
+      if (vlmHintText() === "") throw new Error("no tip yet");
+    });
+    const hint = document.getElementById("shell-vlm-hint");
+    expect(hint?.textContent).toBe("Tip (from frame 0): <img src=x onerror=alert(1)> move closer");
+    expect(hint?.querySelector("img")).toBeNull();
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    // A later 202 without feedback (no newer check yet) leaves the tip alone.
+    dispatchOrientation(90, 45, 0);
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (fetchSpy.mock.calls.filter(([u]) => String(u).includes("/frames")).length < 2) {
+        throw new Error("second upload not sent yet");
+      }
+    });
+    resolve(202, { accepted: true, frame_index: 1 });
+    await vi.waitFor(() => {
+      if (!/frame 1/.test(mounted.captureStatus.textContent)) throw new Error("still pending");
+    });
+    expect(vlmHintText()).toMatch(/^Tip \(from frame 0\)/);
+
+    // A new session is a new part: the old tip goes the moment Start is clicked. Start is
+    // disabled once a session exists, so bypass that to prove the handler's own clear.
+    mounted.button.disabled = false;
+    mounted.button.click();
+    expect(vlmHintText()).toBe("");
+    await vi.waitFor(() => {
+      if (mounted.sessionStatus.textContent === "") throw new Error("still pending");
+    });
+  });
+
   it("disposes the gyro overlay's listener once the session finishes, so stale guidance doesn't keep reacting to new readings", async () => {
     const mounted = await startSuccessfulSession();
     await uploadAcceptedFrame(mounted.state.sessionId as string);

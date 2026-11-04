@@ -1,0 +1,4 @@
+{
+  "code": "malformed_request",
+  "message": "Malformed frame upload: the gyro part is invalid (gyro must be a JSON object)."
+}
