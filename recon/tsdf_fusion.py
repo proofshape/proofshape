@@ -49,6 +49,7 @@ from recon.metric_alignment import (
 from recon.part_segmentation import (
     DEFAULT_FOOTPRINT_MM,
     DEFAULT_MAX_BOARD_TILT_DEG,
+    DEFAULT_MIN_KEPT_POINTS,
     BoardSurface,
     measure_board_surface,
     segment_part,
@@ -429,6 +430,7 @@ def fuse_run(
     max_part_height_mm: float = DEFAULT_MAX_PART_HEIGHT_MM,
     max_board_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
     min_confidence: float | None = None,
+    min_kept_points: int = DEFAULT_MIN_KEPT_POINTS,
 ) -> dict[str, Any]:
     """Load R-01 depth/poses and an R-04 alignment, fuse, extract a mesh, and write the outputs.
 
@@ -495,7 +497,10 @@ def fuse_run(
     flat_points = board_frame_points.reshape(-1, 3)
     valid_depth = (np.isfinite(depth) & (depth > 0.0)).reshape(-1)
     board_surface = measure_board_surface(
-        flat_points[valid_depth], footprint_mm, max_tilt_deg=max_board_tilt_deg
+        flat_points[valid_depth],
+        footprint_mm,
+        max_tilt_deg=max_board_tilt_deg,
+        height_threshold_mm=height_threshold_mm,
     )
     # segment_part itself requires every point finite; an invalid pixel's unprojected point can
     # still be non-finite (e.g. NaN depth), so it's excluded here too rather than passed through
@@ -503,7 +508,11 @@ def fuse_run(
     # its own, independently of this mask, so their keep value doesn't otherwise matter.
     segmented_flat = np.zeros(flat_points.shape[0], dtype=bool)
     segmented_flat[valid_depth] = segment_part(
-        flat_points[valid_depth], board_surface, height_threshold_mm, footprint_mm
+        flat_points[valid_depth],
+        board_surface,
+        height_threshold_mm,
+        footprint_mm,
+        min_kept_points=min_kept_points,
     )
     segmented_mask = segmented_flat.reshape(frame_count, height, width)
 

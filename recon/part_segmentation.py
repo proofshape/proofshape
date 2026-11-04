@@ -97,6 +97,23 @@ DEFAULT_BOARD_LAYER_DENSITY_FRACTION = 0.05
 # R-06's original fixed margin, kept as a floor once the board is this clean.
 DEFAULT_MIN_BOARD_CLEARANCE_MM = 2.0
 
+# R-26 (#180): the board-layer-top histogram only looks at points within this margin of the
+# footprint's outer edge, not the whole footprint. A part sitting on the board can never cover
+# it edge to edge, so this band structurally can't contain the part's own surface -- unlike the
+# whole-footprint histogram, which let a large flat part's top look like a raised second board
+# layer (R-17's legitimate case) and get excluded along with the board. 20 mm is a bare
+# assumption, chosen to clear every golden part's footprint with room to spare, not a measured
+# bound.
+DEFAULT_LAYER_SEARCH_MARGIN_MM = 20.0
+
+# A kept segmentation with fewer points than this can't describe a hand-sized part (the same
+# floor A-04's min_core_vertices uses, by analogy -- restated here as this function's own
+# assumption). Below it, segment_run/fuse_run raise rather than returning a near-empty result
+# silently. segment_part's own default is 0 (disabled): it's a general-purpose masking
+# primitive, used at every scale including small synthetic tests that aren't about this check;
+# the real pipeline entry points opt into the floor explicitly.
+DEFAULT_MIN_KEPT_POINTS = 50
+
 
 @dataclass(frozen=True)
 class BoardSurface:
@@ -105,6 +122,10 @@ class BoardSurface:
     The plane is z = slope_x*x + slope_y*y + z_at_origin_mm. `height_above_board_mm` measures a
     point's height above *this* plane, not above z = 0, using the same -z-is-up convention as the
     rest of this module.
+
+    `board_layer_top_mm` is `None` when the layer-top search was skipped because the caller
+    passed an explicit `height_threshold_mm` to `measure_board_surface` (R-26): there is then
+    nothing measured to report, not a measured zero.
     """
 
     slope_x: float
@@ -115,7 +136,7 @@ class BoardSurface:
     residual_sigma_mm: float
     inlier_count: int
     candidate_count: int
-    board_layer_top_mm: float
+    board_layer_top_mm: float | None
     height_threshold_mm: float
 
     def plane_z_mm(self, x_mm: np.ndarray, y_mm: np.ndarray) -> np.ndarray:
@@ -155,26 +176,38 @@ def measure_board_surface(
     max_board_layer_mm: float = DEFAULT_MAX_BOARD_LAYER_MM,
     layer_density_fraction: float = DEFAULT_BOARD_LAYER_DENSITY_FRACTION,
     min_clearance_mm: float = DEFAULT_MIN_BOARD_CLEARANCE_MM,
+    layer_search_margin_mm: float = DEFAULT_LAYER_SEARCH_MARGIN_MM,
+    height_threshold_mm: float | None = None,
 ) -> BoardSurface:
     """Fit the real board surface from the board points around the part, and size the height cut.
 
-    Two things happen here, both against the *same* candidate points (everything inside the
-    footprint within `search_band_mm` of the assumed z=0 -- wide enough for the board's offset,
-    narrow enough to exclude any hand-sized part):
+    The plane fit (median start, then least-squares with iterative MAD-sigma clipping,
+    deterministic -- no RANSAC, no random state) uses every candidate point inside the footprint
+    within `search_band_mm` of the assumed z=0 -- wide enough for the board's offset, narrow
+    enough to exclude any hand-sized part. It gives the board's offset and tilt.
 
-    1. A robust plane fit (median start, then least-squares with iterative MAD-sigma clipping,
-       deterministic -- no RANSAC, no random state) gives the board's offset and tilt.
-    2. A histogram of height-above-that-plane finds where the board's own point layer actually
-       ends -- not just the fitted plane's noise, but any secondary layer sitting above it (R-17
-       found VGGT reconstructing a weak second board layer 4-6 mm up on two of the five golden
-       objects). The height threshold is set to clear the *top* of the highest dense bin, so a
-       raised layer separated from the main board by a sparser gap doesn't slip through the cut.
+    Unless `height_threshold_mm` is given explicitly (see below), a histogram of
+    height-above-that-plane then finds where the board's own point layer actually ends -- not
+    just the fitted plane's noise, but any secondary layer sitting above it (R-17 found VGGT
+    reconstructing a weak second board layer 4-6 mm up on two of the five golden objects). The
+    height threshold is set to clear the *top* of the highest dense bin, so a raised layer
+    separated from the main board by a sparser gap doesn't slip through the cut. This histogram
+    looks only at points within `layer_search_margin_mm` of the footprint's outer edge (R-26,
+    #180): the full footprint also includes the part itself, and a large flat part's own top
+    surface produces the same dense-bin signature as a legitimate raised board layer, with no
+    reliable way to tell them apart from height alone. The edge margin can't contain the part by
+    construction, so it's never confused for one.
+
+    `height_threshold_mm`, when given, skips that histogram entirely: the returned
+    `BoardSurface.height_threshold_mm` is this value as-is (no `min_clearance_mm` floor, since
+    it's explicit) and `board_layer_top_mm` is `None`. This is the override's whole point (R-26):
+    a caller already working around a layer-search failure must not still run into it here.
 
     Raises:
         ValueError: too few candidate or inlier board points, a degenerate (collinear) point
-            spread, a tilt beyond `max_tilt_deg`, or a dense point layer that still reaches
-            `max_board_layer_mm` without thinning out (the search didn't find where it ends --
-            this also catches a part that is itself thin and flat across the whole footprint).
+            spread, a tilt beyond `max_tilt_deg`, too few edge-margin points to search for the
+            layer top, or (with no override) a dense point layer that still reaches
+            `max_board_layer_mm` without thinning out.
     """
     points_board_frame_mm = np.asarray(points_board_frame_mm, dtype=np.float64)
     if points_board_frame_mm.ndim != 2 or points_board_frame_mm.shape[1] != 3:
@@ -265,10 +298,46 @@ def measure_board_surface(
         + z_at_origin_mm
     )
 
-    # Board-layer top: histogram height-above-plane for *every* candidate (not just inliers --
-    # a raised second layer is exactly what sigma-clipping just excluded as an outlier).
-    plane_z_at_candidates_mm = slope_x * cx_mm + slope_y * cy_mm + z_at_origin_mm
-    height_above_board_mm = plane_z_at_candidates_mm - cz_mm
+    if height_threshold_mm is not None:
+        # R-26: the caller already knows it wants this threshold, typically to work around a
+        # layer-search failure -- so that search must not run here either.
+        return BoardSurface(
+            slope_x=slope_x,
+            slope_y=slope_y,
+            z_at_origin_mm=z_at_origin_mm,
+            offset_mm=offset_mm,
+            tilt_deg=tilt_deg,
+            residual_sigma_mm=residual_sigma_mm,
+            inlier_count=inlier_count,
+            candidate_count=candidate_count,
+            board_layer_top_mm=None,
+            height_threshold_mm=float(height_threshold_mm),
+        )
+
+    # Board-layer top: histogram height-above-plane for candidates within layer_search_margin_mm
+    # of the footprint's outer edge only (R-26, #180) -- not the whole footprint, which also
+    # holds the part itself, and a large flat part's own top surface produces the same dense-bin
+    # signature as a legitimate raised board layer (R-17). The edge margin can't contain the
+    # part by construction.
+    near_edge = (
+        (x_mm <= layer_search_margin_mm)
+        | (x_mm >= footprint_width_mm - layer_search_margin_mm)
+        | (y_mm <= layer_search_margin_mm)
+        | (y_mm >= footprint_height_mm - layer_search_margin_mm)
+    )
+    layer_search = candidates & near_edge
+    layer_search_count = int(np.count_nonzero(layer_search))
+    if layer_search_count < min_board_points:
+        raise ValueError(
+            f"only {layer_search_count} candidate board points within "
+            f"{layer_search_margin_mm} mm of the footprint's edge; need at least "
+            f"{min_board_points} to search for the board layer's top there."
+        )
+    lx_mm = x_mm[layer_search]
+    ly_mm = y_mm[layer_search]
+    lz_mm = z_mm[layer_search]
+    plane_z_at_layer_search_mm = slope_x * lx_mm + slope_y * ly_mm + z_at_origin_mm
+    height_above_board_mm = plane_z_at_layer_search_mm - lz_mm
     bin_edges_mm = np.arange(
         -layer_bin_mm, max_board_layer_mm + layer_bin_mm, layer_bin_mm
     )
@@ -284,7 +353,7 @@ def measure_board_surface(
             "this thick."
         )
     board_layer_top_mm = float(bin_edges_mm[top_bin_index + 1])
-    height_threshold_mm = max(min_clearance_mm, board_layer_top_mm)
+    resolved_height_threshold_mm = max(min_clearance_mm, board_layer_top_mm)
 
     return BoardSurface(
         slope_x=slope_x,
@@ -296,7 +365,7 @@ def measure_board_surface(
         inlier_count=inlier_count,
         candidate_count=candidate_count,
         board_layer_top_mm=board_layer_top_mm,
-        height_threshold_mm=height_threshold_mm,
+        height_threshold_mm=resolved_height_threshold_mm,
     )
 
 
@@ -305,6 +374,7 @@ def segment_part(
     board_surface: BoardSurface,
     height_threshold_mm: float | None = None,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
+    min_kept_points: int = 0,
 ) -> np.ndarray:
     """Return a boolean keep-mask: True where a point is part geometry, not board/background.
 
@@ -318,9 +388,16 @@ def segment_part(
             explicit value here still applies above the measured plane, not above z=0.
         footprint_mm: (width_mm, height_mm) of the keep rectangle, anchored at the board origin
             (x in [0, width_mm], y in [0, height_mm]). Defaults to the printed pattern's own size.
+        min_kept_points: a kept result smaller than this can't describe a hand-sized part (R-26,
+            #180) -- below it, this raises instead of returning a near-empty mask silently.
+            0 (the default) disables the check: this is a general-purpose masking primitive used
+            at every scale, including small synthetic inputs that aren't about this check. The
+            real pipeline entry points (`segment_run`, `fuse_run`) pass
+            `DEFAULT_MIN_KEPT_POINTS` explicitly.
 
     Raises:
-        ValueError: on a malformed shape, non-finite input, or a non-positive threshold/footprint.
+        ValueError: on a malformed shape, non-finite input, a non-positive threshold/footprint,
+            or (when `min_kept_points > 0`) a kept result smaller than it.
         TypeError: if `board_surface` isn't a `BoardSurface`.
     """
     points_board_frame_mm = np.asarray(points_board_frame_mm, dtype=np.float64)
@@ -362,7 +439,15 @@ def segment_part(
         & (y_mm >= 0.0)
         & (y_mm <= footprint_height_mm)
     )
-    return keep_height & keep_footprint
+    keep = keep_height & keep_footprint
+    kept_count = int(np.count_nonzero(keep))
+    if kept_count < min_kept_points:
+        raise ValueError(
+            f"segmentation kept only {kept_count} point(s) above {resolved_threshold_mm} mm; "
+            f"need at least {min_kept_points} to describe a hand-sized part, not returning a "
+            "near-empty result silently."
+        )
+    return keep
 
 
 def load_alignment(alignment_json_path: Path) -> dict[str, Any]:
@@ -420,6 +505,7 @@ def segment_run(
     height_threshold_mm: float | None = None,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
     max_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
+    min_kept_points: int = DEFAULT_MIN_KEPT_POINTS,
 ) -> dict[str, Any]:
     """Load an R-01 point cloud and an R-04 alignment, segment, and write the outputs.
 
@@ -444,7 +530,10 @@ def segment_run(
         points, alignment["scale"], alignment["rotation"], alignment["translation"]
     )
     board_surface = measure_board_surface(
-        points_board_frame_mm, footprint_mm, max_tilt_deg=max_tilt_deg
+        points_board_frame_mm,
+        footprint_mm,
+        max_tilt_deg=max_tilt_deg,
+        height_threshold_mm=height_threshold_mm,
     )
     height_threshold_source = "measured"
     resolved_threshold_mm = board_surface.height_threshold_mm
@@ -452,7 +541,11 @@ def segment_run(
         height_threshold_source = "override"
         resolved_threshold_mm = height_threshold_mm
     keep = segment_part(
-        points_board_frame_mm, board_surface, height_threshold_mm, footprint_mm
+        points_board_frame_mm,
+        board_surface,
+        height_threshold_mm,
+        footprint_mm,
+        min_kept_points=min_kept_points,
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)

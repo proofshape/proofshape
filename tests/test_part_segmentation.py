@@ -253,6 +253,73 @@ def test_measure_board_surface_rejects_a_board_layer_that_never_thins_out():
         part_segmentation.measure_board_surface(points)
 
 
+# --- measure_board_surface: a flat part isn't mistaken for a raised board layer (R-26, #180) ---
+
+
+def test_flat_part_within_the_margin_is_not_mistaken_for_a_raised_board_layer():
+    # #180: a flat part's own top surface is dense and sits within max_board_layer_mm of the
+    # fitted plane -- the same histogram signature as a legitimate raised board layer (R-17).
+    # Centered well inside the default 20 mm margin, so the margin-restricted search never sees
+    # it, and the part survives the cut.
+    rng = np.random.default_rng(10)
+    points = _board_and_part_points(
+        rng,
+        offset_mm=2.0,
+        board_noise_mm=0.2,
+        part_half_size_mm=20.0,
+        part_height_above_board_mm=6.0,
+        part_point_count=2000,
+    )
+
+    surface = part_segmentation.measure_board_surface(points)
+    keep = part_segmentation.segment_part(points, surface)
+
+    assert surface.height_threshold_mm < 6.0
+    part_kept = keep[-2000:]  # the part points, appended last by the helper
+    assert part_kept.all()
+
+
+def test_measure_board_surface_rejects_a_starved_layer_search_margin():
+    # A margin thin enough that the uniformly-spread synthetic board doesn't leave
+    # min_board_points inside it -- an explicit error, not a silent guess. (The plane fit itself
+    # still succeeds: it uses the full footprint, well above min_board_points on its own.)
+    rng = np.random.default_rng(11)
+    points = _board_and_part_points(
+        rng, board_point_count=4000, part_height_above_board_mm=None
+    )
+
+    with pytest.raises(ValueError, match="footprint's edge"):
+        part_segmentation.measure_board_surface(points, layer_search_margin_mm=2.0)
+
+
+def test_measure_board_surface_explicit_height_threshold_skips_the_layer_search():
+    # The same degenerate input that makes the unconstrained search raise (a dense cluster right
+    # at the search window's edge) succeeds once the caller supplies height_threshold_mm -- the
+    # whole point of the override (R-26): a caller already working around a layer-search failure
+    # must not run into it here either.
+    rng = np.random.default_rng(9)
+    board_x = rng.uniform(0.0, 160.0, 4000)
+    board_y = rng.uniform(0.0, 120.0, 4000)
+    board_z = rng.normal(0.0, 0.1, 4000)
+    edge_x = rng.uniform(0.0, 160.0, 400)
+    edge_y = rng.uniform(0.0, 120.0, 400)
+    edge_z = -rng.normal(9.75, 0.03, 400)
+    points = np.vstack(
+        [
+            np.column_stack([board_x, board_y, board_z]),
+            np.column_stack([edge_x, edge_y, edge_z]),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="top wasn't found"):
+        part_segmentation.measure_board_surface(points)
+
+    surface = part_segmentation.measure_board_surface(points, height_threshold_mm=12.0)
+
+    assert surface.board_layer_top_mm is None
+    assert surface.height_threshold_mm == 12.0
+
+
 # --- segment_part: height threshold direction, with a trivial flat surface -------------------
 # board_pose.py's z convention: origin on the paper, z = 0 there, z increasing *into* the
 # table, so a camera (and anything else) above the board has negative z. Height above the board
@@ -389,6 +456,21 @@ def test_segment_part_rejects_bad_shape():
         part_segmentation.segment_part(np.zeros((3, 2)), _flat_surface())
 
 
+def test_segment_part_min_kept_points_catches_an_implausibly_small_result():
+    # R-26 (#180): a near-empty segmentation must raise, not be returned silently.
+    points = np.array([[80.0, 60.0, -10.0], [81.0, 61.0, -10.0]])
+
+    kept = part_segmentation.segment_part(
+        points, _flat_surface(), height_threshold_mm=2.0, min_kept_points=0
+    )
+    assert kept.sum() == 2  # disabled (the default): the tiny result is returned as-is
+
+    with pytest.raises(ValueError, match="need at least 50"):
+        part_segmentation.segment_part(
+            points, _flat_surface(), height_threshold_mm=2.0, min_kept_points=50
+        )
+
+
 def test_segment_part_rejects_non_finite_points():
     with pytest.raises(ValueError, match="finite"):
         part_segmentation.segment_part(np.array([[np.nan, 0.0, 0.0]]), _flat_surface())
@@ -498,6 +580,10 @@ def test_segment_run_height_threshold_override_is_recorded(tmp_path):
 
     assert report["height_threshold_mm"] == pytest.approx(10.0)
     assert report["height_threshold_source"] == "override"
+    # R-26: the override must reach measure_board_surface too, not just segment_part -- confirms
+    # the layer-top search itself didn't run (board_layer_top_mm is None), not just that the
+    # final value happens to match.
+    assert report["board_surface"]["board_layer_top_mm"] is None
 
 
 def test_segment_run_refuses_to_overwrite_existing_output(tmp_path):

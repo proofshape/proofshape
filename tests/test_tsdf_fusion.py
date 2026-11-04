@@ -381,6 +381,7 @@ def test_fuse_run_writes_mesh_and_report(tmp_path):
         voxel_size_mm=10.0,
         footprint_mm=(160.0, 120.0),
         max_part_height_mm=100.0,
+        min_kept_points=0,
     )
 
     assert report["frame_count"] == 1
@@ -413,10 +414,33 @@ def test_fuse_run_grid_top_follows_the_fitted_plane(tmp_path):
         voxel_size_mm=10.0,
         footprint_mm=(160.0, 120.0),
         max_part_height_mm=100.0,
+        min_kept_points=0,
     )
 
     assert report["bounds_max_mm"][2] == pytest.approx(-10.0, abs=0.5)
     assert report["bounds_min_mm"][2] == pytest.approx(-110.0, abs=0.5)
+
+
+def test_fuse_run_height_threshold_override_skips_the_layer_search(tmp_path):
+    # R-26: an explicit height_threshold_mm must reach measure_board_surface too, not just
+    # segment_part -- the whole point of the override is to work around a layer-search failure.
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth())
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "mesh_out",
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+        height_threshold_mm=5.0,
+        min_kept_points=0,
+    )
+
+    assert report["board_surface"]["board_layer_top_mm"] is None
 
 
 def test_fuse_run_excludes_invalid_depth_pixels_from_the_board_fit(tmp_path):
@@ -437,6 +461,7 @@ def test_fuse_run_excludes_invalid_depth_pixels_from_the_board_fit(tmp_path):
         voxel_size_mm=10.0,
         footprint_mm=(160.0, 120.0),
         max_part_height_mm=100.0,
+        min_kept_points=0,
     )
 
     assert report["board_surface"]["offset_mm"] == pytest.approx(-10.0, abs=0.5)
@@ -479,6 +504,7 @@ def test_fuse_run_at_min_confidence_zero_still_excludes_non_finite_confidence(tm
         voxel_size_mm=10.0,
         footprint_mm=(160.0, 120.0),
         max_part_height_mm=100.0,
+        min_kept_points=0,
     )
 
     assert report["min_confidence"] == 0.0
@@ -494,7 +520,9 @@ def test_fuse_run_refuses_to_overwrite_existing_output(tmp_path):
     _write_identity_alignment(alignment_json)
     out_dir = tmp_path / "mesh_out"
 
-    tsdf_fusion.fuse_run(run_dir, alignment_json, out_dir, voxel_size_mm=10.0)
+    tsdf_fusion.fuse_run(
+        run_dir, alignment_json, out_dir, voxel_size_mm=10.0, min_kept_points=0
+    )
 
     with pytest.raises(FileExistsError, match="already has files"):
         tsdf_fusion.fuse_run(run_dir, alignment_json, out_dir, voxel_size_mm=10.0)
@@ -528,6 +556,9 @@ _CONFIDENCE_TEST_FUSE_KWARGS = {
     "voxel_size_mm": 10.0,
     "footprint_mm": (160.0, 120.0),
     "max_part_height_mm": 100.0,
+    # R-26 (#180): these scenes use a couple of hand-placed pixels, not a realistic point count --
+    # min_kept_points is about a real run's segmentation, not these confidence-wiring tests.
+    "min_kept_points": 0,
 }
 _CONFIDENCE_TEST_PIXEL_COUNT = 1 * 130 * 170  # _board_and_part_depth's image size
 
