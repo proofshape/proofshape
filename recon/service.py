@@ -544,6 +544,16 @@ def create_app(
                     ),
                 ),
             )
+        if request.method == "POST" and request.url.path == "/v1/sessions":
+            # R-29 (#186's validation half): the contract's own 400 description already covers
+            # "the order code is unknown or the request is malformed" -- reuse that code rather
+            # than inventing one; a dedicated malformed_request code is #217/D-031's job.
+            return error(
+                400,
+                ErrorDetail(
+                    code="order_code_unknown", message="The request body is malformed."
+                ),
+            )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.post(
