@@ -1033,12 +1033,14 @@ def test_partially_occluded_rear_sheet_cannot_label_hidden_vertices_observed():
     pair_vertices = np.repeat(np.arange(len(vertices), dtype=np.int64), 2)
     pair_frames = np.tile(np.array([0, 1], dtype=np.int64), len(vertices))
 
+    visibility_scene = provenance._build_visibility_scene(vertices, faces)
     normals = provenance.oriented_vertex_normals(
         vertices,
         faces,
         cameras,
         visible_vertex_index=pair_vertices,
         visible_frame_index=pair_frames,
+        visibility_scene=visibility_scene,
     )
 
     rear_normals = normals[len(front_vertices) :]
@@ -1066,8 +1068,8 @@ def test_partially_occluded_rear_sheet_cannot_label_hidden_vertices_observed():
     filtered = provenance._filter_observations_by_mesh_visibility(
         facing_observations,
         vertices,
-        faces,
         cameras,
+        scene=visibility_scene,
     )
     labels = provenance.label_vertices(
         len(vertices),
