@@ -387,20 +387,24 @@ def test_large_part_with_a_visible_wall_is_excluded_via_connectivity():
     assert part_kept.all()
 
 
-def test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protected():
-    # Documents a known, accepted limitation (confirmed with the user before implementing):
-    # connectivity can only protect a part whose wall was actually reconstructed. #180's own
-    # motivating case is a thin plate, thin enough that its wall may never be captured by any
-    # camera angle -- with genuinely zero intermediate-height points anywhere, there is no
-    # signal left to tell this apart from a legitimate floating layer.
+def test_residual_risk_a_wall_less_part_that_outnumbers_the_visible_board_is_not_protected():
+    # Round 4 correction (review on #241): this test's part_z had the sign backwards --
+    # `-(offset_mm - 6.0)` puts the part 6 mm *below* the board (height_above_board_mm < 0), not
+    # 6 mm above it as the old comment claimed, so the original version was vacuously "passing"
+    # for the wrong reason (the part's points simply sit on the wrong side of the height check,
+    # not because connectivity or any other part of the real algorithm failed to protect them).
+    # With the sign fixed, @TabeenRaoof's sweep on this head found the *real* limit is unrelated
+    # to walls: a small wall-less, fully-occluded plate (40/60/80 mm) is kept 100%, because the
+    # visible board still outnumbers it. Only once the part's own top has *more* points than the
+    # visible board (100 mm+ here) does the robust plane *fit* itself lock onto the part instead
+    # of the board, misreading the board's true height by several mm. That is a board-plane-fit
+    # robustness limit, not a wall/connectivity one -- #180's actual 40x40x6 mm motivating case is
+    # unaffected by it.
     #
     # _board_and_part_points doesn't model real occlusion (it scatters board points everywhere,
-    # including under the part, so a large wall-less part there still gets a nearby low-height
-    # neighbour in most cells, by construction of the fixture, not by any property of the real
-    # algorithm). A real part occludes the board underneath it entirely. Built directly here:
-    # board points dropped wherever they'd fall under the part's own large footprint, and a
-    # large part (bigger than any single golden part, but within the risk this documents) with
-    # no wall at all.
+    # including under the part); built directly here instead: board points dropped wherever
+    # they'd fall under the part's own large footprint, and a large part (bigger than any single
+    # golden part) with no wall at all, large enough to outnumber the visible board.
     rng = np.random.default_rng(16)
     width_mm, height_mm = part_segmentation.DEFAULT_FOOTPRINT_MM
     cx, cy, half = 80.0, 60.0, 55.0  # 110x110mm, occupying most of the footprint
@@ -414,7 +418,7 @@ def test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protect
 
     part_x = rng.uniform(cx - half, cx + half, 4000)
     part_y = rng.uniform(cy - half, cy + half, 4000)
-    part_z = np.full(len(part_x), -(offset_mm - 6.0))  # 6mm above the board, no wall
+    part_z = np.full(len(part_x), -(offset_mm + 6.0))  # 6mm above the board, no wall
 
     points = np.vstack(
         [
@@ -426,9 +430,9 @@ def test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protect
     surface = part_segmentation.measure_board_surface(points)
     keep = part_segmentation.segment_part(points, surface)
 
-    # Unprotected: with real occlusion and no wall evidence, there's nothing left to tell this
-    # apart from a genuine raised board layer, so it's excluded like one -- the residual risk
-    # this round's design doesn't close, asserted plainly rather than left undemonstrated.
+    # Unprotected, but for the plane-fit reason explained above, not a wall/connectivity one:
+    # the visible board (3,837 points here) is outnumbered by the part's own top (4,000), so the
+    # fit locks onto the part and misplaces the board by several mm.
     part_kept = keep[-4000:]
     assert part_kept.mean() < 0.05
 

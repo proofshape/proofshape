@@ -1079,6 +1079,25 @@ code finds the actual, narrower claim instead of a mismatch.
 *Checked against D-028:* fetched every origin branch on 2026-11-05; D-058 was the highest number
 anywhere, so D-059 was free.
 
+**Disputed, raised with the team (2026-11-05):** @TabeenRaoof's re-review of #241 found this
+entry describes the wrong limit. The test it's built on,
+`test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protected`, had its sign
+backwards (`part_z = -(offset_mm - 6.0)` placed the part 6 mm *below* the board, not above), so
+it was passing for an uninteresting reason, not because of anything connectivity-related. With
+the sign fixed and independently reconfirmed, a wall-less, fully-occluded part is actually kept
+correctly, including #180's own 40 x 40 x 6 mm case -- *unless* the part's own top has more
+points than the visible board, at which point the robust plane **fit** itself locks onto the
+part. That is a board-plane-fit robustness limit, unrelated to walls or connectivity. The same
+review found round 3's search also cuts worse than `main`'s plain, whole-footprint histogram on
+the real golden objects (s-01 fails outright; s-02 through s-05 all cut lower, admitting board as
+part), and suggested reverting to that plain search with a to-be-designed loud refusal for the
+ambiguous case, rather than this entry's connectivity-based narrowing.
+This decision is therefore **not reaffirmed and not re-decided here** -- per this file's own
+header, a decision that needs revisiting is raised with the team and the matter stops there
+rather than being built past in either direction again. @TabeenRaoof and @mbj1994 should settle,
+together, whether criterion 1 is better served by this entry (corrected), by no exception at all
+with a loud-refusal design instead, or by something else, before `#241` relies on either.
+
 ---
 
 ## Open — not yet decided
