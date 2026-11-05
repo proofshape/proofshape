@@ -9,8 +9,10 @@ LABEL org.opencontainers.image.source="https://github.com/proofshape/proofshape"
       org.opencontainers.image.description="ProofShape reconstruction service (VGGT backend)"
 
 # git: requirements-gpu.txt pins VGGT to an upstream commit via git+https.
+# Open3D's CPU RaycastingScene is used by provenance at runtime. Its wheel links against X11/GL
+# and OpenMP even though ProofShape never opens a GUI window inside the container.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends git libgl1 libgomp1 libx11-6 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
