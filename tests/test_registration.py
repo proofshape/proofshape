@@ -1,8 +1,9 @@
-"""I-03 registration tests on the real s-04/s-05 reference CAD and I-01 synthetic output."""
+"""I-03/I-04 registration tests on the real s-04/s-05 reference CAD and I-01 synthetic output."""
 
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -512,3 +513,276 @@ def test_global_register_candidates_are_rigid_and_distinct():
                 left.transformation[:3, 3] - right.transformation[:3, 3]
             )
             assert rotation_delta > 2.0 or translation_delta > 0.25
+
+
+# --- I-04: refine ----------------------------------------------------------------------------
+
+
+def _assert_rigid(transform: np.ndarray) -> None:
+    rotation = transform[:3, :3]
+    np.testing.assert_allclose(rotation.T @ rotation, np.eye(3), atol=1e-8)
+    assert np.linalg.det(rotation) == pytest.approx(1.0, abs=1e-8)
+
+
+@pytest.mark.parametrize(
+    ("cad_path", "seed"),
+    [
+        (S04, 0),
+        (S04, 1),
+        (S05, 1),
+        (S05, 2),
+    ],
+)
+def test_refine_reduces_pose_error_from_the_i03_best_candidate(
+    cad_path: Path, seed: int
+):
+    # The story's first test: start from I-03's best candidate on I-01 output (I-01's default
+    # σ = 0.3 mm and 20% Unobserved patch) and check refinement gets closer to the sidecar truth.
+    # Surface RMSE rather than the raw transform, so s-05's four-fold symmetric poses count as
+    # equally right. These seeds' I-03 starts are 0.82/0.57 mm (s-04) and 2.13/1.55 mm (s-05) off,
+    # so "below the error before it" is a real reduction, not a tie at zero.
+    vertices, faces, _units = cad.load_mesh(cad_path)
+    sigma_mm = 0.3
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, seed, sigma_mm=sigma_mm, patch_fraction=0.2
+    )
+    expected = _expected_transform(sample)
+    best = _register(sample, (vertices, faces), seed=100 + seed)[0]
+
+    refined = registration.refine(best, sample, (vertices, faces), seed=seed)
+
+    before = _symmetric_vertex_rmse(vertices, best.transformation, expected)
+    after = _symmetric_vertex_rmse(vertices, refined.transformation, expected)
+    assert after < before
+    # Within one σ of the injected noise. A bound for this test's synthetic setup, not an
+    # inspection tolerance.
+    assert after <= sigma_mm
+    _assert_rigid(refined.transformation)
+    assert refined.source == f"refined:{best.source}"
+    assert refined.correspondence_count >= 3
+    assert 0.0 < refined.fitness <= 1.0
+    assert math.isfinite(refined.inlier_rmse)
+
+
+def test_refine_requires_model_provenance():
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 30, sigma_mm=0.3, patch_fraction=0.2
+    )
+    best = _register(sample, (vertices, faces), seed=130)[0]
+
+    with pytest.raises(ValueError, match="provenance"):
+        registration.refine(
+            best,
+            (np.asarray(sample.vertices_mm), np.asarray(sample.faces)),
+            (vertices, faces),
+        )
+
+
+@pytest.mark.parametrize(
+    "label",
+    [provenance.LABEL_UNOBSERVED, provenance.LABEL_INFERRED],
+)
+def test_refine_refuses_a_model_with_no_observed_face(label: str):
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 31, sigma_mm=0.3, patch_fraction=0.2
+    )
+    best = _register(sample, (vertices, faces), seed=131)[0]
+    hidden = _copy_sample(
+        sample, labels=np.full(len(sample.labels), label, dtype=object)
+    )
+
+    with pytest.raises(ValueError, match="fully Observed"):
+        registration.refine(best, hidden, (vertices, faces))
+
+
+def _displace_patch(
+    sample: synthetic.SyntheticSample,
+    *,
+    patch_fraction: float,
+    displacement_mm: float,
+    patch_seed: int,
+) -> synthetic.SyntheticSample:
+    """Plant a defect: push one connected surface patch along its mean outward normal.
+
+    Positive displacement is a bump, negative a dent. Every vertex stays labelled Observed, so
+    the defect is measured geometry the fit has to cope with, not hidden geometry it can ignore.
+    """
+    vertices = np.asarray(sample.vertices_mm, dtype=np.float64).copy()
+    faces = np.asarray(sample.faces, dtype=np.int64)
+    patch = synthetic.select_patch_vertices(
+        faces, len(vertices), patch_fraction, np.random.default_rng(patch_seed)
+    )
+    normals = np.asarray(registration._triangle_mesh(vertices, faces).vertex_normals)
+    direction = normals[patch].mean(axis=0)
+    direction /= np.linalg.norm(direction)
+    vertices[patch] += displacement_mm * direction
+    return _copy_sample(
+        sample,
+        vertices_mm=vertices,
+        labels=np.full(len(vertices), provenance.LABEL_OBSERVED, dtype=object),
+    )
+
+
+@pytest.mark.parametrize(
+    ("cad_path", "seed", "displacement_mm"),
+    [
+        (S04, 0, 4.0),
+        (S04, 2, -4.0),
+        (S05, 0, 4.0),
+        (S05, 2, -4.0),
+    ],
+)
+def test_refine_is_not_dragged_by_an_observed_defect(
+    cad_path: Path, seed: int, displacement_mm: float, monkeypatch
+):
+    # The story's second test, and the reason I-04 exists (D-008): a 4 mm bump or dent over 10%
+    # of the surface, all of it Observed, must not pull the pose toward itself. Tukey gives the
+    # displaced points zero weight once they sit beyond k (1 voxel, 1.8 mm here).
+    vertices, faces, _units = cad.load_mesh(cad_path)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, seed, sigma_mm=0.3, patch_fraction=0.2
+    )
+    expected = _expected_transform(sample)
+    best = _register(sample, (vertices, faces), seed=100 + seed)[0]
+    defective = _displace_patch(
+        sample,
+        patch_fraction=0.10,
+        displacement_mm=displacement_mm,
+        patch_seed=seed,
+    )
+
+    robust = registration.refine(best, defective, (vertices, faces), seed=seed)
+    robust_error = _symmetric_vertex_rmse(vertices, robust.transformation, expected)
+
+    # The same refinement with Tukey swapped for plain least squares, through the identical code
+    # path. It proves this defect is big enough to drag a non-robust fit; without that, the
+    # bound on the Tukey fit below could pass vacuously.
+    monkeypatch.setattr(
+        registration.o3d.pipelines.registration,
+        "TukeyLoss",
+        lambda _k: o3d.pipelines.registration.L2Loss(),
+    )
+    least_squares = registration.refine(best, defective, (vertices, faces), seed=seed)
+    least_squares_error = _symmetric_vertex_rmse(
+        vertices, least_squares.transformation, expected
+    )
+
+    defect_size_mm = abs(displacement_mm)
+    # "The pose error stays below the defect's size", with margin: a quarter of it.
+    assert robust_error < 0.25 * defect_size_mm
+    assert least_squares_error > 3.0 * robust_error
+    _assert_rigid(robust.transformation)
+
+
+@pytest.mark.parametrize("cad_path", [S04, S05])
+def test_refine_ignores_unobserved_geometry(cad_path: Path):
+    # I-01's 20% patch is labelled Unobserved but its geometry is still in the mesh. Moving that
+    # hidden geometry 8 mm (far past the 4.5 mm correspondence distance, so a fit that used it
+    # would notice) must leave the refined pose exactly unchanged: the hard rule (D-005) says
+    # geometry nobody measured can't influence the pose a pass or fail is judged against. This
+    # is the story's "I-01's missing patch" case: a missing patch is hidden geometry by
+    # definition.
+    vertices, faces, _units = cad.load_mesh(cad_path)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 33, sigma_mm=0.3, patch_fraction=0.2
+    )
+    best = _register(sample, (vertices, faces), seed=133)[0]
+    baseline = registration.refine(best, sample, (vertices, faces), seed=33)
+
+    moved_vertices = np.asarray(sample.vertices_mm, dtype=np.float64).copy()
+    hidden = np.asarray(sample.labels) != provenance.LABEL_OBSERVED
+    assert hidden.any()
+    moved_vertices[hidden] += np.array([0.0, 0.0, -8.0])
+    moved = _copy_sample(sample, vertices_mm=moved_vertices)
+    changed = registration.refine(best, moved, (vertices, faces), seed=33)
+
+    np.testing.assert_allclose(
+        changed.transformation, baseline.transformation, atol=1e-9
+    )
+    assert changed.inlier_rmse == pytest.approx(baseline.inlier_rmse, abs=1e-12)
+
+
+@pytest.mark.parametrize("cad_path", [S04, S05])
+@pytest.mark.parametrize(
+    ("model_scale", "expected_residual"),
+    [
+        (1.0, 0.0),
+        (1.03, 0.03),
+        (1.05, 0.05),
+    ],
+)
+def test_refine_recomputes_the_free_scale_residual(
+    cad_path: Path, model_scale: float, expected_residual: float
+):
+    # The AC's "plus the free-scale residual recomputed on the refined correspondences": the
+    # refined candidate carries its own residual, computed from the refined pose, with D-039's
+    # sign (+0.03 = the model came out 3% larger than the design). 1.03 sits just past D-007's
+    # ~2% flag. The ±0.015 is this synthetic test's bound, not an inspection tolerance.
+    vertices, faces, _units = cad.load_mesh(cad_path)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 34, sigma_mm=0.3, patch_fraction=0.2
+    )
+    scaled = _copy_sample(
+        sample, vertices_mm=np.asarray(sample.vertices_mm) * model_scale
+    )
+    best = _register(scaled, (vertices, faces), seed=134)[0]
+    # Only I-03's first candidate carries a residual; the runner-ups I-05 will refine carry None.
+    # Refining one of those (simulated by clearing it) proves the residual is computed here from
+    # the refined pose, not copied through from the candidate.
+    runner_up_like = replace(best, free_scale_residual=None)
+
+    refined = registration.refine(runner_up_like, scaled, (vertices, faces), seed=34)
+
+    assert refined.free_scale_residual is not None
+    assert refined.free_scale_residual == pytest.approx(expected_residual, abs=0.015)
+
+
+def test_refine_fails_loudly_when_the_candidate_is_nowhere_near_the_model():
+    # A candidate 500 mm away finds no correspondences. Open3D then reports fitness 0 and
+    # inlier_rmse 0, and an inlier_rmse of 0 would read as a perfect fit to I-05's comparison.
+    # No silent failures: refine raises instead.
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 35, sigma_mm=0.3, patch_fraction=0.2
+    )
+    far = _expected_transform(sample)
+    far[:3, 3] += np.array([500.0, 0.0, 0.0])
+    candidate = registration.CandidatePose(
+        transformation=far,
+        fitness=0.0,
+        inlier_rmse=math.inf,
+        source="test:far",
+        correspondence_count=0,
+    )
+
+    with pytest.raises(ValueError, match="too far from the model"):
+        registration.refine(candidate, sample, (vertices, faces))
+
+
+@pytest.mark.parametrize(
+    "bad_keyword",
+    [
+        {"voxel_fraction": 0.0},
+        {"tukey_k_factor": -1.0},
+        {"tukey_k_factor": math.inf},
+        {"correspondence_factor": math.nan},
+        {"max_iterations": 0},
+    ],
+)
+def test_refine_rejects_invalid_parameters(bad_keyword: dict):
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 32, sigma_mm=0.3, patch_fraction=0.2
+    )
+    candidate = registration.CandidatePose(
+        transformation=_expected_transform(sample),
+        fitness=1.0,
+        inlier_rmse=0.0,
+        source="test",
+        correspondence_count=100,
+    )
+
+    with pytest.raises(ValueError):
+        registration.refine(candidate, sample, (vertices, faces), **bad_keyword)

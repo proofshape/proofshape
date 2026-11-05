@@ -8,6 +8,10 @@ Buyer CAD is authored z-up from z=0. Reconstruction is in the board frame with t
 negative z. The fixed CAD-to-board convention change is the same proper 180-degree x rotation
 used by I-01: diag(1, -1, -1). Registration therefore searches only yaw about board z plus xy
 shift; it never hides a size error by scaling the CAD.
+
+I-04's `refine` then tightens one candidate with point-to-plane ICP under a Tukey loss, fitted
+on fully Observed model geometry only, and recomputes the free-scale residual from the refined
+pose.
 """
 
 from __future__ import annotations
@@ -43,6 +47,13 @@ DEFAULT_SCALE_MIN_AXIS_RATIO = 0.02
 DEFAULT_SCALE_TARGET_SAMPLE_COUNT = 20_000
 DEFAULT_DISTINCT_ROTATION_DEG = 2.0
 DEFAULT_DISTINCT_TRANSLATION_FRACTION = 0.01
+# I-04 refinement parameters. Algorithmic choices, not inspection tolerances (D-003):
+# Tukey's k is a multiple of the same extent-relative voxel I-03 uses. A residual beyond k gets
+# zero weight, which is what stops a defect from dragging the fit. On I-01 output, k from 0.5 to
+# 2 voxels refined s-04/s-05 to the same 0.04-0.09 mm surface error, so 1 voxel is a mid choice,
+# not a tuned optimum.
+DEFAULT_TUKEY_K_FACTOR = 1.0
+DEFAULT_REFINE_ICP_ITERATIONS = 100
 
 CAD_TO_BOARD_FLIP = np.diag([1.0, -1.0, -1.0, 1.0])
 
@@ -755,3 +766,143 @@ def global_register(
         )
     selected[0] = replace(best, free_scale_residual=residual)
     return selected
+
+
+def refine(
+    candidate: CandidatePose,
+    model: Any,
+    cad: Any,
+    *,
+    voxel_fraction: float = DEFAULT_VOXEL_FRACTION,
+    tukey_k_factor: float = DEFAULT_TUKEY_K_FACTOR,
+    correspondence_factor: float = DEFAULT_CORRESPONDENCE_FACTOR,
+    sample_count: int = DEFAULT_SAMPLE_COUNT,
+    max_iterations: int = DEFAULT_REFINE_ICP_ITERATIONS,
+    seed: int = 0,
+) -> CandidatePose:
+    """I-04: refine one I-03 candidate with point-to-plane ICP under a Tukey loss.
+
+    A least-squares fit would explain a defect away by shifting the whole part toward it, which
+    is exactly what inspection must not do (D-008). Tukey's loss gives zero weight to residuals
+    beyond k, so a dent, a bump or a shifted hole stops pulling the fit once the rest of the part
+    is aligned.
+
+    Only fully Observed model faces drive the fit. This pose is what I-06/I-07 measure deviations
+    against, so letting Unobserved or Inferred (completed) geometry move it would let geometry
+    nobody measured influence a pass or fail (the hard rule, D-005). A model without provenance,
+    or with no fully Observed face, is refused rather than refined on guessed geometry.
+
+    The ICP runs Observed model -> CAD, the same direction as I-03's scale diagnostic. Every
+    Observed model point has a real CAD counterpart; the reverse would let CAD samples over a
+    hidden patch pull toward the hole. It also puts the face normals point-to-plane needs on the
+    target: the sampled CAD surface's own triangle normals (a six-vertex prism's vertex normals
+    are corner averages, which point-to-plane can't use).
+
+    The fit is a full rigid 6-DoF pose, as `registration_icp` returns; it is not constrained to
+    I-03's yaw-plus-xy board pose, so small real board-plane errors can be absorbed.
+
+    Returns a new rigid CandidatePose (CAD -> model, like I-03's) whose fitness, inlier_rmse and
+    correspondence_count describe the refined Observed-model -> CAD fit.
+    """
+    for name, value in (
+        ("voxel_fraction", voxel_fraction),
+        ("tukey_k_factor", tukey_k_factor),
+        ("correspondence_factor", correspondence_factor),
+    ):
+        if not (math.isfinite(value) and value > 0):
+            raise ValueError(f"{name} must be positive and finite.")
+    if max_iterations < 1:
+        raise ValueError("max_iterations must be positive.")
+
+    model_vertices, model_faces, model_labels = _mesh_arrays(model, name="model")
+    cad_vertices, cad_faces, _cad_labels = _mesh_arrays(cad, name="cad")
+    observed_model_faces = _observed_faces(model_faces, model_labels)
+    if observed_model_faces is None:
+        raise ValueError(
+            "refine needs model provenance: without Observed/Unobserved labels there is no way "
+            "to keep unmeasured geometry from moving the pose that inspection is judged against."
+        )
+    if len(observed_model_faces) == 0:
+        raise ValueError(
+            "refine needs at least one fully Observed model face; refusing to fit the pose to "
+            "Unobserved or Inferred geometry alone."
+        )
+
+    # CAD extent only, not the model's: a whole-scene reconstruction (floaters, board skin)
+    # would otherwise inflate k and the correspondence distance with geometry that isn't the part.
+    voxel_size = _extent_mm(cad_vertices) * voxel_fraction
+    tukey_k = voxel_size * tukey_k_factor
+    correspondence_distance = voxel_size * correspondence_factor
+
+    observed_model_surface = _sample_surface(
+        model_vertices,
+        observed_model_faces,
+        sample_count=sample_count,
+        seed=seed,
+    )
+    cad_surface = _sample_surface(
+        cad_vertices,
+        cad_faces,
+        sample_count=max(sample_count, DEFAULT_SCALE_TARGET_SAMPLE_COUNT),
+        seed=seed + 1,
+    )
+
+    model_to_cad_initial = np.linalg.inv(
+        np.asarray(candidate.transformation, dtype=np.float64)
+    )
+    result = o3d.pipelines.registration.registration_icp(
+        observed_model_surface,
+        cad_surface,
+        correspondence_distance,
+        model_to_cad_initial,
+        o3d.pipelines.registration.TransformationEstimationPointToPlane(
+            o3d.pipelines.registration.TukeyLoss(tukey_k)
+        ),
+        o3d.pipelines.registration.ICPConvergenceCriteria(
+            max_iteration=int(max_iterations)
+        ),
+    )
+
+    correspondences = np.asarray(result.correspondence_set)
+    correspondence_count = 0 if correspondences.size == 0 else len(correspondences)
+    if correspondence_count < 3:
+        # Open3D reports inlier_rmse = 0 when nothing matched, which would read as a perfect
+        # fit. A candidate this far from the model is a failed refinement, said out loud.
+        raise ValueError(
+            f"refinement found {correspondence_count} Observed-model/CAD correspondences within "
+            f"{correspondence_distance:.3g} mm; the candidate pose is too far from the model."
+        )
+
+    refined = np.linalg.inv(np.asarray(result.transformation, dtype=np.float64))
+    rotation = refined[:3, :3]
+    if not (
+        np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6)
+        and abs(float(np.linalg.det(rotation)) - 1.0) <= 1e-6
+    ):
+        raise ValueError("refinement returned a non-rigid transform.")
+
+    inlier_rmse = float(result.inlier_rmse)
+    if not math.isfinite(inlier_rmse):
+        inlier_rmse = math.inf
+    refined_candidate = CandidatePose(
+        transformation=refined,
+        fitness=float(result.fitness),
+        inlier_rmse=inlier_rmse,
+        source=f"refined:{candidate.source}",
+        correspondence_count=correspondence_count,
+    )
+
+    # The story asks for the free-scale residual "recomputed on the refined correspondences".
+    # This re-runs I-03's two-stage similarity ICP (rigid, then with scaling) from the refined
+    # pose, on the same Observed-model and dense-CAD samples, rather than solving one similarity
+    # on this fit's final pairs: #233's review measured that frozen nearest-neighbour pairs
+    # underestimate a real scale error (+3% read as about +1%), because the pairs slide along the
+    # surface instead of tracking material points. Same planar-only gate, same None when scale
+    # can't be established, same D-039 sign convention.
+    residual = _free_scale_residual(
+        refined_candidate,
+        observed_model_surface,
+        cad_surface,
+        max_correspondence_distance_mm=correspondence_distance,
+    )
+    return replace(refined_candidate, free_scale_residual=residual)
