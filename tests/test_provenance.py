@@ -820,6 +820,219 @@ def test_oriented_vertex_normals_recovers_reversed_closed_mesh_winding():
     assert np.all(np.einsum("ij,ij->i", normals, outward_vectors) > 0.0)
 
 
+def test_oriented_vertex_normals_signs_disconnected_closed_components_independently():
+    first_vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    outward_faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+
+    second_vertices = first_vertices + np.array([4.0, 0.0, 0.0])
+    second_faces = outward_faces[:, [0, 2, 1]] + len(first_vertices)
+
+    vertices = np.vstack([first_vertices, second_vertices])
+    faces = np.vstack([outward_faces, second_faces])
+    cameras = np.array([[2.0, 2.0, 5.0]])
+
+    normals = provenance.oriented_vertex_normals(vertices, faces, cameras)
+
+    for start in (0, 4):
+        component_vertices = vertices[start : start + 4]
+        component_normals = normals[start : start + 4]
+        centre = component_vertices.mean(axis=0)
+        radial = component_vertices - centre
+        assert np.all(np.einsum("ij,ij->i", component_normals, radial) > 0.0)
+
+
+def test_oriented_vertex_normals_withholds_nested_closed_cavity_shell():
+    outer_vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 10.0],
+        ]
+    )
+    outward_faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+
+    inner_vertices = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [2.0, 1.0, 1.0],
+            [1.0, 2.0, 1.0],
+            [1.0, 1.0, 2.0],
+        ]
+    )
+    inner_cavity_faces = outward_faces[:, [0, 2, 1]] + len(outer_vertices)
+
+    vertices = np.vstack([outer_vertices, inner_vertices])
+    faces = np.vstack([outward_faces, inner_cavity_faces])
+    cameras = np.array([[20.0, 20.0, 20.0]])
+
+    normals = provenance.oriented_vertex_normals(vertices, faces, cameras)
+
+    outer_normals = normals[:4]
+    outer_centre = outer_vertices.mean(axis=0)
+    assert np.all(
+        np.einsum("ij,ij->i", outer_normals, outer_vertices - outer_centre) > 0.0
+    )
+    np.testing.assert_array_equal(normals[4:], np.zeros((4, 3)))
+
+
+def test_oriented_vertex_normals_withholds_nested_open_cavity_patch():
+    outer_vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 10.0],
+        ]
+    )
+    outward_faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+
+    # An open patch fully inside the closed outer shell.  Give it strong camera evidence so this
+    # test fails if open groups are allowed to vote before enclosure is considered.
+    inner_vertices = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [2.0, 1.0, 1.0],
+            [1.0, 2.0, 1.0],
+        ]
+    )
+    inner_faces = np.array([[4, 5, 6]])
+    vertices = np.vstack([outer_vertices, inner_vertices])
+    faces = np.vstack([outward_faces, inner_faces])
+    cameras = np.array([[20.0, 20.0, 20.0]])
+    visible_vertex_index = np.array([4, 5, 6], dtype=np.int64)
+    visible_frame_index = np.zeros(3, dtype=np.int64)
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=visible_vertex_index,
+        visible_frame_index=visible_frame_index,
+    )
+
+    outer_normals = normals[:4]
+    outer_centre = outer_vertices.mean(axis=0)
+    assert np.all(
+        np.einsum("ij,ij->i", outer_normals, outer_vertices - outer_centre) > 0.0
+    )
+    np.testing.assert_array_equal(normals[4:], np.zeros((3, 3)))
+
+
+def test_hidden_rear_open_patch_stays_unobserved_with_noisy_depth_evidence():
+    """Geometry must veto a hidden rear sheet even when noisy depth admits its vote."""
+
+    def grid(size: int, z_mm: float, *, toward_camera: bool):
+        axis = np.linspace(-(size - 1) / 2.0, (size - 1) / 2.0, size)
+        vertices = np.array(
+            [[x, y, z_mm] for y in axis for x in axis], dtype=np.float64
+        )
+        faces = []
+        for row in range(size - 1):
+            for col in range(size - 1):
+                a = row * size + col
+                b = a + 1
+                d = (row + 1) * size + col
+                cc = d + 1
+                if toward_camera:
+                    faces.extend([[a, cc, b], [a, d, cc]])  # -z
+                else:
+                    faces.extend([[a, b, cc], [a, cc, d]])  # +z
+        return vertices, np.asarray(faces, dtype=np.int64)
+
+    front_vertices, front_faces = grid(5, 0.0, toward_camera=True)
+    rear_vertices, rear_faces = grid(4, 1.0, toward_camera=False)
+    rear_faces = rear_faces + len(front_vertices)
+    vertices = np.vstack([front_vertices, rear_vertices])
+    faces = np.vstack([front_faces, rear_faces])
+
+    cameras = np.array([[-5.0, 0.0, -100.0], [5.0, 0.0, -100.0]])
+    pair_vertices = np.repeat(np.arange(len(vertices), dtype=np.int64), 2)
+    pair_frames = np.tile(np.array([0, 1], dtype=np.int64), len(vertices))
+    pair_z_cam = np.where(pair_vertices < len(front_vertices), 100.0, 101.0)
+
+    # Simulate the real symmetric depth gate at about the measured board residual scale.
+    # Some rear pairs look spuriously in front of the noisy measured surface, which defeated the
+    # previous depth-sign guard. We deliberately pass *all* pairs to the orientation vote: the
+    # geometric occlusion test must still remove every hidden rear vote.
+    rng = np.random.default_rng(7)
+    measured_depth = 100.0 + rng.normal(0.0, 1.0, size=len(pair_vertices))
+    rear_pairs = pair_vertices >= len(front_vertices)
+    assert np.any(pair_z_cam[rear_pairs] <= measured_depth[rear_pairs])
+    assert np.all(np.abs(pair_z_cam[rear_pairs] - measured_depth[rear_pairs]) <= 5.0)
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=pair_vertices,
+        visible_frame_index=pair_frames,
+    )
+
+    assert np.all(normals[: len(front_vertices), 2] < 0.0)
+    np.testing.assert_array_equal(
+        normals[len(front_vertices) :],
+        np.zeros_like(rear_vertices),
+    )
+
+    to_camera = cameras[pair_frames] - vertices[pair_vertices]
+    facing = np.einsum("ij,ij->i", normals[pair_vertices], to_camera) > 0.0
+    observations = {
+        "vertex_index": pair_vertices[facing],
+        "frame_index": pair_frames[facing],
+        "z_cam_mm": pair_z_cam[facing],
+        "measured_depth_mm": measured_depth[facing],
+    }
+    labels = provenance.label_vertices(
+        len(vertices),
+        observations,
+        cameras,
+        vertices,
+    )["label"]
+
+    assert np.all(labels[: len(front_vertices)] == provenance.LABEL_OBSERVED)
+    assert np.all(labels[len(front_vertices) :] == provenance.LABEL_UNOBSERVED)
+
+def test_oriented_vertex_normals_signs_bowtie_winding_groups_independently():
+    # Two open sheets share only vertex 0. They are separate winding groups because they share no
+    # edge. The second sheet starts reversed; both must still face the overhead camera.
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+        ]
+    )
+    first_faces = np.array([[0, 1, 2], [0, 2, 3]])
+    second_outward = np.array([[0, 4, 5], [0, 5, 6]])
+    second_reversed = second_outward[:, [0, 2, 1]]
+    faces = np.vstack([first_faces, second_reversed])
+    cameras = np.array([[0.0, 0.0, 10.0]])
+    visible_vertex_index = np.arange(len(vertices), dtype=np.int64)
+    visible_frame_index = np.zeros(len(vertices), dtype=np.int64)
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=visible_vertex_index,
+        visible_frame_index=visible_frame_index,
+    )
+
+    assert np.all(normals[:, 2] > 0.0)
+
+
 def test_orient_faces_consistently_fixes_one_reversed_neighbour():
     faces = np.array([[0, 1, 2], [2, 3, 0]])
     inconsistent = faces.copy()
