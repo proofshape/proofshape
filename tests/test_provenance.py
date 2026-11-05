@@ -1001,6 +1001,90 @@ def test_hidden_rear_open_patch_stays_unobserved_with_noisy_depth_evidence():
     assert np.all(labels[len(front_vertices) :] == provenance.LABEL_UNOBSERVED)
 
 
+def test_partially_occluded_rear_sheet_cannot_label_hidden_vertices_observed():
+    """Exposed rear vertices may orient a group, but covered vertices still fail final visibility."""
+
+    def grid(size: int, z_mm: float, x_shift_mm: float, *, toward_camera: bool):
+        axis = np.linspace(-(size - 1) / 2.0, (size - 1) / 2.0, size)
+        vertices = np.array(
+            [[x + x_shift_mm, y, z_mm] for y in axis for x in axis],
+            dtype=np.float64,
+        )
+        faces = []
+        for row in range(size - 1):
+            for col in range(size - 1):
+                a = row * size + col
+                b = a + 1
+                d = (row + 1) * size + col
+                cc = d + 1
+                if toward_camera:
+                    faces.extend([[a, cc, b], [a, d, cc]])  # -z
+                else:
+                    faces.extend([[a, b, cc], [a, cc, d]])  # +z
+        return vertices, np.asarray(faces, dtype=np.int64)
+
+    front_vertices, front_faces = grid(5, 0.0, 0.0, toward_camera=True)
+    rear_vertices, rear_faces = grid(5, 1.0, 2.0, toward_camera=False)
+    rear_faces = rear_faces + len(front_vertices)
+    vertices = np.vstack([front_vertices, rear_vertices])
+    faces = np.vstack([front_faces, rear_faces])
+
+    cameras = np.array([[-5.0, 0.0, -100.0], [5.0, 0.0, -100.0]])
+    pair_vertices = np.repeat(np.arange(len(vertices), dtype=np.int64), 2)
+    pair_frames = np.tile(np.array([0, 1], dtype=np.int64), len(vertices))
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=pair_vertices,
+        visible_frame_index=pair_frames,
+    )
+
+    rear_normals = normals[len(front_vertices) :]
+    assert np.any(rear_normals[:, 2] < 0.0)
+
+    raw_observations = {
+        "vertex_index": pair_vertices,
+        "frame_index": pair_frames,
+        "z_cam_mm": np.where(pair_vertices < len(front_vertices), 100.0, 101.0),
+        "measured_depth_mm": np.full(len(pair_vertices), 100.0),
+        "depth_gate_rejected_count": np.zeros(len(vertices), dtype=np.int64),
+    }
+    facing = (
+        np.einsum(
+            "ij,ij->i",
+            normals[pair_vertices],
+            cameras[pair_frames] - vertices[pair_vertices],
+        )
+        > 0.0
+    )
+    facing_observations = dict(raw_observations)
+    for key in ("vertex_index", "frame_index", "z_cam_mm", "measured_depth_mm"):
+        facing_observations[key] = raw_observations[key][facing]
+
+    filtered = provenance._filter_observations_by_mesh_visibility(
+        facing_observations,
+        vertices,
+        faces,
+        cameras,
+    )
+    labels = provenance.label_vertices(
+        len(vertices),
+        filtered,
+        cameras,
+        vertices,
+    )["label"]
+
+    rear_x = rear_vertices[:, 0]
+    hidden_rear = rear_x <= 2.0
+    exposed_rear = rear_x >= 3.0
+    rear_labels = labels[len(front_vertices) :]
+
+    assert np.all(rear_labels[hidden_rear] == provenance.LABEL_UNOBSERVED)
+    assert np.all(rear_labels[exposed_rear] == provenance.LABEL_OBSERVED)
+
+
 def test_oriented_vertex_normals_signs_bowtie_winding_groups_independently():
     # Two open sheets share only vertex 0. They are separate winding groups because they share no
     # edge. The second sheet starts reversed; both must still face the overhead camera.
