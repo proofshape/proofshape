@@ -82,6 +82,38 @@ def test_keep_largest_connected_component_rejects_bad_shape():
         )
 
 
+def test_filter_connected_components_keeps_legitimate_second_piece_and_reports_junk():
+    main_vertices, main_faces = _flat_grid(n=4)  # 18 faces
+    second_vertices, second_faces = _flat_grid(n=3)  # 8 faces
+    second_vertices = second_vertices + np.array([30.0, 0.0, 0.0], dtype=np.float32)
+    second_faces = second_faces + len(main_vertices)
+
+    junk_vertices = np.array(
+        [[100.0, 100.0, 100.0], [101.0, 100.0, 100.0], [100.0, 101.0, 100.0]],
+        dtype=np.float32,
+    )
+    junk_offset = len(main_vertices) + len(second_vertices)
+    junk_faces = np.array(
+        [[junk_offset, junk_offset + 1, junk_offset + 2]], dtype=np.int32
+    )
+
+    vertices = np.vstack([main_vertices, second_vertices, junk_vertices])
+    faces = np.vstack([main_faces, second_faces, junk_faces])
+
+    kept_vertices, kept_faces, report = mesh_cleanup.filter_connected_components(
+        vertices,
+        faces,
+        min_face_fraction=0.4,
+    )
+
+    assert report["component_count_before"] == 3
+    assert report["component_count_after"] == 2
+    assert report["dropped_component_count"] == 1
+    assert report["dropped_face_count"] == 1
+    assert len(kept_faces) == len(main_faces) + len(second_faces)
+    assert np.max(kept_vertices[:, 0]) < 100.0
+
+
 # --- find_boundary_loops --------------------------------------------------------------------
 
 
@@ -120,6 +152,31 @@ def test_fill_small_holes_closes_a_small_triangle_gap_with_no_new_vertex():
         _TETRAHEDRON_VERTICES
     )  # no centroid needed for a 3-loop
     assert mesh_cleanup.find_boundary_loops(faces) == []
+
+
+def _assert_no_directed_edge_is_reused(faces):
+    directed_edges = []
+    for triangle in faces:
+        for i in range(3):
+            directed_edges.append((int(triangle[i]), int(triangle[(i + 1) % 3])))
+    assert len(directed_edges) == len(set(directed_edges))
+
+
+def test_fill_small_holes_preserves_surrounding_winding():
+    _vertices, tetra_faces = mesh_cleanup.fill_small_holes(
+        _TETRAHEDRON_VERTICES,
+        _TETRAHEDRON_FACES_OPEN,
+        max_loop_length=8,
+    )
+    _assert_no_directed_edge_is_reused(tetra_faces)
+
+    pentagon_vertices, pentagon_faces = _pentagon_cone()
+    _vertices, filled_pentagon_faces = mesh_cleanup.fill_small_holes(
+        pentagon_vertices,
+        pentagon_faces,
+        max_loop_length=8,
+    )
+    _assert_no_directed_edge_is_reused(filled_pentagon_faces)
 
 
 def test_fill_small_holes_closes_a_pentagon_with_a_centroid_fan():
@@ -241,6 +298,64 @@ def test_check_file_size(tmp_path):
 
     assert mesh_cleanup.check_file_size(path, max_bytes=size)
     assert not mesh_cleanup.check_file_size(path, max_bytes=size - 1)
+
+
+def test_write_glb_with_size_limit_redecimates_until_under_limit(tmp_path):
+    vertices, faces = _flat_grid(n=20)
+    baseline = tmp_path / "baseline.glb"
+    mesh_cleanup.write_glb(baseline, vertices, faces)
+    baseline_size = baseline.stat().st_size
+
+    out = tmp_path / "limited.glb"
+    limited_vertices, limited_faces, size_bytes, rounds = (
+        mesh_cleanup.write_glb_with_size_limit(
+            out,
+            vertices,
+            faces,
+            max_file_size_bytes=int(baseline_size * 0.75),
+        )
+    )
+
+    assert rounds >= 1
+    assert size_bytes <= int(baseline_size * 0.75)
+    assert len(limited_faces) < len(faces)
+    assert len(limited_vertices) <= len(vertices)
+
+
+def test_write_glb_with_size_limit_raises_when_limit_is_impossible(tmp_path):
+    with pytest.raises(ValueError, match="over the 1-byte limit"):
+        mesh_cleanup.write_glb_with_size_limit(
+            tmp_path / "too-small.glb",
+            _TETRAHEDRON_VERTICES,
+            _TETRAHEDRON_FACES_CLOSED,
+            max_file_size_bytes=1,
+            min_triangle_count=len(_TETRAHEDRON_FACES_CLOSED),
+        )
+
+
+def test_mesh_cleanup_cli_returns_nonzero_for_impossible_size_limit(tmp_path, capsys):
+    mesh_ply_path = tmp_path / "mesh.ply"
+    out_path = tmp_path / "mesh_clean.glb"
+    tsdf_fusion.write_mesh_ply(
+        mesh_ply_path,
+        _TETRAHEDRON_VERTICES,
+        _TETRAHEDRON_FACES_CLOSED,
+    )
+
+    exit_code = mesh_cleanup.main(
+        [
+            str(mesh_ply_path),
+            "--out",
+            str(out_path),
+            "--max-file-size-bytes",
+            "1",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "FAIL" in captured.err
+    assert "PASS" not in captured.out
 
 
 # --- cleanup_run: end to end on a synthetic mesh -------------------------------------------------
