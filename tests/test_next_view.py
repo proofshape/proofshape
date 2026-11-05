@@ -543,6 +543,14 @@ def test_observed_surface_still_occludes_unobserved_vertices():
         (lambda labels: labels[:-1], "one entry per vertex"),
         (lambda labels: np.where(labels == "Observed", "observed", labels), "neither"),
         (lambda labels: np.full(len(labels), None, dtype=object), "neither"),
+        # A-04 defines Inferred but serves it nowhere; next-view treats the whole mesh as an
+        # occluder, where guessed surface must not block a view, so it must keep refusing it.
+        (
+            lambda labels: np.where(
+                labels == "Unobserved", provenance.LABEL_INFERRED, labels
+            ),
+            "neither",
+        ),
     ],
 )
 def test_score_candidate_views_rejects_bad_labels(labels_override, message):

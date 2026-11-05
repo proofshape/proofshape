@@ -275,6 +275,54 @@ def test_colors_to_labels_rejects_unrecognised_colors():
         provenance.colors_to_labels(np.array([[1, 2, 3]], dtype=np.uint8))
 
 
+def test_labels_to_colors_maps_inferred_to_its_own_source_colour():
+    # A-04: Inferred has a colour of its own, distinct from both measured colours, so a sample
+    # coloured with it can never be read back as measured surface.
+    labels = np.array(
+        [
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_INFERRED,
+            provenance.LABEL_UNOBSERVED,
+        ]
+    )
+
+    colors = provenance.labels_to_colors(labels)
+
+    np.testing.assert_array_equal(
+        colors,
+        [
+            provenance.OBSERVED_COLOR,
+            provenance.INFERRED_COLOR,
+            provenance.UNOBSERVED_COLOR,
+        ],
+    )
+    assert provenance.INFERRED_COLOR not in (
+        provenance.OBSERVED_COLOR,
+        provenance.UNOBSERVED_COLOR,
+    )
+
+
+def test_labels_to_colors_rejects_an_unknown_label():
+    # Before A-04 an unknown label came back with uninitialised np.empty bytes, no error.
+    labels = np.array(
+        [provenance.LABEL_OBSERVED, "observed", provenance.LABEL_UNOBSERVED]
+    )
+
+    with pytest.raises(ValueError, match=r"1 label\(s\) are not .*'observed'"):
+        provenance.labels_to_colors(labels)
+
+
+def test_colors_to_labels_still_refuses_the_inferred_colour():
+    # Nothing served carries Inferred yet, and every reader of colors_to_labels (R-10,
+    # next-view, the agent tools) assumes measured surface, so the colour must fail loudly.
+    colors = np.array(
+        [provenance.OBSERVED_COLOR, provenance.INFERRED_COLOR], dtype=np.uint8
+    )
+
+    with pytest.raises(ValueError, match="1 color"):
+        provenance.colors_to_labels(colors)
+
+
 # --- observations.npz round trip ----------------------------------------------------------------
 
 
