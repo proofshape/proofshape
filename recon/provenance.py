@@ -58,6 +58,19 @@ UNOBSERVED_COLOR = (128, 128, 128)
 LABEL_OBSERVED = "Observed"
 LABEL_UNOBSERVED = "Unobserved"
 
+# A-04: surface a generative model produced rather than a camera measured (proposal §6.6, D-006).
+# Defined here, beside the two measured labels, so the next story to serve it (A-05 or whichever
+# first shows completion) has one place to read it from. No served file carries it yet: A-04 only
+# colours its own completion samples with it, and `colors_to_labels` deliberately still refuses
+# it, so a GLB that ever carried it would fail loudly in R-10, next-view and the agent tools
+# rather than be read as measured surface.
+# This is a *source* colour, the encoding in the file. It is deliberately not capture's *display*
+# orange (`capture/src/provenance-colors.ts`, [249, 115, 22]): the two are separate layers there,
+# the same as white/grey are source colours that capture remaps for display. Saturated orange is
+# far from both white and grey, so no blend of the two measured colours can pass for it.
+LABEL_INFERRED = "Inferred"
+INFERRED_COLOR = (255, 128, 0)
+
 
 def vertex_normals(vertices_mm: np.ndarray, faces: np.ndarray) -> np.ndarray:
     """Area-weighted unit vertex normals. Degenerate/unreferenced vertices keep a zero normal.
@@ -502,10 +515,29 @@ def label_faces(faces: np.ndarray, vertex_labels: np.ndarray) -> np.ndarray:
 
 
 def labels_to_colors(labels: np.ndarray) -> np.ndarray:
-    """Per-vertex label strings -> (N,3) uint8 RGB, per this module's documented color convention."""
-    colors = np.empty((len(labels), 3), dtype=np.uint8)
-    colors[labels == LABEL_OBSERVED] = OBSERVED_COLOR
-    colors[labels == LABEL_UNOBSERVED] = UNOBSERVED_COLOR
+    """Per-vertex label strings -> (N,3) uint8 RGB, per this module's documented color convention.
+
+    A label outside the three raises. Before A-04 the array started from `np.empty` and only the
+    two known labels were written, so any other label silently came back with whatever bytes the
+    allocator left there -- a quiet wrong colour in a file whose colours *are* the provenance.
+    """
+    labels = np.asarray(labels)
+    colors = np.zeros((len(labels), 3), dtype=np.uint8)
+    is_known = np.zeros(len(labels), dtype=bool)
+    for label, color in (
+        (LABEL_OBSERVED, OBSERVED_COLOR),
+        (LABEL_UNOBSERVED, UNOBSERVED_COLOR),
+        (LABEL_INFERRED, INFERRED_COLOR),
+    ):
+        matches = labels == label
+        colors[matches] = color
+        is_known |= matches
+    if not np.all(is_known):
+        unknown = sorted({str(label) for label in labels[~is_known]})
+        raise ValueError(
+            f"{int(np.count_nonzero(~is_known))} label(s) are not {LABEL_OBSERVED!r}, "
+            f"{LABEL_UNOBSERVED!r} or {LABEL_INFERRED!r}: {unknown[:5]}"
+        )
     return colors
 
 
@@ -515,6 +547,11 @@ def colors_to_labels(colors: np.ndarray) -> np.ndarray:
     Lets R-10 recover R-09's labels from `mesh_provenance.glb` directly -- R-09 only persists
     labels as GLB vertex colors, not separately, so this is how a downstream consumer reads them
     back without needing camera centres or any of R-09's own projection machinery.
+
+    It decodes the two measured labels only. INFERRED_COLOR is deliberately refused (A-04): no
+    served file carries Inferred yet, and every reader of this function (R-10, next-view, the
+    agent tools) assumes measured surface. The story that first serves Inferred vertices extends
+    this together with capture's colour mapping and the manual.
     """
     colors = np.asarray(colors)
     is_observed = np.all(colors == np.asarray(OBSERVED_COLOR), axis=1)
