@@ -1806,9 +1806,9 @@ invariance, hidden-geometry perturbation and planar-only evidence.
 **Close-out:** owner reported 3 h actual against 5 h estimated. I-03 and its index row are Done
 and I-04 is Ready on the final review head.
 
-## 2026-11-04 — R-27 mesh cleanup and Poisson fallback fixes (PR #248; review history #236)
+## 2026-11-04 — R-27 mesh cleanup and Poisson fallback fixes (PR #250; review history #236/#248)
 
-**Who:** @mbj1994; independent golden-object rerun and review by @TabeenRaoof in #236, carried forward to replacement PR #248 after the post-#233 branch sync.
+**Who:** @mbj1994; independent golden-object rerun and review by @TabeenRaoof in #236, carried forward to replacement PR #250 after the post-#233 branch sync.
 
 **What changed:** fixed inward hole-fill winding, retained legitimate secondary components through
 a declared relative-size threshold, enforced the GLB byte limit with re-decimation/failure, and
