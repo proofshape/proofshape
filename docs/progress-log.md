@@ -1805,3 +1805,27 @@ invariance, hidden-geometry perturbation and planar-only evidence.
 
 **Close-out:** owner reported 3 h actual against 5 h estimated. I-03 and its index row are Done
 and I-04 is Ready on the final review head.
+
+## 2026-11-04 — R-27 mesh cleanup and Poisson fallback fixes (PR #250; review history #236/#248)
+
+**Who:** @mbj1994; independent golden-object rerun and review by @TabeenRaoof in #236, carried forward to replacement PR #250 after the post-#233 branch sync.
+
+**What changed:** fixed inward hole-fill winding, retained legitimate secondary components through
+a declared relative-size threshold, enforced the GLB byte limit with re-decimation/failure, and
+made provenance normal signing operate per winding group so bowtie-connected pieces and nested
+cavity surfaces cannot silently acquire the wrong trusted normal. The Poisson fallback now
+orients normals coherently, handles exact planar clouds without Open3D's coplanar Qhull path, and
+pins a decisive global normal field toward board-frame up (-z) so real objects cannot randomly
+come out inside-out.
+
+**Golden rerun:** @TabeenRaoof reran Poisson on all five R-23-aligned golden objects. Relative to
+main, median distance to the same run's marching-cubes mesh improved s-01 5.8->1.9 mm,
+s-03 2.3->1.8 mm and s-04 3.4->2.4 mm; s-02 remained 5.1 mm but improved visually. s-01,
+s-03 and s-04 became recognisable shapes. s-05 produced no mesh in 0/6 oriented-normal attempts
+because Open3D can terminate with exit code 0 after `Failed to close loop`; that pre-existing
+silent-failure path is #246. Cleaned Poisson meshes also remain non-manifold enough for provenance
+to reject them; that pre-existing end-to-end limitation is #247.
+
+**Close-out:** owner reported 2 h actual against 5 h estimated. R-27 and its index row are marked
+Done on the final review head, with the rerun evidence and remaining limitations recorded rather
+than silently passed.
