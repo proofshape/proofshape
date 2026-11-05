@@ -15,6 +15,7 @@ from recon.part_segmentation import BoardSurface
 
 def _flat_surface(
     threshold_mm: float = part_segmentation.DEFAULT_MIN_BOARD_CLEARANCE_MM,
+    part_candidate_point_count: int | None = None,
 ) -> BoardSurface:
     """A trivial z=0 board surface, for tests of segment_part's own logic in isolation --
     nothing in the production code defaults to this; measure_board_surface is always fit from
@@ -30,6 +31,7 @@ def _flat_surface(
         candidate_count=1,
         board_layer_top_mm=threshold_mm,
         height_threshold_mm=threshold_mm,
+        part_candidate_point_count=part_candidate_point_count,
     )
 
 
@@ -338,6 +340,99 @@ def test_minority_cell_raised_layer_is_excluded_from_the_cut():
     assert surface.height_threshold_mm < 5.0
 
 
+def test_large_part_with_a_visible_wall_is_excluded_via_connectivity():
+    # R-26 round 3 (review on #241, second pass): median alone can't tell a part from a raised
+    # layer once it covers anywhere near half the board's cells (TabeenRaoof's own sweep: 25%
+    # and 40% coverage both fooled round 2's plain median). This part covers about 37% of the
+    # footprint's cells -- deliberately in that ambiguous range -- but has a sparse ring of wall
+    # points at intermediate heights around its perimeter (partial wall visibility from some
+    # camera angles), which connectivity should catch regardless of coverage.
+    rng = np.random.default_rng(14)
+    points = _board_and_part_points(
+        rng,
+        offset_mm=2.0,
+        board_noise_mm=0.2,
+        part_center=(80.0, 60.0),
+        part_half_size_mm=42.5,  # ~85x85mm, about 37% of the 192 10mm cells
+        part_height_above_board_mm=6.0,
+        part_point_count=3000,
+    )
+    # A sparse wall: points just inside the part's perimeter, at random heights between the
+    # board and the part's own top -- what a partially-visible side wall would look like.
+    perimeter_fraction = rng.uniform(0.0, 1.0, 200)
+    on_x_edge = perimeter_fraction < 0.5
+    wall_x = np.where(
+        on_x_edge,
+        rng.choice([80.0 - 42.5, 80.0 + 42.5], size=200),
+        rng.uniform(80.0 - 42.5, 80.0 + 42.5, 200),
+    )
+    wall_y = np.where(
+        on_x_edge,
+        rng.uniform(60.0 - 42.5, 60.0 + 42.5, 200),
+        rng.choice([60.0 - 42.5, 60.0 + 42.5], size=200),
+    )
+    wall_height_above_board = rng.uniform(0.5, 5.5, 200)
+    wall_z = 2.0 - wall_height_above_board
+    points = np.vstack([points, np.column_stack([wall_x, wall_y, wall_z])])
+
+    surface = part_segmentation.measure_board_surface(points)
+    keep = part_segmentation.segment_part(points, surface)
+
+    assert (
+        surface.height_threshold_mm < 6.0
+    )  # the board's own cut, not pulled up by the part
+    part_kept = keep[
+        -3200:-200
+    ]  # the part's own top points (wall points appended last)
+    assert part_kept.all()
+
+
+def test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protected():
+    # Documents a known, accepted limitation (confirmed with the user before implementing):
+    # connectivity can only protect a part whose wall was actually reconstructed. #180's own
+    # motivating case is a thin plate, thin enough that its wall may never be captured by any
+    # camera angle -- with genuinely zero intermediate-height points anywhere, there is no
+    # signal left to tell this apart from a legitimate floating layer.
+    #
+    # _board_and_part_points doesn't model real occlusion (it scatters board points everywhere,
+    # including under the part, so a large wall-less part there still gets a nearby low-height
+    # neighbour in most cells, by construction of the fixture, not by any property of the real
+    # algorithm). A real part occludes the board underneath it entirely. Built directly here:
+    # board points dropped wherever they'd fall under the part's own large footprint, and a
+    # large part (bigger than any single golden part, but within the risk this documents) with
+    # no wall at all.
+    rng = np.random.default_rng(16)
+    width_mm, height_mm = part_segmentation.DEFAULT_FOOTPRINT_MM
+    cx, cy, half = 80.0, 60.0, 55.0  # 110x110mm, occupying most of the footprint
+    offset_mm = 2.0
+
+    board_x = rng.uniform(0.0, width_mm, 8000)
+    board_y = rng.uniform(0.0, height_mm, 8000)
+    under_part = (np.abs(board_x - cx) < half) & (np.abs(board_y - cy) < half)
+    board_x, board_y = board_x[~under_part], board_y[~under_part]
+    board_z = -(offset_mm + rng.normal(0.0, 0.2, len(board_x)))
+
+    part_x = rng.uniform(cx - half, cx + half, 4000)
+    part_y = rng.uniform(cy - half, cy + half, 4000)
+    part_z = np.full(len(part_x), -(offset_mm - 6.0))  # 6mm above the board, no wall
+
+    points = np.vstack(
+        [
+            np.column_stack([board_x, board_y, board_z]),
+            np.column_stack([part_x, part_y, part_z]),
+        ]
+    )
+
+    surface = part_segmentation.measure_board_surface(points)
+    keep = part_segmentation.segment_part(points, surface)
+
+    # Unprotected: with real occlusion and no wall evidence, there's nothing left to tell this
+    # apart from a genuine raised board layer, so it's excluded like one -- the residual risk
+    # this round's design doesn't close, asserted plainly rather than left undemonstrated.
+    part_kept = keep[-4000:]
+    assert part_kept.mean() < 0.05
+
+
 def test_measure_board_surface_rejects_too_few_consensus_cells():
     # A dense cluster right at the search edge, spread over the whole footprint densely enough
     # that almost every cell's own local search never thins out either -- too few cells are left
@@ -541,16 +636,16 @@ def test_segment_part_min_kept_points_catches_an_implausibly_small_result():
 def test_segment_part_min_kept_fraction_catches_a_mostly_lost_part():
     # R-26 round 2 (review on #241): an absolute floor alone missed #180's own case -- 77 of
     # 1600 points survived, comfortably over an absolute 50. Reproduced directly: 1600 points
-    # just below the chosen threshold (lost, but still above the loose floor) plus 77 just above
-    # it (kept) -- a 4.8% share, same order as #180's own ratio.
+    # just below the chosen threshold (lost) plus 77 just above it (kept) -- a 4.8% share, same
+    # order as #180's own ratio. part_candidate_point_count=1677 stands in for what
+    # measure_board_surface would have identified as the part (round 2 of the review: the
+    # share's denominator is this identified count, not a generic height-only pool).
     rng = np.random.default_rng(20)
     lost = np.column_stack(
         [
             rng.uniform(0.0, 160.0, 1600),
             rng.uniform(0.0, 120.0, 1600),
-            np.full(
-                1600, -5.9
-            ),  # height 5.9 mm: above the 2 mm loose floor, below the cut
+            np.full(1600, -5.9),  # height 5.9 mm: identified as part, below the cut
         ]
     )
     kept_points = np.column_stack(
@@ -561,9 +656,10 @@ def test_segment_part_min_kept_fraction_catches_a_mostly_lost_part():
         ]
     )
     points = np.vstack([lost, kept_points])
+    surface = _flat_surface(part_candidate_point_count=1677)
 
     kept = part_segmentation.segment_part(
-        points, _flat_surface(), height_threshold_mm=6.0, min_kept_fraction=0.0
+        points, surface, height_threshold_mm=6.0, min_kept_fraction=0.0
     )
     assert (
         kept.sum() == 77
@@ -571,7 +667,7 @@ def test_segment_part_min_kept_fraction_catches_a_mostly_lost_part():
 
     with pytest.raises(ValueError, match="need at least 50%"):
         part_segmentation.segment_part(
-            points, _flat_surface(), height_threshold_mm=6.0, min_kept_fraction=0.5
+            points, surface, height_threshold_mm=6.0, min_kept_fraction=0.5
         )
 
 
@@ -580,8 +676,8 @@ def test_segment_part_min_kept_fraction_catches_a_lost_part_behind_stray_debris(
     # the board, with the real part's own points lost just below the chosen threshold. An
     # absolute floor alone can look satisfied (the strays are "enough" points on their own)
     # while still having lost essentially all of the part -- the share check sees the lost
-    # part's points too, because they clear the loose floor even though they didn't clear the
-    # resolved threshold.
+    # part's points too, because measure_board_surface would have identified them as part
+    # candidates even though they didn't clear the resolved threshold.
     rng = np.random.default_rng(21)
     lost_part = np.column_stack(
         [
@@ -598,11 +694,14 @@ def test_segment_part_min_kept_fraction_catches_a_lost_part_behind_stray_debris(
         ]
     )
     points = np.vstack([lost_part, strays])
+    # Only the lost part's own points were identified as part candidates -- the strays are a
+    # separate, unidentified cluster of debris, not part of that count.
+    surface = _flat_surface(part_candidate_point_count=1600)
 
     with pytest.raises(ValueError, match="need at least 50%"):
         part_segmentation.segment_part(
             points,
-            _flat_surface(),
+            surface,
             height_threshold_mm=6.0,
             min_kept_points=50,
             min_kept_fraction=0.5,
@@ -618,11 +717,32 @@ def test_segment_part_min_kept_fraction_does_not_fire_on_a_normal_result():
             np.full(500, -10.0),
         ]
     )
+    surface = _flat_surface(part_candidate_point_count=500)
 
     kept = part_segmentation.segment_part(
-        part, _flat_surface(), height_threshold_mm=6.0, min_kept_fraction=0.5
+        part, surface, height_threshold_mm=6.0, min_kept_fraction=0.5
     )
     assert kept.sum() == 500
+
+
+def test_segment_part_min_kept_fraction_is_skipped_when_nothing_was_identified():
+    # measure_board_surface's override path (or a search that found nothing elevated at all)
+    # leaves part_candidate_point_count None -- the fraction check has nothing to compare
+    # against, so it's silently skipped rather than treated as a 0% share.
+    rng = np.random.default_rng(23)
+    part = np.column_stack(
+        [
+            rng.uniform(0.0, 160.0, 5),
+            rng.uniform(0.0, 120.0, 5),
+            np.full(5, -10.0),
+        ]
+    )
+    surface = _flat_surface(part_candidate_point_count=None)
+
+    kept = part_segmentation.segment_part(
+        part, surface, height_threshold_mm=6.0, min_kept_fraction=0.9
+    )
+    assert kept.sum() == 5
 
 
 def test_segment_part_rejects_non_finite_points():
