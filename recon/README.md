@@ -410,3 +410,70 @@ assumption, not a calibrated accuracy claim). Residuals rejected by that depth g
 per vertex and carried into `uncertainty.json`; sigma still uses only accepted residuals, so the
 truncation is explicit rather than hidden. Final `observed_fraction` is weighted by triangle area
 after R-10's sigma downgrade and therefore describes the GLB the service actually returns.
+
+## A-04 · shape completion stage (service side)
+
+After R-10, `run_reconstruction_pipeline` runs a completion stage (`recon/completion.py`), timed as
+`stage_timings_s["completion"]`. It only reads upstream artifacts and writes inside
+`artifacts/completion/`, so the served GLB and every upstream file are byte-identical with it on or
+off. Completed surface is **Inferred**: it steers capture guidance (A-05) and never touches a
+verdict (D-005, D-006). `recon/provenance.py` defines `LABEL_INFERRED` and `INFERRED_COLOR`, but no
+served file carries them yet.
+
+**What it does.**
+1. **Isolates the part** from the served mesh's Observed vertices. The cleaned mesh still carries a
+   thin board skin connected to the part (A-10), so the stage:
+   - starts from a *core* above fusion's own cut (`tsdf_fusion.json`'s `board_surface`) plus
+     `skin_allowance_mm`;
+   - keeps that core's largest spatial cluster;
+   - adds back lower wall vertices inside a cone under the core (`min_wall_angle_deg`).
+2. **Samples a partial cloud** (`input/partial_zup.ply`) and turns it z-up for the model.
+3. **Picks a photo** (`input/view.png`): the posed frame that observed the most kept vertices,
+   cropped in stored sensor pixels, then turned upright by its EXIF orientation.
+4. **Writes `request.json`** in the contract format (`recon/completion_contract.py`, D-058).
+
+**Environment.**
+
+| Variable | Default | Effect |
+|---|---|---|
+| `PROOFSHAPE_COMPLETION` | unset (stage on) | Only the literal `0` turns the stage off: no folder, no timing key, no warning |
+| `PROOFSHAPE_COMPLETION_RUNNER` | unset | Command for the out-of-process runner (shell-split; the stage appends `--request <path>`) |
+
+**Outcomes** (`completion.json`, always written last):
+
+| Situation | Status | Warning to the supplier |
+|---|---|---|
+| No runner set up (every session on the M2 Max today) | `unavailable`, inputs prepared | none (D-058) |
+| Runner finished, every sample valid | `complete` | none |
+| Runner stopped early or some samples rejected | `partial` | one fixed `completion_partial` string |
+| Runner failed, timed out with nothing, or returned nothing usable | `failed` | one fixed `completion_failed` string |
+
+The runner's own output goes only to `runner_log_tail.txt` (the last 64 KiB), never to a warning or
+`session.json`. The runner inherits no `GEMINI_API_KEY` or endpoint token. Runs are one at a time;
+a second concurrent session is skipped with a warning.
+
+**The runner contract.** The stage and its runner share only the folder:
+- `request.json` names the seeds and the budget;
+- the runner writes one mesh per sample, `runner/sample_<k>_mesh_zup.ply`;
+- it rewrites `runner/result.json` atomically after each sample;
+- it must not start a sample that would end past the budget.
+
+Pins, seeds and every file layout are checked strictly, and a mesh in the wrong units (LaS-Comp
+works in a unit cube) is rejected. The real LaS-Comp runner is A-12. `tests/completion_stub_runner.py`
+is the CI stand-in.
+
+**Running it elsewhere** (A-12's Colab check):
+```
+python -m recon.completion prepare <session>/artifacts   # on the Mac: inputs + request, no runner
+# copy artifacts/completion/ to the CUDA host, run the runner on its request.json, copy runner/ back
+python -m recon.completion ingest <session>/artifacts    # back on the Mac: samples + completion.json
+```
+
+**Parameters.** Every number is a declared default in `CompletionParameters`, with its reason in the
+docstring.
+- `max_samples` (8), `budget_s` (2460) and `overrun_allowance_s` (360) are **provisional**, derived
+  from A-10's single T4 run, and A-12 replaces them with measured values.
+- The isolation defaults come from A-10's s-04 inspection and the golden set's fusion cuts. Re-check
+  them once R-26 and R-27 change segmentation and cleanup.
+- Once a runner is configured, the served model waits for the budget, which is longer than capture
+  polls (10 min). Read D-058 before configuring one for suppliers.

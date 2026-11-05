@@ -359,6 +359,7 @@ def run_reconstruction_pipeline(
     """Run the existing R-02 -> backend -> R-04 -> R-07 -> R-08 chain."""
     from recon import (
         board_pose,
+        completion,
         mesh_cleanup,
         metric_alignment,
         provenance,
@@ -454,6 +455,28 @@ def run_reconstruction_pipeline(
     stage_timings_s["uncertainty"] = time.perf_counter() - started
     final_model_path = uncertainty_dir / "mesh_uncertainty.glb"
 
+    # A-04: shape completion only reads the files above and writes inside completion/, so the
+    # served GLB is the same with it on or off. It never raises; a configured runner that fails
+    # adds one warning, and a host with no runner just records that (D-058).
+    warnings: list[str] = []
+    if not completion.completion_disabled():
+        started = time.perf_counter()
+        outcome = completion.run_completion_stage(
+            completion.PipelineArtifacts(
+                capture_dir=capture_dir,
+                board_pose_dir=board_dir,
+                reconstruction_dir=reconstruction_dir,
+                fusion_dir=fusion_dir,
+                provenance_dir=provenance_dir,
+                uncertainty_dir=uncertainty_dir,
+            ),
+            artifact_dir / "completion",
+            completion.resolve_runner_command(),
+        )
+        stage_timings_s["completion"] = time.perf_counter() - started
+        if outcome.warning is not None:
+            warnings.append(outcome.warning)
+
     return {
         "glb_path": str(final_model_path),
         "reference_tier_used": "charuco_board",
@@ -461,7 +484,7 @@ def run_reconstruction_pipeline(
         # R-25: report coverage from the same post-downgrade labels encoded in the GLB we serve.
         "observed_fraction": uncertainty_report.get("observed_fraction"),
         "stage_timings_s": stage_timings_s,
-        "warnings": [],
+        "warnings": warnings,
     }
 
 
