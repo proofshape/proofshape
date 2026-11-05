@@ -273,6 +273,7 @@ def test_global_register_returns_none_when_only_top_face_is_observed(
 
     assert best.free_scale_residual is None
 
+
 def test_free_scale_residual_is_unavailable_without_model_provenance():
     vertices, faces, _units = cad.load_mesh(S04)
     sample = synthetic.generate_synthetic_sample(
