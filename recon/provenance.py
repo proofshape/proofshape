@@ -266,13 +266,25 @@ def _point_inside_closed_mesh(
     return unique_count % 2 == 1
 
 
+def _build_visibility_scene(
+    vertices_mm: np.ndarray, faces: np.ndarray
+) -> o3d.t.geometry.RaycastingScene:
+    """Build one accelerated triangle scene for repeated provenance visibility queries."""
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(
+        o3d.core.Tensor(np.asarray(vertices_mm, dtype=np.float32)),
+        o3d.core.Tensor(np.asarray(faces, dtype=np.uint32)),
+    )
+    return scene
+
+
 def _mesh_visible_pair_mask(
     vertices_mm: np.ndarray,
-    faces: np.ndarray,
     camera_centers_mm: np.ndarray,
     vertex_index: np.ndarray,
     frame_index: np.ndarray,
     *,
+    scene: o3d.t.geometry.RaycastingScene,
     self_hit_tolerance_mm: float = 1e-3,
 ) -> np.ndarray:
     """Return which camera->vertex pairs are not occluded by the mesh.
@@ -309,11 +321,6 @@ def _mesh_visible_pair_mask(
     directions = to_targets / target_distance_mm[:, None]
     rays = np.hstack([origins, directions]).astype(np.float32)
 
-    scene = o3d.t.geometry.RaycastingScene()
-    scene.add_triangles(
-        o3d.core.Tensor(np.asarray(vertices_mm, dtype=np.float32)),
-        o3d.core.Tensor(np.asarray(faces, dtype=np.uint32)),
-    )
     first_hit_mm = scene.cast_rays(o3d.core.Tensor(rays))["t_hit"].numpy()
     return first_hit_mm.astype(np.float64) >= (
         target_distance_mm - self_hit_tolerance_mm
@@ -323,21 +330,23 @@ def _mesh_visible_pair_mask(
 def _filter_observations_by_mesh_visibility(
     observations: dict[str, np.ndarray],
     vertices_mm: np.ndarray,
-    faces: np.ndarray,
     camera_centers_mm: np.ndarray,
+    *,
+    scene: o3d.t.geometry.RaycastingScene,
 ) -> dict[str, np.ndarray]:
     """Drop final observation rows whose camera->vertex segment is mesh-occluded."""
     visible = _mesh_visible_pair_mask(
         vertices_mm,
-        faces,
         camera_centers_mm,
         observations["vertex_index"],
         observations["frame_index"],
+        scene=scene,
     )
     result = dict(observations)
     for key in ("vertex_index", "frame_index", "z_cam_mm", "measured_depth_mm"):
         result[key] = observations[key][visible]
     return result
+
 
 def _subset_mesh(
     vertices_mm: np.ndarray,
@@ -360,6 +369,7 @@ def oriented_vertex_normals(
     *,
     visible_vertex_index: np.ndarray | None = None,
     visible_frame_index: np.ndarray | None = None,
+    visibility_scene: o3d.t.geometry.RaycastingScene | None = None,
 ) -> np.ndarray:
     """Normals with a defensible sign for R-25's camera-facing test.
 
@@ -367,9 +377,8 @@ def oriented_vertex_normals(
     group then chooses its sign independently:
     - exterior closed group: signed volume chooses outward;
     - any group enclosed inside another closed shell: ambiguous/occluded material side, so no trusted normal;
-    - exterior open group: only trusted, in-bounds, depth-consistent visible pairs on that group
-      vote, and a pair is discarded if any *other* winding group's triangle lies between its
-      camera and vertex;
+    - exterior open group: only trusted, in-bounds, depth-consistent pairs that are also
+      geometrically visible through the mesh may vote on that group's sign;
     - no usable or ambiguous evidence: that group's faces do not contribute a trusted normal.
 
     Faces from signed groups are flipped as needed, then vertex normals are computed once from all
@@ -402,12 +411,14 @@ def oriented_vertex_normals(
             raise ValueError("visible vertex/frame indices are out of range")
 
     if visible_vertex_index is not None and len(visible_vertex_index):
+        if visibility_scene is None:
+            visibility_scene = _build_visibility_scene(vertices_mm, oriented_faces)
         geometrically_visible = _mesh_visible_pair_mask(
             vertices_mm,
-            oriented_faces,
             camera_centers_mm,
             visible_vertex_index,
             visible_frame_index,
+            scene=visibility_scene,
         )
         visible_vertex_index = visible_vertex_index[geometrically_visible]
         visible_frame_index = visible_frame_index[geometrically_visible]
@@ -952,6 +963,7 @@ def provenance_run(
     # back faces must not get a vote merely because a camera exists on their side of the object.
     orientation_evidence = None
     oriented_faces = orient_faces_consistently(faces)
+    visibility_scene = _build_visibility_scene(vertices_mm, faces)
     if not _mesh_is_watertight(oriented_faces):
         orientation_evidence = compute_observations(
             vertices_mm,
@@ -975,6 +987,7 @@ def provenance_run(
             if orientation_evidence is not None
             else None
         ),
+        visibility_scene=visibility_scene,
     )
     observations = compute_observations(
         vertices_mm,
@@ -988,8 +1001,8 @@ def provenance_run(
     observations = _filter_observations_by_mesh_visibility(
         observations,
         vertices_mm,
-        faces,
         camera_centers_mm,
+        scene=visibility_scene,
     )
     vertex_results = label_vertices(
         len(vertices_mm),
