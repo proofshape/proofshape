@@ -21,7 +21,8 @@ repository root on `sys.path` (`pip install -e .` refuses Python 3.10 because of
 
 The result file carries no paths on purpose. The service derives every file name from the sample
 index, so nothing a runner writes can make the service read or overwrite a file outside
-`runner/`.
+`runner/`. A runner may keep its own files in `runner/` too (A-12's `lascomp_metrics.json` and
+conditioning image); the service never reads anything there but `result.json` and the meshes.
 """
 
 from __future__ import annotations
