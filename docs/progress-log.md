@@ -1783,3 +1783,25 @@ client bug, not something the supplier can fix by rechecking the order code.
 
 **Close-out:** owner reported 2 h actual against 2 h estimated. R-29 and its index row are
 marked Done on this final close-out head before final approval, per D-038.
+
+## 2026-11-04 — I-03 global CAD registration candidates (PR #233)
+
+**Who:** @mbj1994; repeated clean-checkout validation and review by @TabeenRaoof and
+@dalwalyk.
+
+**What changed:** added rigid CAD-to-model global registration with the fixed CAD/board frame
+rotation, FPFH + RANSAC, board-compatible yaw/xy enumeration, distinct-candidate preservation and
+multiple orientation basins for downstream I-05 refinement. Every returned pose remains scale 1.
+
+**Scale diagnostic review fixes:** the first implementation's support/extreme-point estimator
+depended on vertex ordering; similarity ICP removed that. Final review then found a second,
+occlusion-specific bias: fitting whole CAD -> partial Observed model shrank the CAD into hidden
+patches. The final diagnostic therefore uses fully Observed model samples as source and a dense
+CAD surface as target, performs rigid ICP before the scaling pass, and reports
+`1 / model_to_cad_scale - 1` so D-039's sign convention remains unchanged. Missing provenance,
+too few correspondences, or planar-only Observed evidence returns `None`. Regressions cover
+multiple noisy s-04 seeds at true size and +3%, an Unobserved board-contact face, vertex-order
+invariance, hidden-geometry perturbation and planar-only evidence.
+
+**Close-out:** owner reported 3 h actual against 5 h estimated. I-03 and its index row are Done
+and I-04 is Ready on the final review head.
