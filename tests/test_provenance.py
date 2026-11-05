@@ -1000,6 +1000,7 @@ def test_hidden_rear_open_patch_stays_unobserved_with_noisy_depth_evidence():
     assert np.all(labels[: len(front_vertices)] == provenance.LABEL_OBSERVED)
     assert np.all(labels[len(front_vertices) :] == provenance.LABEL_UNOBSERVED)
 
+
 def test_oriented_vertex_normals_signs_bowtie_winding_groups_independently():
     # Two open sheets share only vertex 0. They are separate winding groups because they share no
     # edge. The second sheet starts reversed; both must still face the overhead camera.
