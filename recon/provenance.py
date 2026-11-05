@@ -103,19 +103,20 @@ def vertex_normals(vertices_mm: np.ndarray, faces: np.ndarray) -> np.ndarray:
     return normals
 
 
-def orient_faces_consistently(faces: np.ndarray) -> np.ndarray:
-    """Return triangle winding made locally consistent across every shared manifold edge.
+def _orient_faces_with_groups(
+    faces: np.ndarray,
+) -> tuple[np.ndarray, list[np.ndarray]]:
+    """Orient faces across shared manifold edges and return those winding groups.
 
-    R-25 needs the *sign* of a mesh normal, unlike C-08's absolute-dot tie-break. A raw mesh can
-    arrive globally reversed or with a neighbour reversed, so signed facing is unsafe until edge
-    orientation is propagated. Non-manifold or contradictory topology is refused rather than
-    guessed: the hard rule prefers Unobserved/a loud failure to a fabricated facing direction.
+    A winding group is connected by shared *edges*, not merely shared vertices. This distinction
+    matters for bowtie vertices: two sheets that touch at one corner can have independent initial
+    winding and must choose their normal sign independently.
     """
     faces = np.asarray(faces, dtype=np.int64)
     if faces.ndim != 2 or faces.shape[1] != 3:
         raise ValueError(f"faces must have shape (F,3), got {faces.shape}")
     if len(faces) == 0:
-        return faces.copy()
+        return faces.copy(), []
 
     edge_owners: dict[tuple[int, int], list[tuple[int, int]]] = {}
     for face_index, triangle in enumerate(faces):
@@ -142,13 +143,16 @@ def orient_faces_consistently(faces: np.ndarray) -> np.ndarray:
 
     flip = np.zeros(len(faces), dtype=bool)
     assigned = np.zeros(len(faces), dtype=bool)
+    groups: list[np.ndarray] = []
     for root in range(len(faces)):
         if assigned[root]:
             continue
         assigned[root] = True
         stack = [root]
+        group: list[int] = []
         while stack:
             current = stack.pop()
+            group.append(current)
             for neighbour, toggle in adjacency[current]:
                 required = bool(flip[current] ^ toggle)
                 if assigned[neighbour]:
@@ -161,10 +165,17 @@ def orient_faces_consistently(faces: np.ndarray) -> np.ndarray:
                 flip[neighbour] = required
                 assigned[neighbour] = True
                 stack.append(neighbour)
+        groups.append(np.asarray(group, dtype=np.int64))
 
     oriented = faces.copy()
     if np.any(flip):
         oriented[flip] = oriented[flip][:, [0, 2, 1]]
+    return oriented, groups
+
+
+def orient_faces_consistently(faces: np.ndarray) -> np.ndarray:
+    """Return triangle winding made locally consistent across every shared manifold edge."""
+    oriented, _groups = _orient_faces_with_groups(faces)
     return oriented
 
 
@@ -194,6 +205,137 @@ def _signed_mesh_volume(
     return float(np.sum(contributions)), float(np.sum(np.abs(contributions)))
 
 
+def _point_inside_closed_mesh(
+    point: np.ndarray,
+    vertices_mm: np.ndarray,
+    faces: np.ndarray,
+) -> bool:
+    """Odd/even ray test for a point against a closed triangle shell.
+
+    The ray direction is deliberately non-axis-aligned, and coincident intersection distances are
+    collapsed so hitting the diagonal/shared edge of a triangulated face does not count twice.
+    This is used only to detect shell nesting; ambiguous/intersecting cases are handled
+    conservatively by withholding trusted normals.
+    """
+    point = np.asarray(point, dtype=np.float64)
+    vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
+    faces = np.asarray(faces, dtype=np.int64)
+    direction = np.array([1.0, 0.3713906763541037, 0.17320508075688773])
+    direction /= np.linalg.norm(direction)
+
+    v0 = vertices_mm[faces[:, 0]]
+    edge1 = vertices_mm[faces[:, 1]] - v0
+    edge2 = vertices_mm[faces[:, 2]] - v0
+    ray = np.broadcast_to(direction, edge2.shape)
+    h = np.cross(ray, edge2)
+    determinant = np.einsum("ij,ij->i", edge1, h)
+    epsilon = 1e-10
+
+    usable = np.abs(determinant) > epsilon
+    if not np.any(usable):
+        return False
+
+    inverse = np.zeros_like(determinant)
+    inverse[usable] = 1.0 / determinant[usable]
+    s = point - v0
+    u = inverse * np.einsum("ij,ij->i", s, h)
+    q = np.cross(s, edge1)
+    v = inverse * np.einsum("j,ij->i", direction, q)
+    t = inverse * np.einsum("ij,ij->i", edge2, q)
+
+    hit = (
+        usable
+        & (u >= -epsilon)
+        & (v >= -epsilon)
+        & (u + v <= 1.0 + epsilon)
+        & (t > epsilon)
+    )
+    distances = np.sort(t[hit])
+    if len(distances) == 0:
+        return False
+
+    unique_count = 1
+    previous = float(distances[0])
+    for distance in distances[1:]:
+        distance = float(distance)
+        tolerance = 1e-8 * max(1.0, abs(previous), abs(distance))
+        if abs(distance - previous) > tolerance:
+            unique_count += 1
+            previous = distance
+    return unique_count % 2 == 1
+
+
+def _segment_occluded_by_faces(
+    camera_mm: np.ndarray,
+    vertex_mm: np.ndarray,
+    vertices_mm: np.ndarray,
+    faces: np.ndarray,
+) -> bool:
+    """True when another triangle intersects camera -> vertex strictly before the vertex.
+
+    This is a geometric visibility check for open winding-group sign votes. It deliberately does
+    not use measured depth: depth is noisy, while an actual triangle between the camera and the
+    candidate vertex is direct evidence that the candidate surface is occluded. Intersections at
+    the target endpoint are excluded so bowtie groups that share only a vertex do not occlude one
+    another merely by touching there.
+    """
+    if len(faces) == 0:
+        return False
+
+    camera_mm = np.asarray(camera_mm, dtype=np.float64)
+    vertex_mm = np.asarray(vertex_mm, dtype=np.float64)
+    segment = vertex_mm - camera_mm
+    segment_length = float(np.linalg.norm(segment))
+    if not np.isfinite(segment_length) or segment_length <= 1e-12:
+        return False
+    direction = segment / segment_length
+
+    v0 = vertices_mm[faces[:, 0]]
+    edge1 = vertices_mm[faces[:, 1]] - v0
+    edge2 = vertices_mm[faces[:, 2]] - v0
+    ray = np.broadcast_to(direction, edge2.shape)
+    h = np.cross(ray, edge2)
+    determinant = np.einsum("ij,ij->i", edge1, h)
+
+    barycentric_epsilon = 1e-10
+    distance_epsilon = 1e-8 * max(1.0, segment_length)
+    usable = np.abs(determinant) > barycentric_epsilon
+    if not np.any(usable):
+        return False
+
+    inverse = np.zeros_like(determinant)
+    inverse[usable] = 1.0 / determinant[usable]
+    s = camera_mm - v0
+    u = inverse * np.einsum("ij,ij->i", s, h)
+    q = np.cross(s, edge1)
+    v = inverse * np.einsum("j,ij->i", direction, q)
+    t = inverse * np.einsum("ij,ij->i", edge2, q)
+
+    hit = (
+        usable
+        & (u >= -barycentric_epsilon)
+        & (v >= -barycentric_epsilon)
+        & (u + v <= 1.0 + barycentric_epsilon)
+        & (t > distance_epsilon)
+        & (t < segment_length - distance_epsilon)
+    )
+    return bool(np.any(hit))
+
+
+def _subset_mesh(
+    vertices_mm: np.ndarray,
+    faces: np.ndarray,
+    face_indices: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return compact component vertices/faces plus original vertex indices."""
+    component_faces_global = faces[face_indices]
+    vertex_indices = np.unique(component_faces_global)
+    old_to_new = -np.ones(len(vertices_mm), dtype=np.int64)
+    old_to_new[vertex_indices] = np.arange(len(vertex_indices))
+    component_faces = old_to_new[component_faces_global]
+    return vertices_mm[vertex_indices], component_faces, vertex_indices
+
+
 def oriented_vertex_normals(
     vertices_mm: np.ndarray,
     faces: np.ndarray,
@@ -204,64 +346,156 @@ def oriented_vertex_normals(
 ) -> np.ndarray:
     """Normals with a defensible sign for R-25's camera-facing test.
 
-    1. Propagate face winding so adjacent manifold triangles agree.
-    2. For a closed mesh, use signed volume to choose the outward global sign.
-    3. For an open mesh, choose between the two global signs only from vertex/frame pairs that
-       already passed the in-bounds, trusted-pixel and depth-consistency gates *without* using
-       facing. Those are actual surface observations, so their outward normal must point toward
-       the observing camera. Voting over every vertex/camera pair is invalid: hidden back faces
-       can dominate the sum and make the sign depend on part size or camera height.
-       If there is no usable visible-pair evidence, return zero normals so provenance remains
-       conservative: no vertex can become Observed from a guessed sign.
+    Winding is first made locally consistent across shared manifold edges. Each resulting winding
+    group then chooses its sign independently:
+    - exterior closed group: signed volume chooses outward;
+    - any group enclosed inside another closed shell: ambiguous/occluded material side, so no trusted normal;
+    - exterior open group: only trusted, in-bounds, depth-consistent visible pairs on that group
+      vote, and a pair is discarded if any *other* winding group's triangle lies between its
+      camera and vertex;
+    - no usable or ambiguous evidence: that group's faces do not contribute a trusted normal.
+
+    Faces from signed groups are flipped as needed, then vertex normals are computed once from all
+    trusted faces. This is important at bowtie vertices shared by otherwise independent sheets:
+    both sheets contribute only after their own winding/sign has been settled.
     """
     vertices_mm = np.asarray(vertices_mm, dtype=np.float64)
+    faces = np.asarray(faces, dtype=np.int64)
     camera_centers_mm = np.asarray(camera_centers_mm, dtype=np.float64)
-    oriented_faces = orient_faces_consistently(faces)
-    normals = vertex_normals(vertices_mm, oriented_faces)
+    oriented_faces, winding_groups = _orient_faces_with_groups(faces)
 
     if camera_centers_mm.ndim != 2 or camera_centers_mm.shape[1] != 3:
         raise ValueError("camera_centers_mm must have shape (S,3)")
-    valid = np.linalg.norm(normals, axis=1) > 0.0
-    if not np.any(valid):
-        return normals
 
-    if _mesh_is_watertight(oriented_faces):
-        signed_volume, volume_scale = _signed_mesh_volume(vertices_mm, oriented_faces)
-        if volume_scale <= 0.0 or abs(signed_volume) <= 1e-12 * volume_scale:
-            return np.zeros_like(normals)
-        return -normals if signed_volume < 0.0 else normals
+    if visible_vertex_index is not None or visible_frame_index is not None:
+        if visible_vertex_index is None or visible_frame_index is None:
+            raise ValueError("visible vertex/frame indices must be supplied together")
+        visible_vertex_index = np.asarray(visible_vertex_index, dtype=np.int64)
+        visible_frame_index = np.asarray(visible_frame_index, dtype=np.int64)
+        if visible_vertex_index.ndim != 1 or visible_frame_index.ndim != 1:
+            raise ValueError("visible vertex/frame indices must be one-dimensional")
+        if visible_vertex_index.shape != visible_frame_index.shape:
+            raise ValueError("visible vertex/frame indices must have matching shapes")
+        if (
+            np.any(visible_vertex_index < 0)
+            or np.any(visible_vertex_index >= len(vertices_mm))
+            or np.any(visible_frame_index < 0)
+            or np.any(visible_frame_index >= len(camera_centers_mm))
+        ):
+            raise ValueError("visible vertex/frame indices are out of range")
 
-    if visible_vertex_index is None or visible_frame_index is None:
-        return np.zeros_like(normals)
-    visible_vertex_index = np.asarray(visible_vertex_index, dtype=np.int64)
-    visible_frame_index = np.asarray(visible_frame_index, dtype=np.int64)
-    if visible_vertex_index.ndim != 1 or visible_frame_index.ndim != 1:
-        raise ValueError("visible vertex/frame indices must be one-dimensional")
-    if visible_vertex_index.shape != visible_frame_index.shape:
-        raise ValueError("visible vertex/frame indices must have matching shapes")
-    if len(visible_vertex_index) == 0:
-        return np.zeros_like(normals)
-    if (
-        np.any(visible_vertex_index < 0)
-        or np.any(visible_vertex_index >= len(vertices_mm))
-        or np.any(visible_frame_index < 0)
-        or np.any(visible_frame_index >= len(camera_centers_mm))
-    ):
-        raise ValueError("visible vertex/frame indices are out of range")
+    signed_faces = oriented_faces.copy()
+    trusted_face_mask = np.zeros(len(oriented_faces), dtype=bool)
 
-    pair_normals = normals[visible_vertex_index]
-    pair_valid = np.linalg.norm(pair_normals, axis=1) > 0.0
-    if not np.any(pair_valid):
-        return np.zeros_like(normals)
-    pair_vertices = visible_vertex_index[pair_valid]
-    pair_frames = visible_frame_index[pair_valid]
-    to_camera = camera_centers_mm[pair_frames] - vertices_mm[pair_vertices]
-    signed_terms = np.einsum("ij,ij->i", normals[pair_vertices], to_camera)
-    score = float(np.sum(signed_terms))
-    score_scale = float(np.sum(np.abs(signed_terms)))
-    if score_scale <= 0.0 or abs(score) <= 1e-9 * score_scale:
-        return np.zeros_like(normals)
-    return -normals if score < 0.0 else normals
+    group_records = []
+    for face_indices in winding_groups:
+        group_vertices, group_faces, vertex_indices = _subset_mesh(
+            vertices_mm, oriented_faces, face_indices
+        )
+        group_records.append(
+            (
+                face_indices,
+                group_vertices,
+                group_faces,
+                vertex_indices,
+                _mesh_is_watertight(group_faces),
+            )
+        )
+
+    enclosed_groups: set[int] = set()
+    for group_index, record in enumerate(group_records):
+        _face_indices, group_vertices, _group_faces, _vertex_indices, _is_closed = (
+            record
+        )
+        if len(group_vertices) == 0:
+            continue
+        # A disconnected winding group whose geometry starts inside a closed shell is not
+        # externally observable evidence, whether that group is itself closed (a cavity shell)
+        # or open (a partial cavity patch).  Do not let camera-facing votes guess its material
+        # side: the hard rule prefers zero trusted normals / Unobserved.
+        probe = group_vertices[0]
+        for other_index, other in enumerate(group_records):
+            if other_index == group_index or not other[4]:
+                continue
+            other_vertices, other_faces = other[1], other[2]
+            if _point_inside_closed_mesh(probe, other_vertices, other_faces):
+                enclosed_groups.add(group_index)
+                break
+
+    for group_index, record in enumerate(group_records):
+        face_indices, group_vertices, group_faces, vertex_indices, is_closed = record
+        group_normals = vertex_normals(group_vertices, group_faces)
+        if not np.any(np.linalg.norm(group_normals, axis=1) > 0.0):
+            continue
+
+        sign: float | None = None
+        if group_index in enclosed_groups:
+            # Closed cavity shells and open cavity patches both need topology/material semantics
+            # to decide which side is trusted. Do not guess: zero normals keep them out of the
+            # facing evidence.
+            sign = None
+        elif is_closed:
+            signed_volume, volume_scale = _signed_mesh_volume(
+                group_vertices, group_faces
+            )
+            if volume_scale > 0.0 and abs(signed_volume) > 1e-12 * volume_scale:
+                sign = -1.0 if signed_volume < 0.0 else 1.0
+        elif visible_vertex_index is not None and len(visible_vertex_index):
+            in_group = np.isin(visible_vertex_index, vertex_indices)
+            pair_vertices = visible_vertex_index[in_group]
+            pair_frames = visible_frame_index[in_group]
+            if len(pair_vertices):
+                local_indices = np.searchsorted(vertex_indices, pair_vertices)
+                pair_normals = group_normals[local_indices]
+                pair_valid = np.linalg.norm(pair_normals, axis=1) > 0.0
+                pair_vertices = pair_vertices[pair_valid]
+                pair_frames = pair_frames[pair_valid]
+                pair_normals = pair_normals[pair_valid]
+                if len(pair_vertices):
+                    other_face_blocks = [
+                        other[0]
+                        for other_index, other in enumerate(group_records)
+                        if other_index != group_index and len(other[0])
+                    ]
+                    if other_face_blocks:
+                        other_faces = oriented_faces[np.concatenate(other_face_blocks)]
+                        unoccluded = np.array(
+                            [
+                                not _segment_occluded_by_faces(
+                                    camera_centers_mm[frame_index],
+                                    vertices_mm[vertex_index],
+                                    vertices_mm,
+                                    other_faces,
+                                )
+                                for vertex_index, frame_index in zip(
+                                    pair_vertices, pair_frames, strict=True
+                                )
+                            ],
+                            dtype=bool,
+                        )
+                        pair_vertices = pair_vertices[unoccluded]
+                        pair_frames = pair_frames[unoccluded]
+                        pair_normals = pair_normals[unoccluded]
+                if len(pair_vertices):
+                    to_camera = (
+                        camera_centers_mm[pair_frames] - vertices_mm[pair_vertices]
+                    )
+                    signed_terms = np.einsum("ij,ij->i", pair_normals, to_camera)
+                    score = float(np.sum(signed_terms))
+                    score_scale = float(np.sum(np.abs(signed_terms)))
+                    if score_scale > 0.0 and abs(score) > 1e-9 * score_scale:
+                        sign = -1.0 if score < 0.0 else 1.0
+
+        if sign is None:
+            continue
+        if sign < 0.0:
+            signed_faces[face_indices] = signed_faces[face_indices][:, [0, 2, 1]]
+        trusted_face_mask[face_indices] = True
+
+    if not np.any(trusted_face_mask):
+        return np.zeros_like(vertices_mm)
+
+    return vertex_normals(vertices_mm, signed_faces[trusted_face_mask])
 
 
 def observed_surface_area_fraction(
