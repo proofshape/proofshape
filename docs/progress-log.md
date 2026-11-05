@@ -1710,3 +1710,55 @@ variable instead of a path baked into the repository.
 **Close-out:** owner reported 3 h actual against 3 h estimated, including both review-response
 rounds. P-28 and its index row are marked Done on this final close-out head before final
 approval, per D-038.
+
+## 2026-11-04 — A-04 shape-completion stage, service side (PRs #235 and #237, D-058)
+
+**Who:** @TabeenRaoof. Claimed in #232.
+- The split, #235, was approved by @dalwalyk, with @mbj1994 agreeing in review, and merged at
+  `b37bf26`.
+- The code, #237, was approved by @dalwalyk and merged at `3dccd1d`. @mbj1994 reviewed with
+  comments.
+
+**Split first (D-058).** A-04's criteria predated D-057. LaS-Comp is CUDA-only and needs Python
+3.10, while the service runs on the M2 Max (D-049) and the image's torch is 2.8. So:
+- A-04 became the service side;
+- the new **A-12** takes the real runner, its CUDA setup script, and the Colab run that sets K and
+  the budget;
+- the image is unchanged, and adding the environment to it is a later follow-up with no story yet.
+
+The original criteria are kept in A-04's notes, marked as superseded.
+
+**What changed (#237):**
+- `recon/completion.py` runs after R-10 inside the pipeline and only writes in
+  `artifacts/completion/`. It:
+  - isolates the part from the board skin: a core above fusion's own cut, its largest cluster, and
+    lower walls inside a 60° cone;
+  - samples a partial cloud and picks and crops one photo;
+  - talks to an out-of-process runner through a strict file contract, `recon/completion_contract.py`,
+    which A-12's Python 3.10 runner can import.
+- `recon/provenance.py` gains `LABEL_INFERRED` and `INFERRED_COLOR`, and nothing served carries
+  them. `labels_to_colors` now raises on an unknown label; before, it returned uninitialised
+  colours.
+- With no runner configured (every Mac session), the stage records `unavailable` and warns
+  nobody. A configured runner that fails adds one fixed warning. Runner output never reaches a
+  warning or `session.json`, and secrets are stripped from its environment.
+
+**Result:**
+- **Tests.** 86 new tests against a stub runner run as a real subprocess. Six deliberate defects,
+  introduced by hand, each failed a test, and @dalwalyk repeated the secret-stripping one.
+- **Golden set.** All five objects reconstructed on the M2 Max with the stage inline, at about
+  0.2 s each.
+- **Against CAD.** Heights match CAD on s-04 and s-05, and so do footprints above about 11.5 mm.
+  **The base of each partial carries a 2–6 mm skirt of board skin, recorded rather than tuned
+  away.** Re-check it after R-26 and R-27.
+- **Hours.** 4 h actual against 8 h estimated.
+
+**Process note:** after #235 merged, GitHub marked #237 as conflicting and `gh pr update-branch`
+refused. #237 still carried the split commit from before #235's own syncs, so the two had
+criss-cross merge bases; both of git's strategies merged cleanly locally. A merge of `main` with
+content identical to the approved head (`git diff` empty) cleared it, at the cost of one
+dismissed approval. Lesson: when a PR is built on another PR's branch, merge that branch's later
+syncs into it as well, or the two end up with criss-cross merge bases.
+
+**Next:** A-12 (Ready; @dalwalyk flagged its 5 h as light, so re-estimate on claiming). Once A-12
+produces real samples, A-05 can be written up and built.
