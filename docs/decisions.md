@@ -1050,6 +1050,37 @@ anywhere, so D-058 was free.
 
 ---
 
+**D-059 · R-26's criterion 1 does not cover a flat part whose side wall was never reconstructed
+at all.** (2026-11-05)
+R-26's redesign (#241, round 3) tells a flat part apart from a legitimate raised board layer by
+connectivity: it pools the points around each elevated cell cluster and looks for any point at a
+height strictly between the board and the cluster's own top -- evidence of a side wall. That
+signal requires at least one camera angle to have seen some part of the wall. `#241`'s review
+surfaced a case with none: a large, thin part whose wall is never captured by any angle, so the
+point cloud has literally zero points at an intermediate height anywhere near it (the review's
+added test, `test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protected`,
+builds this directly -- board points are dropped under the part's own footprint to model real
+occlusion rather than the fixture's own default of scattering them everywhere). From height data
+alone, that case is indistinguishable from a legitimate floating board layer (R-17's case), which
+must still be excluded from the cut.
+
+Criterion 1 is narrowed: a flat part lower than `DEFAULT_MAX_BOARD_LAYER_MM` survives
+segmentation unless every camera angle failed to capture any point on its side wall, in which
+case it is excluded like a floating board layer, and that is accepted rather than treated as a
+defect in `#241`. This is a statement about what the geometry alone can support, not a tuning of
+thresholds -- raising or lowering `DEFAULT_MIN_WALL_POINTS` does not change which case this is.
+
+*Why:* height/connectivity data cannot carry a signal that was never captured. Closing this
+residual case needs a different kind of input (for example color/texture from the capture photo,
+or a VLM hint) and is out of R-26's scope as written; a future story can take it up if a part this
+thin and this occluded turns out to matter in practice. Recording this now rather than leaving a
+code comment to carry the exception means a future reviewer checking criterion 1 against the
+code finds the actual, narrower claim instead of a mismatch.
+*Checked against D-028:* fetched every origin branch on 2026-11-05; D-058 was the highest number
+anywhere, so D-059 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
