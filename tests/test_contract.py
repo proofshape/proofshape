@@ -135,7 +135,22 @@ def test_examples_validate_against_their_schema(spec):
     )
 
 
-def test_unobserved_regions_never_contribute_to_a_verdict():
+def _non_observed_contributing_regions(body: dict) -> list[str]:
+    """Region names in `body` whose provenance isn't `observed` but contribute to the verdict.
+
+    D-005, the hard rule: only `observed` geometry may ever contribute. `unobserved` and
+    `inferred` (R-29, #187 — A-04 produces `inferred` regions) must both have
+    `contributes_to_verdict: false`.
+    """
+    return [
+        region["name"]
+        for region in body.get("regions", [])
+        if region["provenance"] != "observed"
+        and region["contributes_to_verdict"] is not False
+    ]
+
+
+def test_non_observed_regions_never_contribute_to_a_verdict():
     """D-005, the hard rule, made structural: enforced over every committed verdict example."""
     verdict_examples = list(EXAMPLES_DIR.glob("getVerdict.response-*.json"))
     assert verdict_examples, "expected at least one getVerdict example to check"
@@ -144,17 +159,38 @@ def test_unobserved_regions_never_contribute_to_a_verdict():
     for path in verdict_examples:
         with open(path, encoding="utf-8") as f:
             body = json.load(f)
-        for region in body.get("regions", []):
-            if (
-                region["provenance"] == "unobserved"
-                and region["contributes_to_verdict"] is not False
-            ):
-                violations.append(f"{path.name}: region {region['name']!r}")
+        for name in _non_observed_contributing_regions(body):
+            violations.append(f"{path.name}: region {name!r}")
 
     assert not violations, (
-        "unobserved region(s) marked as contributing to a verdict — this violates the hard "
+        "non-observed region(s) marked as contributing to a verdict — this violates the hard "
         "rule (D-005): " + ", ".join(violations)
     )
+
+
+def test_inferred_contributing_is_caught_by_the_hard_rule_check():
+    """#187: an `inferred` region that wrongly contributes must be caught too, not just
+    `unobserved` ones. Planted in memory, not committed, per the story's own Tests section."""
+    verdict_examples = list(EXAMPLES_DIR.glob("getVerdict.response-*.json"))
+    body = None
+    for path in verdict_examples:
+        with open(path, encoding="utf-8") as f:
+            candidate = json.load(f)
+        if candidate.get("regions"):
+            body = candidate
+            break
+    assert body is not None, (
+        "expected at least one getVerdict example with a region to patch"
+    )
+
+    body["regions"][0] = {
+        **body["regions"][0],
+        "provenance": "inferred",
+        "contributes_to_verdict": True,
+    }
+
+    violations = _non_observed_contributing_regions(body)
+    assert violations == [body["regions"][0]["name"]]
 
 
 def test_verdict_enum_is_exactly_the_four_values(spec):
