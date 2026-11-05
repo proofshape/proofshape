@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import open3d as o3d
 
 from recon.mesh_cleanup import read_glb, write_glb
 from recon.metric_alignment import (
@@ -265,62 +266,78 @@ def _point_inside_closed_mesh(
     return unique_count % 2 == 1
 
 
-def _segment_occluded_by_faces(
-    camera_mm: np.ndarray,
-    vertex_mm: np.ndarray,
+def _mesh_visible_pair_mask(
     vertices_mm: np.ndarray,
     faces: np.ndarray,
-) -> bool:
-    """True when another triangle intersects camera -> vertex strictly before the vertex.
+    camera_centers_mm: np.ndarray,
+    vertex_index: np.ndarray,
+    frame_index: np.ndarray,
+    *,
+    self_hit_tolerance_mm: float = 1e-3,
+) -> np.ndarray:
+    """Return which camera->vertex pairs are not occluded by the mesh.
 
-    This is a geometric visibility check for open winding-group sign votes. It deliberately does
-    not use measured depth: depth is noisy, while an actual triangle between the camera and the
-    candidate vertex is direct evidence that the candidate surface is occluded. Intersections at
-    the target endpoint are excluded so bowtie groups that share only a vertex do not occlude one
-    another merely by touching there.
+    One Open3D RaycastingScene accelerates all triangle intersections, and all requested rays are
+    cast in one batch. A pair is visible when the first hit is at the target vertex (within a
+    small numerical self-hit tolerance) or beyond it. Any earlier mesh hit is an occluder.
+
+    This check is independent of measured depth, so noisy depth cannot make a hidden surface
+    geometrically visible.
     """
-    if len(faces) == 0:
-        return False
+    vertex_index = np.asarray(vertex_index, dtype=np.int64)
+    frame_index = np.asarray(frame_index, dtype=np.int64)
+    if vertex_index.shape != frame_index.shape or vertex_index.ndim != 1:
+        raise ValueError("vertex/frame indices must be matching one-dimensional arrays")
+    if len(vertex_index) == 0:
+        return np.empty(0, dtype=bool)
+    if (
+        np.any(vertex_index < 0)
+        or np.any(vertex_index >= len(vertices_mm))
+        or np.any(frame_index < 0)
+        or np.any(frame_index >= len(camera_centers_mm))
+    ):
+        raise ValueError("vertex/frame indices are out of range")
+    if not np.isfinite(self_hit_tolerance_mm) or self_hit_tolerance_mm < 0.0:
+        raise ValueError("self_hit_tolerance_mm must be finite and non-negative")
 
-    camera_mm = np.asarray(camera_mm, dtype=np.float64)
-    vertex_mm = np.asarray(vertex_mm, dtype=np.float64)
-    segment = vertex_mm - camera_mm
-    segment_length = float(np.linalg.norm(segment))
-    if not np.isfinite(segment_length) or segment_length <= 1e-12:
-        return False
-    direction = segment / segment_length
+    targets = vertices_mm[vertex_index]
+    origins = camera_centers_mm[frame_index]
+    to_targets = targets - origins
+    target_distance_mm = np.linalg.norm(to_targets, axis=1)
+    if np.any(target_distance_mm <= 1e-12):
+        raise ValueError("a camera centre coincides with a mesh vertex")
+    directions = to_targets / target_distance_mm[:, None]
+    rays = np.hstack([origins, directions]).astype(np.float32)
 
-    v0 = vertices_mm[faces[:, 0]]
-    edge1 = vertices_mm[faces[:, 1]] - v0
-    edge2 = vertices_mm[faces[:, 2]] - v0
-    ray = np.broadcast_to(direction, edge2.shape)
-    h = np.cross(ray, edge2)
-    determinant = np.einsum("ij,ij->i", edge1, h)
-
-    barycentric_epsilon = 1e-10
-    distance_epsilon = 1e-8 * max(1.0, segment_length)
-    usable = np.abs(determinant) > barycentric_epsilon
-    if not np.any(usable):
-        return False
-
-    inverse = np.zeros_like(determinant)
-    inverse[usable] = 1.0 / determinant[usable]
-    s = camera_mm - v0
-    u = inverse * np.einsum("ij,ij->i", s, h)
-    q = np.cross(s, edge1)
-    v = inverse * np.einsum("j,ij->i", direction, q)
-    t = inverse * np.einsum("ij,ij->i", edge2, q)
-
-    hit = (
-        usable
-        & (u >= -barycentric_epsilon)
-        & (v >= -barycentric_epsilon)
-        & (u + v <= 1.0 + barycentric_epsilon)
-        & (t > distance_epsilon)
-        & (t < segment_length - distance_epsilon)
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(
+        o3d.core.Tensor(np.asarray(vertices_mm, dtype=np.float32)),
+        o3d.core.Tensor(np.asarray(faces, dtype=np.uint32)),
     )
-    return bool(np.any(hit))
+    first_hit_mm = scene.cast_rays(o3d.core.Tensor(rays))["t_hit"].numpy()
+    return first_hit_mm.astype(np.float64) >= (
+        target_distance_mm - self_hit_tolerance_mm
+    )
 
+
+def _filter_observations_by_mesh_visibility(
+    observations: dict[str, np.ndarray],
+    vertices_mm: np.ndarray,
+    faces: np.ndarray,
+    camera_centers_mm: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Drop final observation rows whose camera->vertex segment is mesh-occluded."""
+    visible = _mesh_visible_pair_mask(
+        vertices_mm,
+        faces,
+        camera_centers_mm,
+        observations["vertex_index"],
+        observations["frame_index"],
+    )
+    result = dict(observations)
+    for key in ("vertex_index", "frame_index", "z_cam_mm", "measured_depth_mm"):
+        result[key] = observations[key][visible]
+    return result
 
 def _subset_mesh(
     vertices_mm: np.ndarray,
@@ -383,6 +400,17 @@ def oriented_vertex_normals(
             or np.any(visible_frame_index >= len(camera_centers_mm))
         ):
             raise ValueError("visible vertex/frame indices are out of range")
+
+    if visible_vertex_index is not None and len(visible_vertex_index):
+        geometrically_visible = _mesh_visible_pair_mask(
+            vertices_mm,
+            oriented_faces,
+            camera_centers_mm,
+            visible_vertex_index,
+            visible_frame_index,
+        )
+        visible_vertex_index = visible_vertex_index[geometrically_visible]
+        visible_frame_index = visible_frame_index[geometrically_visible]
 
     signed_faces = oriented_faces.copy()
     trusted_face_mask = np.zeros(len(oriented_faces), dtype=bool)
@@ -451,31 +479,6 @@ def oriented_vertex_normals(
                 pair_vertices = pair_vertices[pair_valid]
                 pair_frames = pair_frames[pair_valid]
                 pair_normals = pair_normals[pair_valid]
-                if len(pair_vertices):
-                    other_face_blocks = [
-                        other[0]
-                        for other_index, other in enumerate(group_records)
-                        if other_index != group_index and len(other[0])
-                    ]
-                    if other_face_blocks:
-                        other_faces = oriented_faces[np.concatenate(other_face_blocks)]
-                        unoccluded = np.array(
-                            [
-                                not _segment_occluded_by_faces(
-                                    camera_centers_mm[frame_index],
-                                    vertices_mm[vertex_index],
-                                    vertices_mm,
-                                    other_faces,
-                                )
-                                for vertex_index, frame_index in zip(
-                                    pair_vertices, pair_frames, strict=True
-                                )
-                            ],
-                            dtype=bool,
-                        )
-                        pair_vertices = pair_vertices[unoccluded]
-                        pair_frames = pair_frames[unoccluded]
-                        pair_normals = pair_normals[unoccluded]
                 if len(pair_vertices):
                     to_camera = (
                         camera_centers_mm[pair_frames] - vertices_mm[pair_vertices]
@@ -981,6 +984,12 @@ def provenance_run(
         depth_consistency_tolerance_mm,
         trusted_pixel_mask=trusted_pixel_mask,
         vertex_normals_mm=normals_mm,
+    )
+    observations = _filter_observations_by_mesh_visibility(
+        observations,
+        vertices_mm,
+        faces,
+        camera_centers_mm,
     )
     vertex_results = label_vertices(
         len(vertices_mm),
