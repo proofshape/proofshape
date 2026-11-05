@@ -1710,3 +1710,24 @@ variable instead of a path baked into the repository.
 **Close-out:** owner reported 3 h actual against 3 h estimated, including both review-response
 rounds. P-28 and its index row are marked Done on this final close-out head before final
 approval, per D-038.
+
+## 2026-11-05 — R-29 contract-shaped createSession errors and an Inferred-aware hard rule (PR #242)
+
+**Who:** @dalwalyk. Claimed in #238 (merged separately per D-037).
+
+**What changed:** `recon/service.py`'s `RequestValidationError` handler only special-cased
+`POST .../frames`; every other route, specifically `createSession`, fell through to FastAPI's
+default `{"detail": [...]}` 422 instead of the contract's own `ErrorDetail` shape. Fixed by
+reusing the existing `order_code_unknown` code, which the contract's own 400 description already
+covers for a malformed body — a dedicated `malformed_request` code is #217/D-031's job, out of
+scope here. `tests/test_contract.py`'s structural hard-rule test only checked
+`provenance == "unobserved"`; broadened to `!= "observed"` now that A-04 (#237) produces
+`inferred` regions too, with a planted-in-memory regression rather than a committed bad example.
+
+**Review (@mbj1994):** two small fixes before approval — the path match uses
+`endswith("/v1/sessions")`, not an exact match, so it still catches the route behind a
+`root_path` prefix; `docs/manual.md`'s `order_code_unknown` row now says a malformed body is a
+client bug, not something the supplier can fix by rechecking the order code.
+
+**Close-out:** owner reported 2 h actual against 2 h estimated. R-29 and its index row are
+marked Done on this final close-out head before final approval, per D-038.

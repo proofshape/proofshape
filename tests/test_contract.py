@@ -150,7 +150,7 @@ def _non_observed_contributing_regions(body: dict) -> list[str]:
     ]
 
 
-def test_unobserved_regions_never_contribute_to_a_verdict():
+def test_non_observed_regions_never_contribute_to_a_verdict():
     """D-005, the hard rule, made structural: enforced over every committed verdict example."""
     verdict_examples = list(EXAMPLES_DIR.glob("getVerdict.response-*.json"))
     assert verdict_examples, "expected at least one getVerdict example to check"
