@@ -1050,6 +1050,109 @@ anywhere, so D-058 was free.
 
 ---
 
+**D-059 · R-26's criterion 1 does not cover a flat part whose side wall was never reconstructed
+at all.** (2026-11-05)
+R-26's redesign (#241, round 3) tells a flat part apart from a legitimate raised board layer by
+connectivity: it pools the points around each elevated cell cluster and looks for any point at a
+height strictly between the board and the cluster's own top -- evidence of a side wall. That
+signal requires at least one camera angle to have seen some part of the wall. `#241`'s review
+surfaced a case with none: a large, thin part whose wall is never captured by any angle, so the
+point cloud has literally zero points at an intermediate height anywhere near it (the review's
+added test, `test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protected`,
+builds this directly -- board points are dropped under the part's own footprint to model real
+occlusion rather than the fixture's own default of scattering them everywhere). From height data
+alone, that case is indistinguishable from a legitimate floating board layer (R-17's case), which
+must still be excluded from the cut.
+
+Criterion 1 is narrowed: a flat part lower than `DEFAULT_MAX_BOARD_LAYER_MM` survives
+segmentation unless every camera angle failed to capture any point on its side wall, in which
+case it is excluded like a floating board layer, and that is accepted rather than treated as a
+defect in `#241`. This is a statement about what the geometry alone can support, not a tuning of
+thresholds -- raising or lowering `DEFAULT_MIN_WALL_POINTS` does not change which case this is.
+
+*Why:* height/connectivity data cannot carry a signal that was never captured. Closing this
+residual case needs a different kind of input (for example color/texture from the capture photo,
+or a VLM hint) and is out of R-26's scope as written; a future story can take it up if a part this
+thin and this occluded turns out to matter in practice. Recording this now rather than leaving a
+code comment to carry the exception means a future reviewer checking criterion 1 against the
+code finds the actual, narrower claim instead of a mismatch.
+*Checked against D-028:* fetched every origin branch on 2026-11-05; D-058 was the highest number
+anywhere, so D-059 was free.
+
+**Disputed, raised with the team (2026-11-05):** @TabeenRaoof's re-review of #241 found this
+entry describes the wrong limit. The test it's built on,
+`test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protected`, had its sign
+backwards (`part_z = -(offset_mm - 6.0)` placed the part 6 mm *below* the board, not above), so
+it was passing for an uninteresting reason, not because of anything connectivity-related. With
+the sign fixed and independently reconfirmed, a wall-less, fully-occluded part is actually kept
+correctly, including #180's own 40 x 40 x 6 mm case -- *unless* the part's own top has more
+points than the visible board, at which point the robust plane **fit** itself locks onto the
+part. That is a board-plane-fit robustness limit, unrelated to walls or connectivity. The same
+review found round 3's search also cuts worse than `main`'s plain, whole-footprint histogram on
+the real golden objects (s-01 fails outright; s-02 through s-05 all cut lower, admitting board as
+part), and suggested reverting to that plain search with a to-be-designed loud refusal for the
+ambiguous case, rather than this entry's connectivity-based narrowing.
+This decision is therefore **not reaffirmed and not re-decided here** -- per this file's own
+header, a decision that needs revisiting is raised with the team and the matter stops there
+rather than being built past in either direction again. @TabeenRaoof and @mbj1994 should settle,
+together, whether criterion 1 is better served by this entry (corrected), by no exception at all
+with a loud-refusal design instead, or by something else, before `#241` relies on either.
+
+**Superseded by D-060 (2026-11-06):** the team settled it. @TabeenRaoof traced the actual cause
+(per-frame VGGT pose misalignment, not a wall/connectivity question at all) and both reviewers
+agreed to stop iterating segmentation heuristics in R-26. D-059's framing -- a side-wall
+exception to criterion 1 -- is retired along with round 3's connectivity code; D-060 records
+what replaces it.
+
+---
+
+**D-060 · R-26 stops at `main`'s plain layer search; the real fix is per-frame board
+re-anchoring, a new story (R-30).** (2026-11-06)
+Three rounds of segmentation-only redesigns on `#241` (per-cell median, then side-wall
+connectivity) each fixed the previous round's synthetic failure and introduced a new real-data
+one, most recently round 3 cutting too low on s-02 through s-05 and failing s-01 outright.
+@TabeenRaoof traced the actual cause with reproduction scripts against the five golden objects
+(posted on `#241`): the 3-6 mm "raised board layer" R-17 found is not a second physical layer.
+It is the *real* board, as seen by a handful of frames whose VGGT pose is misaligned by a few
+millimetres -- confirmed three ways (board-pixel grey level and checker-square parity rule out a
+depth or colour artifact; per-frame re-fitting directly shows individual frames 2.3-4.7 mm off
+on every golden object). R-23's alignment is one global similarity transform and cannot correct
+per-frame drift. On the merged point cloud this misalignment artifact and a genuine flat part's
+own top are the same shape -- a dense planar patch a few millimetres up -- so no classifier
+built from the merged cloud's height/location data alone can tell them apart; `DEFAULT_MIN_WALL_POINTS
+= 3` made round 3's connectivity check pass on every real cluster precisely because real data
+always has a few hundred points at intermediate heights from board noise, part walls or the
+layer's own spread, carrying no information. @mbj1994 independently reviewed the finding and
+agreed.
+
+**For R-26:** `measure_board_surface`'s layer-top search reverts to `main`'s original
+whole-footprint histogram (proven correct on all five golden objects), dropping rounds 2-3's
+per-cell/connectivity code entirely. The explicit `height_threshold_mm` override
+(`segment_run`/`fuse_run`/the confidence sweep) is kept -- it has worked every round -- as is a
+plain `min_kept_points` floor. A flat part under `DEFAULT_MAX_BOARD_LAYER_MM` is not reliably
+protected by the measured search; the override is the documented way to segment one correctly
+until R-30 lands. The five golden objects must be rerun on the final head and confirmed to match
+`main`'s existing cuts before D-038 close-out.
+
+**New story, R-30 (per-frame board re-anchoring before fusion):** fit each frame's own board
+plane (points already available in `fuse_run`, which has per-frame points and extrinsics) and
+correct that frame's extrinsic before merging, with a loud refusal when a frame shows too little
+board to anchor. This is upstream of segmentation and, per @TabeenRaoof's prototype, removes the
+ghost layer entirely (3-6x tighter board noise, the "first density gap" rule then correct on all
+five objects including a synthetic #180-style thin plate) while also sharpening the part's own
+geometry and shrinking #231's board-skin artifact. It is not filed as blocking R-26.
+
+*Why:* height/location data on the merged cloud cannot distinguish two things that are
+genuinely the same shape there; fixing it needs the per-frame signal that gets lost at merge
+time, not a cleverer post-hoc classifier. Three independent attempts at the latter each traded
+one golden-data failure for another, which is itself evidence the ambiguity is real, not a
+tuning gap. `main`'s search is the only version actually proven against all five golden objects.
+*Checked against D-028:* fetched every origin branch on 2026-11-06; D-059 was the highest number
+anywhere, so D-060 was free. R-29 was the highest story number anywhere, so R-30 is free for the
+new story.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
