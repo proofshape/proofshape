@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { uploadFrame } from "./api.js";
 import { mountAppShell, type AppState } from "./shell.js";
-import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
+import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 
 describe("C-11 model viewer shell wiring", () => {
@@ -106,16 +106,20 @@ describe("C-11 model viewer shell wiring", () => {
       throw new Error("test setup: session id missing after wait");
     }
 
+    // C-19 (#193): finishSession now requires MIN_FINISH_FRAMES accepted frames, matching
+    // recon/service.py.
     const frame = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], {
       type: "image/jpeg",
     });
-    const uploaded = await uploadFrame(baseUrl, sessionId, frame, {
-      alpha: 1,
-      beta: 2,
-      gamma: 3,
-    });
-    if (!uploaded.ok) {
-      throw new Error("test setup: upload failed");
+    for (let i = 0; i < MIN_FINISH_FRAMES; i += 1) {
+      const uploaded = await uploadFrame(baseUrl, sessionId, frame, {
+        alpha: 1,
+        beta: 2,
+        gamma: 3,
+      });
+      if (!uploaded.ok) {
+        throw new Error("test setup: upload failed");
+      }
     }
 
     return mounted;

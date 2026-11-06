@@ -336,6 +336,9 @@ The model is coloured by **what was actually seen**:
 | **Orange** | **Inferred** | Reserved: surface filled in by generative shape completion. The service-side stage exists (A-04), but completion samples stay on the server for the disagreement map (A-05) and are never part of the model you see. The model itself needs A-12's runner and a CUDA host, so on the M2 Max nothing is produced yet. Inferred surface is excluded from every deviation calculation and **never** contributes to a verdict. |
 | **Magenta** | **Unknown** | A colour the viewer did not expect. Should never appear; if it does, the viewer also shows a warning. |
 
+If the model carries no provenance colours at all (C-19), it's shown in a single flat colour and
+the viewer warns that observed and unobserved surface can't be told apart in it.
+
 The 2° and 3 mm limits are the code's current defaults, chosen by the team, not measured values —
 the calibration study will set real ones. The provenance depth-agreement gate also defaults to
 5 mm and is likewise an unmeasured assumption. If a residual is outside that gate it is excluded
