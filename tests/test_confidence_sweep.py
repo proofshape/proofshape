@@ -257,6 +257,25 @@ def test_sweep_run_confidence_drops_a_stray_without_hurting_coverage(tmp_path):
     assert by_threshold[1.0]["part_voxel_coverage"] == 1.0
 
 
+def test_sweep_run_height_threshold_override_skips_the_layer_search(tmp_path):
+    # R-26: an explicit height_threshold_mm must reach measure_board_surface too, not just
+    # segment_part -- the whole point of the override is to work around a layer-search failure.
+    run_dir = tmp_path / "run"
+    _write_synthetic_sweep_run(run_dir, [_POINT_A, _POINT_B, _POINT_C])
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = confidence_sweep.sweep_run(
+        run_dir,
+        alignment_json,
+        thresholds=[1.0],
+        min_points_per_voxel=1,
+        height_threshold_mm=6.0,
+    )
+
+    assert report["board_surface"]["board_layer_top_mm"] is None
+
+
 def test_sweep_run_overshoot_drops_coverage_even_though_stray_fraction_looks_clean(
     tmp_path,
 ):
