@@ -219,7 +219,10 @@ def sweep_run(
     # unprojects to the camera centre, not a board point, regardless of its confidence).
     valid_depth = (np.isfinite(depth) & (depth > 0.0)).reshape(-1)[finite]
     board_surface = measure_board_surface(
-        board_frame_points[valid_depth], footprint_mm, max_tilt_deg=max_board_tilt_deg
+        board_frame_points[valid_depth],
+        footprint_mm,
+        max_tilt_deg=max_board_tilt_deg,
+        height_threshold_mm=height_threshold_mm,
     )
     resolved_height_threshold_mm = (
         board_surface.height_threshold_mm
