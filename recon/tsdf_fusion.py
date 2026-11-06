@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -254,6 +255,54 @@ def extract_mesh_marching_cubes(
     return vertices_mm, faces.astype(np.int32)
 
 
+def _orient_poisson_normals(point_cloud, points_mm: np.ndarray) -> str:
+    """Orient Poisson normals coherently and pin a decisive overall board-frame sign.
+
+    Full-rank clouds use Open3D tangent-plane consistency. Exactly planar clouds use a PCA
+    normal directly because Open3D 0.18 sends coplanar data through Qhull/Delaunay. The
+    consistency algorithms still leave one global +/- choice. In ProofShape board coordinates
+    cameras are above the board in -z, so when substantially more normals have a strong +z
+    component than a strong -z component, flip the whole field. The 25% vote margin avoids
+    arbitrarily flipping closed/symmetric shapes whose up/down evidence is balanced.
+    """
+    points_mm = np.asarray(points_mm, dtype=np.float64)
+    centred = points_mm - points_mm.mean(axis=0)
+    singular_values = np.linalg.svd(centred, compute_uv=False)
+    if len(singular_values) == 0 or singular_values[0] <= 0.0:
+        raise ValueError("Poisson input does not span a surface.")
+
+    tolerance = max(1e-9, float(singular_values[0]) * 1e-10)
+    rank = int(np.count_nonzero(singular_values > tolerance))
+    if rank < 2:
+        raise ValueError(
+            "Poisson input is rank-deficient (point/line-like); at least a surface is required."
+        )
+
+    if rank == 2:
+        _u, _s, vh = np.linalg.svd(centred, full_matrices=False)
+        plane_normal = np.asarray(vh[-1], dtype=np.float64)
+        normal_length = float(np.linalg.norm(plane_normal))
+        if not np.isfinite(normal_length) or normal_length <= 0.0:
+            raise ValueError("Could not determine a finite planar Poisson normal.")
+        plane_normal /= normal_length
+        point_cloud.normals = type(point_cloud.normals)(
+            np.tile(plane_normal, (len(points_mm), 1))
+        )
+        mode = "planar_pca"
+    else:
+        tangent_k = min(30, len(points_mm) - 1)
+        point_cloud.orient_normals_consistent_tangent_plane(tangent_k)
+        mode = "tangent_plane"
+
+    normals = np.asarray(point_cloud.normals, dtype=np.float64)
+    strong_down = int(np.count_nonzero(normals[:, 2] > 0.2))
+    strong_up = int(np.count_nonzero(normals[:, 2] < -0.2))
+    if strong_down > max(1, math.ceil(1.25 * strong_up)):
+        point_cloud.normals = type(point_cloud.normals)(-normals)
+
+    return mode
+
+
 def extract_mesh_poisson(
     points_mm: np.ndarray, poisson_depth: int = DEFAULT_POISSON_DEPTH
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -282,6 +331,11 @@ def extract_mesh_poisson(
     point_cloud = o3d.geometry.PointCloud()
     point_cloud.points = o3d.utility.Vector3dVector(points_mm)
     point_cloud.estimate_normals()
+
+    # R-27: Poisson requires a coherent normal field. Full-rank clouds use Open3D's
+    # tangent-plane orientation; planar clouds use a deterministic PCA normal instead because
+    # Open3D 0.18's tangent-plane path invokes Qhull/Delaunay and rejects coplanar inputs.
+    _orient_poisson_normals(point_cloud, points_mm)
 
     mesh, _densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
         point_cloud, depth=poisson_depth

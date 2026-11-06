@@ -270,6 +270,88 @@ def test_extract_mesh_poisson_on_a_synthetic_point_cloud():
     assert len(vertices_mm) > 0
     assert len(faces) > 0
 
+    reconstructed_radius = np.linalg.norm(vertices_mm, axis=1)
+    absolute_error = np.abs(reconstructed_radius - 50.0)
+    assert np.median(absolute_error) < 3.0
+    assert np.quantile(absolute_error, 0.90) < 8.0
+
+    centre = vertices_mm.mean(axis=0)
+    centred = vertices_mm - centre
+    a = centred[faces[:, 0]]
+    b = centred[faces[:, 1]]
+    c = centred[faces[:, 2]]
+    signed_volume = float(np.sum(np.einsum("ij,ij->i", a, np.cross(b, c))) / 6.0)
+    assert signed_volume > 0.0
+
+
+def test_poisson_normal_orientation_pins_open_part_toward_board_up():
+    """R-27 final-review regression: a real open-bottomed part must not get the opposite
+    global normal sign from another object after tangent-plane consistency."""
+    o3d = pytest.importorskip("open3d")
+    axis = np.linspace(-20.0, 20.0, 13)
+    height = np.linspace(-20.0, 0.0, 9)
+    xx, yy = np.meshgrid(axis, axis)
+    top = np.column_stack([xx.ravel(), yy.ravel(), np.full(xx.size, -20.0)])
+    side_points = []
+    for z in height:
+        side_points.extend(
+            [
+                np.column_stack(
+                    [axis, np.full_like(axis, -20.0), np.full_like(axis, z)]
+                ),
+                np.column_stack(
+                    [axis, np.full_like(axis, 20.0), np.full_like(axis, z)]
+                ),
+                np.column_stack(
+                    [np.full_like(axis, -20.0), axis, np.full_like(axis, z)]
+                ),
+                np.column_stack(
+                    [np.full_like(axis, 20.0), axis, np.full_like(axis, z)]
+                ),
+            ]
+        )
+    points = np.vstack([top, *side_points])
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(points)
+    cloud.estimate_normals()
+
+    mode = tsdf_fusion._orient_poisson_normals(cloud, points)
+
+    assert mode == "tangent_plane"
+    normals = np.asarray(cloud.normals)
+    strong_up = np.count_nonzero(normals[:, 2] < -0.2)
+    strong_down = np.count_nonzero(normals[:, 2] > 0.2)
+    assert strong_up > 1.25 * strong_down
+
+
+def test_extract_mesh_poisson_handles_an_exactly_planar_grid():
+    pytest.importorskip("open3d")
+    axis = np.linspace(-20.0, 20.0, 15)
+    xx, yy = np.meshgrid(axis, axis)
+    points_mm = np.column_stack(
+        [xx.ravel(), yy.ravel(), np.zeros(xx.size, dtype=np.float64)]
+    )
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_poisson(points_mm, poisson_depth=5)
+
+    assert len(vertices_mm) > 0
+    assert len(faces) > 0
+    assert np.isfinite(vertices_mm).all()
+
+
+def test_extract_mesh_poisson_rejects_line_like_input_clearly():
+    pytest.importorskip("open3d")
+    points_mm = np.column_stack(
+        [
+            np.linspace(0.0, 20.0, 20),
+            np.zeros(20),
+            np.zeros(20),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="rank-deficient"):
+        tsdf_fusion.extract_mesh_poisson(points_mm, poisson_depth=5)
+
 
 # --- fuse_run: end-to-end wiring on synthetic files ----------------------------------------------
 #

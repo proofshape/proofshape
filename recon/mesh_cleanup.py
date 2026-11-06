@@ -1,8 +1,8 @@
 """R-08: clean up R-07's raw fused mesh and export a GLB a browser can load.
 
-Order matches the acceptance criteria: keep the largest connected component (drop disconnected
-junk -- stray voxels, TSDF noise far from the part), fill small holes (close small gaps without
-asserting geometry that was never really observed), decimate to a target triangle count, export.
+Order matches the acceptance criteria: keep connected components above a declared relative size
+(drop only small disconnected junk), fill small holes with winding consistent with the surrounding
+mesh, decimate to a target triangle count, and enforce the final GLB byte limit before export.
 
 Decimation uses `fast_simplification` (a real quadric-decimation implementation) and GLB I/O uses
 `pygltflib` -- both are core to this story's primary acceptance criteria, not a fallback path like
@@ -34,6 +34,11 @@ from recon.tsdf_fusion import read_mesh_ply
 DEFAULT_TARGET_TRIANGLE_COUNT = 50_000
 DEFAULT_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024
 
+# R-27 assumption, not a measured threshold: retain any connected component with at least 10% as
+# many faces as the largest one. This is intentionally conservative compared with R-08's old
+# largest-only rule so a legitimate observed second piece is not discarded automatically.
+DEFAULT_MIN_COMPONENT_FACE_FRACTION = 0.10
+
 # A boundary loop this long or shorter is treated as a "small hole" and closed. Longer openings
 # are left alone on purpose: a large opening more likely means a genuinely unreconstructed
 # region than a small gap, and silently closing it would assert geometry nothing ever observed --
@@ -42,10 +47,78 @@ DEFAULT_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024
 DEFAULT_MAX_HOLE_LOOP_LENGTH = 8
 
 
+def _component_labels(
+    vertices: np.ndarray, faces: np.ndarray
+) -> tuple[np.ndarray, int]:
+    """Connected-component label per vertex, using mesh edges as undirected adjacency."""
+    edge_from = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2]])
+    edge_to = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0]])
+    adjacency = coo_matrix(
+        (np.ones(len(edge_from)), (edge_from, edge_to)),
+        shape=(len(vertices), len(vertices)),
+    )
+    component_count, labels = connected_components(adjacency, directed=False)
+    return labels, component_count
+
+
+def filter_connected_components(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    min_face_fraction: float = DEFAULT_MIN_COMPONENT_FACE_FRACTION,
+) -> tuple[np.ndarray, np.ndarray, dict[str, int | float]]:
+    """Keep each face-component large enough relative to the largest and report drops."""
+    vertices = np.asarray(vertices, dtype=np.float32)
+    faces = np.asarray(faces, dtype=np.int64)
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError(f"vertices must have shape (N,3), got {vertices.shape}")
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"faces must have shape (F,3), got {faces.shape}")
+    if not np.isfinite(min_face_fraction) or not (0.0 <= min_face_fraction <= 1.0):
+        raise ValueError("min_face_fraction must be finite and between 0 and 1.")
+
+    if len(faces) == 0:
+        report = {
+            "component_count_before": 0,
+            "component_count_after": 0,
+            "largest_component_face_count": 0,
+            "dropped_component_count": 0,
+            "dropped_face_count": 0,
+            "min_component_face_fraction": float(min_face_fraction),
+        }
+        return vertices, faces.astype(np.int32), report
+
+    labels, component_count = _component_labels(vertices, faces)
+    face_labels = labels[faces[:, 0]]
+    face_counts = np.bincount(face_labels, minlength=component_count)
+    active_labels = np.flatnonzero(face_counts > 0)
+    largest_count = int(face_counts[active_labels].max())
+    keep_labels = active_labels[
+        face_counts[active_labels] >= min_face_fraction * largest_count
+    ]
+    keep_face = np.isin(face_labels, keep_labels)
+    kept_faces_global = faces[keep_face]
+
+    kept_vertex_indices = np.unique(kept_faces_global)
+    old_to_new = -np.ones(len(vertices), dtype=np.int64)
+    old_to_new[kept_vertex_indices] = np.arange(len(kept_vertex_indices))
+    new_vertices = vertices[kept_vertex_indices]
+    new_faces = old_to_new[kept_faces_global].astype(np.int32)
+
+    report = {
+        "component_count_before": len(active_labels),
+        "component_count_after": len(keep_labels),
+        "largest_component_face_count": largest_count,
+        "dropped_component_count": int(len(active_labels) - len(keep_labels)),
+        "dropped_face_count": int(len(faces) - len(new_faces)),
+        "min_component_face_fraction": float(min_face_fraction),
+    }
+    return new_vertices, new_faces, report
+
+
 def keep_largest_connected_component(
     vertices: np.ndarray, faces: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Keep only the faces (and their vertices, re-indexed) in the mesh's largest component."""
+    """Compatibility helper that keeps exactly the single largest face-component."""
     vertices = np.asarray(vertices, dtype=np.float32)
     faces = np.asarray(faces, dtype=np.int64)
     if vertices.ndim != 2 or vertices.shape[1] != 3:
@@ -55,26 +128,20 @@ def keep_largest_connected_component(
     if len(faces) == 0:
         return vertices, faces.astype(np.int32)
 
-    edge_from = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2]])
-    edge_to = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0]])
-    vertex_count = len(vertices)
-    adjacency = coo_matrix(
-        (np.ones(len(edge_from)), (edge_from, edge_to)),
-        shape=(vertex_count, vertex_count),
-    )
-    _, labels = connected_components(adjacency, directed=False)
+    labels, component_count = _component_labels(vertices, faces)
+    face_labels = labels[faces[:, 0]]
+    face_counts = np.bincount(face_labels, minlength=component_count)
+    largest_label = int(np.argmax(face_counts))
+    keep_face = face_labels == largest_label
+    kept_faces_global = faces[keep_face]
 
-    largest_label = int(np.argmax(np.bincount(labels)))
-    keep_vertex = labels == largest_label
-    keep_face = keep_vertex[faces].all(axis=1)
-
-    old_to_new = -np.ones(vertex_count, dtype=np.int64)
-    kept_vertex_indices = np.nonzero(keep_vertex)[0]
+    kept_vertex_indices = np.unique(kept_faces_global)
+    old_to_new = -np.ones(len(vertices), dtype=np.int64)
     old_to_new[kept_vertex_indices] = np.arange(len(kept_vertex_indices))
-
-    new_vertices = vertices[kept_vertex_indices]
-    new_faces = old_to_new[faces[keep_face]].astype(np.int32)
-    return new_vertices, new_faces
+    return (
+        vertices[kept_vertex_indices],
+        old_to_new[kept_faces_global].astype(np.int32),
+    )
 
 
 def find_boundary_loops(faces: np.ndarray) -> list[list[int]]:
@@ -93,9 +160,9 @@ def find_boundary_loops(faces: np.ndarray) -> list[list[int]]:
             key = (a, b) if a < b else (b, a)
             undirected_count[key] = undirected_count.get(key, 0) + 1
 
-    # `directed_next[a] = b` for each boundary edge, in the direction it appeared in its one
-    # owning face -- this is the boundary's orientation induced by the interior triangles' own
-    # winding, so a hole filled by walking this direction keeps the surrounding mesh's winding.
+    # directed_next[a] = b follows the direction the boundary edge has in its one owning face.
+    # A fill face sharing that edge must traverse it in the opposite direction; R-08's old filler
+    # reused this direction and therefore wound the patch inward.
     directed_next: dict[int, int] = {}
     for triangle in faces:
         for i in range(3):
@@ -145,13 +212,13 @@ def fill_small_holes(
         if len(loop) < 3 or len(loop) > max_loop_length:
             continue
         if len(loop) == 3:
-            new_face_blocks.append(np.array([loop], dtype=np.int32))
+            new_face_blocks.append(np.array([list(reversed(loop))], dtype=np.int32))
         else:
             centroid = new_vertices[loop].mean(axis=0)
             centroid_index = len(new_vertices)
             new_vertices = np.vstack([new_vertices, centroid[None, :]])
             fan = [
-                [loop[i], loop[(i + 1) % len(loop)], centroid_index]
+                [loop[(i + 1) % len(loop)], loop[i], centroid_index]
                 for i in range(len(loop))
             ]
             new_face_blocks.append(np.array(fan, dtype=np.int32))
@@ -181,6 +248,48 @@ def decimate_mesh(
         target_count=target_triangle_count,
     )
     return new_vertices.astype(np.float32), new_faces.astype(np.int32)
+
+
+def write_glb_with_size_limit(
+    path: Path,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    max_file_size_bytes: int = DEFAULT_MAX_FILE_SIZE_BYTES,
+    min_triangle_count: int = 4,
+) -> tuple[np.ndarray, np.ndarray, int, int]:
+    """Write a GLB that actually satisfies the configured byte limit.
+
+    If the first write is oversized, progressively re-decimate to 75% of the current triangle
+    count and rewrite. If the mesh cannot be reduced further while keeping at least
+    min_triangle_count triangles, fail loudly rather than returning an oversized PASS.
+    """
+    if max_file_size_bytes <= 0:
+        raise ValueError("max_file_size_bytes must be positive.")
+    if min_triangle_count < 1:
+        raise ValueError("min_triangle_count must be positive.")
+
+    vertices = np.asarray(vertices, dtype=np.float32)
+    faces = np.asarray(faces, dtype=np.int32)
+    redecimation_rounds = 0
+
+    while True:
+        write_glb(path, vertices, faces)
+        file_size_bytes = Path(path).stat().st_size
+        if file_size_bytes <= max_file_size_bytes:
+            return vertices, faces, file_size_bytes, redecimation_rounds
+
+        if len(faces) <= min_triangle_count:
+            raise ValueError(
+                f"GLB is {file_size_bytes} bytes, over the {max_file_size_bytes}-byte limit, "
+                "and cannot be decimated further safely."
+            )
+
+        next_target = max(min_triangle_count, int(len(faces) * 0.75))
+        if next_target >= len(faces):
+            next_target = len(faces) - 1
+        vertices, faces = decimate_mesh(vertices, faces, next_target)
+        redecimation_rounds += 1
 
 
 def write_glb(
@@ -348,6 +457,8 @@ def write_cleanup_report(
     face_count: int,
     file_size_bytes: int,
     max_file_size_bytes: int,
+    component_report: dict[str, int | float],
+    size_redecimation_rounds: int,
 ) -> dict[str, Any]:
     report = {
         "story": "R-08",
@@ -364,6 +475,8 @@ def write_cleanup_report(
         "file_size_bytes": file_size_bytes,
         "max_file_size_bytes": max_file_size_bytes,
         "within_file_size_limit": file_size_bytes <= max_file_size_bytes,
+        "size_redecimation_rounds": size_redecimation_rounds,
+        **component_report,
     }
     path = Path(path)
     path.write_text(
@@ -378,6 +491,7 @@ def cleanup_run(
     target_triangle_count: int = DEFAULT_TARGET_TRIANGLE_COUNT,
     max_hole_loop_length: int = DEFAULT_MAX_HOLE_LOOP_LENGTH,
     max_file_size_bytes: int = DEFAULT_MAX_FILE_SIZE_BYTES,
+    min_component_face_fraction: float = DEFAULT_MIN_COMPONENT_FACE_FRACTION,
 ) -> dict[str, Any]:
     """Load an R-07 mesh.ply, clean it up, export a GLB, and write the report next to it."""
     mesh_ply_path = Path(mesh_ply_path)
@@ -391,7 +505,9 @@ def cleanup_run(
     vertices, faces = read_mesh_ply(mesh_ply_path)
     faces_before = len(faces)
 
-    vertices, faces = keep_largest_connected_component(vertices, faces)
+    vertices, faces, component_report = filter_connected_components(
+        vertices, faces, min_face_fraction=min_component_face_fraction
+    )
     faces_after_component_filter = len(faces)
 
     loops = find_boundary_loops(faces)
@@ -404,8 +520,15 @@ def cleanup_run(
     triangle_count_after_decimation = len(faces)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    write_glb(out_path, vertices, faces)
-    file_size_bytes = out_path.stat().st_size
+    vertices, faces, file_size_bytes, size_redecimation_rounds = (
+        write_glb_with_size_limit(
+            out_path,
+            vertices,
+            faces,
+            max_file_size_bytes=max_file_size_bytes,
+        )
+    )
+    triangle_count_after_decimation = len(faces)
 
     report_path = out_path.with_suffix(".json")
     return write_cleanup_report(
@@ -422,6 +545,8 @@ def cleanup_run(
         face_count=len(faces),
         file_size_bytes=file_size_bytes,
         max_file_size_bytes=max_file_size_bytes,
+        component_report=component_report,
+        size_redecimation_rounds=size_redecimation_rounds,
     )
 
 
@@ -434,6 +559,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target-triangle-count", type=int, default=DEFAULT_TARGET_TRIANGLE_COUNT
     )
+    parser.add_argument(
+        "--min-component-face-fraction",
+        type=float,
+        default=DEFAULT_MIN_COMPONENT_FACE_FRACTION,
+        help="keep components with at least this fraction of the largest component's faces",
+    )
+    parser.add_argument(
+        "--max-file-size-bytes",
+        type=int,
+        default=DEFAULT_MAX_FILE_SIZE_BYTES,
+        help="enforced final GLB byte limit",
+    )
     return parser
 
 
@@ -445,8 +582,10 @@ def main(argv: list[str] | None = None) -> int:
             args.mesh_ply_path,
             out_path,
             target_triangle_count=args.target_triangle_count,
+            min_component_face_fraction=args.min_component_face_fraction,
+            max_file_size_bytes=args.max_file_size_bytes,
         )
-    except FileExistsError as exc:
+    except (FileExistsError, ValueError) as exc:
         print(f"R-08 MESH CLEANUP: FAIL - {exc}", file=sys.stderr)
         return 1
 
