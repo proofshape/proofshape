@@ -1,7 +1,50 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mountModelViewer, type ModelLoader } from "./model-viewer.js";
 import type { ReconstructionResult } from "./types.js";
+
+// C-19: new THREE.WebGLRenderer() throws under this project's happy-dom test environment
+// ("Error creating WebGL context") -- there is no real GPU context to give it. Mocking only
+// this one browser capability (not three.js itself) lets mountModelViewer's real success path
+// (provenance remap, legend, status text) run end to end in the tests below.
+vi.mock("three", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("three")>();
+  class FakeWebGLRenderer {
+    domElement = document.createElement("canvas");
+    setPixelRatio(): void {}
+    setSize(): void {}
+    setAnimationLoop(): void {}
+    render(): void {}
+    dispose(): void {}
+  }
+  return { ...actual, WebGLRenderer: FakeWebGLRenderer };
+});
+
+const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "stub", "fixtures");
+
+// C-19: wraps the same fixture GLBs the mock service serves through a real GLTFLoader.parse(),
+// so these tests exercise mountModelViewer's actual success path instead of a mocked loader
+// that only ever records its own calls.
+function realGltfLoaderFor(fixtureFileName: string): ModelLoader {
+  const bytes = readFileSync(join(FIXTURES_DIR, fixtureFileName));
+  const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return {
+    load: (_url, onLoad, _onProgress, onError) => {
+      new GLTFLoader().parse(
+        arrayBuffer,
+        "",
+        (gltf) => {
+          onLoad({ scene: gltf.scene });
+        },
+        onError,
+      );
+    },
+  };
+}
 
 function makeRoot(): HTMLElement {
   const element = document.createElement("div");
@@ -159,5 +202,41 @@ describe("mountModelViewer", () => {
     expect(status).toBeInstanceOf(HTMLElement);
     expect((status as HTMLElement).style.fontWeight).toBe("bold");
     expect(loaderFactory).not.toHaveBeenCalled();
+  });
+
+  // C-19 (#192): a real GLB through the real success path, not a mocked loader -- see the
+  // fixture/WebGLRenderer-mock setup at the top of this file.
+  describe("provenance warning and legend, against real fixture GLBs (C-19)", () => {
+    it("shows the legend and no warning for a model that has provenance colors", async () => {
+      const target = makeRoot();
+
+      mountModelViewer(target, complete("https://example.test/model.glb"), {
+        loaderFactory: () => realGltfLoaderFor("model-provenance.glb"),
+      });
+
+      await vi.waitFor(() => {
+        if (!target.textContent.includes("3D model loaded")) {
+          throw new Error("still pending");
+        }
+      });
+      expect(target.querySelector('[aria-label="3D model provenance legend"]')).not.toBeNull();
+      expect(target.textContent).not.toContain("has no provenance colours");
+    });
+
+    it("shows a no-provenance warning and no legend for a model with no provenance colors", async () => {
+      const target = makeRoot();
+
+      mountModelViewer(target, complete("https://example.test/model.glb"), {
+        loaderFactory: () => realGltfLoaderFor("model.glb"),
+      });
+
+      await vi.waitFor(() => {
+        if (!target.textContent.includes("3D model loaded")) {
+          throw new Error("still pending");
+        }
+      });
+      expect(target.querySelector('[aria-label="3D model provenance legend"]')).toBeNull();
+      expect(target.textContent).toContain("has no provenance colours");
+    });
   });
 });

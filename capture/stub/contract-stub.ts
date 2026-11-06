@@ -54,6 +54,14 @@ const PROVENANCE_MODEL_FIXTURE_PATH = join(
   "model-provenance.glb",
 );
 
+// C-11/C-12 (main.ts's ?viewer-demo=1/c12): fixed ids a developer can load model.glb for
+// directly, with no session ever created -- see handleModel.
+const DEVICE_CHECK_SESSION_IDS = new Set(["c11-device-check", "c12-provenance-check"]);
+
+// C-19 (#193): can't share a constant across Python/TypeScript -- kept in step with
+// recon/service.py's own MIN_FINISH_FRAMES by a test that reads both (contract-stub.test.ts).
+export const MIN_FINISH_FRAMES = 3;
+
 interface StubSession {
   session_id: string;
   order_code: string;
@@ -61,6 +69,17 @@ interface StubSession {
   acceptedFrameCount: number;
   frameAttempts: number;
   reconstructionPollCount: number;
+  // C-19 (#193): set once handleReconstruction has actually resolved this session to
+  // "complete" -- handleModel must not serve the fixture GLB before then, or for an unknown
+  // session, matching recon/service.py's get_model.
+  modelReady: boolean;
+}
+
+// C-19 (#193): recon/service.py returns this same code/shape (422 for uploadFrame, 409 for
+// finishSession) for a session id it doesn't know about, instead of the generic 500
+// `violation()` sends for an actual malformed request.
+function sessionNotFound(): ErrorDetail {
+  return { code: "session_not_found", message: "No session with that id." };
 }
 
 export interface ContractStub {
@@ -156,6 +175,7 @@ export function createContractStub(): ContractStub {
       acceptedFrameCount: 0,
       frameAttempts: 0,
       reconstructionPollCount: 0,
+      modelReady: false,
     };
     sessions.set(session.session_id, session);
     const body: Session = {
@@ -173,7 +193,7 @@ export function createContractStub(): ContractStub {
   ): Promise<void> {
     const session = sessions.get(sessionId);
     if (!session) {
-      violation(res, `uploadFrame called with unknown session_id "${sessionId}"`);
+      sendJson(res, 422, sessionNotFound());
       return;
     }
 
@@ -237,7 +257,7 @@ export function createContractStub(): ContractStub {
   function handleFinishSession(res: ServerResponse, sessionId: string): void {
     const session = sessions.get(sessionId);
     if (!session) {
-      violation(res, `finishSession called with unknown session_id "${sessionId}"`);
+      sendJson(res, 409, sessionNotFound());
       return;
     }
 
@@ -250,7 +270,7 @@ export function createContractStub(): ContractStub {
       return;
     }
 
-    if (session.acceptedFrameCount === 0) {
+    if (session.acceptedFrameCount < MIN_FINISH_FRAMES) {
       sendJson(res, 409, FINISH_SESSION_409_TOO_FEW);
       return;
     }
@@ -315,10 +335,30 @@ export function createContractStub(): ContractStub {
       ...canned,
       glb_url: `${requestProtocol(req)}://${host}/v1/sessions/${encodeURIComponent(sessionId)}/model.glb`,
     };
+    // C-19 (#193): recon/service.py's get_model only serves a GLB once the session's
+    // reconstruction has actually reached "complete" -- this is that same moment here.
+    session.modelReady = true;
     sendJson(res, 200, body);
   }
 
   function handleModel(res: ServerResponse, sessionId: string): void {
+    // C-11/C-12 device-check helper (main.ts's ?viewer-demo=1/c12): this route serves its
+    // canned GLB directly by design, with no session ever created -- the state checks below
+    // don't apply to these two fixed ids.
+    if (!DEVICE_CHECK_SESSION_IDS.has(sessionId)) {
+      const session = sessions.get(sessionId);
+      if (!session) {
+        sendJson(res, 404, sessionNotFound());
+        return;
+      }
+      if (!session.modelReady) {
+        sendJson(res, 404, {
+          code: "session_not_found",
+          message: "No completed reconstruction exists for this session.",
+        });
+        return;
+      }
+    }
     const fixturePath =
       sessionId === "c12-provenance-check" ? PROVENANCE_MODEL_FIXTURE_PATH : MODEL_FIXTURE_PATH;
     const bytes = readFileSync(fixturePath);
