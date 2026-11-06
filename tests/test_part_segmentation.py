@@ -15,7 +15,6 @@ from recon.part_segmentation import BoardSurface
 
 def _flat_surface(
     threshold_mm: float = part_segmentation.DEFAULT_MIN_BOARD_CLEARANCE_MM,
-    part_candidate_point_count: int | None = None,
 ) -> BoardSurface:
     """A trivial z=0 board surface, for tests of segment_part's own logic in isolation --
     nothing in the production code defaults to this; measure_board_surface is always fit from
@@ -31,7 +30,6 @@ def _flat_surface(
         candidate_count=1,
         board_layer_top_mm=threshold_mm,
         height_threshold_mm=threshold_mm,
-        part_candidate_point_count=part_candidate_point_count,
     )
 
 
@@ -241,17 +239,16 @@ def test_measure_board_surface_rejects_rank_deficient_points():
 
 def test_measure_board_surface_rejects_a_board_layer_that_never_thins_out():
     # A clean board spike at z=0 (so the robust *fit* still locks onto the right plane) plus a
-    # dense cluster right at the edge of the search window, spread over the whole footprint so
-    # (almost) every cell sees it -- no cell can tell whether that cluster's density keeps going
-    # beyond the window, so it must refuse to guess rather than silently picking the window's
-    # edge as "the top", and too few cells are left to trust a consensus.
+    # dense cluster right at the edge of the search window -- the search has no way to know
+    # whether that cluster's density keeps going beyond the window, so it must refuse to guess
+    # rather than silently picking the window's edge as "the top".
     rng = np.random.default_rng(9)
     board_x = rng.uniform(0.0, 160.0, 4000)
     board_y = rng.uniform(0.0, 120.0, 4000)
     board_z = rng.normal(0.0, 0.1, 4000)
-    edge_x = rng.uniform(0.0, 160.0, 800)
-    edge_y = rng.uniform(0.0, 120.0, 800)
-    edge_z = -rng.normal(9.75, 0.03, 800)  # a dense cluster right at the search edge
+    edge_x = rng.uniform(0.0, 160.0, 400)
+    edge_y = rng.uniform(0.0, 120.0, 400)
+    edge_z = -rng.normal(9.75, 0.03, 400)  # a dense cluster right at the search edge
     points = np.vstack(
         [
             np.column_stack([board_x, board_y, board_z]),
@@ -259,132 +256,8 @@ def test_measure_board_surface_rejects_a_board_layer_that_never_thins_out():
         ]
     )
 
-    with pytest.raises(ValueError, match="footprint cells produced a reliable"):
+    with pytest.raises(ValueError, match="top wasn't found"):
         part_segmentation.measure_board_surface(points)
-
-
-# --- measure_board_surface: a flat part isn't mistaken for a raised board layer (R-26, #180) ---
-
-
-def test_flat_part_centered_is_not_mistaken_for_a_raised_board_layer():
-    # #180: a flat part's own top surface is dense and sits within max_board_layer_mm of the
-    # fitted plane -- the same histogram signature as a legitimate raised board layer (R-17).
-    # The part occupies a small minority of the footprint's cells, so the per-cell median
-    # consensus isn't moved by it.
-    rng = np.random.default_rng(10)
-    points = _board_and_part_points(
-        rng,
-        offset_mm=2.0,
-        board_noise_mm=0.2,
-        part_half_size_mm=20.0,
-        part_height_above_board_mm=6.0,
-        part_point_count=2000,
-    )
-
-    surface = part_segmentation.measure_board_surface(points)
-    keep = part_segmentation.segment_part(points, surface)
-
-    assert surface.height_threshold_mm < 6.0
-    part_kept = keep[-2000:]  # the part points, appended last by the helper
-    assert part_kept.all()
-
-
-def test_flat_part_near_a_footprint_edge_is_not_mistaken_for_a_raised_board_layer():
-    # Round 1's margin-band fix only protected a part that stayed centred -- the same plate
-    # moved toward an edge could still reach into the margin and lose most of its points
-    # (review on #241). The per-cell median doesn't care where the part sits: it still only
-    # occupies a minority of cells.
-    rng = np.random.default_rng(12)
-    points = _board_and_part_points(
-        rng,
-        offset_mm=2.0,
-        board_noise_mm=0.2,
-        part_center=(
-            20.0,
-            20.0,
-        ),  # 5 mm from both edges -- inside round 1's 20 mm margin
-        part_half_size_mm=15.0,
-        part_height_above_board_mm=6.0,
-        part_point_count=2000,
-    )
-
-    surface = part_segmentation.measure_board_surface(points)
-    keep = part_segmentation.segment_part(points, surface)
-
-    assert surface.height_threshold_mm < 6.0
-    part_kept = keep[-2000:]
-    assert part_kept.all()
-
-
-def test_minority_cell_raised_layer_is_excluded_from_the_cut():
-    # R-17's case, localized to a corner rather than spread over the whole footprint like
-    # test_second_board_layer_is_excluded_from_the_cut's version -- confirms a raised layer
-    # occupying only a minority of cells is correctly treated like a part (excluded from the
-    # median), not mistaken for "the board."
-    rng = np.random.default_rng(13)
-    points = _board_and_part_points(
-        rng,
-        offset_mm=2.0,
-        board_noise_mm=0.2,
-        part_height_above_board_mm=None,
-    )
-    layer_x = rng.uniform(0.0, 30.0, 600)
-    layer_y = rng.uniform(0.0, 30.0, 600)
-    layer_z = (
-        2.0 - 5.0 + rng.normal(0.0, 0.2, 600)
-    )  # offset_mm=2.0, 5mm above the real board
-    points = np.vstack([points, np.column_stack([layer_x, layer_y, layer_z])])
-
-    surface = part_segmentation.measure_board_surface(points)
-
-    assert surface.height_threshold_mm < 5.0
-
-
-def test_large_part_with_a_visible_wall_is_excluded_via_connectivity():
-    # R-26 round 3 (review on #241, second pass): median alone can't tell a part from a raised
-    # layer once it covers anywhere near half the board's cells (TabeenRaoof's own sweep: 25%
-    # and 40% coverage both fooled round 2's plain median). This part covers about 37% of the
-    # footprint's cells -- deliberately in that ambiguous range -- but has a sparse ring of wall
-    # points at intermediate heights around its perimeter (partial wall visibility from some
-    # camera angles), which connectivity should catch regardless of coverage.
-    rng = np.random.default_rng(14)
-    points = _board_and_part_points(
-        rng,
-        offset_mm=2.0,
-        board_noise_mm=0.2,
-        part_center=(80.0, 60.0),
-        part_half_size_mm=42.5,  # ~85x85mm, about 37% of the 192 10mm cells
-        part_height_above_board_mm=6.0,
-        part_point_count=3000,
-    )
-    # A sparse wall: points just inside the part's perimeter, at random heights between the
-    # board and the part's own top -- what a partially-visible side wall would look like.
-    perimeter_fraction = rng.uniform(0.0, 1.0, 200)
-    on_x_edge = perimeter_fraction < 0.5
-    wall_x = np.where(
-        on_x_edge,
-        rng.choice([80.0 - 42.5, 80.0 + 42.5], size=200),
-        rng.uniform(80.0 - 42.5, 80.0 + 42.5, 200),
-    )
-    wall_y = np.where(
-        on_x_edge,
-        rng.uniform(60.0 - 42.5, 60.0 + 42.5, 200),
-        rng.choice([60.0 - 42.5, 60.0 + 42.5], size=200),
-    )
-    wall_height_above_board = rng.uniform(0.5, 5.5, 200)
-    wall_z = 2.0 - wall_height_above_board
-    points = np.vstack([points, np.column_stack([wall_x, wall_y, wall_z])])
-
-    surface = part_segmentation.measure_board_surface(points)
-    keep = part_segmentation.segment_part(points, surface)
-
-    assert (
-        surface.height_threshold_mm < 6.0
-    )  # the board's own cut, not pulled up by the part
-    part_kept = keep[
-        -3200:-200
-    ]  # the part's own top points (wall points appended last)
-    assert part_kept.all()
 
 
 def test_residual_risk_a_wall_less_part_that_outnumbers_the_visible_board_is_not_protected():
@@ -437,28 +310,6 @@ def test_residual_risk_a_wall_less_part_that_outnumbers_the_visible_board_is_not
     assert part_kept.mean() < 0.05
 
 
-def test_measure_board_surface_rejects_too_few_consensus_cells():
-    # A dense cluster right at the search edge, spread over the whole footprint densely enough
-    # that almost every cell's own local search never thins out either -- too few cells are left
-    # to trust a median consensus, an explicit error rather than a guess from a handful of them.
-    rng = np.random.default_rng(9)
-    board_x = rng.uniform(0.0, 160.0, 4000)
-    board_y = rng.uniform(0.0, 120.0, 4000)
-    board_z = rng.normal(0.0, 0.1, 4000)
-    edge_x = rng.uniform(0.0, 160.0, 800)
-    edge_y = rng.uniform(0.0, 120.0, 800)
-    edge_z = -rng.normal(9.75, 0.03, 800)
-    points = np.vstack(
-        [
-            np.column_stack([board_x, board_y, board_z]),
-            np.column_stack([edge_x, edge_y, edge_z]),
-        ]
-    )
-
-    with pytest.raises(ValueError, match="footprint cells produced a reliable"):
-        part_segmentation.measure_board_surface(points)
-
-
 def test_measure_board_surface_explicit_height_threshold_skips_the_layer_search():
     # The same degenerate input that makes the unconstrained search raise succeeds once the
     # caller supplies height_threshold_mm -- the whole point of the override (R-26): a caller
@@ -467,9 +318,9 @@ def test_measure_board_surface_explicit_height_threshold_skips_the_layer_search(
     board_x = rng.uniform(0.0, 160.0, 4000)
     board_y = rng.uniform(0.0, 120.0, 4000)
     board_z = rng.normal(0.0, 0.1, 4000)
-    edge_x = rng.uniform(0.0, 160.0, 800)
-    edge_y = rng.uniform(0.0, 120.0, 800)
-    edge_z = -rng.normal(9.75, 0.03, 800)
+    edge_x = rng.uniform(0.0, 160.0, 400)
+    edge_y = rng.uniform(0.0, 120.0, 400)
+    edge_z = -rng.normal(9.75, 0.03, 400)
     points = np.vstack(
         [
             np.column_stack([board_x, board_y, board_z]),
@@ -477,7 +328,7 @@ def test_measure_board_surface_explicit_height_threshold_skips_the_layer_search(
         ]
     )
 
-    with pytest.raises(ValueError, match="footprint cells produced a reliable"):
+    with pytest.raises(ValueError, match="top wasn't found"):
         part_segmentation.measure_board_surface(points)
 
     surface = part_segmentation.measure_board_surface(points, height_threshold_mm=12.0)
@@ -635,118 +486,6 @@ def test_segment_part_min_kept_points_catches_an_implausibly_small_result():
         part_segmentation.segment_part(
             points, _flat_surface(), height_threshold_mm=2.0, min_kept_points=50
         )
-
-
-def test_segment_part_min_kept_fraction_catches_a_mostly_lost_part():
-    # R-26 round 2 (review on #241): an absolute floor alone missed #180's own case -- 77 of
-    # 1600 points survived, comfortably over an absolute 50. Reproduced directly: 1600 points
-    # just below the chosen threshold (lost) plus 77 just above it (kept) -- a 4.8% share, same
-    # order as #180's own ratio. part_candidate_point_count=1677 stands in for what
-    # measure_board_surface would have identified as the part (round 2 of the review: the
-    # share's denominator is this identified count, not a generic height-only pool).
-    rng = np.random.default_rng(20)
-    lost = np.column_stack(
-        [
-            rng.uniform(0.0, 160.0, 1600),
-            rng.uniform(0.0, 120.0, 1600),
-            np.full(1600, -5.9),  # height 5.9 mm: identified as part, below the cut
-        ]
-    )
-    kept_points = np.column_stack(
-        [
-            rng.uniform(0.0, 160.0, 77),
-            rng.uniform(0.0, 120.0, 77),
-            np.full(77, -6.1),  # height 6.1 mm: above the 6.0 mm cut
-        ]
-    )
-    points = np.vstack([lost, kept_points])
-    surface = _flat_surface(part_candidate_point_count=1677)
-
-    kept = part_segmentation.segment_part(
-        points, surface, height_threshold_mm=6.0, min_kept_fraction=0.0
-    )
-    assert (
-        kept.sum() == 77
-    )  # the check is disabled by default: the result is still returned
-
-    with pytest.raises(ValueError, match="need at least 50%"):
-        part_segmentation.segment_part(
-            points, surface, height_threshold_mm=6.0, min_kept_fraction=0.5
-        )
-
-
-def test_segment_part_min_kept_fraction_catches_a_lost_part_behind_stray_debris():
-    # The companion probe from the same review: a handful of stray points floating well above
-    # the board, with the real part's own points lost just below the chosen threshold. An
-    # absolute floor alone can look satisfied (the strays are "enough" points on their own)
-    # while still having lost essentially all of the part -- the share check sees the lost
-    # part's points too, because measure_board_surface would have identified them as part
-    # candidates even though they didn't clear the resolved threshold.
-    rng = np.random.default_rng(21)
-    lost_part = np.column_stack(
-        [
-            rng.uniform(0.0, 160.0, 1600),
-            rng.uniform(0.0, 120.0, 1600),
-            np.full(1600, -5.9),
-        ]
-    )
-    strays = np.column_stack(
-        [
-            rng.uniform(0.0, 160.0, 60),
-            rng.uniform(0.0, 120.0, 60),
-            np.full(60, -20.0),  # floating well above the board, well above the cut too
-        ]
-    )
-    points = np.vstack([lost_part, strays])
-    # Only the lost part's own points were identified as part candidates -- the strays are a
-    # separate, unidentified cluster of debris, not part of that count.
-    surface = _flat_surface(part_candidate_point_count=1600)
-
-    with pytest.raises(ValueError, match="need at least 50%"):
-        part_segmentation.segment_part(
-            points,
-            surface,
-            height_threshold_mm=6.0,
-            min_kept_points=50,
-            min_kept_fraction=0.5,
-        )
-
-
-def test_segment_part_min_kept_fraction_does_not_fire_on_a_normal_result():
-    rng = np.random.default_rng(22)
-    part = np.column_stack(
-        [
-            rng.uniform(0.0, 160.0, 500),
-            rng.uniform(0.0, 120.0, 500),
-            np.full(500, -10.0),
-        ]
-    )
-    surface = _flat_surface(part_candidate_point_count=500)
-
-    kept = part_segmentation.segment_part(
-        part, surface, height_threshold_mm=6.0, min_kept_fraction=0.5
-    )
-    assert kept.sum() == 500
-
-
-def test_segment_part_min_kept_fraction_is_skipped_when_nothing_was_identified():
-    # measure_board_surface's override path (or a search that found nothing elevated at all)
-    # leaves part_candidate_point_count None -- the fraction check has nothing to compare
-    # against, so it's silently skipped rather than treated as a 0% share.
-    rng = np.random.default_rng(23)
-    part = np.column_stack(
-        [
-            rng.uniform(0.0, 160.0, 5),
-            rng.uniform(0.0, 120.0, 5),
-            np.full(5, -10.0),
-        ]
-    )
-    surface = _flat_surface(part_candidate_point_count=None)
-
-    kept = part_segmentation.segment_part(
-        part, surface, height_threshold_mm=6.0, min_kept_fraction=0.9
-    )
-    assert kept.sum() == 5
 
 
 def test_segment_part_rejects_non_finite_points():

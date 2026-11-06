@@ -97,31 +97,18 @@ DEFAULT_BOARD_LAYER_DENSITY_FRACTION = 0.05
 # R-06's original fixed margin, kept as a floor once the board is this clean.
 DEFAULT_MIN_BOARD_CLEARANCE_MM = 2.0
 
-# R-26 round 2 (#180): the board-layer-top search runs per spatial cell over the whole
-# footprint, instead of one histogram over every point (a part's own top looked exactly like a
-# raised board layer, R-17's legitimate case) or a margin band near the footprint's edge (round
-# 1 -- a part could still reach into the band without covering it, and the smaller sample also
-# broke R-17's own detection on real data). All values below are bare assumptions (D-033), not
-# measured.
-DEFAULT_LAYER_SEARCH_CELL_MM = 10.0
-DEFAULT_MIN_CELL_POINTS = 15
-DEFAULT_MIN_CONSENSUS_CELLS = 10
-
-# R-26 round 3 (review on #241, second pass): round 2's median alone can't tell a compact part
-# from a raised layer covering anywhere up to about half the board's cells -- both just look
-# like "a cluster of cells reporting a higher local top" from height data alone. Added a second
-# cue a real part has and a floating layer doesn't: points connecting its elevated cells down to
-# the board (a side wall), found by pooling each elevated cluster's own points plus its
-# immediate neighbours and checking for points at the heights strictly between. A cluster with
-# that evidence is excluded entirely from the consensus (it's the part); one without it is kept
-# as possible legitimate board evidence (R-17's case). This is deliberately a low bar
-# (DEFAULT_MIN_WALL_POINTS) -- a missed part is worse here than an occasional floating layer
-# wrongly treated as connected, and a part's wall may only be sparsely visible, or (for a part
-# thin enough, like #180's own 6 mm plate) not reconstructed at all. That residual case -- a
-# genuinely wall-less thin part -- isn't solved by this; there's no signal left to tell it apart
-# from a floating layer once its wall is entirely absent from the point cloud.
-DEFAULT_ELEVATION_MARGIN_MM = 1.0
-DEFAULT_MIN_WALL_POINTS = 3
+# R-26 rounds 2-3 (#180, review on #241) tried telling a part's own flat top apart from a
+# legitimate raised board layer (R-17) first with a per-cell median, then with a side-wall
+# connectivity check, each catching the previous round's real-golden-data failures but
+# introducing new ones (round 3 lowered the cut and let board back in as "part" on several
+# golden objects, failing s-01 outright). D-060 traces this to its actual cause: VGGT's
+# per-frame pose is misaligned by a few mm on some frames, so the "raised layer" is the real
+# board seen through a few drifted frames, not a second physical layer or a part -- on the
+# merged cloud a part's flat top and this misalignment artifact are genuinely indistinguishable
+# from height data alone, which is why three different heuristics each traded one failure for
+# another. `measure_board_surface` therefore goes back to `main`'s plain, whole-footprint
+# histogram below, proven correct on all five golden objects; closing the gap needs per-frame
+# correction before this fit, not a cleverer post-hoc classifier (tracked separately, D-060).
 
 # A kept segmentation with fewer points than this can't describe a hand-sized part (the same
 # floor A-04's min_core_vertices uses, by analogy -- restated here as this function's own
@@ -130,15 +117,6 @@ DEFAULT_MIN_WALL_POINTS = 3
 # primitive, used at every scale including small synthetic tests that aren't about this check;
 # the real pipeline entry points opt into the floor explicitly.
 DEFAULT_MIN_KEPT_POINTS = 50
-
-# An absolute floor can't tell "a small real part" from "mostly lost, a little debris is left"
-# (review on #241, round 1: #180's own plate kept 77 of 1600 points -- comfortably over an
-# absolute 50). Compares what was actually kept against part_candidate_point_count --
-# measure_board_surface's own identification of which points are probably the part, not a
-# generic height-only pool across the whole footprint (round 2 of the same review: that pool is
-# diluted by ordinary board fringe and hard-failed real golden objects at a correct cut). A bare
-# assumption (D-033), not measured.
-DEFAULT_MIN_KEPT_FRACTION = 0.5
 
 
 @dataclass(frozen=True)
@@ -152,13 +130,6 @@ class BoardSurface:
     `board_layer_top_mm` is `None` when the layer-top search was skipped because the caller
     passed an explicit `height_threshold_mm` to `measure_board_surface` (R-26): there is then
     nothing measured to report, not a measured zero.
-
-    `part_candidate_point_count` (R-26 round 3) is the number of candidate points (any height)
-    whose x/y falls in a cell the layer-top search classified as connected to an elevated
-    cluster -- i.e. identified as (probably) the part, not board, during that search. `None`
-    when the search was skipped (the override path) or nothing was classified connected.
-    `segment_part`'s `min_kept_fraction` check is measured against this, not a generic
-    height-only pool, so it isn't diluted by ordinary board fringe (review on #241, second pass).
     """
 
     slope_x: float
@@ -171,7 +142,6 @@ class BoardSurface:
     candidate_count: int
     board_layer_top_mm: float | None
     height_threshold_mm: float
-    part_candidate_point_count: int | None = None
 
     def plane_z_mm(self, x_mm: np.ndarray, y_mm: np.ndarray) -> np.ndarray:
         return self.slope_x * x_mm + self.slope_y * y_mm + self.z_at_origin_mm
@@ -195,7 +165,6 @@ class BoardSurface:
             "candidate_count": self.candidate_count,
             "board_layer_top_mm": self.board_layer_top_mm,
             "height_threshold_mm": self.height_threshold_mm,
-            "part_candidate_point_count": self.part_candidate_point_count,
         }
 
 
@@ -211,52 +180,37 @@ def measure_board_surface(
     max_board_layer_mm: float = DEFAULT_MAX_BOARD_LAYER_MM,
     layer_density_fraction: float = DEFAULT_BOARD_LAYER_DENSITY_FRACTION,
     min_clearance_mm: float = DEFAULT_MIN_BOARD_CLEARANCE_MM,
-    layer_search_cell_mm: float = DEFAULT_LAYER_SEARCH_CELL_MM,
-    min_cell_points: int = DEFAULT_MIN_CELL_POINTS,
-    min_consensus_cells: int = DEFAULT_MIN_CONSENSUS_CELLS,
-    elevation_margin_mm: float = DEFAULT_ELEVATION_MARGIN_MM,
-    min_wall_points: int = DEFAULT_MIN_WALL_POINTS,
     height_threshold_mm: float | None = None,
 ) -> BoardSurface:
     """Fit the real board surface from the board points around the part, and size the height cut.
 
-    The plane fit (median start, then least-squares with iterative MAD-sigma clipping,
-    deterministic -- no RANSAC, no random state) uses every candidate point inside the footprint
-    within `search_band_mm` of the assumed z=0 -- wide enough for the board's offset, narrow
-    enough to exclude any hand-sized part. It gives the board's offset and tilt.
+    Two things happen here, both against the *same* candidate points (everything inside the
+    footprint within `search_band_mm` of the assumed z=0 -- wide enough for the board's offset,
+    narrow enough to exclude any hand-sized part):
 
-    Unless `height_threshold_mm` is given explicitly (see below), the board's own point layer top
-    is found in three steps (R-26 round 3, #180 / review on #241):
-
-    1. Each `layer_search_cell_mm`-sized spatial cell over the *whole* footprint gets its own
-       local top from the same height-above-plane histogram logic as before (the top of the
-       highest dense bin). A cell whose own histogram never thins out within `max_board_layer_mm`
-       is marked `connected` directly -- dense all the way up means no internal gap, which is
-       itself wall-like continuity.
-    2. Every other cell is `elevated` if its local top exceeds the 10th percentile of all cells'
-       local tops (a robust board-height estimate) by more than `elevation_margin_mm`. Elevated
-       cells are grouped into spatially-connected clusters.
-    3. Each cluster is checked for a side wall: pool the candidate points in its cells plus their
-       immediate neighbours, and look for points at heights strictly between the board estimate
-       and the cluster's own height. At least `min_wall_points` there marks the whole cluster
-       `connected` (it's the part, not board); none marks it `floating` (R-17's legitimate case,
-       or a part whose wall genuinely wasn't reconstructed -- see the module-level comment on
-       `DEFAULT_MIN_WALL_POINTS` for that residual risk).
-
-    The **median** of every cell's local top that was never classified `connected` (steps 1-3)
-    is the consensus board-layer top. Too few surviving cells raises rather than trusting a thin
-    consensus.
+    1. A robust plane fit (median start, then least-squares with iterative MAD-sigma clipping,
+       deterministic -- no RANSAC, no random state) gives the board's offset and tilt.
+    2. A histogram of height-above-that-plane finds where the board's own point layer actually
+       ends -- not just the fitted plane's noise, but any secondary layer sitting above it (R-17
+       found VGGT reconstructing a weak second board layer 4-6 mm up on two of the five golden
+       objects; D-060 traces this to per-frame pose misalignment, not a second physical layer).
+       The height threshold is set to clear the *top* of the highest dense bin, so a raised
+       layer separated from the main board by a sparser gap doesn't slip through the cut.
 
     `height_threshold_mm`, when given, skips this search entirely: the returned
     `BoardSurface.height_threshold_mm` is this value as-is (no `min_clearance_mm` floor, since
-    it's explicit) and `board_layer_top_mm`/`part_candidate_point_count` are both `None`. This is
-    the override's whole point (R-26): a caller already working around a layer-search failure
-    must not still run into it here.
+    it's explicit) and `board_layer_top_mm` is `None`. This is the override's whole point (R-26):
+    a caller already working around a layer-search failure must not still run into it here. Per
+    D-060, this is currently the only reliable way to segment a flat part under
+    `DEFAULT_MAX_BOARD_LAYER_MM` -- the search below cannot yet tell such a part's own flat top
+    apart from the per-frame misalignment artifact R-17 found.
 
     Raises:
         ValueError: too few candidate or inlier board points, a degenerate (collinear) point
-            spread, a tilt beyond `max_tilt_deg`, or (with no override) too few cells survived
-            classification to trust a consensus.
+            spread, a tilt beyond `max_tilt_deg`, or a dense point layer that still reaches
+            `max_board_layer_mm` without thinning out (the search didn't find where it ends --
+            this also catches a part that is itself thin and flat across the whole footprint,
+            D-060).
     """
     points_board_frame_mm = np.asarray(points_board_frame_mm, dtype=np.float64)
     if points_board_frame_mm.ndim != 2 or points_board_frame_mm.shape[1] != 3:
@@ -363,127 +317,29 @@ def measure_board_surface(
             height_threshold_mm=float(height_threshold_mm),
         )
 
-    # Board-layer top (R-26 round 3, #180 / review on #241): per-cell local tops over the whole
-    # footprint, then a side-wall connectivity check to tell a part's cells apart from a
-    # legitimate raised board layer before taking the median -- see this function's docstring.
+    # Board-layer top: histogram height-above-plane for *every* candidate (not just inliers --
+    # a raised second layer is exactly what sigma-clipping just excluded as an outlier). D-060:
+    # this is `main`'s original plain, whole-footprint search, restored after R-26 rounds 2-3's
+    # per-cell/connectivity attempts each regressed on real golden data -- see the module-level
+    # comment above and D-060 for why.
     plane_z_at_candidates_mm = slope_x * cx_mm + slope_y * cy_mm + z_at_origin_mm
     height_above_board_mm = plane_z_at_candidates_mm - cz_mm
     bin_edges_mm = np.arange(
         -layer_bin_mm, max_board_layer_mm + layer_bin_mm, layer_bin_mm
     )
-    cell_col = np.floor(cx_mm / layer_search_cell_mm).astype(np.int64)
-    cell_row = np.floor(cy_mm / layer_search_cell_mm).astype(np.int64)
-    n_cols = int(np.ceil(footprint_width_mm / layer_search_cell_mm))
-    n_rows = int(np.ceil(footprint_height_mm / layer_search_cell_mm))
-    cell_col = np.clip(cell_col, 0, n_cols - 1)
-    cell_row = np.clip(cell_row, 0, n_rows - 1)
-    cell_index = cell_row * n_cols + cell_col
-
-    # Step 1: each cell's own local top, or "connected" if its own search never thins out.
-    cell_tops: dict[int, float] = {}
-    connected_cells: set[int] = set()
-    for cell in np.unique(cell_index):
-        in_cell = cell_index == cell
-        if int(np.count_nonzero(in_cell)) < min_cell_points:
-            continue
-        histogram, _ = np.histogram(height_above_board_mm[in_cell], bin_edges_mm)
-        peak_count = int(histogram.max())
-        if peak_count == 0:
-            continue
-        qualifying_bins = np.nonzero(histogram >= layer_density_fraction * peak_count)[
-            0
-        ]
-        top_bin_index = int(qualifying_bins.max())
-        if top_bin_index == len(histogram) - 1:
-            connected_cells.add(int(cell))  # dense all the way up: no internal gap
-            continue
-        cell_tops[int(cell)] = float(bin_edges_mm[top_bin_index + 1])
-
-    # Step 2: elevated cells (candidates for "this might be a part, not board"), grouped into
-    # spatially-connected clusters over the cell grid.
-    baseline_mm = (
-        float(np.percentile(list(cell_tops.values()), 10)) if cell_tops else 0.0
-    )
-    elevated = {
-        cell
-        for cell, top in cell_tops.items()
-        if top > baseline_mm + elevation_margin_mm
-    }
-
-    def _neighbours(cell: int) -> list[int]:
-        row, col = divmod(cell, n_cols)
-        candidates_rc = [
-            (row - 1, col),
-            (row + 1, col),
-            (row, col - 1),
-            (row, col + 1),
-        ]
-        return [
-            r * n_cols + c
-            for r, c in candidates_rc
-            if 0 <= r < n_rows and 0 <= c < n_cols
-        ]
-
-    clusters: list[set[int]] = []
-    unclustered = set(elevated)
-    while unclustered:
-        seed = unclustered.pop()
-        cluster = {seed}
-        stack = [seed]
-        while stack:
-            current = stack.pop()
-            for neighbour in _neighbours(current):
-                if neighbour in unclustered:
-                    unclustered.discard(neighbour)
-                    cluster.add(neighbour)
-                    stack.append(neighbour)
-        clusters.append(cluster)
-
-    # Step 3: a side wall -- points at heights strictly between the board estimate and the
-    # cluster's own height, pooled over the cluster's cells plus their immediate neighbours --
-    # marks the whole cluster "connected" (the part); none marks it "floating" (possible
-    # legitimate board evidence, R-17's case).
-    part_candidate_mask = np.isin(cell_index, list(connected_cells))
-    for cluster in clusters:
-        pool_cells = set(cluster)
-        for cell in cluster:
-            pool_cells.update(_neighbours(cell))
-        in_pool = np.isin(cell_index, list(pool_cells))
-        cluster_top_mm = max(cell_tops[cell] for cell in cluster)
-        low_edge = baseline_mm + layer_bin_mm
-        high_edge = cluster_top_mm - layer_bin_mm
-        if high_edge > low_edge:
-            between = (
-                in_pool
-                & (height_above_board_mm > low_edge)
-                & (height_above_board_mm < high_edge)
-            )
-            wall_point_count = int(np.count_nonzero(between))
-        else:
-            wall_point_count = (
-                0  # cluster sits right at the baseline -- nothing to separate
-            )
-        if wall_point_count >= min_wall_points:
-            connected_cells.update(cluster)
-            part_candidate_mask |= np.isin(cell_index, list(cluster))
-            for cell in cluster:
-                cell_tops.pop(cell, None)
-
-    remaining_tops = list(cell_tops.values())
-    if len(remaining_tops) < min_consensus_cells:
+    histogram, _ = np.histogram(height_above_board_mm, bin_edges_mm)
+    peak_count = int(histogram.max())
+    qualifying_bins = np.nonzero(histogram >= layer_density_fraction * peak_count)[0]
+    top_bin_index = int(qualifying_bins.max())
+    if top_bin_index == len(histogram) - 1:
         raise ValueError(
-            f"only {len(remaining_tops)} of {n_rows * n_cols} footprint cells produced a "
-            f"reliable board-layer top after excluding connected (part-like) cells; need at "
-            f"least {min_consensus_cells} to trust a consensus. Pass an explicit "
-            "height_threshold_mm, or check that enough real board is visible."
+            f"the board's point layer is still dense at {max_board_layer_mm} mm above the fitted "
+            "plane -- its top wasn't found within the search zone. Pass an explicit "
+            "height_threshold_mm, or raise max_board_layer_mm if the board layer is genuinely "
+            "this thick."
         )
-    board_layer_top_mm = float(np.median(remaining_tops))
+    board_layer_top_mm = float(bin_edges_mm[top_bin_index + 1])
     resolved_height_threshold_mm = max(min_clearance_mm, board_layer_top_mm)
-    part_candidate_point_count = (
-        int(np.count_nonzero(part_candidate_mask))
-        if np.any(part_candidate_mask)
-        else None
-    )
 
     return BoardSurface(
         slope_x=slope_x,
@@ -496,7 +352,6 @@ def measure_board_surface(
         candidate_count=candidate_count,
         board_layer_top_mm=board_layer_top_mm,
         height_threshold_mm=resolved_height_threshold_mm,
-        part_candidate_point_count=part_candidate_point_count,
     )
 
 
@@ -506,7 +361,6 @@ def segment_part(
     height_threshold_mm: float | None = None,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
     min_kept_points: int = 0,
-    min_kept_fraction: float = 0.0,
 ) -> np.ndarray:
     """Return a boolean keep-mask: True where a point is part geometry, not board/background.
 
@@ -525,21 +379,14 @@ def segment_part(
             0 (the default) disables the check: this is a general-purpose masking primitive used
             at every scale, including small synthetic inputs that aren't about this check. The
             real pipeline entry points (`segment_run`, `fuse_run`) pass
-            `DEFAULT_MIN_KEPT_POINTS` explicitly.
-        min_kept_fraction: the kept count must be at least this share of
-            `board_surface.part_candidate_point_count` -- the points `measure_board_surface`'s
-            layer-top search itself identified as (probably) the part, not a generic
-            height-only pool across the whole footprint (round 2 of #241's review: that pool is
-            diluted by ordinary board fringe and hard-failed real golden objects at a correct
-            cut). An absolute floor alone can't tell a small real part from most of a larger one
-            being lost (round 1 of the same review). Silently skipped when
-            `part_candidate_point_count` is `None` (the override path, or nothing was
-            identified) -- `min_kept_points` is still the floor in that case. 0.0 (the default)
-            disables the check outright, same layering as `min_kept_points`.
+            `DEFAULT_MIN_KEPT_POINTS` explicitly. A plain count, not a share of anything
+            measured -- D-060 found the two share-based designs tried here each depended on a
+            denominator (a generic height-only pool, then a connectivity classification) that
+            either hard-failed correct real golden cuts or carried no information on real data.
 
     Raises:
         ValueError: on a malformed shape, non-finite input, a non-positive threshold/footprint,
-            or a kept result smaller than `min_kept_points` or `min_kept_fraction` allow.
+            or a kept result smaller than `min_kept_points`.
         TypeError: if `board_surface` isn't a `BoardSurface`.
     """
     points_board_frame_mm = np.asarray(points_board_frame_mm, dtype=np.float64)
@@ -589,15 +436,6 @@ def segment_part(
             f"need at least {min_kept_points} to describe a hand-sized part, not returning a "
             "near-empty result silently."
         )
-    part_candidate_point_count = board_surface.part_candidate_point_count
-    if min_kept_fraction > 0 and part_candidate_point_count:
-        share = kept_count / part_candidate_point_count
-        if share < min_kept_fraction:
-            raise ValueError(
-                f"segmentation kept {kept_count} of {part_candidate_point_count} point(s) "
-                f"identified as the part ({share:.1%}); need at least {min_kept_fraction:.0%} "
-                f"to trust that {resolved_threshold_mm} mm cut the board, not the part."
-            )
     return keep
 
 
@@ -657,7 +495,6 @@ def segment_run(
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
     max_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
     min_kept_points: int = DEFAULT_MIN_KEPT_POINTS,
-    min_kept_fraction: float = DEFAULT_MIN_KEPT_FRACTION,
 ) -> dict[str, Any]:
     """Load an R-01 point cloud and an R-04 alignment, segment, and write the outputs.
 
@@ -698,7 +535,6 @@ def segment_run(
         height_threshold_mm,
         footprint_mm,
         min_kept_points=min_kept_points,
-        min_kept_fraction=min_kept_fraction,
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)

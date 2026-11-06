@@ -1098,6 +1098,59 @@ rather than being built past in either direction again. @TabeenRaoof and @mbj199
 together, whether criterion 1 is better served by this entry (corrected), by no exception at all
 with a loud-refusal design instead, or by something else, before `#241` relies on either.
 
+**Superseded by D-060 (2026-11-06):** the team settled it. @TabeenRaoof traced the actual cause
+(per-frame VGGT pose misalignment, not a wall/connectivity question at all) and both reviewers
+agreed to stop iterating segmentation heuristics in R-26. D-059's framing -- a side-wall
+exception to criterion 1 -- is retired along with round 3's connectivity code; D-060 records
+what replaces it.
+
+---
+
+**D-060 · R-26 stops at `main`'s plain layer search; the real fix is per-frame board
+re-anchoring, a new story (R-30).** (2026-11-06)
+Three rounds of segmentation-only redesigns on `#241` (per-cell median, then side-wall
+connectivity) each fixed the previous round's synthetic failure and introduced a new real-data
+one, most recently round 3 cutting too low on s-02 through s-05 and failing s-01 outright.
+@TabeenRaoof traced the actual cause with reproduction scripts against the five golden objects
+(posted on `#241`): the 3-6 mm "raised board layer" R-17 found is not a second physical layer.
+It is the *real* board, as seen by a handful of frames whose VGGT pose is misaligned by a few
+millimetres -- confirmed three ways (board-pixel grey level and checker-square parity rule out a
+depth or colour artifact; per-frame re-fitting directly shows individual frames 2.3-4.7 mm off
+on every golden object). R-23's alignment is one global similarity transform and cannot correct
+per-frame drift. On the merged point cloud this misalignment artifact and a genuine flat part's
+own top are the same shape -- a dense planar patch a few millimetres up -- so no classifier
+built from the merged cloud's height/location data alone can tell them apart; `DEFAULT_MIN_WALL_POINTS
+= 3` made round 3's connectivity check pass on every real cluster precisely because real data
+always has a few hundred points at intermediate heights from board noise, part walls or the
+layer's own spread, carrying no information. @mbj1994 independently reviewed the finding and
+agreed.
+
+**For R-26:** `measure_board_surface`'s layer-top search reverts to `main`'s original
+whole-footprint histogram (proven correct on all five golden objects), dropping rounds 2-3's
+per-cell/connectivity code entirely. The explicit `height_threshold_mm` override
+(`segment_run`/`fuse_run`/the confidence sweep) is kept -- it has worked every round -- as is a
+plain `min_kept_points` floor. A flat part under `DEFAULT_MAX_BOARD_LAYER_MM` is not reliably
+protected by the measured search; the override is the documented way to segment one correctly
+until R-30 lands. The five golden objects must be rerun on the final head and confirmed to match
+`main`'s existing cuts before D-038 close-out.
+
+**New story, R-30 (per-frame board re-anchoring before fusion):** fit each frame's own board
+plane (points already available in `fuse_run`, which has per-frame points and extrinsics) and
+correct that frame's extrinsic before merging, with a loud refusal when a frame shows too little
+board to anchor. This is upstream of segmentation and, per @TabeenRaoof's prototype, removes the
+ghost layer entirely (3-6x tighter board noise, the "first density gap" rule then correct on all
+five objects including a synthetic #180-style thin plate) while also sharpening the part's own
+geometry and shrinking #231's board-skin artifact. It is not filed as blocking R-26.
+
+*Why:* height/location data on the merged cloud cannot distinguish two things that are
+genuinely the same shape there; fixing it needs the per-frame signal that gets lost at merge
+time, not a cleverer post-hoc classifier. Three independent attempts at the latter each traded
+one golden-data failure for another, which is itself evidence the ambiguity is real, not a
+tuning gap. `main`'s search is the only version actually proven against all five golden objects.
+*Checked against D-028:* fetched every origin branch on 2026-11-06; D-059 was the highest number
+anywhere, so D-060 was free. R-29 was the highest story number anywhere, so R-30 is free for the
+new story.
+
 ---
 
 ## Open — not yet decided
