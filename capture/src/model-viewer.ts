@@ -292,14 +292,19 @@ export function mountModelViewer(
           controlsContainer.append(createProvenanceLegend());
         }
         disposePreview = createThreePreview(viewport, loaded.scene);
-        const warning =
-          provenance.unknownVertices > 0
+        // C-19 (#192): a model with no provenance colors at all (every mock session today, and
+        // any real one the pipeline didn't label) must say so -- otherwise nothing tells the
+        // user that observed/unobserved surface can't be told apart here, which is the whole
+        // point of the legend this model doesn't have.
+        const warning = !provenance.foundProvenance
+          ? " This model has no provenance colours; observed and unobserved surface cannot be told apart."
+          : provenance.unknownVertices > 0
             ? ` ${String(provenance.unknownVertices)} vertex colour(s) are unknown and shown in magenta.`
             : "";
         setStatus(
           status,
           "3D model loaded. Drag to orbit; pinch to zoom." + warning,
-          provenance.unknownVertices > 0 ? "error" : "info",
+          !provenance.foundProvenance || provenance.unknownVertices > 0 ? "error" : "info",
         );
       } catch (error) {
         setStatus(
