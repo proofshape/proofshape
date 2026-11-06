@@ -1885,7 +1885,7 @@ sharpens the part geometry too.
 **Close-out:** owner reported 7 h actual against 3 h estimated. R-26 and its index row are
 marked Done on this final head, which is also the head the golden rerun confirmed.
 
-## 2026-11-06 — I-05 orientation ambiguity: refine every candidate, flag a near-tie runner-up (D-061, PR #nn)
+## 2026-11-06 — I-05 orientation ambiguity: refine every candidate, flag a near-tie runner-up (D-061, PR #257)
 
 **Who:** @TabeenRaoof.
 
