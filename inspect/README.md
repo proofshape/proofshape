@@ -21,7 +21,8 @@ at 1 in every candidate. The best candidate separately reports `free_scale_resid
 Observed model evidence only: Observed model samples are registered to a dense CAD target with a
 rigid ICP followed by similarity ICP, then the inverse fitted scale is converted back to the
 D-039 sign convention (+0.03 means the model is 3% larger). Hidden geometry cannot pull the fit;
-missing or planar-only Observed evidence reports `None` rather than a false scale result.
+missing or planar-only Observed evidence reports `None` rather than a false scale result, and so
+does a reading beyond ±25%, which is a failed fit rather than a scale error (I-05).
 
 Defaults scale with part extent: voxel 3%, normal radius 2.5 voxels, FPFH radius 5 voxels and
 correspondence distance 2.5 voxels. These are registration parameters, not inspection
@@ -51,3 +52,31 @@ least-squares fit would explain the defect away by moving the whole part toward 
 Defaults use the CAD's extent: `k` = 1 voxel (3%), correspondence distance 2.5 voxels, and 100
 ICP iterations. On I-01 output, `k` from 0.5 to 2 voxels refined s-04 and s-05 to the same
 0.04–0.09 mm surface error. These are algorithm parameters, not tolerances.
+
+
+## I-05 · orientation ambiguity
+
+`inspection.registration.check_ambiguity(candidates, model, cad)` refines every I-03 candidate
+with `refine` and decides whether the part's orientation is ambiguous (D-008). On a near-symmetric
+part the feature that breaks the symmetry is often the defect, so a fit must not quietly pick the
+alignment that explains it away.
+
+- **Every candidate, the same samples.** Each candidate is refined with the same seed, so their
+  RMSEs compare like for like. Refining all of them also corrects a wrong I-03 pick: on a plate
+  whose only asymmetry is a hole, I-03's best can be the 180° mirror.
+- **Merged only when the transforms agree** (I-03's 2° and 1% of CAD extent, 0.25 mm floor).
+  Poses that are equivalent only under the CAD's symmetry stay separate: for the printed part
+  they are different poses, and the difference is where a defect would be.
+- **Ranked fitness first, then RMSE.** The session is ambiguous when the runner-up's inlier RMSE
+  is within 20% of the best's (D-061, which raised D-008's 10%). One surviving pose isn't
+  ambiguous.
+- **The result** is an `AmbiguityCheck`: `orientation_ambiguous`, the `best` pose to measure
+  against, the `runner_up`, `rmse_ratio`, every `refined` pose, the `failed` candidates with their
+  reasons, and `reason_codes` (`registration_orientation_ambiguous` when ambiguous). I-07 turns it
+  into the verdict's `orientation_ambiguous` and reason code.
+- **Failures are listed, not hidden.** A candidate that can't be refined goes into `failed`;
+  if none can be, it raises. A model without provenance is refused up front.
+
+On I-01 output with its 20% hidden patch: s-05 (four-fold) is ambiguous and s-04 (scalene) isn't,
+every time; a plate whose symmetry-breaking hole is missing is caught 12/12 at 20%, against 9/12
+at D-008's 10%. D-061 has the full table and its narrow margins.
