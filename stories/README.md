@@ -274,7 +274,7 @@ Full detail in each story file.
 | [I-02](I/I-02.md) | CAD loading: ASCII and binary STL, and GLB, coordinates as stored | 3 h | nothing | Done | @mbj1994 |
 | [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Done | @mbj1994 |
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Done | @TabeenRaoof |
-| [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Claimed | @TabeenRaoof |
+| [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Done | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
 
 ---
