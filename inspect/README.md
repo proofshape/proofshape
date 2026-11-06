@@ -26,3 +26,28 @@ missing or planar-only Observed evidence reports `None` rather than a false scal
 Defaults scale with part extent: voxel 3%, normal radius 2.5 voxels, FPFH radius 5 voxels and
 correspondence distance 2.5 voxels. These are registration parameters, not inspection
 tolerances.
+
+
+## I-04 · robust refinement
+
+`inspection.registration.refine(candidate, model, cad)` tightens one I-03 candidate with Open3D
+point-to-plane ICP under a Tukey loss (D-008). A residual beyond Tukey's `k` gets zero weight,
+so a bump, dent or shifted hole stops pulling the pose once the rest of the part is aligned. A
+least-squares fit would explain the defect away by moving the whole part toward it.
+
+- **Observed only.** The fit uses fully Observed model faces, so Unobserved or Inferred geometry
+  can't move the pose that deviations are measured against (D-005). A model without provenance,
+  or with no fully Observed face, raises.
+- **Observed model → CAD.** The target is the sampled CAD surface with its own triangle normals,
+  which point-to-plane needs. Every Observed point has a CAD counterpart.
+- **A full rigid 6-DoF pose**, returned as a `CandidatePose` (CAD → model, like I-03's), with the
+  refined fit's `fitness`, `inlier_rmse` and `correspondence_count`.
+- **`free_scale_residual` is recomputed from the refined pose** with I-03's two-stage similarity
+  ICP, with the same planar-only gate and `None` cases. It isn't solved on the fit's frozen final
+  pairs, which underestimate scale.
+- **No match, no result.** A candidate with fewer than three correspondences raises; Open3D's
+  `inlier_rmse = 0` for "nothing matched" would otherwise look like a perfect fit.
+
+Defaults use the CAD's extent: `k` = 1 voxel (3%), correspondence distance 2.5 voxels, and 100
+ICP iterations. On I-01 output, `k` from 0.5 to 2 voxels refined s-04 and s-05 to the same
+0.04–0.09 mm surface error. These are algorithm parameters, not tolerances.
