@@ -1,9 +1,31 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createContractStub, startContractStub, type ContractStub } from "./contract-stub.js";
+import {
+  MIN_FINISH_FRAMES,
+  createContractStub,
+  startContractStub,
+  type ContractStub,
+} from "./contract-stub.js";
+
+// C-19: same pattern as provenance-colors.test.ts's findProvenanceSource -- walks up from cwd
+// to find the repo-root file, since a shared constant can't cross Python/TypeScript directly.
+function findReconServiceSource(): string {
+  let directory = process.cwd();
+  for (;;) {
+    const candidate = join(directory, "recon", "service.py");
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) {
+      throw new Error("Could not find recon/service.py above the current working directory.");
+    }
+    directory = parent;
+  }
+}
 
 // See contract-stub.ts for why this is node:path, not `new URL(x, import.meta.url)`.
 const EXAMPLES_DIR = join(
@@ -19,6 +41,21 @@ function loadExample(name: string): Record<string, unknown> {
     string,
     unknown
   >;
+}
+
+// C-19: finishSession now requires MIN_FINISH_FRAMES (3) accepted frames, matching
+// recon/service.py -- used wherever a test needs a session that can actually finish.
+async function uploadFrame(baseUrl: string, sessionId: string): Promise<Response> {
+  const form = new FormData();
+  form.set("frame", new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
+  form.set("gyro", new Blob([JSON.stringify({ alpha: 1, beta: 2, gamma: 3 })]));
+  return fetch(`${baseUrl}/v1/sessions/${sessionId}/frames`, { method: "POST", body: form });
+}
+
+async function uploadMinimumFrames(baseUrl: string, sessionId: string): Promise<void> {
+  for (let i = 0; i < 3; i += 1) {
+    await uploadFrame(baseUrl, sessionId);
+  }
 }
 
 describe("contract-stub shapes match the committed examples", () => {
@@ -106,10 +143,7 @@ describe("contract-stub shapes match the committed examples", () => {
     });
     const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
 
-    const form = new FormData();
-    form.set("frame", new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
-    form.set("gyro", new Blob([JSON.stringify({ alpha: 1, beta: 2, gamma: 3 })]));
-    await fetch(`${baseUrl}/v1/sessions/${sessionId}/frames`, { method: "POST", body: form });
+    await uploadMinimumFrames(baseUrl, sessionId);
     await fetch(`${baseUrl}/v1/sessions/${sessionId}/finish`, { method: "POST" });
 
     stub.setReconstructionPendingPolls(2);
@@ -157,10 +191,7 @@ describe("contract-stub shapes match the committed examples", () => {
     });
     const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
 
-    const form = new FormData();
-    form.set("frame", new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" }));
-    form.set("gyro", new Blob([JSON.stringify({ alpha: 1, beta: 2, gamma: 3 })]));
-    await fetch(`${baseUrl}/v1/sessions/${sessionId}/frames`, { method: "POST", body: form });
+    await uploadMinimumFrames(baseUrl, sessionId);
     await fetch(`${baseUrl}/v1/sessions/${sessionId}/finish`, { method: "POST" });
 
     stub.setReconstructionPendingPolls(0);
@@ -180,11 +211,60 @@ describe("contract-stub shapes match the committed examples", () => {
     expect(response.status).toBe(500);
   });
 
-  it("fails loudly on an unknown session_id, instead of guessing", async () => {
+  // C-19 (#193): recon/service.py returns its own contract-shaped session_not_found for an
+  // unknown session on these two routes, not a generic 500 -- a stale/unknown session id is a
+  // real scenario the real service handles gracefully, unlike the genuinely malformed requests
+  // the other "fails loudly" tests above cover.
+  it("returns the contract's session_not_found for finishSession on an unknown session_id", async () => {
     const response = await fetch(`${baseUrl}/v1/sessions/does-not-exist/finish`, {
       method: "POST",
     });
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body["code"]).toBe("session_not_found");
+  });
+
+  it("returns the contract's session_not_found for uploadFrame on an unknown session_id", async () => {
+    const response = await uploadFrame(baseUrl, "does-not-exist");
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body["code"]).toBe("session_not_found");
+  });
+
+  it("returns the contract's session_not_found fetching model.glb for a session that isn't ready", async () => {
+    const createResponse = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_code: "PO-48213-A" }),
+    });
+    const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
+
+    const response = await fetch(`${baseUrl}/v1/sessions/${sessionId}/model.glb`);
+
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body["code"]).toBe("session_not_found");
+  });
+
+  it("returns the contract's session_not_found fetching model.glb for an unknown session_id", async () => {
+    const response = await fetch(`${baseUrl}/v1/sessions/does-not-exist/model.glb`);
+
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body["code"]).toBe("session_not_found");
+  });
+
+  it("still serves the C-11/C-12 device-check fixtures with no session created", async () => {
+    const response = await fetch(`${baseUrl}/v1/sessions/c11-device-check/model.glb`);
+    expect(response.status).toBe(200);
+  });
+
+  it("stays equal to recon/service.py's committed MIN_FINISH_FRAMES", () => {
+    const source = readFileSync(findReconServiceSource(), "utf8");
+    const match = source.match(/^MIN_FINISH_FRAMES\s*=\s*(\d+)/m);
+
+    expect(match).not.toBeNull();
+    expect(Number(match?.[1])).toBe(MIN_FINISH_FRAMES);
   });
 });
 
@@ -353,19 +433,22 @@ describe("contract stub over HTTP/2 (no real socket)", () => {
     const { body: session } = await created.waitForResponse();
     const sessionId = (session as { session_id: string }).session_id;
 
-    const { body: multipartBody, contentType } = await multipartFrameBody();
-    const uploaded = fakeServerResponse();
-    stub.handle(
-      fakeHttp2Request(
-        "POST",
-        `/v1/sessions/${sessionId}/frames`,
-        "192.168.1.42:5173",
-        { "content-type": contentType },
-        multipartBody,
-      ),
-      uploaded.res,
-    );
-    await uploaded.waitForResponse();
+    // C-19: finishSession now requires MIN_FINISH_FRAMES (3) accepted frames.
+    for (let i = 0; i < 3; i += 1) {
+      const { body: multipartBody, contentType } = await multipartFrameBody();
+      const uploaded = fakeServerResponse();
+      stub.handle(
+        fakeHttp2Request(
+          "POST",
+          `/v1/sessions/${sessionId}/frames`,
+          "192.168.1.42:5173",
+          { "content-type": contentType },
+          multipartBody,
+        ),
+        uploaded.res,
+      );
+      await uploaded.waitForResponse();
+    }
 
     const finished = fakeServerResponse();
     stub.handle(

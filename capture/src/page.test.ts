@@ -69,16 +69,25 @@ describe("mountUploadPage", () => {
     expect(button("upload-button").disabled).toBe(false);
     expect(button("finish-button").disabled).toBe(false);
 
-    const file = new File([FAKE_JPEG_BYTES], "frame.jpg", { type: "image/jpeg" });
-    const fileInput = input("frame-file");
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    fileInput.files = transfer.files;
     input("gyro-alpha").value = "1";
     input("gyro-beta").value = "2";
     input("gyro-gamma").value = "3";
-    button("upload-button").click();
-    expect(await waitForNonEmptyText("upload-result")).toBe("Frame accepted (frame 0)");
+    // C-19 (#193): finishSession now requires MIN_FINISH_FRAMES (3) accepted frames, matching
+    // recon/service.py.
+    for (let frameIndex = 0; frameIndex < 3; frameIndex += 1) {
+      const file = new File([FAKE_JPEG_BYTES], "frame.jpg", { type: "image/jpeg" });
+      const fileInput = input("frame-file");
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      fileInput.files = transfer.files;
+      const expected = `Frame accepted (frame ${String(frameIndex)})`;
+      button("upload-button").click();
+      await vi.waitFor(() => {
+        if (text("upload-result").textContent !== expected) {
+          throw new Error("still waiting for this frame's own result");
+        }
+      });
+    }
 
     button("finish-button").click();
     expect(await waitForNonEmptyText("finish-result")).toMatch(/^Session finished: sess_/);
