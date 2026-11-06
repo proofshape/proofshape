@@ -18,6 +18,7 @@ FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "reference_cad"
     [
         ("s04_triangular_prism_60-26-65x30mm.stl", 6, 8),
         ("s05_rect_prism_30x30x60mm.stl", 8, 12),
+        ("g01_calibration_cube_30mm.stl", 8, 12),
     ],
 )
 def test_load_ascii_stl_fixtures(filename, expected_vertices, expected_faces):
@@ -29,6 +30,23 @@ def test_load_ascii_stl_fixtures(filename, expected_vertices, expected_faces):
     assert np.isfinite(vertices).all()
     assert faces.min() >= 0
     assert faces.max() < len(vertices)
+
+
+def test_g01_calibration_cube_is_a_closed_30mm_cube():
+    # G-01's nominal for every axis is this file's size, so pin it: 30 mm each way, closed, wound
+    # outward (a positive signed volume of exactly 30^3).
+    vertices, faces, _ = load_mesh(FIXTURES / "g01_calibration_cube_30mm.stl")
+
+    np.testing.assert_allclose(vertices.min(axis=0), [0.0, 0.0, 0.0])
+    np.testing.assert_allclose(vertices.max(axis=0), [30.0, 30.0, 30.0])
+    triangles = vertices[faces]
+    signed_volume = (
+        np.einsum(
+            "ij,ij->i", triangles[:, 0], np.cross(triangles[:, 1], triangles[:, 2])
+        ).sum()
+        / 6.0
+    )
+    assert signed_volume == pytest.approx(30.0**3)
 
 
 def _write_binary_stl(path: Path) -> np.ndarray:
