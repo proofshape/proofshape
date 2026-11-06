@@ -1842,11 +1842,12 @@ a fully Observed face, or without correspondences it raises rather than refine o
 geometry or report Open3D's "perfect" `inlier_rmse = 0`.
 
 **Measured on I-01 output (σ 0.3 mm, 20% Unobserved patch):** refinement took I-03's best pose
-from 0.21–2.13 mm to 0.04–0.09 mm surface error on s-04/s-05. A 4 mm Observed bump or dent over
+from 0.57–2.13 mm to 0.04–0.09 mm surface error on s-04/s-05. A 4 mm Observed bump or dent over
 10% of the surface left Tukey at 0.03–0.08 mm while the same code with least squares was dragged
-to 1.1–1.6 mm. Moving the Unobserved patch 8 mm left the pose unchanged, and the refined
-free-scale residual read about 0 / +0.03 / +0.05 at true size / +3% / +5%. All synthetic; no
-real-capture registration has been run yet.
+to 1.1–1.6 mm. On a test-built plate whose hole sits 3 mm from the CAD's, Tukey stayed at
+0.02–0.07 mm against least squares' 0.21–0.74 mm. Moving the Unobserved patch 8 mm left the pose
+unchanged, and the refined free-scale residual read about 0 / +0.03 / +0.05 at true
+size / +3% / +5%. All synthetic; no real-capture registration has been run yet.
 
 **Close-out:** owner reported 2 h actual against 4 h estimated. I-04 and its index row are Done,
 and I-05 is Ready, on the close-out head before approval, per D-038.

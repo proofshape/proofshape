@@ -676,6 +676,94 @@ def test_refine_is_not_dragged_by_an_observed_defect(
     _assert_rigid(robust.transformation)
 
 
+def _plate_with_hole(
+    hole_x_mm: float,
+    *,
+    width_mm: float = 60.0,
+    depth_mm: float = 40.0,
+    height_mm: float = 8.0,
+    hole_mm: float = 10.0,
+    hole_y_mm: float = 20.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """A plate with a square through-hole, base at z = 0, wound outward (the hole's walls face
+    into the hole). Neither golden CAD has a hole, so the shifted-hole test builds its own."""
+    half = hole_mm / 2.0
+    outer = [(0.0, 0.0), (width_mm, 0.0), (width_mm, depth_mm), (0.0, depth_mm)]
+    inner = [
+        (hole_x_mm - half, hole_y_mm - half),
+        (hole_x_mm + half, hole_y_mm - half),
+        (hole_x_mm + half, hole_y_mm + half),
+        (hole_x_mm - half, hole_y_mm + half),
+    ]
+    corners = outer + inner
+    vertices = np.array(
+        [(x, y, 0.0) for x, y in corners] + [(x, y, height_mm) for x, y in corners]
+    )
+    outer_bottom, inner_bottom = [0, 1, 2, 3], [4, 5, 6, 7]
+    outer_top, inner_top = [8, 9, 10, 11], [12, 13, 14, 15]
+    faces = []
+    for k in range(4):
+        n = (k + 1) % 4
+        faces += [
+            [outer_top[k], outer_top[n], inner_top[n]],
+            [outer_top[k], inner_top[n], inner_top[k]],
+            [outer_bottom[k], inner_bottom[n], outer_bottom[n]],
+            [outer_bottom[k], inner_bottom[k], inner_bottom[n]],
+            [outer_bottom[k], outer_bottom[n], outer_top[n]],
+            [outer_bottom[k], outer_top[n], outer_top[k]],
+            [inner_bottom[k], inner_top[n], inner_bottom[n]],
+            [inner_bottom[k], inner_top[k], inner_top[n]],
+        ]
+    return vertices, np.array(faces, dtype=np.int64)
+
+
+def test_plate_with_hole_fixture_is_a_closed_solid():
+    vertices, faces = _plate_with_hole(20.0)
+    mesh = registration._triangle_mesh(vertices, faces)
+    assert mesh.is_watertight()
+    assert mesh.get_volume() == pytest.approx(60.0 * 40.0 * 8.0 - 10.0 * 10.0 * 8.0)
+
+
+@pytest.mark.parametrize("seed", [1, 2])
+def test_refine_is_not_dragged_by_a_shifted_hole(seed: int, monkeypatch):
+    # The story's shifted-hole case, the one D-008 names: the part's hole sits 3 mm from where
+    # the CAD puts it. A hole's walls face sideways, so unlike a bump or dent they pull the pose
+    # laterally, toward the misplaced hole. The model also keeps I-01's 20% Unobserved patch.
+    # 3 mm sits inside the 2.5-voxel correspondence distance (4.5 mm here), where a non-robust
+    # fit is dragged; a shift beyond it simply stops matching.
+    #
+    # Seeds 1 and 2 start I-03 within 2 mm of the true pose. Seed 0's best candidate is the
+    # plate's 180-degree mirror (11 mm off): a hole that is the only asymmetry leaves two
+    # basins, and choosing between candidates is I-05's job, not refine's.
+    shift_mm = 3.0
+    cad_vertices, cad_faces = _plate_with_hole(20.0)
+    part_vertices, part_faces = _plate_with_hole(20.0 + shift_mm)
+    sample = synthetic.generate_synthetic_sample(
+        part_vertices, part_faces, seed, sigma_mm=0.3, patch_fraction=0.2
+    )
+    expected = _expected_transform(sample)
+    best = _register(sample, (cad_vertices, cad_faces), seed=100 + seed)[0]
+
+    robust = registration.refine(best, sample, (cad_vertices, cad_faces), seed=seed)
+    robust_error = _symmetric_vertex_rmse(cad_vertices, robust.transformation, expected)
+
+    monkeypatch.setattr(
+        registration.o3d.pipelines.registration,
+        "TukeyLoss",
+        lambda _k: o3d.pipelines.registration.L2Loss(),
+    )
+    least_squares = registration.refine(
+        best, sample, (cad_vertices, cad_faces), seed=seed
+    )
+    least_squares_error = _symmetric_vertex_rmse(
+        cad_vertices, least_squares.transformation, expected
+    )
+
+    assert robust_error < 0.25 * shift_mm
+    assert least_squares_error > 3.0 * robust_error
+    _assert_rigid(robust.transformation)
+
+
 @pytest.mark.parametrize("cad_path", [S04, S05])
 def test_refine_ignores_unobserved_geometry(cad_path: Path):
     # I-01's 20% patch is labelled Unobserved but its geometry is still in the mesh. Moving that

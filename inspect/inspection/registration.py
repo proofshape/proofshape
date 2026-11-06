@@ -48,7 +48,8 @@ DEFAULT_SCALE_TARGET_SAMPLE_COUNT = 20_000
 DEFAULT_DISTINCT_ROTATION_DEG = 2.0
 DEFAULT_DISTINCT_TRANSLATION_FRACTION = 0.01
 # I-04 refinement parameters. Algorithmic choices, not inspection tolerances (D-003):
-# Tukey's k is a multiple of the same extent-relative voxel I-03 uses. A residual beyond k gets
+# Tukey's k is a multiple of the voxel I-03's scale diagnostic uses: 3% of the CAD's extent alone
+# (I-03's pose search sizes its voxel from the larger of model and CAD). A residual beyond k gets
 # zero weight, which is what stops a defect from dragging the fit. On I-01 output, k from 0.5 to
 # 2 voxels refined s-04/s-05 to the same 0.04-0.09 mm surface error, so 1 voxel is a mid choice,
 # not a tuned optimum.
