@@ -61,6 +61,7 @@ Robust ICP with a Tukey loss, and if the runner-up alignment residual is within 
 the session is marked ambiguous.
 *Why:* on a near-symmetric part the feature that breaks the symmetry is often the defect. A
 least-squares fit can silently choose the alignment that explains it away.
+*Threshold superseded by D-061 (2026-11-06): 20%, not 10%. The rule itself stands.*
 
 ---
 
@@ -1047,6 +1048,43 @@ a runner for suppliers must shorten the budget or move the stage after the resul
 is a change to this decision, not a tuning of it.
 *Checked against D-028:* fetched every origin branch on 2026-11-03; D-057 was the highest number
 anywhere, so D-058 was free.
+
+---
+
+**D-061 · The orientation-ambiguity threshold is 20%, superseding D-008's 10%.** (2026-11-06)
+I-05's `check_ambiguity` refines every I-03 candidate with I-04's `refine` and marks the session
+ambiguous when the runner-up's inlier RMSE is within this threshold of the best's. D-008 set 10%;
+this sets 20%. D-008's rule, and its reason, are unchanged.
+
+Measured on I-01 output (σ 0.3 mm, I-01's 20% Unobserved patch), 12 seeds per class, runner-up
+over best:
+
+| Class | Ratio | Flagged at 10% | 15% | 20% |
+|---|---|---|---|---|
+| s-05, truly four-fold symmetric (should flag) | 1.00–1.01 | 12/12 | 12/12 | 12/12 |
+| 60 × 40 × 8 mm plate whose 10 mm hole is **missing** (D-008's case; should flag) | 0.82–1.15 | **9/12** | 11/12 | **12/12** |
+| The same plate, hole shifted 3 mm (shouldn't) | 1.22–1.35 | 0/12 | 0/12 | 0/12 |
+| The same plate, hole in place (shouldn't) | 1.67–2.25 | 0/12 | 0/12 | 0/12 |
+| s-04, scalene (shouldn't) | 3.07–5.76 | 0/12 | 0/12 | 0/12 |
+
+With nothing hidden, D-008's case reads 0.98–1.04 and 10% catches all 12. The hidden patch breaks
+the symmetry on the model side by about as much as a small missing feature does, which is what
+pushes a quarter of those cases past 10%.
+
+*Why:* 10% misses D-008's own case a quarter of the time on an occluded scan, and real scans are
+always occluded (the board-contact face is never seen). The two errors don't cost the same: a
+missed ambiguity can let the fit choose the alignment that explains the defect away, giving a
+wrong Pass or Fail, while a false flag costs one Rescan. 20% catches every measured case of D-008's
+kind and flags none of the disambiguated ones.
+*Limits, stated plainly:* the margins are narrow on both sides. D-008's case reaches 1.15 and the
+3 mm shifted hole starts at 1.22, so 20% sits in a gap of 0.07. This is one synthetic test part and
+one noise level; the threshold should be re-measured when real captures of near-symmetric parts
+exist. A part with a smaller symmetry-breaking feature than this one may need more than 20%, and
+that would be a change to this decision, not a tuning of it.
+*Checked against D-028:* fetched every origin branch on 2026-11-06; D-056, D-059 and D-060 are
+held on open branches and D-058 is the highest on `main`, so D-061 was the first free number.
+*Agreement:* proposed in I-05's PR, which asks both @mbj1994 and @dalwalyk to agree and merges
+only with both approving.
 
 ---
 

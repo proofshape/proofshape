@@ -249,8 +249,9 @@ fixtures.
 
 **The method is settled, not open** (proposal §7.1, D-008): FPFH + RANSAC global registration,
 then robust point-to-plane ICP with a Tukey loss; scale fixed to 1 in the fit, the free-scale
-residual computed separately as the substitution check; a runner-up within 10% of the best marks
-the session orientation-ambiguous. Open3D 0.18 (already pinned) has all of it.
+residual computed separately as the substitution check; a runner-up within 20% of the best marks
+the session orientation-ambiguous (D-061, which raised D-008's 10%). Open3D 0.18 (already
+pinned) has all of it.
 
 **No tolerance until G-04.** Nothing here decides whether a deviation passes. Every threshold (σ,
 patch size, voxel size, Tukey `k`, the 10%) is a declared parameter with a stated default, and
@@ -273,7 +274,7 @@ Full detail in each story file.
 | [I-02](I/I-02.md) | CAD loading: ASCII and binary STL, and GLB, coordinates as stored | 3 h | nothing | Done | @mbj1994 |
 | [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Done | @mbj1994 |
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Done | @TabeenRaoof |
-| [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 10% | 3 h | I-04 | Claimed | @TabeenRaoof |
+| [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Claimed | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
 
 ---
