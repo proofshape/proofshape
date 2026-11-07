@@ -507,11 +507,8 @@ def test_no_runner_prepares_inputs_records_unavailable_and_warns_nobody(tmp_path
     report = _report(out_dir)
     assert report["status"] == "unavailable"
     assert completion.RUNNER_ENV in report["reason"]
-    assert report["provisional_parameters"] == [
-        "max_samples",
-        "budget_s",
-        "overrun_allowance_s",
-    ]
+    # A-12 measured K's budget and allowance, so nothing is provisional any more (but still listed).
+    assert report["provisional_parameters"] == []
     assert (
         report["input"]["view"]["frame_name"] == "frame_0001.jpg"
     )  # it saw every vertex
