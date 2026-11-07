@@ -1830,6 +1830,61 @@ to reject them; that pre-existing end-to-end limitation is #247.
 Done on the final review head, with the rerun evidence and remaining limitations recorded rather
 than silently passed.
 
+## 2026-11-05 — I-04 robust point-to-plane refinement with a Tukey loss (PR #251)
+
+**Who:** @TabeenRaoof.
+
+**What changed:** added `inspection.registration.refine(candidate, model, cad)`. It tightens one
+I-03 candidate with Open3D point-to-plane ICP under a Tukey loss (D-008), from fully Observed model
+geometry to the sampled CAD surface and its own triangle normals, and recomputes the free-scale
+residual from the refined pose with I-03's two-stage similarity ICP. Without provenance, without
+a fully Observed face, or without correspondences it raises rather than refine on guessed
+geometry or report Open3D's "perfect" `inlier_rmse = 0`.
+
+**Measured on I-01 output (σ 0.3 mm, 20% Unobserved patch):** refinement took I-03's best pose
+from 0.57–2.13 mm to 0.04–0.09 mm surface error on s-04/s-05. A 4 mm Observed bump or dent over
+10% of the surface left Tukey at 0.03–0.08 mm while the same code with least squares was dragged
+to 1.1–1.6 mm. On a test-built plate whose hole sits 3 mm from the CAD's, Tukey stayed at
+0.02–0.07 mm against least squares' 0.21–0.74 mm. Moving the Unobserved patch 8 mm left the pose
+unchanged, and the refined free-scale residual read about 0 / +0.03 / +0.05 at true
+size / +3% / +5%. All synthetic; no real-capture registration has been run yet.
+
+**Close-out:** owner reported 2 h actual against 4 h estimated. I-04 and its index row are Done,
+and I-05 is Ready, on the close-out head before approval, per D-038.
+
+## 2026-11-06 — R-26 closed small; the real fix filed as R-30 (D-060, PR #241)
+
+**Who:** @dalwalyk. Claimed in #240.
+
+**What happened:** five rounds. Round 1 restricted the board-layer-top search to a margin band
+near the footprint's edge; review found a part could still reach into the margin, and the
+smaller sample broke R-17's own raised-layer detection on real data. Round 2 replaced it with a
+per-cell median across the whole footprint; review found the kept-share floor it needed
+hard-failed s-01/s-02 at a correct cut, and the median itself couldn't tell a part from a raised
+layer covering up to about half the board's cells. Round 3 added side-wall connectivity; its own
+added test (meant to demonstrate a residual wall-less-part risk) had a sign bug, and once fixed,
+reviewer-run golden data showed round 3 itself cut worse than `main` -- s-01 failed outright,
+s-02 through s-05 all cut lower, admitting board as "part".
+
+**The actual cause (D-060):** @TabeenRaoof traced the 3-6 mm "raised layer" R-17 found to
+per-frame VGGT pose misalignment, not a second physical layer -- confirmed three ways (board
+pixel colour, checker-square parity, and directly re-fitting a plane per frame, which showed
+individual frames 2.3-4.7 mm off on every golden object). On the merged point cloud this
+artifact and a genuine flat part's own top are the same shape, which is why three independent
+segmentation-only designs each traded one failure for another. @mbj1994 independently reviewed
+and agreed.
+
+**Decision:** stop iterating segmentation heuristics in R-26. `measure_board_surface` reverts to
+`main`'s original plain, whole-footprint search (confirmed byte-identical to `main` on all five
+golden objects by @TabeenRaoof's rerun); the explicit `height_threshold_mm` override and a
+simple kept-points floor are kept, both proven across every round. D-059 is marked superseded by
+D-060, not deleted. **R-30** (per-frame board re-anchoring before fusion) is filed as the actual
+fix, out of this story's scope -- D-060's own prototype found it removes the ghost layer and
+sharpens the part geometry too.
+
+**Close-out:** owner reported 7 h actual against 3 h estimated. R-26 and its index row are
+marked Done on this final head, which is also the head the golden rerun confirmed.
+
 ## 2026-11-07 — A-12 LaS-Comp runner, CUDA setup and the T4 measurement (PR #259)
 
 **Who:** @TabeenRaoof.

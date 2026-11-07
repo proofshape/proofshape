@@ -120,6 +120,14 @@ declare module "three/addons/loaders/GLTFLoader.js" {
       onProgress?: (event: ProgressEvent) => void,
       onError?: (error: unknown) => void,
     ): void;
+    // C-19: parses an already-downloaded GLB/glTF buffer directly, with no network/url
+    // involved -- confirmed against the installed node_modules/three source.
+    parse(
+      data: ArrayBuffer | string,
+      path: string,
+      onLoad: (model: GLTF) => void,
+      onError?: (error: unknown) => void,
+    ): void;
     // C-13: inherited from three's base Loader class -- propagates to GLTFLoader's internal
     // file/texture loaders, confirmed against the installed node_modules/three source.
     setRequestHeader(headers: Record<string, string>): void;
