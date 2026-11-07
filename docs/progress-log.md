@@ -1914,7 +1914,10 @@ marked Done on this final head, which is also the head the golden rerun confirme
 - Two setup bugs, both fixed before anything was measured: an opencv pin that can't coexist with
   numpy 1.26.4, and LaS-Comp's committed bytecode caches. A first Colab attempt lost all four runs
   to the second bug, 0.2 s after each launch.
-- DINOv2's hub code is unpinned. Pinning it is a follow-up with no story yet.
+- DINOv2's hub code was unpinned during the run. It is now pinned at the commit the run used
+  (`7764ea0f`, main since 2026-06-03), and every run checks it.
+- D-058's ~49 min wait and the image environment wait for the first story that configures a
+  runner for suppliers. The index records them as waiting on a decision.
 
 **Close-out:** owner reported 5.5 h actual against 5 h estimated. A-12 and its index row are Done on
 the final review head. The raw results hold golden photos, so they stay outside the repository.

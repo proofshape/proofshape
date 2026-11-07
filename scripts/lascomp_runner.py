@@ -66,6 +66,17 @@ CONDITIONING_IMAGE = "lascomp_conditioning.png"
 ENCODER_KEY = "sparse_structure_encoder"
 ENCODER_VALUE = "ckpts/ss_enc_conv3d_16l8_fp16"
 
+# DINOv2's code, which TRELLIS loads with torch.hub.load('facebookresearch/dinov2', name) and no
+# ref (trellis/pipelines/trellis_image_to_3d.py). torch.hub then uses whatever is cached under
+# DINOV2_CACHE_NAME, or downloads main's current code if nothing is. Main has been at this commit
+# since 2026-06-03, so it is the code A-12 measured on 2026-11-07. Setup fetches it there as a git
+# checkout, and every run checks it, the same way LaS-Comp is checked. It isn't one of the
+# contract's four reported pins (D-057 names none for it), so a mismatch fails the run rather
+# than changing what the result reports. tests/test_setup_completion_env.py checks that setup uses
+# the same commit.
+DINOV2_COMMIT = "7764ea0f912e53c92e82eb78a2a1631e92725fc8"
+DINOV2_CACHE_NAME = "facebookresearch_dinov2_main"
+
 # How A-10 called LaS-Comp (stories/A/A-10.md): its CLI defaults, and SPCONV_ALGO=native. Kept
 # identical so A-12's timings are comparable with A-10's; changing any of these changes the model
 # D-057 measured.
@@ -170,6 +181,40 @@ def edited_tracked_files(porcelain: str) -> list[str]:
     return edited
 
 
+def verify_dinov2(pins: dict[str, Any]) -> list[str]:
+    """Problems with the DINOv2 code TRELLIS will load. Empty means it's setup's pinned checkout.
+
+    The checkout must have its own `.git`, because the cache sits inside LaS-Comp's repository and
+    git would otherwise answer with LaS-Comp's commit. A plain folder (torch.hub's own zip
+    download) has no commit to check, so it's refused, and setup replaces it.
+    """
+    torch_home = pins.get("caches", {}).get("torch_home")
+    if not torch_home:
+        return [
+            f"{PINS_FILE} names no torch_home cache; run scripts/setup_completion_env.sh"
+        ]
+    checkout = Path(torch_home) / "hub" / DINOV2_CACHE_NAME
+    if not (checkout / ".git").exists():
+        return [
+            (
+                f"DINOv2's code at {checkout} isn't setup's pinned checkout; "
+                "run scripts/setup_completion_env.sh"
+            )
+        ]
+    try:
+        commit = _git(checkout, "rev-parse", "HEAD").strip()
+        modified = _git(checkout, "status", "--porcelain", "--untracked-files=no")
+    except (RunnerError, OSError) as exc:
+        return [f"DINOv2's checkout at {checkout} can't be read: {exc}"]
+    problems = []
+    if commit != DINOV2_COMMIT:
+        problems.append(f"DINOv2 is at {commit}, expected {DINOV2_COMMIT}")
+    edited = edited_tracked_files(modified)
+    if edited:
+        problems.append(f"DINOv2 has edited tracked files: {'; '.join(edited)}")
+    return problems
+
+
 def verify_pins(
     lascomp_root: Path, expected: contract.ExpectedModel
 ) -> tuple[dict[str, str], list[str]]:
@@ -217,6 +262,8 @@ def verify_pins(
         problems.append(
             f"weights revision is {weights_revision}, expected {expected.weights_revision}"
         )
+    if pins:
+        problems.extend(verify_dinov2(pins))
 
     found = {
         "name": contract.MODEL_NAME,
@@ -604,6 +651,8 @@ def run(
     try:
         current.write("running")
         pins = read_pins_file(lascomp_root)
+        # Setup's record of the DINOv2 commit and weights file hash, kept with the measurement.
+        current.metrics["dinov2"] = pins.get("dinov2")
         backend = backend_factory(lascomp_root, pins, cuda_launch_blocking, runner_dir)
         steps = sampler_overrides(request)
         current.metrics["load"] = backend.load(folder / contract.VIEW_IMAGE_PATH, steps)

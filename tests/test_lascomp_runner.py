@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import json
 import runpy
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -48,28 +49,51 @@ def _git(root: Path, *args: str) -> str:
     ).stdout.strip()
 
 
+def _commit_all(repo: Path, message: str) -> str:
+    _git(repo, "add", ".")
+    _git(
+        repo,
+        "-c", "user.email=test@example.com", "-c", "user.name=test",
+        "commit", "-q", "-m", message,
+    )  # fmt: skip
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _dinov2_checkout(root: Path) -> Path:
+    """Where setup puts DINOv2's pinned code: inside LaS-Comp's checkout, as setup lays it out."""
+    return root / ".proofshape-cache" / "torch" / "hub" / NS["DINOV2_CACHE_NAME"]
+
+
 @pytest.fixture
-def lascomp_root(tmp_path) -> tuple[Path, str]:
-    """A git checkout standing in for LaS-Comp, with the pins file setup would write."""
+def lascomp_root(tmp_path, monkeypatch) -> tuple[Path, str]:
+    """A git checkout standing in for LaS-Comp, with the pins file setup would write.
+
+    DINOv2's checkout sits in the cache inside it, as on a real host. Its commit stands in for the
+    pinned one, since no test can make a commit with the real commit's hash.
+    """
     root = tmp_path / "LaS-Comp"
     root.mkdir()
     _git(root, "init", "-q")
     (root / "run_lascomp_image_condition_single.py").write_text(
         "# stand-in\n", encoding="utf-8"
     )
-    _git(root, "add", ".")
-    _git(
-        root,
-        "-c", "user.email=test@example.com", "-c", "user.name=test",
-        "commit", "-q", "-m", "stand-in",
-    )  # fmt: skip
+    head = _commit_all(root, "stand-in")
+
+    dinov2 = _dinov2_checkout(root)
+    dinov2.mkdir(parents=True)
+    _git(dinov2, "init", "-q")
+    (dinov2 / "hubconf.py").write_text("# stand-in\n", encoding="utf-8")
+    dinov2_head = _commit_all(dinov2, "stand-in")
+    monkeypatch.setitem(main.__globals__, "DINOV2_COMMIT", dinov2_head)
+
     pins = {
         "weights": contract.WEIGHTS_ID,
         "weights_revision": contract.WEIGHTS_REVISION,
-        "caches": {},
+        "caches": {"torch_home": str(root / ".proofshape-cache" / "torch")},
+        "dinov2": {"commit": dinov2_head, "weights_sha256": {"dinov2.pth": "0" * 64}},
     }
     (root / NS["PINS_FILE"]).write_text(json.dumps(pins), encoding="utf-8")
-    return root, _git(root, "rev-parse", "HEAD")
+    return root, head
 
 
 def _completion_folder(
@@ -430,12 +454,38 @@ def _wrong_weights_revision(root: Path) -> None:
     (root / NS["PINS_FILE"]).write_text(json.dumps(pins))
 
 
+def _dinov2_left_as_a_plain_folder(root: Path) -> None:
+    # What torch.hub's own download leaves: the code, with no commit to check.
+    shutil.rmtree(_dinov2_checkout(root) / ".git")
+
+
+def _dinov2_at_another_commit(root: Path) -> None:
+    (_dinov2_checkout(root) / "hubconf.py").write_text(
+        "# newer main\n", encoding="utf-8"
+    )
+    _commit_all(_dinov2_checkout(root), "newer main")
+
+
+def _dinov2_edited(root: Path) -> None:
+    (_dinov2_checkout(root) / "hubconf.py").write_text("# edited\n", encoding="utf-8")
+
+
+def _no_torch_home(root: Path) -> None:
+    pins = json.loads((root / NS["PINS_FILE"]).read_text())
+    pins["caches"] = {}
+    (root / NS["PINS_FILE"]).write_text(json.dumps(pins))
+
+
 @pytest.mark.parametrize(
     ("break_it", "message"),
     [
         (_dirty_tracked_file, "edited tracked files"),
         (_remove_pins_file, "missing"),
         (_wrong_weights_revision, "weights revision"),
+        (_dinov2_left_as_a_plain_folder, "isn't setup's pinned checkout"),
+        (_dinov2_at_another_commit, "DINOv2 is at"),
+        (_dinov2_edited, "DINOv2 has edited tracked files"),
+        (_no_torch_home, "names no torch_home"),
     ],
 )
 def test_pin_problems_fail_before_the_model_loads(
@@ -453,6 +503,18 @@ def test_pin_problems_fail_before_the_model_loads(
     assert (calls, backend.load_calls) == ([], 0)
     assert result["status"] == "failed"
     assert message in result["error"]
+
+
+def test_a_run_keeps_setups_dinov2_record_with_its_metrics(tmp_path, lascomp_root):
+    root, head = lascomp_root
+    folder = _completion_folder(tmp_path, head)
+
+    exit_code, _ = _run(folder, root, FakeBackend())
+
+    metrics = json.loads((folder / "runner" / NS["METRICS_FILE"]).read_text())
+    pins = json.loads((root / NS["PINS_FILE"]).read_text())
+    assert exit_code == 0
+    assert metrics["dinov2"] == pins["dinov2"]
 
 
 def _commit_bytecode_cache(root: Path) -> Path:

@@ -8,6 +8,7 @@ host from downloading anything, and the rule that it installs only into its own 
 from __future__ import annotations
 
 import re
+import runpy
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +18,7 @@ import pytest
 from recon import completion_contract as contract
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "setup_completion_env.sh"
+RUNNER_NS = runpy.run_path(str(SCRIPT.parent / "lascomp_runner.py"))
 TEXT = SCRIPT.read_text(encoding="utf-8")
 # Continuation lines joined, so a multi-line install reads as one command.
 COMMANDS = TEXT.replace("\\\n", " ")
@@ -50,7 +52,14 @@ def test_it_parses():
 
 def test_a_host_without_cuda_stops_before_downloading_anything():
     gpu_check = TEXT.index("command -v nvidia-smi")
-    for download in ("uv pip install", "git clone", "snapshot_download", "curl "):
+    downloads = (
+        "uv pip install",
+        "git clone",
+        "snapshot_download",
+        "curl ",
+        "fetch --quiet",
+    )
+    for download in downloads:
         assert gpu_check < TEXT.index(download), (
             f"{download!r} runs before the CUDA check"
         )
@@ -105,3 +114,17 @@ def test_lascomp_is_verified_at_the_pin_and_patched_after_every_download():
 def test_it_ends_with_the_runners_own_check():
     assert TEXT.index("--check --lascomp-root") > TEXT.index("proofshape_pins.json")
     assert TEXT.index("--check --lascomp-root") > TEXT.index("--ensure-encoder-entry")
+
+
+def test_dinov2_is_pinned_to_the_commit_the_runner_checks():
+    assert _assigned("DINOV2_COMMIT") == RUNNER_NS["DINOV2_COMMIT"]
+    assert _assigned("DINOV2_CACHE_NAME") == RUNNER_NS["DINOV2_CACHE_NAME"]
+    assert (
+        _assigned("DINOV2_REPO_URL") == "https://github.com/facebookresearch/dinov2.git"
+    )
+
+
+def test_dinov2_is_verified_before_torch_hub_loads_it_and_recorded_in_the_pins():
+    verified = TEXT.index('if [[ "$dinov2_commit" != "$DINOV2_COMMIT" ]]')
+    assert verified < TEXT.index('torch.hub.load("facebookresearch/dinov2"')
+    assert '"dinov2": {"commit": dinov2_commit' in TEXT

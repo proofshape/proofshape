@@ -31,6 +31,12 @@ CKPT_DIR="ckpt/ckpt_image_large"
 TORCH_INDEX="https://download.pytorch.org/whl/cu121"
 KAOLIN_LINKS="https://nvidia-kaolin.s3.us-east-2.amazonaws.com/torch-2.4.0_cu121.html"
 UTILS3D_COMMIT="9a4eb15e4021b67b12c460c7057d642626897ec8"
+# DINOv2's code at the commit A-12 measured (main since 2026-06-03). TRELLIS loads it through
+# torch.hub with no ref, so setup puts this checkout where torch.hub looks. The runner checks it
+# on every run, and tests/test_setup_completion_env.py checks both use the same commit.
+DINOV2_REPO_URL="https://github.com/facebookresearch/dinov2.git"
+DINOV2_COMMIT="7764ea0f912e53c92e82eb78a2a1631e92725fc8"
+DINOV2_CACHE_NAME="facebookresearch_dinov2_main"
 # A prebuilt pytorch3d from a third-party builder, so its hash is checked before installing it.
 PYTORCH3D_URL="https://github.com/MiroPsota/torch_packages_builder/releases/download/pytorch3d-0.7.9/pytorch3d-0.7.9%2Bpt2.4.0cu121-cp310-cp310-linux_x86_64.whl"
 PYTORCH3D_SHA256="786578d8cfe25f390a2d18a1a8075ed739d9247abe705ddeea7ffb4ffa65d1f2"
@@ -117,9 +123,30 @@ PY
 "$VENV_PYTHON" -I "$REPO_ROOT/scripts/lascomp_runner.py" --ensure-encoder-entry \
   --lascomp-root "$LASCOMP_ROOT"
 
-step "DINOv2 and u2net caches"
-# Both download on first use otherwise: DINOv2 inside the model load, u2net inside the first
-# sample's timed window. Prefetched here into caches the runner points at.
+step "DINOv2 at $DINOV2_COMMIT, and the u2net cache"
+# TRELLIS loads DINOv2 with torch.hub.load('facebookresearch/dinov2', name) and no ref
+# (trellis/pipelines/trellis_image_to_3d.py). torch.hub then uses whatever is cached under
+# $DINOV2_CACHE_NAME, or downloads main's current code if nothing is. So the code is fetched here
+# at the pinned commit, as a git checkout so its commit can be checked, and it replaces anything
+# else under that name, including a plain folder left by an earlier torch.hub download. The cache
+# sits inside LaS-Comp's repository, so only a checkout with its own .git counts.
+dinov2_dir="$CACHE_DIR/torch/hub/$DINOV2_CACHE_NAME"
+if [[ ! -d "$dinov2_dir/.git" ]] ||
+  [[ "$(git -C "$dinov2_dir" rev-parse HEAD)" != "$DINOV2_COMMIT" ]]; then
+  rm -rf "$dinov2_dir"
+  mkdir -p "$dinov2_dir"
+  git -C "$dinov2_dir" -c init.defaultBranch=pinned init --quiet
+  git -C "$dinov2_dir" fetch --quiet --depth 1 "$DINOV2_REPO_URL" "$DINOV2_COMMIT"
+  git -C "$dinov2_dir" checkout --quiet FETCH_HEAD
+fi
+dinov2_commit="$(git -C "$dinov2_dir" rev-parse HEAD)"
+if [[ "$dinov2_commit" != "$DINOV2_COMMIT" ]]; then
+  echo "DINOv2 pin mismatch: expected $DINOV2_COMMIT, got $dinov2_commit" >&2
+  exit 1
+fi
+# DINOv2's weights and u2net would otherwise download on first use: DINOv2's inside the model
+# load, u2net's inside the first sample's timed window. Both are prefetched here into the caches
+# the runner points at. torch.hub finds the pinned checkout above and only adds the weights.
 TORCH_HOME="$CACHE_DIR/torch" U2NET_HOME="$CACHE_DIR/u2net" \
   "$VENV_PYTHON" -I - "$LASCOMP_ROOT/$CKPT_DIR/pipeline.json" <<'PY'
 import json
@@ -137,18 +164,33 @@ PY
 
 step "Pins file and freeze"
 "$VENV_PYTHON" -I - "$LASCOMP_ROOT" "$LASCOMP_COMMIT" "$WEIGHTS_ID" "$WEIGHTS_REVISION" \
-  "$CACHE_DIR" <<'PY'
+  "$CACHE_DIR" "$dinov2_commit" <<'PY'
 import datetime
+import hashlib
 import json
 import sys
 from pathlib import Path
 
-root, commit, weights, revision, cache = sys.argv[1:6]
+root, commit, weights, revision, cache, dinov2_commit = sys.argv[1:7]
+
+# DINOv2's weights file is fixed only by its name in DINOv2's code, so its hash is recorded here.
+# It isn't checked against anything: nobody recorded the hash of the file A-12 measured with.
+weights_sha256 = {}
+for path in sorted((Path(cache) / "torch" / "hub" / "checkpoints").glob("*.pth")):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        block = handle.read(1 << 20)
+        while block:
+            digest.update(block)
+            block = handle.read(1 << 20)
+    weights_sha256[path.name] = digest.hexdigest()
+
 pins = {
     "commit": commit,
     "weights": weights,
     "weights_revision": revision,
     "caches": {"torch_home": f"{cache}/torch", "u2net_home": f"{cache}/u2net"},
+    "dinov2": {"commit": dinov2_commit, "weights_sha256": weights_sha256},
     "written_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
 }
 (Path(root) / "proofshape_pins.json").write_text(json.dumps(pins, indent=2) + "\n")
