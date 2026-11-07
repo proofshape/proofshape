@@ -1887,7 +1887,7 @@ marked Done on this final head, which is also the head the golden rerun confirme
 
 ## 2026-11-07 — s-04 from 30 vs 15 photos, a macOS reconstruction hang (#261, R-31), open issues checked
 
-**Who:** @TabeenRaoof. This is a follow-up to A-12, outside any story.
+**Who:** @TabeenRaoof. A follow-up to A-12, recorded as P-29 (3 h actual, the owner's figure).
 
 **Measurement: does the photo count change accuracy?** Golden s-04 was reconstructed on the M2 Max
 three ways: from all 30 photos, and from two 15-photo subsets (every other photo, starting from the

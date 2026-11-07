@@ -454,6 +454,7 @@ Full detail in each story file.
 | [P-25](P/P-25.md) | Write up the inspection lane | — | nothing | Done | @TabeenRaoof |
 | [P-26](P/P-26.md) | Write up the first generative-AI stories | — | nothing | Done | @TabeenRaoof |
 | [P-27](P/P-27.md) | Review every Done story; file its code bugs and write up the follow-up stories | — | nothing | Done | @TabeenRaoof |
+| [P-29](P/P-29.md) | Accuracy check after A-12; open issues reconciled with the stories | — | nothing | Done | @TabeenRaoof |
 
 ---
 
