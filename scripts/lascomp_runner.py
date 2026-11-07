@@ -141,6 +141,35 @@ def _git(lascomp_root: Path, *args: str) -> str:
     return completed.stdout
 
 
+def edited_tracked_files(porcelain: str) -> list[str]:
+    """The `git status --porcelain` lines that mean LaS-Comp's code changed.
+
+    LaS-Comp's repository commits its `__pycache__/*.pyc` files. A fresh clone gives every `.py`
+    file the clone's mtime, so none of those caches matches its source any more, and the first
+    import (setup's `--check`) recompiles each one from the tracked `.py` and rewrites it. Git then
+    reports 33 modified files although no code changed. A-12's first Colab run, 2026-11-06,
+    refused all four measurements for exactly that reason. The code that runs is compiled from the
+    `.py` files, and those are still checked. So only a *modified* cache inside `__pycache__/` is
+    skipped. A deleted or added cache, or any other file, is still reported.
+    """
+    edited: list[str] = []
+    for line in porcelain.splitlines():
+        if not line.strip():
+            continue
+        status, path = line[:2], line[3:]
+        parts = Path(path).parts
+        is_rewritten_cache = (
+            status == " M"
+            and path.endswith(".pyc")
+            and len(parts) >= 2
+            and parts[-2] == "__pycache__"
+        )
+        if is_rewritten_cache:
+            continue
+        edited.append(line.strip())
+    return edited
+
+
 def verify_pins(
     lascomp_root: Path, expected: contract.ExpectedModel
 ) -> tuple[dict[str, str], list[str]]:
@@ -168,9 +197,11 @@ def verify_pins(
         except (RunnerError, OSError) as exc:
             problems.append(f"LaS-Comp's working tree can't be checked: {exc}")
         else:
-            if modified.strip():
+            # Unstripped on purpose: a porcelain line's first column is significant (" M").
+            edited = edited_tracked_files(modified)
+            if edited:
                 problems.append(
-                    f"LaS-Comp has edited tracked files: {modified.strip()}"
+                    f"LaS-Comp has edited tracked files: {'; '.join(edited)}"
                 )
 
     try:
@@ -687,6 +718,17 @@ def main(
         except Exception as exc:  # noqa: BLE001 -- setup's last step reports any failure plainly.
             traceback.print_exc()
             print(f"A-12 RUNNER: FAIL - {type(exc).__name__}: {exc}", file=sys.stderr)
+            return EXIT_FAILED
+        # Checked again after the import. A run checks the pins before importing, so anything an
+        # import changes would otherwise only surface on the first real run, after setup had
+        # already passed. That is how A-12's first Colab run lost all four measurements.
+        _, problems = verify_pins(lascomp_root, contract.ExpectedModel())
+        if problems:
+            print(
+                "A-12 RUNNER: FAIL - importing LaS-Comp changed its checkout: "
+                f"{'; '.join(problems)}",
+                file=sys.stderr,
+            )
             return EXIT_FAILED
         print(json.dumps({"pins": found, **report}, indent=2, default=str))
         print("A-12 RUNNER: PASS - environment ready")

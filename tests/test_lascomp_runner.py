@@ -28,6 +28,8 @@ RUNNER = REPO_ROOT / "scripts" / "lascomp_runner.py"
 NS = runpy.run_path(str(RUNNER))
 main = NS["main"]
 RunnerError = NS["RunnerError"]
+# Kept before any test patches contract.ExpectedModel, so a patch can still build the real one.
+REAL_EXPECTED_MODEL = contract.ExpectedModel
 
 _BOX_FACES = np.array(
     [
@@ -451,6 +453,119 @@ def test_pin_problems_fail_before_the_model_loads(
     assert (calls, backend.load_calls) == ([], 0)
     assert result["status"] == "failed"
     assert message in result["error"]
+
+
+def _commit_bytecode_cache(root: Path) -> Path:
+    """Track a __pycache__ file, as LaS-Comp's repository does, and return its path."""
+    cache = root / "trellis" / "__pycache__" / "__init__.cpython-310.pyc"
+    cache.parent.mkdir(parents=True)
+    cache.write_bytes(b"committed bytecode")
+    _git(root, "add", ".")
+    _git(
+        root,
+        "-c", "user.email=test@example.com", "-c", "user.name=test",
+        "commit", "-q", "-m", "track bytecode",
+    )  # fmt: skip
+    return cache
+
+
+def test_a_rewritten_bytecode_cache_doesnt_stop_a_run(tmp_path, lascomp_root):
+    # A-12's first Colab run: setup's --check imported LaS-Comp, Python rewrote its committed
+    # caches, and every run after that was refused although no code had changed.
+    root, _ = lascomp_root
+    _commit_bytecode_cache(root).write_bytes(b"recompiled from the tracked source")
+    folder = _completion_folder(tmp_path, _git(root, "rev-parse", "HEAD"))
+
+    exit_code, calls = _run(folder, root, FakeBackend())
+
+    assert exit_code == 0
+    assert len(calls) == 1
+    assert _result(folder)["status"] == "complete"
+
+
+def test_an_edited_source_is_refused_even_beside_rewritten_caches(
+    tmp_path, lascomp_root
+):
+    root, _ = lascomp_root
+    _commit_bytecode_cache(root).write_bytes(b"recompiled")
+    _dirty_tracked_file(root)
+
+    _, problems = NS["verify_pins"](
+        root, contract.ExpectedModel(commit=_git(root, "rev-parse", "HEAD"))
+    )
+
+    assert len(problems) == 1
+    assert "run_lascomp_image_condition_single.py" in problems[0]
+    assert ".pyc" not in problems[0]
+
+
+@pytest.mark.parametrize(
+    ("line", "reported"),
+    [
+        (" M trellis/__pycache__/base.cpython-310.pyc", False),
+        (" M trellis/base.py", True),
+        (" D trellis/__pycache__/base.cpython-310.pyc", True),
+        ("M  trellis/__pycache__/base.cpython-310.pyc", True),
+        (" M trellis/base.pyc", True),
+        (" M __pycache__.pyc", True),
+    ],
+)
+def test_only_a_modified_cache_inside_pycache_is_skipped(line, reported):
+    assert NS["edited_tracked_files"](line + "\n") == (
+        [line.strip()] if reported else []
+    )
+
+
+class _CheckOnlyBackend:
+    """Stands in for LasCompBackend in --check: its check() does what the import would do."""
+
+    def __init__(self, change) -> None:
+        self.change = change
+
+    def __call__(self, lascomp_root, pins, blocking, runner_dir):
+        self.root = lascomp_root
+        return self
+
+    def check(self):
+        self.change(self.root)
+        return {"fake": True}
+
+
+@pytest.mark.parametrize(
+    ("change", "exit_code"),
+    [(_dirty_tracked_file, 1), (lambda root: None, 0)],
+)
+def test_check_fails_when_importing_lascomp_edits_its_checkout(
+    lascomp_root, monkeypatch, capsys, change, exit_code
+):
+    root, head = lascomp_root
+    monkeypatch.setattr(
+        contract, "ExpectedModel", lambda: REAL_EXPECTED_MODEL(commit=head)
+    )
+    monkeypatch.setitem(main.__globals__, "LasCompBackend", _CheckOnlyBackend(change))
+
+    assert main(["--check", "--lascomp-root", str(root)]) == exit_code
+    if exit_code:
+        assert "importing LaS-Comp changed its checkout" in capsys.readouterr().err
+
+
+def test_check_passes_when_the_import_only_rewrites_caches(
+    lascomp_root, monkeypatch, capsys
+):
+    root, _ = lascomp_root
+    cache = _commit_bytecode_cache(root)
+    head = _git(root, "rev-parse", "HEAD")
+    monkeypatch.setattr(
+        contract, "ExpectedModel", lambda: REAL_EXPECTED_MODEL(commit=head)
+    )
+    monkeypatch.setitem(
+        main.__globals__,
+        "LasCompBackend",
+        _CheckOnlyBackend(lambda _: cache.write_bytes(b"recompiled")),
+    )
+
+    assert main(["--check", "--lascomp-root", str(root)]) == 0
+    assert "PASS - environment ready" in capsys.readouterr().out
 
 
 def test_a_different_commit_is_reported_as_found_so_the_service_rejects_it(
