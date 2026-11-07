@@ -1905,6 +1905,18 @@ a ratio to CAD:
 - More photos buy coverage, roughly twice the observed surface. They don't buy shape accuracy.
 - The narrow walls and uneven edges are R-22's second finding (per-pixel depth). They're now
   written up as the R-32 spike.
+- **Shape, not just size.** Drawn to scale against s-04's observed shell and measured, A-12's
+  completions show three kinds of shape error:
+  - **Invented by the model.** A raised patch, 86–180 mm² and 1.6–3.2 mm above the top face,
+    appears in 5 of 6 samples. The same seed gives the same patch (172 vs 166 mm²), so it comes
+    from the seed, not the photos. The padlock's shackle is the same kind of guess. Both are
+    Inferred surface, which never passes or fails a part, and flagging them is A-05's job.
+  - **Copied from bad input.** Every sample has a base flange 8–9 mm outside the walls
+    (397–870 mm²), because the observed shell itself flares at the base. That goes to R-30
+    and #231.
+  - **In the observed surface itself.** The long 60 mm wall leans about 3 mm over its height,
+    and its lower half is about 5 mm thick. The short wall stands straight. This surface can
+    pass or fail a part, so R-32 now measures lean and thickness too.
 - Caveats: one part, one capture, nominal CAD rather than calipers. This is a quick test, not an
   accuracy result.
 
