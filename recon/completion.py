@@ -30,8 +30,8 @@ to a capped log file, never into a warning or `session.json`, because the servic
 the supplier and the runner's output is not something we control.
 
 Every threshold is a declared parameter with a stated default (`CompletionParameters`). K, the
-budget and the overrun allowance are **provisional**: they come from A-10's single T4 run, and
-A-12 replaces them with measured values.
+budget and the overrun allowance were provisional until A-12 measured LaS-Comp on a Colab T4
+(stories/A/A-12.md); the budget and the allowance now come from that measurement.
 """
 
 from __future__ import annotations
@@ -146,9 +146,16 @@ class CompletionParameters:
     silhouette and TRELLIS re-crops to its own foreground mask anyway; view_max_side_px 1024,
     because TRELLIS conditions on 518 px images.
 
-    The runner, **provisional until A-12 measures them**: max_samples 8 is the proposal's final-pass
-    K (§6.6); budget_s 2460 fits 8 samples at A-10's ~298 s each plus its 48 s model load on a T4;
-    overrun_allowance_s 360 is about one more sample plus 20%, the margin before the hard kill.
+    The runner, measured by A-12 on a Colab T4 (2026-11-07, s-04 and s-02, LaS-Comp's default
+    steps), with the formulas fixed in stories/A/A-12.md before the run:
+    - max_samples 8 is the proposal's final-pass K (§6.6). The owner kept it and sized the budget
+      to fit it.
+    - budget_s 2850 = the slowest cold load (68.9 s) + 8 × the slowest sample (328.0 s) × 1.05,
+      rounded up to the next 30 s. The 1.05 allows for T4 speed varying between sessions.
+    - overrun_allowance_s 90 = max(2 × (largest rise from one sample to the next, 2.6 s + largest
+      shutdown gap, 2.7 s), 0.2 × the slowest sample), rounded up to the next 30 s. It is the
+      margin before the hard kill, which counts from launch.
+    These hold for a T4. Another GPU needs its own measurement before they hold there.
     sample_scale_factor_limit 4.0: a completion whose size differs from the observed part's by more
     than this factor is in the wrong units (LaS-Comp normalises to a unit cube), not a completion.
     """
@@ -167,8 +174,8 @@ class CompletionParameters:
     view_max_side_px: int = 1024
     max_samples: int = 8
     base_seed: int = 0
-    budget_s: float = 2460.0
-    overrun_allowance_s: float = 360.0
+    budget_s: float = 2850.0
+    overrun_allowance_s: float = 90.0
     sparse_structure_steps: int | None = None
     slat_steps: int | None = None
     sample_scale_factor_limit: float = 4.0
@@ -181,7 +188,9 @@ class CompletionParameters:
 
 
 DEFAULT_PARAMETERS = CompletionParameters()
-PROVISIONAL_PARAMETERS = ("max_samples", "budget_s", "overrun_allowance_s")
+# Empty since A-12's measurement. Kept, and still reported in completion.json, so a parameter that
+# becomes provisional again (say, on a GPU nobody has measured) has somewhere to say so.
+PROVISIONAL_PARAMETERS: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
