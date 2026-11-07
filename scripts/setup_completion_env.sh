@@ -80,9 +80,13 @@ step "LaS-Comp's Python dependencies"
 # Versions from LaS-Comp's own requirements.txt freeze. Pillow is listed there only as a conda
 # build (pillow @ file:///croot/pillow_1752524526621/work, July 2025), so it is pinned to 11.3.0,
 # the Pillow release of that month.
+# One exception: the freeze lists opencv-python-headless 4.12.0.88, which needs numpy >= 2 on
+# Python 3.10, beside numpy 1.26.4. pip tolerates that with a warning; uv refuses it. 4.11.0.86
+# accepts numpy 1.26.4, is what A-10's measured run resolved to (opencv was unpinned there), and
+# is what this repo's own requirements.txt pins for the same reason.
 uv pip install --python "$VENV_PYTHON" \
   numpy==1.26.4 pillow==11.3.0 imageio==2.37.3 easydict==1.13 \
-  opencv-python-headless==4.12.0.88 scipy==1.15.3 scikit-image==0.25.2 \
+  opencv-python-headless==4.11.0.86 scipy==1.15.3 scikit-image==0.25.2 \
   rembg==2.0.67 onnxruntime==1.22.1 open3d==0.19.0 trimesh==4.11.5 plyfile==1.1.2 \
   huggingface-hub==0.34.4 safetensors==0.6.2 tqdm==4.67.1 transformers==4.55.2 \
   igraph==0.11.9 pymeshfix==0.17.1 xatlas==0.0.11 \
