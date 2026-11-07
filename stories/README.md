@@ -312,7 +312,7 @@ Full detail in each story file.
 | [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Done | @mbj1994 |
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Done | @TabeenRaoof |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Done | @TabeenRaoof |
-| [A-12](A/A-12.md) | LaS-Comp runner and CUDA setup: the real model behind A-04's contract | 5 h | A-04, A-10 | Claimed | @TabeenRaoof |
+| [A-12](A/A-12.md) | LaS-Comp runner and CUDA setup: the real model behind A-04's contract | 5 h | A-04, A-10 | Done | @TabeenRaoof |
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Claimed | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
