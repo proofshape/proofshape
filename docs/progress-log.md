@@ -1903,8 +1903,8 @@ a ratio to CAD:
 - Scale and height are right whatever the count.
 - The edge errors change more with *which* 15 photos are used than between 15 and 30.
 - More photos buy coverage, roughly twice the observed surface. They don't buy shape accuracy.
-- The narrow walls and uneven edges are R-22's second finding (per-pixel depth), and no story
-  owns them.
+- The narrow walls and uneven edges are R-22's second finding (per-pixel depth). They're now
+  written up as the R-32 spike.
 - Caveats: one part, one capture, nominal CAD rather than calipers. This is a quick test, not an
   accuracy result.
 
