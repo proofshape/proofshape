@@ -1884,3 +1884,40 @@ sharpens the part geometry too.
 
 **Close-out:** owner reported 7 h actual against 3 h estimated. R-26 and its index row are
 marked Done on this final head, which is also the head the golden rerun confirmed.
+
+## 2026-11-07 — s-04 from 30 vs 15 photos, a macOS reconstruction hang (#261, R-31), open issues checked
+
+**Who:** @TabeenRaoof. This is a follow-up to A-12, outside any story.
+
+**Measurement: does the photo count change accuracy?** Golden s-04 was reconstructed on the M2 Max
+three ways: from all 30 photos, and from two 15-photo subsets (every other photo, starting from the
+first and from the second). Each was compared with the s-04 CAD using `recon/cad_size_check.py`, as
+a ratio to CAD:
+
+| Photos | Board scale | Height | 60 / 65 / 26 mm edges | Fit residual | Observed |
+|---|---|---|---|---|---|
+| 30 | 0.999 | 0.990 | 0.989 / 0.886 / 1.047 | 1.52 mm | 0.169 |
+| 15 (first set) | 0.999 | 1.001 | 0.926 / 0.942 / 1.023 | 1.50 mm | 0.124 |
+| 15 (second set) | 0.999 | 0.997 | 0.978 / 0.963 / 1.003 | 0.68 mm | 0.082 |
+
+- Scale and height are right whatever the count.
+- The edge errors change more with *which* 15 photos are used than between 15 and 30.
+- More photos buy coverage, roughly twice the observed surface. They don't buy shape accuracy.
+- The narrow walls and uneven edges are R-22's second finding (per-pixel depth), and no story
+  owns them.
+- Caveats: one part, one capture, nominal CAD rather than calipers. This is a quick test, not an
+  accuracy result.
+
+**Found on the way: #261.** Every reconstruction on the Mac hangs forever. Open3D and torch each
+ship their own `libomp`, and `recon/provenance.py` has imported Open3D at module level since
+`4237642`, R-27's PR #250. `OMP_NUM_THREADS=1` is the verified workaround, and all three runs above
+used it. Filed as #261 and written up as R-31 (Ready, 2 h).
+
+**Open issues checked against the stories:**
+- P-27's ten follow-up stories cover all 24 of its issues, and 18 of those are closed.
+- #183 and #184 were fixed by R-27 and #108 by C-09, but none had been closed. All three are now
+  closed, each with a comment linking the code that fixed it.
+- #189–#191 stay with C-20 (@mbj1994). #181 and #200 still wait on a team decision.
+- #231 is still present: on today's s-04 run, 70% of the served model's faces are walls and 56% of
+  its Observed faces are board skin. R-30 covers the skin. The walls have no story, so the
+  question went to @dalwalyk on #258.
