@@ -1916,5 +1916,5 @@ marked Done on this final head, which is also the head the golden rerun confirme
   to the second bug, 0.2 s after each launch.
 - DINOv2's hub code is unpinned. Pinning it is a follow-up with no story yet.
 
-**Close-out:** owner reported 5 h actual against 5 h estimated. A-12 and its index row are Done on
+**Close-out:** owner reported 5.5 h actual against 5 h estimated. A-12 and its index row are Done on
 the final review head. The raw results hold golden photos, so they stay outside the repository.
