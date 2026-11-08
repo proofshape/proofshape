@@ -738,3 +738,75 @@ def test_the_runner_calls_lascomp_the_way_a10_measured_it():
         "lr_sample": 1e-5,
         "rescale_t": 3.0,
     }
+
+
+# --- review on #259: one checkout check, one read per request, the budget's GPU ----------------
+
+
+def test_checkout_problems_reports_a_checkout_it_cannot_read(tmp_path):
+    commit, problems = NS["checkout_problems"](tmp_path, "0" * 40, "DINOv2")
+
+    assert commit.startswith("unverified")
+    assert len(problems) == 1
+    assert problems[0].startswith(f"DINOv2 commit can't be read at {tmp_path}")
+
+
+def test_the_partial_cloud_is_read_once_per_request_not_once_per_seed(tmp_path):
+    backend = NS["LasCompBackend"](tmp_path, {}, "1", None)
+    reads = []
+
+    def read_and_voxelize(path):
+        reads.append(path)
+        return ("ss", "mask", "center", "scale", "kept")
+
+    backend._read_and_voxelize = read_and_voxelize
+    first, second = tmp_path / "a.ply", tmp_path / "b.ply"
+
+    for _ in range(3):
+        assert backend._prepared_input(first) == (
+            "ss",
+            "mask",
+            "center",
+            "scale",
+            "kept",
+        )
+    assert reads == [first]
+    backend._prepared_input(second)
+    assert reads == [first, second]
+
+
+@pytest.mark.parametrize(
+    ("gpu", "noted"),
+    [("Tesla T4", False), (None, False), ("", False), ("NVIDIA L4", True)],
+)
+def test_a_budget_note_names_any_gpu_but_the_measured_one(gpu, noted):
+    note = NS["budget_gpu_note"](gpu)
+
+    assert (note is not None) is noted
+    if noted:
+        assert gpu in note and contract.BUDGET_MEASURED_GPU in note
+
+
+class _GpuBackend(FakeBackend):
+    def __init__(self, gpu: str) -> None:
+        super().__init__()
+        self.gpu = gpu
+
+    def load(self, image_path, steps):
+        super().load(image_path, steps)
+        return {"gpu": self.gpu}
+
+
+@pytest.mark.parametrize(("gpu", "noted"), [("NVIDIA L4", True), ("Tesla T4", False)])
+def test_a_run_on_another_gpu_logs_the_budget_note(
+    tmp_path, lascomp_root, capsys, gpu, noted
+):
+    root, head = lascomp_root
+    folder = _completion_folder(tmp_path, head)
+
+    exit_code, _ = _run(folder, root, _GpuBackend(gpu))
+
+    metrics = json.loads((folder / "runner" / NS["METRICS_FILE"]).read_text())
+    assert exit_code == 0
+    assert ("A-12 RUNNER: NOTE - this GPU is" in capsys.readouterr().err) is noted
+    assert ("budget_gpu_note" in metrics) is noted

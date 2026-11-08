@@ -201,18 +201,37 @@ def verify_dinov2(pins: dict[str, Any]) -> list[str]:
                 "run scripts/setup_completion_env.sh"
             )
         ]
-    try:
-        commit = _git(checkout, "rev-parse", "HEAD").strip()
-        modified = _git(checkout, "status", "--porcelain", "--untracked-files=no")
-    except (RunnerError, OSError) as exc:
-        return [f"DINOv2's checkout at {checkout} can't be read: {exc}"]
-    problems = []
-    if commit != DINOV2_COMMIT:
-        problems.append(f"DINOv2 is at {commit}, expected {DINOV2_COMMIT}")
-    edited = edited_tracked_files(modified)
-    if edited:
-        problems.append(f"DINOv2 has edited tracked files: {'; '.join(edited)}")
+    _, problems = checkout_problems(checkout, DINOV2_COMMIT, "DINOv2")
     return problems
+
+
+def checkout_problems(
+    path: Path, expected_commit: str, label: str
+) -> tuple[str, list[str]]:
+    """(the commit found, problems) for one pinned git checkout, LaS-Comp's or DINOv2's.
+
+    One implementation for both, so the two checks can't drift apart (review on #259).
+    Untracked files are fine, because they're setup's own: the weights, the caches, the pins file.
+    An edited tracked file means the code isn't the pinned code, except for the bytecode caches
+    `edited_tracked_files` explains.
+    """
+    try:
+        commit = _git(path, "rev-parse", "HEAD").strip()
+    except (RunnerError, OSError) as exc:
+        return f"unverified: {exc}", [f"{label} commit can't be read at {path}: {exc}"]
+    problems: list[str] = []
+    if commit != expected_commit:
+        problems.append(f"{label} is at {commit}, expected {expected_commit}")
+    try:
+        modified = _git(path, "status", "--porcelain", "--untracked-files=no")
+    except (RunnerError, OSError) as exc:
+        problems.append(f"{label}'s working tree can't be checked: {exc}")
+    else:
+        # Unstripped on purpose: a porcelain line's first column is significant (" M").
+        edited = edited_tracked_files(modified)
+        if edited:
+            problems.append(f"{label} has edited tracked files: {'; '.join(edited)}")
+    return commit, problems
 
 
 def verify_pins(
@@ -224,30 +243,7 @@ def verify_pins(
     mismatch, which `parse_result` rejects and records, rather than as the expected pins
     reported blindly.
     """
-    problems: list[str] = []
-    try:
-        commit = _git(lascomp_root, "rev-parse", "HEAD").strip()
-    except (RunnerError, OSError) as exc:
-        commit = f"unverified: {exc}"
-        problems.append(f"LaS-Comp commit can't be read at {lascomp_root}: {exc}")
-    else:
-        if commit != expected.commit:
-            problems.append(f"LaS-Comp is at {commit}, expected {expected.commit}")
-        try:
-            # Untracked files (the weights, the caches, the pins file) are setup's own and fine;
-            # an edited tracked file means the code isn't the pinned code.
-            modified = _git(
-                lascomp_root, "status", "--porcelain", "--untracked-files=no"
-            )
-        except (RunnerError, OSError) as exc:
-            problems.append(f"LaS-Comp's working tree can't be checked: {exc}")
-        else:
-            # Unstripped on purpose: a porcelain line's first column is significant (" M").
-            edited = edited_tracked_files(modified)
-            if edited:
-                problems.append(
-                    f"LaS-Comp has edited tracked files: {'; '.join(edited)}"
-                )
+    commit, problems = checkout_problems(lascomp_root, expected.commit, "LaS-Comp")
 
     try:
         pins = read_pins_file(lascomp_root)
@@ -347,6 +343,16 @@ def sampler_overrides(
     return {"sparse_structure": sparse, "slat": slat}
 
 
+def budget_gpu_note(gpu_name: str | None) -> str | None:
+    """A note for the log when this GPU isn't the one A-04's budget was measured on, else None."""
+    if not gpu_name or gpu_name == contract.BUDGET_MEASURED_GPU:
+        return None
+    return (
+        f"this GPU is {gpu_name}, but A-04's budget_s was measured on a "
+        f"{contract.BUDGET_MEASURED_GPU} (A-12), so it may fit fewer than K samples here"
+    )
+
+
 def launches_are_blocking(queue_s: float, total_s: float) -> bool:
     """True when queueing a kernel burst took nearly as long as running it to completion."""
     if total_s <= 0:
@@ -377,6 +383,8 @@ class LasCompBackend:
         self.image: Any = None
         self.steps: dict[str, dict[str, int]] = {"sparse_structure": {}, "slat": {}}
         self.stage_times: dict[str, float] = {}
+        self._input_path: str | None = None
+        self._input: tuple[Any, ...] | None = None
 
     def _prepare(self) -> dict[str, Any]:
         """Environment, CUDA and LaS-Comp's import, in the one order that keeps the blocking choice.
@@ -512,20 +520,16 @@ class LasCompBackend:
 
             setattr(self.pipeline, name, timed)
 
-    def sample(
-        self, partial_path: Path, seed: int
-    ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
-        torch = self.torch
+    def _read_and_voxelize(self, partial_path: Path) -> tuple[Any, ...]:
+        """The partial cloud as LaS-Comp takes it: normalised, voxelised, and pooled into a mask."""
         lascomp = self.lascomp
         from plyfile import PlyData
         from torch.nn import functional
 
-        self.stage_times = {}
         plydata = PlyData.read(str(partial_path))
         # "custom" dataset, no Y/Z swap: the contract's partial cloud is already z-up.
         xyz = lascomp.load_points_from_ply(plydata, "custom", "auto", yz_flip=False)
         xyz, center, scale = lascomp.normalize_point_cloud(xyz)
-        torch.cuda.reset_peak_memory_stats()
         ss, kept_points, _ = lascomp.voxelize_unit_cube(
             xyz, resolution=VOXEL_RESOLUTION, open_upper_bound=False
         )
@@ -535,6 +539,31 @@ class LasCompBackend:
             )
             > 0
         ).float()
+        return ss, mask, center, scale, kept_points
+
+    def _prepared_input(self, partial_path: Path) -> tuple[Any, ...]:
+        """`_read_and_voxelize`, done once per request rather than once per seed.
+
+        Every seed conditions on the same input. Redoing the work per seed only added reading and
+        voxelising to each sample's timed window, the window that sizes A-04's budget (review on
+        #259). On A-12's T4 run, everything outside the three model stages took 0.4-1.1 s of each
+        312-328 s sample, so the measured budget is unchanged. Only sample 0 pays for the read now.
+        """
+        key = str(Path(partial_path).resolve())
+        if self._input is None or self._input_path != key:
+            self._input = self._read_and_voxelize(Path(partial_path))
+            self._input_path = key
+        return self._input
+
+    def sample(
+        self, partial_path: Path, seed: int
+    ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+        torch = self.torch
+        lascomp = self.lascomp
+
+        self.stage_times = {}
+        ss, mask, center, scale, kept_points = self._prepared_input(partial_path)
+        torch.cuda.reset_peak_memory_stats()
         _, decoded = self.pipeline.run_lascomp(
             mask=mask.unsqueeze(0).cuda().float(),
             ss=ss.unsqueeze(0).cuda().float(),
@@ -657,6 +686,12 @@ def run(
         steps = sampler_overrides(request)
         current.metrics["load"] = backend.load(folder / contract.VIEW_IMAGE_PATH, steps)
         current.load_s = clock() - started
+        note = budget_gpu_note(current.metrics["load"].get("gpu"))
+        if note is not None:
+            # The service keeps this log's tail (runner_log_tail.txt) but never reads the
+            # metrics file, so the log is where a different GPU becomes visible to it.
+            print(f"A-12 RUNNER: NOTE - {note}", file=sys.stderr)
+            current.metrics["budget_gpu_note"] = note
         current.write("running")
 
         last_sample_s = 0.0
@@ -780,6 +815,9 @@ def main(
             )
             return EXIT_FAILED
         print(json.dumps({"pins": found, **report}, indent=2, default=str))
+        note = budget_gpu_note(report.get("gpu"))
+        if note is not None:
+            print(f"A-12 RUNNER: NOTE - {note}")
         print("A-12 RUNNER: PASS - environment ready")
         return EXIT_OK
 

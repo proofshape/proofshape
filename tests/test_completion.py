@@ -509,6 +509,8 @@ def test_no_runner_prepares_inputs_records_unavailable_and_warns_nobody(tmp_path
     assert completion.RUNNER_ENV in report["reason"]
     # A-12 measured K's budget and allowance, so nothing is provisional any more (but still listed).
     assert report["provisional_parameters"] == []
+    # The GPU the budget was measured on (A-12), so a report says which hardware it fits.
+    assert report["parameters"]["budget_measured_gpu"] == contract.BUDGET_MEASURED_GPU
     assert (
         report["input"]["view"]["frame_name"] == "frame_0001.jpg"
     )  # it saw every vertex

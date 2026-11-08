@@ -155,7 +155,9 @@ class CompletionParameters:
     - overrun_allowance_s 90 = max(2 × (largest rise from one sample to the next, 2.6 s + largest
       shutdown gap, 2.7 s), 0.2 × the slowest sample), rounded up to the next 30 s. It is the
       margin before the hard kill, which counts from launch.
-    These hold for a T4. Another GPU needs its own measurement before they hold there.
+    These hold for a T4 only. budget_measured_gpu names that GPU, as contract.BUDGET_MEASURED_GPU,
+    so completion.json says which GPU the budget fits. A runner on another GPU logs a note, and that
+    GPU needs its own measurement before these values hold there.
     sample_scale_factor_limit 4.0: a completion whose size differs from the observed part's by more
     than this factor is in the wrong units (LaS-Comp normalises to a unit cube), not a completion.
     """
@@ -176,6 +178,7 @@ class CompletionParameters:
     base_seed: int = 0
     budget_s: float = 2850.0
     overrun_allowance_s: float = 90.0
+    budget_measured_gpu: str = contract.BUDGET_MEASURED_GPU
     sparse_structure_steps: int | None = None
     slat_steps: int | None = None
     sample_scale_factor_limit: float = 4.0
