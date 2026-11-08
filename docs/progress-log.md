@@ -1885,6 +1885,43 @@ sharpens the part geometry too.
 **Close-out:** owner reported 7 h actual against 3 h estimated. R-26 and its index row are
 marked Done on this final head, which is also the head the golden rerun confirmed.
 
+## 2026-11-07 — A-12 LaS-Comp runner, CUDA setup and the T4 measurement (PR #259)
+
+**Who:** @TabeenRaoof.
+
+**What changed:**
+- `scripts/lascomp_runner.py` is the real model behind A-04's completion contract. It runs in
+  LaS-Comp's own Python 3.10 environment, checks the pins before importing torch, loads the
+  pipeline once and samples under the contract's budget rule.
+- `scripts/setup_completion_env.sh` builds that environment on a CUDA host at D-057's pins.
+- A-04's `budget_s` and `overrun_allowance_s` are now measured values, and nothing is listed as
+  provisional any more.
+
+**The measurement** (Colab T4, one session; the method was fixed in the story before any run):
+- s-04 took 312.0–316.4 s a sample and s-02 322.1–328.0 s. About 95% of that is the
+  sparse-structure stage. Loading took 63.3–70.0 s from process start.
+- Every observed point lay within 1 mm of its completion in 99.5–100% of cases.
+- Seed-to-seed spread on the unseen surface was 0.77–2.48 mm. Running the same seed twice gave a
+  noise floor of 0.18 mm.
+- `budget_s` is now 2850 and `overrun_allowance_s` 90, against the provisional 2460 and 360. K
+  stays 8.
+- Blocking launches off gave no speed-up (314.2 s), so it isn't adopted.
+- 50 sparse-structure steps halved the time but collapsed the unseen-surface spread from a median
+  of 1.58 mm to 0.40 mm, so it isn't adopted either. Fewer steps don't keep the spread that A-05
+  needs.
+
+**Found on the way:**
+- Two setup bugs, both fixed before anything was measured: an opencv pin that can't coexist with
+  numpy 1.26.4, and LaS-Comp's committed bytecode caches. A first Colab attempt lost all four runs
+  to the second bug, 0.2 s after each launch.
+- DINOv2's hub code was unpinned during the run. It is now pinned at the commit the run used
+  (`7764ea0f`, main since 2026-06-03), and every run checks it.
+- D-058's ~49 min wait and the image environment wait for the first story that configures a
+  runner for suppliers. The index records them as waiting on a decision.
+
+**Close-out:** owner reported 5.5 h actual against 5 h estimated. A-12 and its index row are Done on
+the final review head. The raw results hold golden photos, so they stay outside the repository.
+
 ## 2026-11-07 — s-04 from 30 vs 15 photos, a macOS reconstruction hang (#261, R-31), open issues checked
 
 **Who:** @TabeenRaoof. A follow-up to A-12, recorded as P-29 (4 h actual, the owner's figure).
