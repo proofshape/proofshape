@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   angularDistanceDeg,
-  anchorAlphaDeg,
+  anchorHeadingDeg,
   computeArrowGuidance,
   computeCoverage,
   DEFAULT_COVERAGE_TOLERANCE_DEG,
   DEFAULT_ORBIT,
   elevationFromBeta,
   relativeAzimuthDeg,
+  viewAnglesFromGyro,
   type OrbitSlot,
 } from "./orbit.js";
 import type { Gyro } from "./types.js";
@@ -56,13 +57,30 @@ describe("elevationFromBeta", () => {
   });
 });
 
-describe("anchorAlphaDeg", () => {
-  it("is null with no accepted readings", () => {
-    expect(anchorAlphaDeg([])).toBeNull();
+describe("viewAnglesFromGyro", () => {
+  it("uses non-zero roll in portrait for both heading and elevation", () => {
+    const angles = viewAnglesFromGyro(gyro(0, 45, 10));
+
+    // From R(0,45,10)*(0,0,-1): heading shift ~= 14.0 deg and downward elevation ~= 44.1 deg.
+    expect(angles.headingDeg).toBeCloseTo(14.0019, 3);
+    expect(angles.elevationDeg).toBeCloseTo(44.136, 3);
   });
 
-  it("is the first accepted reading's alpha, not any later one", () => {
-    expect(anchorAlphaDeg([gyro(10, 45), gyro(99, 45)])).toBe(10);
+  it("treats an upright landscape phone as camera-level, not straight-down", () => {
+    const angles = viewAnglesFromGyro(gyro(0, 0, -90));
+
+    expect(angles.elevationDeg).toBeCloseTo(0, 6);
+    expect(angles.headingDeg).toBeCloseTo(270, 6);
+  });
+});
+
+describe("anchorHeadingDeg", () => {
+  it("is null with no accepted readings", () => {
+    expect(anchorHeadingDeg([])).toBeNull();
+  });
+
+  it("uses the first accepted reading's full roll-aware heading", () => {
+    expect(anchorHeadingDeg([gyro(0, 45, 10), gyro(99, 45)])).toBeCloseTo(14.0019, 3);
   });
 });
 
@@ -165,6 +183,18 @@ describe("computeArrowGuidance", () => {
     expect(result.onTarget).toBe(false);
     if (!result.onTarget) {
       expect(result.azimuthDeltaDeg).toBeCloseTo(-20);
+    }
+  });
+
+  it("uses roll-aware heading/elevation in arrow guidance", () => {
+    const rolled = gyro(0, 45, 10);
+    const rollTarget: OrbitSlot = { azimuthDeg: 0, elevationDeg: 45 };
+    const result = computeArrowGuidance(rolled, 0, rollTarget, 1);
+
+    expect(result.onTarget).toBe(false);
+    if (!result.onTarget) {
+      expect(result.azimuthDeltaDeg).toBeCloseTo(-14.0019, 3);
+      expect(result.elevationDeltaDeg).toBeCloseTo(0.864, 3);
     }
   });
 

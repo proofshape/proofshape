@@ -3,6 +3,7 @@
 // server round trip"). R-14 already returns these three frozen codes when R-02/R-04 catch a
 // problem server-side, after upload; nothing on the client has computed them until now.
 
+import { angularDistanceDeg } from "./orbit.js";
 import type { ErrorCode, Gyro } from "./types.js";
 
 // Not the DOM `ImageData` class: constructing one needs a real browser or jsdom/happy-dom, which
@@ -119,11 +120,11 @@ function meanAbsoluteGrayscaleDiff(a: FramePixels, b: FramePixels): number {
 
 // Per-axis delta rather than a combined Euclidean distance: alpha/beta/gamma are different
 // physical rotation axes, and combining them into one number via naive Euclidean distance would
-// need a real rotation-geometry justification this story doesn't need. The max of the three
-// per-axis deltas is a simple, defensible "how far did any single axis move" measure.
+// need a real rotation-geometry justification this story doesn't need. Alpha is a heading in
+// [0, 360), so its per-axis delta must wrap at 360; beta/gamma do not have that circular range.
 function maxGyroDeltaDeg(a: Gyro, b: Gyro): number {
   return Math.max(
-    Math.abs(a.alpha - b.alpha),
+    angularDistanceDeg(a.alpha, b.alpha),
     Math.abs(a.beta - b.beta),
     Math.abs(a.gamma - b.gamma),
   );
