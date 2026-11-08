@@ -1911,3 +1911,89 @@ on #251's shifted-hole seed, the best pose went from 11 mm off to 0.05 mm.
 **Close-out:** owner reported 1 h actual so far against 3 h estimated, with review rounds to be
 added. I-05 and its index row are Done on the close-out head before approval, per D-038. All
 synthetic; no real-capture registration has been run yet.
+
+## 2026-11-07 — A-12 LaS-Comp runner, CUDA setup and the T4 measurement (PR #259)
+
+**Who:** @TabeenRaoof.
+
+**What changed:**
+- `scripts/lascomp_runner.py` is the real model behind A-04's completion contract. It runs in
+  LaS-Comp's own Python 3.10 environment, checks the pins before importing torch, loads the
+  pipeline once and samples under the contract's budget rule.
+- `scripts/setup_completion_env.sh` builds that environment on a CUDA host at D-057's pins.
+- A-04's `budget_s` and `overrun_allowance_s` are now measured values, and nothing is listed as
+  provisional any more.
+
+**The measurement** (Colab T4, one session; the method was fixed in the story before any run):
+- s-04 took 312.0–316.4 s a sample and s-02 322.1–328.0 s. About 95% of that is the
+  sparse-structure stage. Loading took 63.3–70.0 s from process start.
+- Every observed point lay within 1 mm of its completion in 99.5–100% of cases.
+- Seed-to-seed spread on the unseen surface was 0.77–2.48 mm. Running the same seed twice gave a
+  noise floor of 0.18 mm.
+- `budget_s` is now 2850 and `overrun_allowance_s` 90, against the provisional 2460 and 360. K
+  stays 8.
+- Blocking launches off gave no speed-up (314.2 s), so it isn't adopted.
+- 50 sparse-structure steps halved the time but collapsed the unseen-surface spread from a median
+  of 1.58 mm to 0.40 mm, so it isn't adopted either. Fewer steps don't keep the spread that A-05
+  needs.
+
+**Found on the way:**
+- Two setup bugs, both fixed before anything was measured: an opencv pin that can't coexist with
+  numpy 1.26.4, and LaS-Comp's committed bytecode caches. A first Colab attempt lost all four runs
+  to the second bug, 0.2 s after each launch.
+- DINOv2's hub code was unpinned during the run. It is now pinned at the commit the run used
+  (`7764ea0f`, main since 2026-06-03), and every run checks it.
+- D-058's ~49 min wait and the image environment wait for the first story that configures a
+  runner for suppliers. The index records them as waiting on a decision.
+
+**Close-out:** owner reported 5.5 h actual against 5 h estimated. A-12 and its index row are Done on
+the final review head. The raw results hold golden photos, so they stay outside the repository.
+
+## 2026-11-07 — s-04 from 30 vs 15 photos, a macOS reconstruction hang (#261, R-31), open issues checked
+
+**Who:** @TabeenRaoof. A follow-up to A-12, recorded as P-29 (4 h actual, the owner's figure).
+
+**Measurement: does the photo count change accuracy?** Golden s-04 was reconstructed on the M2 Max
+three ways: from all 30 photos, and from two 15-photo subsets (every other photo, starting from the
+first and from the second). Each was compared with the s-04 CAD using `recon/cad_size_check.py`, as
+a ratio to CAD:
+
+| Photos | Board scale | Height | 60 / 65 / 26 mm edges | Fit residual | Observed |
+|---|---|---|---|---|---|
+| 30 | 0.999 | 0.990 | 0.989 / 0.886 / 1.047 | 1.52 mm | 0.169 |
+| 15 (first set) | 0.999 | 1.001 | 0.926 / 0.942 / 1.023 | 1.50 mm | 0.124 |
+| 15 (second set) | 0.999 | 0.997 | 0.978 / 0.963 / 1.003 | 0.68 mm | 0.082 |
+
+- Scale and height are right whatever the count.
+- The edge errors change more with *which* 15 photos are used than between 15 and 30.
+- More photos buy coverage, roughly twice the observed surface. They don't buy shape accuracy.
+- The narrow walls and uneven edges are R-22's second finding (per-pixel depth). They're now
+  written up as the R-32 spike.
+- **Shape, not just size.** Drawn to scale against s-04's observed shell and measured, A-12's
+  completions show three kinds of shape error:
+  - **Invented by the model.** A raised patch, 86–180 mm² and 1.6–3.2 mm above the top face,
+    appears in 5 of 6 samples. The same seed gives the same patch (172 vs 166 mm²), so it comes
+    from the seed, not the photos. The padlock's shackle is the same kind of guess. Both are
+    Inferred surface, which never passes or fails a part, and flagging them is A-05's job.
+  - **Copied from bad input.** Every sample has a base flange 8–9 mm outside the walls
+    (397–870 mm²), because the observed shell itself flares at the base. That goes to R-30
+    and #231.
+  - **In the observed surface itself.** The long 60 mm wall leans about 3 mm over its height,
+    and its lower half is about 5 mm thick. The short wall stands straight. This surface can
+    pass or fail a part, so R-32 now measures lean and thickness too.
+- Caveats: one part, one capture, nominal CAD rather than calipers. This is a quick test, not an
+  accuracy result.
+
+**Found on the way: #261.** Every reconstruction on the Mac hangs forever. Open3D and torch each
+ship their own `libomp`, and `recon/provenance.py` has imported Open3D at module level since
+`4237642`, R-27's PR #250. `OMP_NUM_THREADS=1` is the verified workaround, and all three runs above
+used it. Filed as #261 and written up as R-31 (Ready, 2 h).
+
+**Open issues checked against the stories:**
+- P-27's ten follow-up stories cover all 24 of its issues, and 18 of those are closed.
+- #183 and #184 were fixed by R-27 and #108 by C-09, but none had been closed. All three are now
+  closed, each with a comment linking the code that fixed it.
+- #189–#191 stay with C-20 (@mbj1994). #181 and #200 still wait on a team decision.
+- #231 is still present: on today's s-04 run, 70% of the served model's faces are walls and 56% of
+  its Observed faces are board skin. R-30 covers the skin. The walls have no story, so the
+  question went to @dalwalyk on #258.
