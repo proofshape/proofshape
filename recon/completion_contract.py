@@ -21,7 +21,8 @@ repository root on `sys.path` (`pip install -e .` refuses Python 3.10 because of
 
 The result file carries no paths on purpose. The service derives every file name from the sample
 index, so nothing a runner writes can make the service read or overwrite a file outside
-`runner/`.
+`runner/`. A runner may keep its own files in `runner/` too (A-12's `lascomp_metrics.json` and
+conditioning image); the service never reads anything there but `result.json` and the meshes.
 """
 
 from __future__ import annotations
@@ -50,6 +51,11 @@ MODEL_NAME = "LaS-Comp"
 MODEL_COMMIT = "0da46f2569b484986d3737d97213428db962161f"
 WEIGHTS_ID = "microsoft/TRELLIS-image-large"
 WEIGHTS_REVISION = "25e0d31ffbebe4b5a97464dd851910efc3002d96"
+
+# The GPU A-12 measured A-04's budget_s and overrun_allowance_s on (recon/completion.py). A runner
+# on any other GPU says so in its log, because the budget may fit fewer than K samples there. The
+# service only ever learns that the budget ran short; it can't tell why (review on #259).
+BUDGET_MEASURED_GPU = "Tesla T4"
 
 # The board frame has +z pointing *into* the table (recon/board_pose.py), and LaS-Comp expects z
 # up. A 180-degree rotation about x, diag(1, -1, -1), turns one into the other. It has determinant

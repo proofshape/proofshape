@@ -22,3 +22,10 @@ packages = ["recon", "inspection"]
 
 [tool.setuptools.package-dir]
 inspection = "inspect/inspection"
+
+# A-12: these two files run under LaS-Comp's Python 3.10 (D-057), not the service's 3.11. Ruff infers
+# 3.11 from requires-python above, and its pyupgrade rules would then *push* 3.11-only APIs (e.g.
+# `datetime.UTC`) into them. Pinning their target makes ruff check them as the 3.10 code they are.
+[tool.ruff.per-file-target-version]
+"recon/completion_contract.py" = "py310"
+"scripts/lascomp_runner.py" = "py310"

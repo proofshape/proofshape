@@ -312,10 +312,24 @@ Full detail in each story file.
 | [A-01](A/A-01.md) | VLM frame supervision: sample frames, call a pinned Gemini Flash-Lite model, record structured results | 7 h | nothing | Done | @mbj1994 |
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Done | @TabeenRaoof |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Done | @TabeenRaoof |
-| [A-12](A/A-12.md) | LaS-Comp runner and CUDA setup: the real model behind A-04's contract | 5 h | A-04, A-10 | Claimed | @TabeenRaoof |
+| [A-12](A/A-12.md) | LaS-Comp runner and CUDA setup: the real model behind A-04's contract | 5 h | A-04, A-10 | Done | @TabeenRaoof |
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Claimed | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
+
+**Waiting on a decision, no story yet:**
+- **Completion on a host that serves suppliers.** A-12's runner works on a CUDA host, but two
+  things stand between it and a supplier's session. Both wait for the first story that configures
+  a runner there:
+  - **D-058's known cost.** The stage runs inline, so the served model waits for completion's
+    budget, 2850 s plus a 90 s allowance as A-12 measured them on a T4, while capture polls for
+    only 10 min. Shortening the budget or moving the stage after the result is saved changes
+    D-058. It isn't a tuning.
+  - **The runner's environment in the image.** It needs a second Python and torch 2.4 beside the
+    image's torch 2.8, which `tests/test_container.py` forbids today.
+
+  A-05 is the first story that needs real per-session samples. Whoever writes it up settles this
+  first, or makes A-05 depend on the story that does.
 
 ---
 
@@ -475,7 +489,7 @@ I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · 
 G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)
 
 **Generative AI**
-A-02 VLM verdict veto · A-03 prose-to-spec parser · A-05 disagreement map · A-07 agent loop · A-09 report narrative
+A-02 VLM verdict veto · A-03 prose-to-spec parser · A-05 disagreement map (needs *completion on a host that serves suppliers*, above) · A-07 agent loop · A-09 report narrative
 
 **Cross-cutting**
 X-01 integration point I1 · X-02 I2 · X-03 I3 · X-04 I4 · X-05 recorded backup demo
