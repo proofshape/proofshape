@@ -111,7 +111,9 @@ def test_coverage_matches_client_roll_aware_heading_and_elevation():
     anchor = _gyro(0.0, 90.0, 0.0)
     rolled = _gyro(0.0, 45.0, 10.0)
 
-    state = agent_tools.compute_coverage([anchor, rolled], orbit=orbit, tolerance_deg=0.5)
+    state = agent_tools.compute_coverage(
+        [anchor, rolled], orbit=orbit, tolerance_deg=0.5
+    )
 
     assert state["covered"] == [True]
     assert state["next_target_index"] is None

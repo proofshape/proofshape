@@ -113,7 +113,11 @@ def _view_angles_from_gyro(gyro: dict[str, float]) -> _ViewAngles:
 
 
 def _anchor_heading_deg(accepted_gyros: list[dict[str, float]]) -> float | None:
-    return _view_angles_from_gyro(accepted_gyros[0]).heading_deg if accepted_gyros else None
+    return (
+        _view_angles_from_gyro(accepted_gyros[0]).heading_deg
+        if accepted_gyros
+        else None
+    )
 
 
 def _nearest_eligible_slot_index(
