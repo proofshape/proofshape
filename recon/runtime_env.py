@@ -31,3 +31,9 @@ def configure_macos_openmp(
     target = os.environ if environ is None else environ
     target["OMP_NUM_THREADS"] = MACOS_OPENMP_THREADS
     return True
+
+
+# Importing this module is the service startup hook. `recon.__init__` must stay import-free for
+# A-12/LaS-Comp's isolated Python 3.10 environment, so `recon.service` imports this module before
+# anything that can reach Open3D or torch. Linux is a no-op.
+configure_macos_openmp()

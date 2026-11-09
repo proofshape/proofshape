@@ -19,6 +19,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
+# R-31: import the process guard before agent_tools -> provenance -> Open3D. The module applies
+# the macOS-only OMP_NUM_THREADS=1 guard as an import side effect; Linux is unchanged.
+from recon import runtime_env as _runtime_env  # noqa: F401
 from recon import agent_tools
 from recon.vlm_check import VlmSupervisor
 

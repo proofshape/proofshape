@@ -33,12 +33,12 @@ def test_non_macos_guard_leaves_the_environment_unchanged():
     assert env == {"OMP_NUM_THREADS": "8", "KEEP": "yes"}
 
 
-def test_recon_package_applies_guard_before_submodules_import():
+def test_runtime_env_applies_guard_when_service_startup_imports_it():
     code = (
         "import os, sys; "
         "sys.platform = 'darwin'; "
         "os.environ['OMP_NUM_THREADS'] = '8'; "
-        "import recon; "
+        "import recon.runtime_env; "
         "assert os.environ['OMP_NUM_THREADS'] == '1'"
     )
     result = subprocess.run(
@@ -51,6 +51,14 @@ def test_recon_package_applies_guard_before_submodules_import():
     )
     assert result.returncode == 0, result.stderr
 
+
+def test_service_imports_runtime_guard_before_agent_tools():
+    service_source = (ROOT / "recon" / "service.py").read_text(encoding="utf-8")
+    guard_import = "from recon import runtime_env as _runtime_env"
+    agent_import = "from recon import agent_tools"
+    assert guard_import in service_source
+    assert agent_import in service_source
+    assert service_source.index(guard_import) < service_source.index(agent_import)
 
 @pytest.mark.skipif(
     sys.platform != "darwin",
