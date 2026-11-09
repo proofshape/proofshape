@@ -1,0 +1,86 @@
+solid g02_06_rect_70x45x40mm
+  facet normal 0.000000e+00 0.000000e+00 -1.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 70.000000 45.000000 0.000000
+      vertex 70.000000 0.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 -1.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 0.000000 45.000000 0.000000
+      vertex 70.000000 45.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 1.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 40.000000
+      vertex 70.000000 0.000000 40.000000
+      vertex 70.000000 45.000000 40.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 1.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 40.000000
+      vertex 70.000000 45.000000 40.000000
+      vertex 0.000000 45.000000 40.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 -1.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 70.000000 0.000000 0.000000
+      vertex 70.000000 0.000000 40.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 -1.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 70.000000 0.000000 40.000000
+      vertex 0.000000 0.000000 40.000000
+    endloop
+  endfacet
+  facet normal 1.000000e+00 -0.000000e+00 0.000000e+00
+    outer loop
+      vertex 70.000000 0.000000 0.000000
+      vertex 70.000000 45.000000 0.000000
+      vertex 70.000000 45.000000 40.000000
+    endloop
+  endfacet
+  facet normal 1.000000e+00 -0.000000e+00 0.000000e+00
+    outer loop
+      vertex 70.000000 0.000000 0.000000
+      vertex 70.000000 45.000000 40.000000
+      vertex 70.000000 0.000000 40.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 1.000000e+00 0.000000e+00
+    outer loop
+      vertex 70.000000 45.000000 0.000000
+      vertex 0.000000 45.000000 0.000000
+      vertex 0.000000 45.000000 40.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 1.000000e+00 0.000000e+00
+    outer loop
+      vertex 70.000000 45.000000 0.000000
+      vertex 0.000000 45.000000 40.000000
+      vertex 70.000000 45.000000 40.000000
+    endloop
+  endfacet
+  facet normal -1.000000e+00 -0.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 45.000000 0.000000
+      vertex 0.000000 0.000000 0.000000
+      vertex 0.000000 0.000000 40.000000
+    endloop
+  endfacet
+  facet normal -1.000000e+00 -0.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 45.000000 0.000000
+      vertex 0.000000 0.000000 40.000000
+      vertex 0.000000 45.000000 40.000000
+    endloop
+  endfacet
+endsolid g02_06_rect_70x45x40mm
