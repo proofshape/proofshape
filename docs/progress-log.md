@@ -1997,3 +1997,42 @@ used it. Filed as #261 and written up as R-31 (Ready, 2 h).
 - #231 is still present: on today's s-04 run, 70% of the served model's faces are walls and 56% of
   its Observed faces are board skin. R-30 covers the skin. The walls have no story, so the
   question went to @dalwalyk on #258.
+
+## 2026-11-09 — R-30 per-frame board re-anchoring closed (D-060's fix, PR #270)
+
+**Who:** @dalwalyk. Claimed in #258.
+
+**What changed:** `fit_board_plane_robust` was pulled out of `measure_board_surface` (R-21) so
+the identical robust fit runs per frame, not a second, possibly-drifted copy of it.
+`reanchor_frames_to_board` (`recon/tsdf_fusion.py`) fits each frame's own board plane from its
+own candidate points, rotates its normal onto the global plane's normal, then shifts purely in z
+at that frame's own candidate centroid -- the full rotation-plus-translation correction, applied
+consistently to both `board_frame_points` and `board_extrinsic`.
+
+**Golden rerun (@TabeenRaoof):** every frame lands within 0.23 mm of the shared plane (was up to
+4.4 mm), board sigma tightens 2-4x on all five objects, every object's height cut drops to the
+2.0 mm floor as D-060's prototype predicted, and the first-density-gap rule agrees with the
+threshold cut once the ghost layer is gone (criterion 4 holds).
+
+**Two real issues review found, both fixed before merge, neither guessed at:**
+- `provenance_run` independently rebuilt every frame's pose from `poses.npz` and the one global
+  alignment, blind to this story's per-frame correction -- the corrected mesh was being checked
+  against the drifted cameras it was corrected away from. Fixed: `fuse_run` now persists its
+  corrected extrinsic to `corrected_extrinsic.npz`; `provenance_run`/`service.py`/the CLI prefer
+  it when given.
+- Re-anchoring left 6 edges shared by 3 faces on s-03 (0 on `main`), tripping the same
+  non-manifold refusal #247 already describes for the Poisson path. @TabeenRaoof measured it on
+  the real mesh first (17 of 43,043 faces, one part/board seam) rather than leaving the scoping
+  call blind, and ruled out Open3D's `remove_non_manifold_edges()` (it deleted 14,751 faces on
+  the same mesh). `mesh_cleanup.drop_non_manifold_faces` drops just those 17 faces before the
+  component filter; `fill_small_holes` closes the gap normally. s-03 completes again.
+
+**Also addresses #231's board-skin half** (a frame straddling the segmentation cut surviving
+into fusion as skin on the part) -- the walls half stays with R-33.
+
+**Close-out:** owner reported 6 h actual against 5 h estimated. `offset_shift_mm`'s diagnostic
+still conflates the real per-frame offset with a rotate-about-origin artifact (confirmed not a
+correctness issue); left for a later story. s-02's board-band coverage rose rather than fell
+because its cut moved to the fixed 2.0 mm floor while its own post-correction sigma (0.58 mm) is
+still the highest of the five -- a sigma-relative cut is a candidate for R-33 or later, not this
+story.
