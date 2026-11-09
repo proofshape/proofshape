@@ -254,7 +254,7 @@ the session orientation-ambiguous (D-061, which raised D-008's 10%). Open3D 0.18
 pinned) has all of it.
 
 **No tolerance until G-04.** Nothing here decides whether a deviation passes. Every threshold (σ,
-patch size, voxel size, Tukey `k`, the 10%) is a declared parameter with a stated default, and
+patch size, voxel size, Tukey `k`, the 20%) is a declared parameter with a stated default, and
 the verdict (I-06..I-10) waits for σ_floor and the tolerance schema (D-032). Issue #157 already
 binds I-07 to `max(σ, σ_floor)`.
 
