@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from inspection.cad import load_mesh
 
+from recon.board_pose import MIN_CORNERS_FOR_POSE, make_board
 from recon.cad_size_check import prism_from_cad
 from recon.part_segmentation import DEFAULT_FOOTPRINT_MM
 
@@ -29,14 +30,36 @@ def _footprint_area(footprint_xy: np.ndarray) -> float:
     return float(abs(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)) / 2.0)
 
 
-def _signed_volume(vertices: np.ndarray, faces: np.ndarray) -> float:
-    triangles = vertices[faces]
+def _signed_volume_about_centroid(vertices: np.ndarray, faces: np.ndarray) -> float:
+    # About the mesh's own centroid, not the origin (review on #269): every specimen's base lies
+    # exactly in z=0, a plane *through* the origin, so an origin-referenced divergence-theorem
+    # sum gives every base triangle a zero contribution regardless of its winding -- any flipped
+    # base facet is invisible to that version. A prism's centroid sits at its interior (z is
+    # about height/2, never on the base or top plane), so no facet's contribution degenerates to
+    # zero regardless of which triangle got the vertices swapped.
+    centroid = vertices.mean(axis=0)
+    triangles = vertices[faces] - centroid
     return float(
         np.einsum(
             "ij,ij->i", triangles[:, 0], np.cross(triangles[:, 1], triangles[:, 2])
         ).sum()
         / 6.0
     )
+
+
+def _is_closed_and_consistently_wound(faces: np.ndarray) -> bool:
+    # Topological check, independent of geometry or reference point (review on #269): a closed,
+    # consistently outward-wound manifold mesh has every directed edge (a->b) from one triangle
+    # matched by its reverse (b->a) from exactly one other triangle, and no directed edge
+    # repeated in the same direction (which would mean two triangles facing the same way across
+    # the same edge -- a flip or a hole, not a flip's precise opposite everywhere else).
+    directed_edges: dict[tuple[int, int], int] = {}
+    for a, b, c in faces:
+        for u, v in ((a, b), (b, c), (c, a)):
+            directed_edges[(u, v)] = directed_edges.get((u, v), 0) + 1
+    if any(count != 1 for count in directed_edges.values()):
+        return False
+    return all((v, u) in directed_edges for (u, v) in directed_edges)
 
 
 @pytest.mark.parametrize(
@@ -65,30 +88,45 @@ def test_specimen_is_a_valid_convex_prism(
 def test_specimen_mesh_is_closed_and_outward_wound(
     filename, expected_vertex_count, expected_height_mm, expected_area_mm2
 ):
-    # Catches a winding/vertex mistake in the hand-written STL that loading alone wouldn't --
-    # a flipped triangle still loads and still measures the right footprint/height, but the
-    # mesh's own signed volume (divergence theorem) only comes out positive and correct if
-    # every facet's outward normal is actually outward. Same check as G-01's calibration cube
-    # (test_cad_loading.py).
+    # Catches a winding/vertex mistake in the hand-written STL that loading alone wouldn't -- a
+    # flipped triangle still loads and still measures the right footprint/height. Two
+    # independent checks (review on #269: a centroid-only volume check has its own blind spots
+    # on some geometries, so the topological edge check is the one actually relied on; the
+    # volume check also pins the sign and magnitude, which the edge check alone doesn't).
     vertices, faces, _units = load_mesh(FIXTURES / filename)
 
-    signed_volume = _signed_volume(vertices, faces)
-
+    assert _is_closed_and_consistently_wound(faces)
+    signed_volume = _signed_volume_about_centroid(vertices, faces)
     assert signed_volume == pytest.approx(
         expected_area_mm2 * expected_height_mm, rel=1e-3
     )
 
 
 @pytest.mark.parametrize("filename", [spec[0] for spec in SPECIMENS])
-def test_specimen_footprint_fits_the_board_with_margin(filename):
+def test_specimen_hides_few_enough_board_corners_for_r23(filename):
+    # The real safety argument (review on #269): not "smaller than s04's bounding box" (g02_05
+    # and g02_06 aren't, on at least one axis), but how many of the board's own 35 ChArUco
+    # corners a centred specimen would hide from a straight-overhead frame, against what R-23
+    # actually needs -- the same corners R-23 itself reads via make_board().getChessboardCorners().
+    all_corners_mm = np.asarray(make_board().getChessboardCorners(), dtype=np.float64)[
+        :, :2
+    ]
+    footprint_width_mm, footprint_height_mm = DEFAULT_FOOTPRINT_MM
+    board_center_mm = np.array([footprint_width_mm / 2.0, footprint_height_mm / 2.0])
+
     vertices, _faces, _units = load_mesh(FIXTURES / filename)
     prism = prism_from_cad(vertices)
+    half_bbox_mm = (
+        prism.footprint_xy.max(axis=0) - prism.footprint_xy.min(axis=0)
+    ) / 2.0
+    centered_min = board_center_mm - half_bbox_mm
+    centered_max = board_center_mm + half_bbox_mm
 
-    bbox_mm = prism.footprint_xy.max(axis=0) - prism.footprint_xy.min(axis=0)
-    footprint_width_mm, footprint_height_mm = DEFAULT_FOOTPRINT_MM
+    hidden = np.all(
+        (all_corners_mm >= centered_min) & (all_corners_mm <= centered_max), axis=1
+    )
+    visible_count = len(all_corners_mm) - int(np.count_nonzero(hidden))
 
-    # Not just "fits" -- leaves real margin on every side for R-23's board-corner anchor, the
-    # same margin s04's own (largest, already-working) bounding box leaves.
-    margin_mm = 40.0
-    assert bbox_mm[0] <= footprint_width_mm - margin_mm
-    assert bbox_mm[1] <= footprint_height_mm - margin_mm
+    # Real margin above the bare per-frame minimum, not just clearing it -- a centred placement
+    # is the worst case this checks; off-centre or non-overhead frames hide fewer corners still.
+    assert visible_count >= MIN_CORNERS_FOR_POSE * 2
