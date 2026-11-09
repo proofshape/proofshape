@@ -1908,9 +1908,9 @@ measuring yaw relative to the truth, `ransac:0` failures recorded rather than fa
 mutations that I-03's scale tests missed. Refining every candidate also fixes a wrong I-03 pick:
 on #251's shifted-hole seed, the best pose went from 11 mm off to 0.05 mm.
 
-**Close-out:** owner reported 1 h actual so far against 3 h estimated, with review rounds to be
-added. I-05 and its index row are Done on the close-out head before approval, per D-038. All
-synthetic; no real-capture registration has been run yet.
+**Close-out:** 2.5 h actual against 3 h estimated, the owner's measured figure (D-033), updated
+from the 1 h recorded before review. I-05 and its index row are Done on the close-out head before
+approval, per D-038. All synthetic; no real-capture registration has been run yet.
 
 ## 2026-11-07 — A-12 LaS-Comp runner, CUDA setup and the T4 measurement (PR #259)
 
