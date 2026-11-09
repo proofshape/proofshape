@@ -1,7 +1,8 @@
-"""I-03/I-04 registration tests on the real s-04/s-05 reference CAD and I-01 synthetic output."""
+"""I-03/I-04/I-05 registration tests on the real s-04/s-05 reference CAD and I-01 synthetic output."""
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import replace
 from pathlib import Path
@@ -40,6 +41,12 @@ def _rotation_error_deg(actual: np.ndarray, expected: np.ndarray) -> float:
     relative = actual @ expected.T
     cosine = np.clip((np.trace(relative) - 1.0) / 2.0, -1.0, 1.0)
     return math.degrees(math.acos(float(cosine)))
+
+
+def _yaw_relative_deg(actual: np.ndarray, expected: np.ndarray) -> float:
+    """Yaw of `actual` about board z relative to `expected`, in [0, 360)."""
+    relative = actual[:3, :3] @ expected[:3, :3].T
+    return math.degrees(math.atan2(relative[1, 0], relative[0, 0])) % 360.0
 
 
 def _symmetric_vertex_rmse(
@@ -217,15 +224,28 @@ def test_s04_free_scale_residual_stays_accurate_across_hidden_patch_seeds(
     assert best.free_scale_residual == pytest.approx(expected, abs=0.015)
 
 
-def test_free_scale_residual_stays_accurate_when_board_contact_face_is_unobserved():
+@pytest.mark.parametrize(
+    ("seed", "patch_fraction"),
+    [
+        (22, 0.0),
+        # With I-01's patch hidden too. #233's review found two mutations no other test caught:
+        # dropping the rigid pre-pass, and shrinking the dense CAD target to 700 points. These
+        # two seeds catch both (I-05 closed the note).
+        (3, 0.2),
+        (4, 0.2),
+    ],
+)
+def test_free_scale_residual_stays_accurate_when_board_contact_face_is_unobserved(
+    seed: int, patch_fraction: float
+):
     """A real camera cannot see the board-contact face; hiding it must not bias the scale fit."""
     vertices, faces, _units = cad.load_mesh(S04)
     sample = synthetic.generate_synthetic_sample(
         vertices,
         faces,
-        seed=22,
+        seed=seed,
         sigma_mm=0.3,
-        patch_fraction=0.0,
+        patch_fraction=patch_fraction,
     )
     expected_transform = _expected_transform(sample)
     model_vertices = np.asarray(sample.vertices_mm, dtype=np.float64)
@@ -238,7 +258,7 @@ def test_free_scale_residual_stays_accurate_when_board_contact_face_is_unobserve
     labels[contact] = provenance.LABEL_UNOBSERVED
     model = _copy_sample(sample, labels=labels)
 
-    best = _register(model, (vertices, faces), seed=222)[0]
+    best = _register(model, (vertices, faces), seed=200 + seed)[0]
 
     assert best.free_scale_residual is not None
     assert best.free_scale_residual == pytest.approx(0.0, abs=0.015)
@@ -473,8 +493,11 @@ def test_s05_global_register_preserves_multiple_orientation_basins():
     )
 
     candidates = _register(sample, (vertices, faces), seed=131)
+    # Yaw relative to the sidecar's true pose, not absolute board yaw (#233's review): seed 31's
+    # true yaw is 325.1 degrees, so absolute-yaw basins counted the wrong poses.
+    expected = _expected_transform(sample)
     yaw_degrees = [
-        math.degrees(registration._pose_yaw_rad(candidate)) % 360.0
+        _yaw_relative_deg(candidate.transformation, expected)
         for candidate in candidates
     ]
     basins = {
@@ -874,3 +897,326 @@ def test_refine_rejects_invalid_parameters(bad_keyword: dict):
 
     with pytest.raises(ValueError):
         registration.refine(candidate, sample, (vertices, faces), **bad_keyword)
+
+
+# I-05 · orientation ambiguity (D-008, D-061)
+
+
+def _solid_plate(
+    *, width_mm: float = 60.0, depth_mm: float = 40.0, height_mm: float = 8.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """`_plate_with_hole` without its hole: a part whose one symmetry-breaking feature is
+    missing, which is D-008's case."""
+    corners = [(0.0, 0.0), (width_mm, 0.0), (width_mm, depth_mm), (0.0, depth_mm)]
+    vertices = np.array(
+        [(x, y, 0.0) for x, y in corners] + [(x, y, height_mm) for x, y in corners]
+    )
+    faces = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7]]
+    for k in range(4):
+        n = (k + 1) % 4
+        faces += [[k, n, n + 4], [k, n + 4, k + 4]]
+    return vertices, np.array(faces, dtype=np.int64)
+
+
+def _check_ambiguity(sample, cad_mesh, *, seed: int, **kwargs):
+    candidates = _register(sample, cad_mesh, seed=100 + seed)
+    return registration.check_ambiguity(
+        candidates, sample, cad_mesh, seed=seed, **kwargs
+    )
+
+
+def _far_candidate() -> registration.CandidatePose:
+    transformation = np.eye(4)
+    transformation[0, 3] = 1000.0
+    return registration.CandidatePose(
+        transformation=transformation,
+        fitness=0.0,
+        inlier_rmse=math.inf,
+        source="far-away",
+        correspondence_count=0,
+    )
+
+
+def test_solid_plate_fixture_is_a_closed_solid():
+    vertices, faces = _solid_plate()
+    mesh = registration._triangle_mesh(vertices, faces)
+    assert mesh.is_watertight()
+    assert mesh.get_volume() == pytest.approx(60.0 * 40.0 * 8.0)
+
+
+@pytest.mark.parametrize("patch_fraction", [0.0, 0.2])
+def test_check_ambiguity_flags_four_fold_s05(patch_fraction: float):
+    # The story's first case: s-05 (30 x 30 x 60 mm, four-fold about z) is ambiguous, with and
+    # without a hidden patch. The runner-up is a symmetric alternative, not a 5-degree neighbour.
+    vertices, faces, _units = cad.load_mesh(S05)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 1, sigma_mm=0.3, patch_fraction=patch_fraction
+    )
+
+    result = _check_ambiguity(sample, (vertices, faces), seed=1)
+
+    assert result.orientation_ambiguous
+    assert result.reason_codes == (registration.REASON_ORIENTATION_AMBIGUOUS,)
+    assert result.runner_up is not None
+    assert (
+        registration._rotation_delta_deg(
+            result.best.transformation, result.runner_up.transformation
+        )
+        >= 80.0
+    )
+    assert result.rmse_ratio <= 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
+
+
+@pytest.mark.parametrize("patch_fraction", [0.0, 0.2])
+def test_check_ambiguity_clears_scalene_s04(patch_fraction: float):
+    # The story's second case: s-04's scalene triangle has no symmetric alternative. Its
+    # runner-up is about 4x worse, and the best is the true pose.
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 0, sigma_mm=0.3, patch_fraction=patch_fraction
+    )
+    expected = _expected_transform(sample)
+
+    result = _check_ambiguity(sample, (vertices, faces), seed=0)
+
+    assert not result.orientation_ambiguous
+    assert result.reason_codes == ()
+    assert result.rmse_ratio > 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
+    assert _symmetric_vertex_rmse(vertices, result.best.transformation, expected) <= 0.3
+
+
+def test_check_ambiguity_keeps_symmetric_poses_separate():
+    # Poses equivalent under the CAD's symmetry are kept separate, never merged: for the printed
+    # part they are different poses, and the difference is where a defect would be. Merging them
+    # would make this check a no-op on exactly the parts it exists for.
+    vertices, faces, _units = cad.load_mesh(S05)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 2, sigma_mm=0.3, patch_fraction=0.2
+    )
+    expected = _expected_transform(sample)
+
+    result = _check_ambiguity(sample, (vertices, faces), seed=2)
+
+    basins = {
+        round(_yaw_relative_deg(pose.transformation, expected) / 90.0) % 4
+        for pose in result.refined
+        if pose.fitness >= 0.99
+    }
+    assert len(basins) >= 3
+
+
+def test_check_ambiguity_merges_candidates_whose_transforms_agree():
+    # Only poses whose transforms agree are merged: the same candidate twice, and one nudged by
+    # half a degree, refine to one pose, so there is no runner-up to be ambiguous with.
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 0, sigma_mm=0.3, patch_fraction=0.2
+    )
+    best = _register(sample, (vertices, faces), seed=100)[0]
+    half_degree = math.radians(0.5)
+    nudge = np.eye(4)
+    nudge[:2, :2] = [
+        [math.cos(half_degree), -math.sin(half_degree)],
+        [math.sin(half_degree), math.cos(half_degree)],
+    ]
+    nudged = replace(best, transformation=best.transformation @ nudge, source="nudged")
+
+    result = registration.check_ambiguity(
+        [best, best, nudged], sample, (vertices, faces), seed=0
+    )
+
+    assert len(result.refined) == 1
+    assert result.runner_up is None
+    assert result.rmse_ratio is None
+    assert not result.orientation_ambiguous
+
+
+@pytest.mark.parametrize("seed", [0, 3, 6, 7])
+def test_check_ambiguity_flags_a_missing_symmetry_breaker_under_occlusion(seed: int):
+    # D-008's own case: the one feature that breaks the CAD's 180-degree symmetry (the plate's
+    # hole) is missing from the part, so the mirror pose fits as well as the true one. Under
+    # I-01's 20% hidden patch, seeds 0, 3 and 6 read runner-up/best ratios of 1.10, 1.11 and 1.15,
+    # which D-008's 10% missed (9/12 seeds caught at 10%, 12/12 at 20%). D-061 raised the default
+    # to 20% for this case, so reverting it fails here. Seed 7 pins the ranking: the runner-up by
+    # fitness has the lower RMSE (ratio 0.82), and ranking by RMSE alone would swap the two and
+    # read 1.22, missing the ambiguity.
+    cad_mesh = _plate_with_hole(20.0)
+    part_vertices, part_faces = _solid_plate()
+    sample = synthetic.generate_synthetic_sample(
+        part_vertices, part_faces, seed, sigma_mm=0.3, patch_fraction=0.2
+    )
+
+    result = _check_ambiguity(sample, cad_mesh, seed=seed)
+
+    assert result.orientation_ambiguous
+
+
+@pytest.mark.parametrize("seed", [0, 1])
+def test_check_ambiguity_flags_a_missing_symmetry_breaker_without_occlusion(seed: int):
+    # The same case with nothing hidden: the ratios stay at 0.98-1.04 over 12 seeds.
+    cad_mesh = _plate_with_hole(20.0)
+    part_vertices, part_faces = _solid_plate()
+    sample = synthetic.generate_synthetic_sample(
+        part_vertices, part_faces, seed, sigma_mm=0.3, patch_fraction=0.0
+    )
+
+    assert _check_ambiguity(sample, cad_mesh, seed=seed).orientation_ambiguous
+
+
+def test_check_ambiguity_recovers_from_an_i03_mirror_pick():
+    # #251's shifted-hole seed 0: I-03's best candidate is the plate's 180-degree mirror, which
+    # refine alone can't fix. Refining every candidate and ranking them again does, and the
+    # observed hole then makes the mirror clearly worse (ratio 1.29), so it isn't ambiguous.
+    cad_vertices, cad_faces = _plate_with_hole(20.0)
+    part_vertices, part_faces = _plate_with_hole(23.0)
+    sample = synthetic.generate_synthetic_sample(
+        part_vertices, part_faces, 0, sigma_mm=0.3, patch_fraction=0.2
+    )
+    expected = _expected_transform(sample)
+    candidates = _register(sample, (cad_vertices, cad_faces), seed=100)
+    assert (
+        _symmetric_vertex_rmse(cad_vertices, candidates[0].transformation, expected)
+        > 5.0
+    )
+
+    result = registration.check_ambiguity(
+        candidates, sample, (cad_vertices, cad_faces), seed=0
+    )
+
+    assert (
+        _symmetric_vertex_rmse(cad_vertices, result.best.transformation, expected)
+        <= 0.25
+    )
+    assert not result.orientation_ambiguous
+
+
+def test_check_ambiguity_clears_a_plate_whose_hole_is_in_place():
+    # The hole breaks the symmetry and is where the CAD puts it: the mirror is 1.7-2.3x worse.
+    cad_mesh = _plate_with_hole(20.0)
+    sample = synthetic.generate_synthetic_sample(
+        *cad_mesh, 1, sigma_mm=0.3, patch_fraction=0.2
+    )
+
+    result = _check_ambiguity(sample, cad_mesh, seed=1)
+
+    assert not result.orientation_ambiguous
+    assert result.reason_codes == ()
+
+
+def test_check_ambiguity_records_a_candidate_it_cannot_refine():
+    # I-03's ransac:0 is often an identity pose at fitness 0. A candidate that can't be refined
+    # is reported with its reason, never dropped silently, and the check still answers.
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 0, sigma_mm=0.3, patch_fraction=0.2
+    )
+    candidates = _register(sample, (vertices, faces), seed=100)
+
+    result = registration.check_ambiguity(
+        [*candidates, _far_candidate()], sample, (vertices, faces), seed=0
+    )
+
+    reasons = {source: reason for source, reason in result.failed}
+    assert "too far from the model" in reasons["far-away"]
+    assert not result.orientation_ambiguous
+
+
+def test_check_ambiguity_raises_when_no_candidate_can_be_refined():
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 0, sigma_mm=0.3, patch_fraction=0.2
+    )
+
+    with pytest.raises(ValueError, match="No candidate could be refined"):
+        registration.check_ambiguity([_far_candidate()], sample, (vertices, faces))
+
+
+def test_check_ambiguity_requires_model_provenance():
+    # A structural input problem raises once, up front, instead of reading as "every candidate
+    # failed to refine".
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 0, sigma_mm=0.3, patch_fraction=0.2
+    )
+    unlabelled = (np.asarray(sample.vertices_mm), np.asarray(sample.faces))
+
+    with pytest.raises(ValueError, match="^check_ambiguity needs model provenance"):
+        registration.check_ambiguity([_far_candidate()], unlabelled, (vertices, faces))
+
+
+@pytest.mark.parametrize(
+    "label", [provenance.LABEL_UNOBSERVED, provenance.LABEL_INFERRED]
+)
+def test_check_ambiguity_refuses_a_model_with_no_observed_face(label: str):
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 0, sigma_mm=0.3, patch_fraction=0.2
+    )
+    hidden = _copy_sample(
+        sample, labels=np.full(len(sample.vertices_mm), label, dtype=object)
+    )
+
+    with pytest.raises(
+        ValueError, match="^check_ambiguity needs at least one fully Observed"
+    ):
+        registration.check_ambiguity([_far_candidate()], hidden, (vertices, faces))
+
+
+def test_reason_code_is_the_contracts():
+    example = json.loads(
+        (
+            ROOT
+            / "contracts"
+            / "examples"
+            / "getVerdict.response-200-rescan-unobserved.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert example["orientation_ambiguous"] is True
+    assert registration.REASON_ORIENTATION_AMBIGUOUS in example["reason_codes"]
+
+
+@pytest.mark.parametrize("threshold", [-0.1, math.nan, math.inf])
+def test_check_ambiguity_rejects_an_invalid_threshold(threshold: float):
+    with pytest.raises(ValueError, match="ambiguity_threshold"):
+        registration.check_ambiguity(
+            [_far_candidate()], None, None, ambiguity_threshold=threshold
+        )
+
+
+def test_check_ambiguity_rejects_no_candidates():
+    with pytest.raises(ValueError, match="at least one candidate"):
+        registration.check_ambiguity([], None, None)
+
+
+def _hide_bottom_and_half(sample: synthetic.SyntheticSample, vertices_mm: np.ndarray):
+    """Hide the board-contact face and half the part along its long horizontal axis."""
+    height = -vertices_mm[:, 2]  # board frame: z points into the board
+    centred_xy = vertices_mm[:, :2] - vertices_mm[:, :2].mean(axis=0)
+    long_axis = np.linalg.svd(centred_xy, full_matrices=False)[2][0]
+    labels = np.asarray(sample.labels, dtype=object).copy()
+    labels[(height < 0.5) | (centred_xy @ long_axis > 0.0)] = (
+        provenance.LABEL_UNOBSERVED
+    )
+    return _copy_sample(sample, vertices_mm=vertices_mm, labels=labels)
+
+
+@pytest.mark.parametrize("seed", [2, 17, 20, 21, 23])
+def test_free_scale_residual_is_never_absurd_under_heavy_occlusion(seed: int):
+    # #233's open note, closed in I-05: with the bottom face and half the part hidden, s-04 x1.03
+    # (true residual +0.03) read +0.29 to +6.36 on these seeds. A reading beyond the sanity bound
+    # is a failed similarity fit, so it now comes back as None. Inside the bound, occlusion this
+    # heavy can still misread; this pins only that nothing absurd reaches D-039.
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, seed, sigma_mm=0.3, patch_fraction=0.2
+    )
+    model_vertices = np.asarray(sample.vertices_mm, dtype=np.float64)
+    centre = model_vertices.mean(axis=0)
+    model = _hide_bottom_and_half(sample, centre + (model_vertices - centre) * 1.03)
+
+    best = _register(model, (vertices, faces), seed=100 + seed)[0]
+    refined = registration.refine(best, model, (vertices, faces), seed=seed)
+
+    bound = registration.DEFAULT_SCALE_RESIDUAL_SANITY_BOUND
+    for residual in (best.free_scale_residual, refined.free_scale_residual):
+        assert residual is None or abs(residual) <= bound

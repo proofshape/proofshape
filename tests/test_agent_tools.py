@@ -103,6 +103,39 @@ def test_coverage_assigns_a_reading_to_only_its_nearest_slot():
     assert state["covered"][high_ring_index] is False
 
 
+def test_coverage_matches_client_roll_aware_heading_and_elevation():
+    # Mirrors capture/src/orbit.test.ts: with alpha=0, beta=45, gamma=10 the rear-camera
+    # vector has heading ~=14.002 deg and downward elevation ~=44.136 deg. The first reading
+    # supplies a zero-heading anchor but is deliberately far from this custom slot.
+    orbit = (agent_tools.OrbitSlot(azimuth_deg=14.0019, elevation_deg=44.1360),)
+    anchor = _gyro(0.0, 90.0, 0.0)
+    rolled = _gyro(0.0, 45.0, 10.0)
+
+    state = agent_tools.compute_coverage(
+        [anchor, rolled], orbit=orbit, tolerance_deg=0.5
+    )
+
+    assert state["covered"] == [True]
+    assert state["next_target_index"] is None
+
+
+def test_coverage_upright_landscape_does_not_fake_straight_down():
+    # Mirrors capture/src/orbit.test.ts and #190. beta=0,gamma=-90 is upright landscape:
+    # camera elevation is 0 deg, not 90. The old beta-only server replay falsely covered the
+    # azimuth-exempt straight-down slot and could disagree with the phone/agent overlay.
+    anchor = _gyro(0.0, 90.0, 0.0)
+    landscape = _gyro(0.0, 0.0, -90.0)
+
+    state = agent_tools.compute_coverage([anchor, landscape])
+    straight_down_index = next(
+        i
+        for i, slot in enumerate(agent_tools.DEFAULT_ORBIT)
+        if slot.elevation_deg == 90.0
+    )
+
+    assert state["covered"][straight_down_index] is False
+
+
 # --- coverage_report / score_next_view ----------------------------------------------------------
 
 

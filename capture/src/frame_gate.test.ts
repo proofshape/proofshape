@@ -93,6 +93,20 @@ describe("checkDuplicate", () => {
     }
   });
 
+  it("wraps a 359/1 heading pair instead of treating it as a 358-degree move", () => {
+    const before: Gyro = { alpha: 359, beta: 20, gamma: 30 };
+    const after: Gyro = { alpha: 1, beta: 20, gamma: 30 };
+
+    // The wrapped alpha delta is 2 degrees. Use a 2.1-degree threshold so the strict
+    // "below threshold" duplicate rule is exercised without changing that existing boundary.
+    const result = checkDuplicate(FLAT_GRAY, after, { frame: FLAT_GRAY, gyro: before }, 2.1);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("frame_rejected_duplicate");
+    }
+  });
+
   it("passes when the gyro moved meaningfully, even if the image looks identical", () => {
     const movedGyro: Gyro = { ...GYRO_A, alpha: GYRO_A.alpha + 10 };
     expect(checkDuplicate(FLAT_GRAY, movedGyro, { frame: FLAT_GRAY, gyro: GYRO_A }).ok).toBe(true);

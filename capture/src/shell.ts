@@ -388,8 +388,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     }
     state.lastCapturedFrame = captured;
 
-    // C-06's three checks, in the story's own stated order (sharp, well-exposed, not a
-    // duplicate), first failure wins -- nothing is uploaded on a gate rejection. The code is
+    // C-20: exposure runs before blur so a uniformly black/white frame reports the lighting
+    // problem instead of being mislabelled as blur. Duplicate stays last; first failure wins and
+    // nothing is uploaded on a gate rejection. The code is
     // shown alongside the message, not just the message alone -- checkDuplicate's own message
     // ("Gyro delta ... are both below their thresholds") never actually says "duplicate," so the
     // code is what makes the specific reason identifiable (this story's own acceptance criteria
@@ -397,20 +398,20 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // rejection, on a dimension mismatch (frame_gate.ts's own frozen behavior), and nothing here
     // caught that (TabeenRaoof's PR #139 review).
     try {
-      const blurResult = checkBlur(captured.pixels);
-      if (!blurResult.ok) {
-        setStatus(
-          captureStatus,
-          `Frame rejected (${blurResult.code}) — ${blurResult.message}`,
-          "error",
-        );
-        return;
-      }
       const exposureResult = checkExposure(captured.pixels);
       if (!exposureResult.ok) {
         setStatus(
           captureStatus,
           `Frame rejected (${exposureResult.code}) — ${exposureResult.message}`,
+          "error",
+        );
+        return;
+      }
+      const blurResult = checkBlur(captured.pixels);
+      if (!blurResult.ok) {
+        setStatus(
+          captureStatus,
+          `Frame rejected (${blurResult.code}) — ${blurResult.message}`,
           "error",
         );
         return;

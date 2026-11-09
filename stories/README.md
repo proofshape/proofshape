@@ -230,7 +230,7 @@ Full detail in each story file.
 | [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | nothing | Claimed | @dalwalyk |
 | [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
-| [G-05](G/G-05.md) | Defect ladder at 2 / 4 / 8 mm | 4 h | G-01 | Blocked | _unclaimed_ |
+| [G-05](G/G-05.md) | Defect ladder at 2 / 4 / 8 mm | 4 h | nothing | Ready | _unclaimed_ |
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Blocked | _unclaimed_ |
@@ -249,11 +249,12 @@ fixtures.
 
 **The method is settled, not open** (proposal §7.1, D-008): FPFH + RANSAC global registration,
 then robust point-to-plane ICP with a Tukey loss; scale fixed to 1 in the fit, the free-scale
-residual computed separately as the substitution check; a runner-up within 10% of the best marks
-the session orientation-ambiguous. Open3D 0.18 (already pinned) has all of it.
+residual computed separately as the substitution check; a runner-up within 20% of the best marks
+the session orientation-ambiguous (D-061, which raised D-008's 10%). Open3D 0.18 (already
+pinned) has all of it.
 
 **No tolerance until G-04.** Nothing here decides whether a deviation passes. Every threshold (σ,
-patch size, voxel size, Tukey `k`, the 10%) is a declared parameter with a stated default, and
+patch size, voxel size, Tukey `k`, the 20%) is a declared parameter with a stated default, and
 the verdict (I-06..I-10) waits for σ_floor and the tolerance schema (D-032). Issue #157 already
 binds I-07 to `max(σ, σ_floor)`.
 
@@ -273,7 +274,7 @@ Full detail in each story file.
 | [I-02](I/I-02.md) | CAD loading: ASCII and binary STL, and GLB, coordinates as stored | 3 h | nothing | Done | @mbj1994 |
 | [I-03](I/I-03.md) | Global registration: candidate poses, scale fixed, free-scale residual | 5 h | I-01, I-02 | Done | @mbj1994 |
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Done | @TabeenRaoof |
-| [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 10% | 3 h | I-04 | Claimed | @TabeenRaoof |
+| [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Done | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
 
 ---
@@ -383,7 +384,7 @@ Full detail in each story file.
 | [R-32](R/R-32.md) | Spike: is R-22's per-pixel depth error VGGT's own? Compare backends on s-04 and s-05 | 5 h | R-11, R-12, R-22, R-23 | Ready | _unclaimed_ |
 | [R-33](R/R-33.md) | Wall surfaces fill the fusion volume | 5 h | R-07, R-30 | Blocked | _unclaimed_ |
 | [C-19](C/C-19.md) | The viewer says when a model has no provenance; the mock matches the service | 3 h | C-10, C-12, C-13 | Done | @dalwalyk |
-| [C-20](C/C-20.md) | Capture gate and orbit maths: heading wrap, roll, gate order | 3 h | C-06, C-07, C-09 | Claimed | @mbj1994 |
+| [C-20](C/C-20.md) | Capture gate and orbit maths: heading wrap, roll, gate order | 3 h | C-06, C-07, C-09 | Done | @mbj1994 |
 | [F-08](F/F-08.md) | Fixture and image safety: downloader verification, case-insensitive photo ignores, image path filters | 3 h | F-06, R-15 | Done | @dalwalyk |
 | [I-12](I/I-12.md) | Synthetic-generator tests that pin noise, seed and the board frame | 2 h | I-01 | Done | @dalwalyk |
 | [P-28](P/P-28.md) | Process tooling: checker exit codes, the decision-number snippet, a portable deck build | 3 h | nothing | Done | @dalwalyk |
