@@ -60,6 +60,7 @@ def test_service_imports_runtime_guard_before_agent_tools():
     assert agent_import in service_source
     assert service_source.index(guard_import) < service_source.index(agent_import)
 
+
 @pytest.mark.skipif(
     sys.platform != "darwin",
     reason="R-31 reproduces only with the macOS Open3D/torch wheels and their two libomp runtimes",
