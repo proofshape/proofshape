@@ -227,7 +227,7 @@ Full detail in each story file.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Claimed | @TabeenRaoof |
-| [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | G-01 | Blocked | _unclaimed_ |
+| [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | nothing | Ready | _unclaimed_ |
 | [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
 | [G-05](G/G-05.md) | Defect ladder at 2 / 4 / 8 mm | 4 h | G-01 | Blocked | _unclaimed_ |
@@ -378,7 +378,7 @@ Full detail in each story file.
 | [R-27](R/R-27.md) | Mesh cleanup and the Poisson fallback: winding, components, size limit, oriented normals | 5 h | R-07, R-08 | Done | @mbj1994 |
 | [R-28](R/R-28.md) | Portrait-safe VGGT intrinsics rescale and correct board metadata | 2 h | R-02, R-03, R-22, R-23 | Done | @dalwalyk |
 | [R-29](R/R-29.md) | Contract-shaped validation errors and an Inferred-aware hard-rule test | 2 h | F-03, R-14 | Done | @dalwalyk |
-| [R-30](R/R-30.md) | Per-frame board re-anchoring before fusion | 5 h | R-07, R-21 | Ready | _unclaimed_ |
+| [R-30](R/R-30.md) | Per-frame board re-anchoring before fusion | 5 h | R-07, R-21 | Claimed | @dalwalyk |
 | [R-31](R/R-31.md) | macOS: Open3D and torch in one process without a deadlock (#261) | 2 h | R-27 | Ready | _unclaimed_ |
 | [R-32](R/R-32.md) | Spike: is R-22's per-pixel depth error VGGT's own? Compare backends on s-04 and s-05 | 5 h | R-11, R-12, R-22, R-23 | Ready | _unclaimed_ |
 | [R-33](R/R-33.md) | Wall surfaces fill the fusion volume | 5 h | R-07, R-30 | Blocked | _unclaimed_ |
