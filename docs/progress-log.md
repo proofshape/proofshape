@@ -1885,6 +1885,33 @@ sharpens the part geometry too.
 **Close-out:** owner reported 7 h actual against 3 h estimated. R-26 and its index row are
 marked Done on this final head, which is also the head the golden rerun confirmed.
 
+## 2026-11-06 — I-05 orientation ambiguity: refine every candidate, flag a near-tie runner-up (D-061, PR #257)
+
+**Who:** @TabeenRaoof.
+
+**What changed:** added `inspection.registration.check_ambiguity(candidates, model, cad)`. It
+refines every I-03 candidate with I-04's `refine` on the same samples, merges only poses whose
+transforms agree (symmetric alternatives stay separate), ranks them fitness first then RMSE, and
+marks the session ambiguous when the runner-up's inlier RMSE is within 20% of the best's. It
+returns the best pose, the runner-up, their ratio, every refined pose, any candidate that couldn't
+be refined with its reason, and the contract's `registration_orientation_ambiguous` reason code.
+
+**Decision proposed:** D-061 raises D-008's threshold from 10% to 20%. On I-01 output with its 20%
+hidden patch, a plate whose one symmetry-breaking hole is missing (D-008's own case) was flagged
+9/12 at 10% and 12/12 at 20%, while the disambiguated cases (hole in place, hole shifted 3 mm, and
+s-04) were flagged 0/12 at either. s-05 was flagged 12/12. The margins are narrow (1.15 against
+1.22), which D-061 records. It needs both other members' agreement in the PR.
+
+**Also closed, from #233's review:** a ±25% sanity bound on the free-scale residual (with the
+bottom and half of s-04 hidden, 5 of 24 seeds had read +0.29 to +6.36), the s-05 basin test now
+measuring yaw relative to the truth, `ransac:0` failures recorded rather than fatal, and two
+mutations that I-03's scale tests missed. Refining every candidate also fixes a wrong I-03 pick:
+on #251's shifted-hole seed, the best pose went from 11 mm off to 0.05 mm.
+
+**Close-out:** 2.5 h actual against 3 h estimated, the owner's measured figure (D-033), updated
+from the 1 h recorded before review. I-05 and its index row are Done on the close-out head before
+approval, per D-038. All synthetic; no real-capture registration has been run yet.
+
 ## 2026-11-07 — A-12 LaS-Comp runner, CUDA setup and the T4 measurement (PR #259)
 
 **Who:** @TabeenRaoof.

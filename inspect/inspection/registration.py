@@ -12,11 +12,15 @@ shift; it never hides a size error by scaling the CAD.
 I-04's `refine` then tightens one candidate with point-to-plane ICP under a Tukey loss, fitted
 on fully Observed model geometry only, and recomputes the free-scale residual from the refined
 pose.
+
+I-05's `check_ambiguity` refines every candidate, merges only poses whose transforms agree, and
+flags the session ambiguous when the runner-up fits nearly as well as the best (D-008, D-061).
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -47,6 +51,17 @@ DEFAULT_SCALE_MIN_AXIS_RATIO = 0.02
 DEFAULT_SCALE_TARGET_SAMPLE_COUNT = 20_000
 DEFAULT_DISTINCT_ROTATION_DEG = 2.0
 DEFAULT_DISTINCT_TRANSLATION_FRACTION = 0.01
+# Floor under the translation tolerance above, so a very small part's 1% doesn't shrink below
+# numerical noise. An algorithmic choice, not a tolerance (it was inline in I-03; #233 asked for
+# it to be named).
+DEFAULT_DISTINCT_TRANSLATION_FLOOR_MM = 0.25
+# Sanity bound on the free-scale residual, a labelled assumption rather than a tolerance: a
+# reading beyond +-25% isn't a plausible scale error for a metric reconstruction but a failed
+# similarity fit. Under heavy occlusion (s-04 x1.03 with the bottom and half the part hidden)
+# 5 of 24 seeds read +0.29 to +6.36 against a true +0.03 (#233, I-05). Such a reading becomes
+# None, so D-039's scale agreement gets no CAD vote rather than a nonsense one. Inside the bound,
+# heavy occlusion can still misread (often with the wrong sign); this is not an occlusion gate.
+DEFAULT_SCALE_RESIDUAL_SANITY_BOUND = 0.25
 # I-04 refinement parameters. Algorithmic choices, not inspection tolerances (D-003):
 # Tukey's k is a multiple of the voxel I-03's scale diagnostic uses: 3% of the CAD's extent alone
 # (I-03's pose search sizes its voxel from the larger of model and CAD). A residual beyond k gets
@@ -55,6 +70,12 @@ DEFAULT_DISTINCT_TRANSLATION_FRACTION = 0.01
 # not a tuned optimum.
 DEFAULT_TUKEY_K_FACTOR = 1.0
 DEFAULT_REFINE_ICP_ITERATIONS = 100
+# I-05. The session is ambiguous when the runner-up's inlier RMSE is within this fraction of the
+# best's (D-061, superseding D-008's 10%). The parameter is the decision's, not a tuned value.
+DEFAULT_AMBIGUITY_THRESHOLD = 0.20
+# The contract's reason code for an ambiguous orientation
+# (contracts/examples/getVerdict.response-200-rescan-unobserved.json). I-07 puts it in the verdict.
+REASON_ORIENTATION_AMBIGUOUS = "registration_orientation_ambiguous"
 
 CAD_TO_BOARD_FLIP = np.diag([1.0, -1.0, -1.0, 1.0])
 
@@ -69,6 +90,29 @@ class CandidatePose:
     source: str
     correspondence_count: int
     free_scale_residual: float | None = None
+
+
+@dataclass(frozen=True)
+class AmbiguityCheck:
+    """I-05's result: every refined pose, ranked, and whether the orientation is ambiguous.
+
+    `best` is the pose I-06/I-07 measure deviations against. `rmse_ratio` is the runner-up's
+    inlier RMSE over the best's (None without a runner-up). `failed` lists each candidate that
+    couldn't be refined, as (source, reason), so nothing drops out silently.
+    """
+
+    orientation_ambiguous: bool
+    best: CandidatePose
+    runner_up: CandidatePose | None
+    rmse_ratio: float | None
+    threshold: float
+    refined: tuple[CandidatePose, ...]
+    failed: tuple[tuple[str, str], ...]
+
+    @property
+    def reason_codes(self) -> tuple[str, ...]:
+        """The contract's reason codes this result contributes to the verdict (I-07)."""
+        return (REASON_ORIENTATION_AMBIGUOUS,) if self.orientation_ambiguous else ()
 
 
 def _mesh_arrays(
@@ -559,7 +603,11 @@ def _free_scale_residual(
     model_to_cad_scale = float(np.cbrt(determinant))
     if not math.isfinite(model_to_cad_scale) or model_to_cad_scale <= 1e-9:
         return None
-    return 1.0 / model_to_cad_scale - 1.0
+    residual = 1.0 / model_to_cad_scale - 1.0
+    if abs(residual) > DEFAULT_SCALE_RESIDUAL_SANITY_BOUND:
+        # A failed similarity fit, not a scale measurement (see the constant's comment).
+        return None
+    return residual
 
 
 def global_register(
@@ -681,7 +729,7 @@ def global_register(
         )
 
     translation_tolerance = max(
-        0.25,
+        DEFAULT_DISTINCT_TRANSLATION_FLOOR_MM,
         extent * DEFAULT_DISTINCT_TRANSLATION_FRACTION,
     )
     unique = _deduplicate_candidates(
@@ -907,3 +955,98 @@ def refine(
         max_correspondence_distance_mm=correspondence_distance,
     )
     return replace(refined_candidate, free_scale_residual=residual)
+
+
+def check_ambiguity(
+    candidates: Sequence[CandidatePose],
+    model: Any,
+    cad: Any,
+    *,
+    ambiguity_threshold: float = DEFAULT_AMBIGUITY_THRESHOLD,
+    seed: int = 0,
+) -> AmbiguityCheck:
+    """I-05: refine every I-03 candidate and decide whether the orientation is ambiguous.
+
+    On a near-symmetric part the feature that breaks the symmetry is often the defect, so a fit
+    must not silently pick the alignment that explains it away (D-008). Every candidate is
+    refined with I-04's `refine`, with the same seed, so all of them are scored on the same
+    samples. Poses whose transforms agree within I-03's tolerance (2 degrees, and 1% of the CAD's
+    extent with a 0.25 mm floor) are merged. Poses that are equivalent only under the CAD's
+    symmetry are kept separate: for the printed part they are different poses, and the
+    difference is where the defect would be.
+
+    The refined poses are ranked as I-03 ranks candidates, fitness first, then inlier RMSE. The
+    session is ambiguous when the runner-up's inlier RMSE is within `ambiguity_threshold` of the
+    best's, relative to the best (D-061: 20%, superseding D-008's 10%). The comparison is
+    multiplied out, so a noise-free best RMSE of zero still compares correctly. A single
+    surviving pose is not ambiguous.
+
+    A candidate that can't be refined (I-03's `ransac:0` is often an identity pose at fitness 0)
+    is recorded in `failed` with its reason; if none can be refined, this raises. A model without
+    provenance, or with no fully Observed face, is refused up front rather than being reported as
+    a failure of every candidate.
+    """
+    candidates = list(candidates)
+    if not candidates:
+        raise ValueError("check_ambiguity needs at least one candidate.")
+    if not (math.isfinite(ambiguity_threshold) and ambiguity_threshold >= 0):
+        raise ValueError("ambiguity_threshold must be finite and non-negative.")
+
+    _model_vertices, model_faces, model_labels = _mesh_arrays(model, name="model")
+    cad_vertices, _cad_faces, _cad_labels = _mesh_arrays(cad, name="cad")
+    observed_model_faces = _observed_faces(model_faces, model_labels)
+    if observed_model_faces is None:
+        raise ValueError(
+            "check_ambiguity needs model provenance: without Observed/Unobserved labels no "
+            "candidate can be refined on measured geometry."
+        )
+    if len(observed_model_faces) == 0:
+        raise ValueError(
+            "check_ambiguity needs at least one fully Observed model face; refusing to judge "
+            "the orientation on Unobserved or Inferred geometry alone."
+        )
+
+    refined: list[CandidatePose] = []
+    failed: list[tuple[str, str]] = []
+    for candidate in candidates:
+        try:
+            refined.append(refine(candidate, model, cad, seed=seed))
+        except ValueError as exc:
+            failed.append((candidate.source, str(exc)))
+    if not refined:
+        details = "; ".join(f"{source}: {reason}" for source, reason in failed)
+        raise ValueError(f"No candidate could be refined ({details}).")
+
+    translation_tolerance = max(
+        DEFAULT_DISTINCT_TRANSLATION_FLOOR_MM,
+        _extent_mm(cad_vertices) * DEFAULT_DISTINCT_TRANSLATION_FRACTION,
+    )
+    # Returned in _candidate_sort_key order: fitness first, then inlier RMSE.
+    unique = _deduplicate_candidates(
+        refined,
+        translation_tolerance_mm=translation_tolerance,
+        rotation_tolerance_deg=DEFAULT_DISTINCT_ROTATION_DEG,
+    )
+    best = unique[0]
+    runner_up = unique[1] if len(unique) > 1 else None
+
+    ambiguous = False
+    rmse_ratio: float | None = None
+    if runner_up is not None:
+        ambiguous = runner_up.inlier_rmse <= best.inlier_rmse * (
+            1.0 + ambiguity_threshold
+        )
+        if best.inlier_rmse > 0.0:
+            rmse_ratio = runner_up.inlier_rmse / best.inlier_rmse
+        else:
+            rmse_ratio = 1.0 if runner_up.inlier_rmse == 0.0 else math.inf
+
+    return AmbiguityCheck(
+        orientation_ambiguous=bool(ambiguous),
+        best=best,
+        runner_up=runner_up,
+        rmse_ratio=rmse_ratio,
+        threshold=float(ambiguity_threshold),
+        refined=tuple(unique),
+        failed=tuple(failed),
+    )
