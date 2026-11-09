@@ -1921,3 +1921,73 @@ marked Done on this final head, which is also the head the golden rerun confirme
 
 **Close-out:** owner reported 5.5 h actual against 5 h estimated. A-12 and its index row are Done on
 the final review head. The raw results hold golden photos, so they stay outside the repository.
+
+## 2026-11-07 — s-04 from 30 vs 15 photos, a macOS reconstruction hang (#261, R-31), open issues checked
+
+**Who:** @TabeenRaoof. A follow-up to A-12, recorded as P-29 (4 h actual, the owner's figure).
+
+**Measurement: does the photo count change accuracy?** Golden s-04 was reconstructed on the M2 Max
+three ways: from all 30 photos, and from two 15-photo subsets (every other photo, starting from the
+first and from the second). Each was compared with the s-04 CAD using `recon/cad_size_check.py`, as
+a ratio to CAD:
+
+| Photos | Board scale | Height | 60 / 65 / 26 mm edges | Fit residual | Observed |
+|---|---|---|---|---|---|
+| 30 | 0.999 | 0.990 | 0.989 / 0.886 / 1.047 | 1.52 mm | 0.169 |
+| 15 (first set) | 0.999 | 1.001 | 0.926 / 0.942 / 1.023 | 1.50 mm | 0.124 |
+| 15 (second set) | 0.999 | 0.997 | 0.978 / 0.963 / 1.003 | 0.68 mm | 0.082 |
+
+- Scale and height are right whatever the count.
+- The edge errors change more with *which* 15 photos are used than between 15 and 30.
+- More photos buy coverage, roughly twice the observed surface. They don't buy shape accuracy.
+- The narrow walls and uneven edges are R-22's second finding (per-pixel depth). They're now
+  written up as the R-32 spike.
+- **Shape, not just size.** Drawn to scale against s-04's observed shell and measured, A-12's
+  completions show three kinds of shape error:
+  - **Invented by the model.** A raised patch, 86–180 mm² and 1.6–3.2 mm above the top face,
+    appears in 5 of 6 samples. The same seed gives the same patch (172 vs 166 mm²), so it comes
+    from the seed, not the photos. The padlock's shackle is the same kind of guess. Both are
+    Inferred surface, which never passes or fails a part, and flagging them is A-05's job.
+  - **Copied from bad input.** Every sample has a base flange 8–9 mm outside the walls
+    (397–870 mm²), because the observed shell itself flares at the base. That goes to R-30
+    and #231.
+  - **In the observed surface itself.** The long 60 mm wall leans about 3 mm over its height,
+    and its lower half is about 5 mm thick. The short wall stands straight. This surface can
+    pass or fail a part, so R-32 now measures lean and thickness too.
+- Caveats: one part, one capture, nominal CAD rather than calipers. This is a quick test, not an
+  accuracy result.
+
+**Found on the way: #261.** Every reconstruction on the Mac hangs forever. Open3D and torch each
+ship their own `libomp`, and `recon/provenance.py` has imported Open3D at module level since
+`4237642`, R-27's PR #250. `OMP_NUM_THREADS=1` is the verified workaround, and all three runs above
+used it. Filed as #261 and written up as R-31 (Ready, 2 h).
+
+**Open issues checked against the stories:**
+- P-27's ten follow-up stories cover all 24 of its issues, and 18 of those are closed.
+- #183 and #184 were fixed by R-27 and #108 by C-09, but none had been closed. All three are now
+  closed, each with a comment linking the code that fixed it.
+- #189–#191 stay with C-20 (@mbj1994). #181 and #200 still wait on a team decision.
+- #231 is still present: on today's s-04 run, 70% of the served model's faces are walls and 56% of
+  its Observed faces are board skin. R-30 covers the skin. The walls have no story, so the
+  question went to @dalwalyk on #258.
+
+
+## 2026-11-08 — C-20 phone-orientation fixes and real-device check (PR #264)
+
+**Who:** @mbj1994.
+
+**What changed:**
+- Duplicate-frame heading differences now wrap correctly across 0/360 degrees.
+- Orbit heading/elevation use the full device rotation, including roll, and the Python server replay
+  uses the same maths as the browser.
+- Exposure is checked before blur so black/white frames report the lighting problem first.
+- The capture manual now allows portrait, roll and upright landscape guidance.
+
+**Real-device check:** iPhone 13, iOS 26.5.2, system Safari/WebKit bundled with that iOS build.
+Using the local HTTPS capture server and contract stub, accepted frames advanced orbit coverage,
+guidance remained stable with roll, upright landscape stayed level rather than falsely marking the
+straight-down slot, and the arrow changed sensibly while moving around the object until it reported
+**On target**. Normal gate rejections also appeared between accepted frames.
+
+**Close-out:** owner reported 4 h actual against 3 h estimated. C-20 and its index row are Done on
+this final review head.
