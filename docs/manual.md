@@ -221,8 +221,8 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    one and change your mind, iOS remembers the answer per site: clear the site's data in
    Settings → Safari → Advanced → Website Data, then reload.
 2. **Place the part on the printed sheet**, near the middle of the pattern, with as much of the
-   board still visible around it as the part allows (§3.4). Hold the phone in **portrait**; the
-   guidance assumes it.
+   board still visible around it as the part allows (§3.4). Portrait is the easiest way to hold the
+   phone, but the guidance also handles roll and upright landscape orientation (C-20).
 3. **Shoot the guided orbit.** The camera preview stays live (C-05). Tap **Capture frame** for
    each shot. The guaranteed path is **batch mode** (D-002): a fixed orbit of **13 positions** —
    eight around the part at 45°, four higher at 70°, and one straight down (C-07). Your first
