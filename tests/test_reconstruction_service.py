@@ -407,7 +407,9 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
 
     seen = {}
 
-    def fake_provenance(mesh_path, reconstruction_dir, alignment_path, out_dir):
+    def fake_provenance(
+        mesh_path, reconstruction_dir, alignment_path, out_dir, **_kwargs
+    ):
         seen["provenance_mesh"] = mesh_path
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "mesh_provenance.glb").write_bytes(b"provenance")

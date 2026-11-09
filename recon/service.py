@@ -447,6 +447,7 @@ def run_reconstruction_pipeline(
         reconstruction_dir,
         alignment_path,
         provenance_dir,
+        fusion_dir=fusion_dir,
     )
     stage_timings_s["provenance"] = time.perf_counter() - started
 

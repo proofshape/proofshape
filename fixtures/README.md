@@ -45,6 +45,10 @@ listed in the manifest's `reference_cad` block above). They are the explicit exc
 global `*.stl` ignore rule required by F-06; R-22 added `s-05`'s file to let its reconstructed
 size be checked against CAD the same way R-17 did for `s-04`.
 
+`reference_cad/` also holds G-01's `g01_calibration_cube_30mm.stl` and G-02's six
+`g02_*.stl` specimen files, for the ground-truth lane's own σ_floor measurement -- not part of
+F-06's golden capture set, same exception to the `*.stl` ignore rule.
+
 ## Caliper readings
 
 The ground-truth stories (`stories/G/`) record caliper readings as one file per story,
