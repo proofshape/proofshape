@@ -1997,3 +1997,23 @@ used it. Filed as #261 and written up as R-31 (Ready, 2 h).
 - #231 is still present: on today's s-04 run, 70% of the served model's faces are walls and 56% of
   its Observed faces are board skin. R-30 covers the skin. The walls have no story, so the
   question went to @dalwalyk on #258.
+
+## 2026-11-08 — C-20 phone-orientation fixes and real-device check (PR #264)
+
+**Who:** @mbj1994.
+
+**What changed:**
+- Duplicate-frame heading differences now wrap correctly across 0/360 degrees.
+- Orbit heading/elevation use the full device rotation, including roll, and the Python server replay
+  uses the same maths as the browser.
+- Exposure is checked before blur so black/white frames report the lighting problem first.
+- The capture manual now allows portrait, roll and upright landscape guidance.
+
+**Real-device check:** iPhone 13, iOS 26.5.2, Safari 26.5.
+Using the local HTTPS capture server and contract stub, accepted frames advanced orbit coverage,
+guidance remained stable with roll, upright landscape stayed level rather than falsely marking the
+straight-down slot, and the arrow changed sensibly while moving around the object until it reported
+**On target**. Normal gate rejections also appeared between accepted frames.
+
+**Close-out:** owner reported 4 h actual against 3 h estimated. C-20 and its index row are Done on
+this final review head.
