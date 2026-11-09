@@ -360,7 +360,9 @@ Issues per story:
 - R-27 #183, #184
 - R-28 #182, #188
 - R-29 #187, plus the validation half of #186
+- R-30 the board-skin half of #231
 - R-31 #261
+- R-33 the wall half of #231
 - C-19 #192, #193
 - C-20 #189, #190, #191
 - F-08 #196, #197, #198
@@ -379,6 +381,7 @@ Full detail in each story file.
 | [R-30](R/R-30.md) | Per-frame board re-anchoring before fusion | 5 h | R-07, R-21 | Claimed | @dalwalyk |
 | [R-31](R/R-31.md) | macOS: Open3D and torch in one process without a deadlock (#261) | 2 h | R-27 | Ready | _unclaimed_ |
 | [R-32](R/R-32.md) | Spike: is R-22's per-pixel depth error VGGT's own? Compare backends on s-04 and s-05 | 5 h | R-11, R-12, R-22, R-23 | Ready | _unclaimed_ |
+| [R-33](R/R-33.md) | Wall surfaces fill the fusion volume | 5 h | R-07, R-30 | Blocked | _unclaimed_ |
 | [C-19](C/C-19.md) | The viewer says when a model has no provenance; the mock matches the service | 3 h | C-10, C-12, C-13 | Done | @dalwalyk |
 | [C-20](C/C-20.md) | Capture gate and orbit maths: heading wrap, roll, gate order | 3 h | C-06, C-07, C-09 | Claimed | @mbj1994 |
 | [F-08](F/F-08.md) | Fixture and image safety: downloader verification, case-insensitive photo ignores, image path filters | 3 h | F-06, R-15 | Done | @dalwalyk |
