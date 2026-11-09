@@ -9,6 +9,12 @@ import numpy as np
 import pytest
 
 from recon import tsdf_fusion
+from recon.metric_alignment import project_points_to_camera
+from recon.part_segmentation import (
+    DEFAULT_FOOTPRINT_MM,
+    BoardSurface,
+    fit_board_plane_robust,
+)
 from recon.vggt_runner import confidence_keep_mask
 
 # --- build_voxel_grid ------------------------------------------------------------------------
@@ -351,6 +357,170 @@ def test_extract_mesh_poisson_rejects_line_like_input_clearly():
 
     with pytest.raises(ValueError, match="rank-deficient"):
         tsdf_fusion.extract_mesh_poisson(points_mm, poisson_depth=5)
+
+
+# --- reanchor_frames_to_board (R-30) -----------------------------------------------------------
+
+
+def _flat_board_surface(
+    slope_x: float = 0.0, slope_y: float = 0.0, z_at_origin_mm: float = -2.0
+) -> BoardSurface:
+    """A BoardSurface with a known plane, for tests that need a fixed correction target --
+    nothing in production code constructs one this way; measure_board_surface always fits one."""
+    return BoardSurface(
+        slope_x=slope_x,
+        slope_y=slope_y,
+        z_at_origin_mm=z_at_origin_mm,
+        offset_mm=z_at_origin_mm,
+        tilt_deg=0.0,
+        residual_sigma_mm=0.0,
+        inlier_count=1,
+        candidate_count=1,
+        board_layer_top_mm=None,
+        height_threshold_mm=2.0,
+    )
+
+
+def _board_grid_points(
+    slope_x: float, slope_y: float, z_at_origin_mm: float, count: int = 400
+) -> np.ndarray:
+    """A dense grid of board points (board-frame mm) lying exactly on the given plane, spanning
+    the default footprint -- enough to satisfy DEFAULT_MIN_FRAME_BOARD_POINTS on its own."""
+    side = int(np.ceil(np.sqrt(count)))
+    footprint_width_mm, footprint_height_mm = DEFAULT_FOOTPRINT_MM
+    x = np.linspace(10.0, footprint_width_mm - 10.0, side)
+    y = np.linspace(10.0, footprint_height_mm - 10.0, side)
+    grid_x, grid_y = np.meshgrid(x, y)
+    grid_x, grid_y = grid_x.ravel(), grid_y.ravel()
+    grid_z = slope_x * grid_x + slope_y * grid_y + z_at_origin_mm
+    return np.column_stack([grid_x, grid_y, grid_z])
+
+
+def test_reanchor_frames_to_board_corrects_a_drifted_frame_and_its_part():
+    # Frame 0 already agrees with the consensus plane; frame 1's own board is tilted and offset
+    # by a few mm/degrees (D-060's actual finding), *and* carries a thin flat "part" cluster 6mm
+    # above its own (drifted) board -- the ghost-layer setup: before correction, frame 1's part
+    # sits at a different true height above the real board than frame 0's does, which is exactly
+    # what lets a pooled histogram mistake the drift for a second layer.
+    target = _flat_board_surface(slope_x=0.0, slope_y=0.0, z_at_origin_mm=-2.0)
+    frame0_board = _board_grid_points(0.0, 0.0, -2.0)
+    frame0_part = np.array(
+        [[80.0, 60.0, -8.0]]
+    )  # 6mm above frame 0's own board (-2 - 6 = -8)
+
+    drift_slope_x, drift_slope_y, drift_offset = 0.02, -0.015, -5.3
+    frame1_board = _board_grid_points(drift_slope_x, drift_slope_y, drift_offset)
+    frame1_part_z = drift_slope_x * 80.0 + drift_slope_y * 60.0 + drift_offset - 6.0
+    frame1_part = np.array(
+        [[80.0, 60.0, frame1_part_z]]
+    )  # 6mm above frame 1's *own* board
+
+    point_count = len(frame0_board) + 1
+    board_frame_points = np.stack(
+        [
+            np.vstack([frame0_board, frame0_part]),
+            np.vstack([frame1_board, frame1_part]),
+        ]
+    ).reshape(2, 1, point_count, 3)
+    valid_depth = np.ones((2, 1, point_count), dtype=bool)
+    board_extrinsic = np.tile(np.eye(3, 4), (2, 1, 1))
+
+    corrected_points, _corrected_extrinsic, reports = (
+        tsdf_fusion.reanchor_frames_to_board(
+            board_frame_points, board_extrinsic, valid_depth, target
+        )
+    )
+
+    # Candidate selection is the same coarse height band measure_board_surface itself uses --
+    # wide enough to admit the lone part point too (it's within +-15mm), same as production; the
+    # robust fit below is what actually has to reject that single outlier.
+    assert [r.candidate_count for r in reports] == [
+        len(frame0_board) + 1,
+        len(frame1_board) + 1,
+    ]
+
+    # Frame 1's own board, re-fit after correction, now agrees with the target plane.
+    corrected_frame1_board = corrected_points[1, 0, : len(frame1_board)]
+    slope_x, slope_y, z_at_origin_mm, _sigma, _n = fit_board_plane_robust(
+        corrected_frame1_board[:, 0],
+        corrected_frame1_board[:, 1],
+        corrected_frame1_board[:, 2],
+        min_inlier_points=3,
+    )
+    assert slope_x == pytest.approx(0.0, abs=1e-6)
+    assert slope_y == pytest.approx(0.0, abs=1e-6)
+    assert z_at_origin_mm == pytest.approx(-2.0, abs=1e-6)
+
+    # Both frames' parts now read the same true height above the target board -- no ghost layer.
+    corrected_frame0_part = corrected_points[0, 0, -1]
+    corrected_frame1_part = corrected_points[1, 0, -1]
+    height0 = target.height_above_board_mm(corrected_frame0_part[None, :])[0]
+    height1 = target.height_above_board_mm(corrected_frame1_part[None, :])[0]
+    # Loose enough to allow the single part point's own (tiny) share of influence on the robust
+    # fit it was swept into as a candidate -- see the comment above -- while still being two
+    # orders of magnitude tighter than the multi-mm ghost-layer drift this corrects.
+    assert height0 == pytest.approx(6.0, abs=0.01)
+    assert height1 == pytest.approx(6.0, abs=0.01)
+
+
+def test_reanchor_frames_to_board_raises_when_a_frame_has_too_few_candidates():
+    target = _flat_board_surface()
+    board_frame_points = np.zeros((1, 1, 5, 3))
+    board_frame_points[0, 0, :, 2] = -2.0  # on-plane, but only 5 points
+    valid_depth = np.ones((1, 1, 5), dtype=bool)
+    board_extrinsic = np.tile(np.eye(3, 4), (1, 1, 1))
+
+    with pytest.raises(ValueError, match="frame 0.*need at least"):
+        tsdf_fusion.reanchor_frames_to_board(
+            board_frame_points,
+            board_extrinsic,
+            valid_depth,
+            target,
+            min_frame_board_points=100,
+        )
+
+
+def test_reanchor_frames_to_board_extrinsic_round_trips_a_real_point():
+    # The correction's whole point: the *same* physical depth measurement must reproject
+    # identically whether expressed as (original point, original extrinsic) or (corrected point,
+    # corrected extrinsic) -- this is the algebra `reanchor_frames_to_board`'s docstring derives,
+    # checked directly rather than only by "the mesh looks right afterward".
+    target = _flat_board_surface(slope_x=0.0, slope_y=0.0, z_at_origin_mm=-2.0)
+    drifted_board = _board_grid_points(0.03, -0.02, -6.0)
+    test_point = np.array([[80.0, 60.0, -40.0]])  # some other point this frame also saw
+    all_points = np.vstack([drifted_board, test_point])
+    point_count = len(all_points)
+
+    board_frame_points = all_points.reshape(1, 1, point_count, 3)
+    valid_depth = np.ones((1, 1, point_count), dtype=bool)
+    rotation = np.array(
+        [[0.9950, -0.0998, 0.0], [0.0998, 0.9950, 0.0], [0.0, 0.0, 1.0]]
+    )  # an arbitrary ~5.7 deg rotation about z, not identity -- exercises R_board actually mattering
+    translation = np.array([5.0, -3.0, 120.0])
+    intrinsic = np.array([[800.0, 0.0, 320.0], [0.0, 800.0, 240.0], [0.0, 0.0, 1.0]])
+    board_extrinsic = np.concatenate([rotation, translation[:, None]], axis=1)[
+        None, :, :
+    ]
+
+    corrected_points, corrected_extrinsic, _reports = (
+        tsdf_fusion.reanchor_frames_to_board(
+            board_frame_points, board_extrinsic, valid_depth, target
+        )
+    )
+
+    original_u, original_v, original_z = project_points_to_camera(
+        test_point, rotation, translation, intrinsic
+    )
+    corrected_test_point = corrected_points[0, 0, -1][None, :]
+    corrected_u, corrected_v, corrected_z = project_points_to_camera(
+        corrected_test_point,
+        corrected_extrinsic[0, :, :3],
+        corrected_extrinsic[0, :, 3],
+        intrinsic,
+    )
+    assert corrected_u == pytest.approx(original_u, abs=1e-6)
+    assert corrected_v == pytest.approx(original_v, abs=1e-6)
+    assert corrected_z == pytest.approx(original_z, abs=1e-6)
 
 
 # --- fuse_run: end-to-end wiring on synthetic files ----------------------------------------------

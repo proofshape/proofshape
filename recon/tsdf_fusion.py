@@ -29,6 +29,12 @@ point cloud in `points.ply`, so a pixel left out of the cloud is left out of the
 too, rather than the two silently disagreeing on which pixels to trust. `fuse_run` reads the
 threshold from the run's own `run.json` by default, so the fused surface always matches the
 cloud that was actually written for that run; passing `min_confidence` explicitly overrides it.
+
+R-30/D-060: some frames' own board sits a few mm/degrees off the consensus plane -- VGGT pose
+error R-23's one global alignment can't correct. `reanchor_frames_to_board` fits and corrects
+each frame's own board-plane drift, before any of it reaches the height check or the volume
+above, removing the artifact at its source rather than trying to classify around it downstream
+the way three rounds of R-26 tried and D-060 found couldn't work.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ import argparse
 import json
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -48,10 +55,14 @@ from recon.metric_alignment import (
     project_points_to_camera,
 )
 from recon.part_segmentation import (
+    DEFAULT_BOARD_FIT_MAX_ITERATIONS,
+    DEFAULT_BOARD_FIT_SIGMA_CLIP,
+    DEFAULT_BOARD_SEARCH_BAND_MM,
     DEFAULT_FOOTPRINT_MM,
     DEFAULT_MAX_BOARD_TILT_DEG,
     DEFAULT_MIN_KEPT_POINTS,
     BoardSurface,
+    fit_board_plane_robust,
     measure_board_surface,
     segment_part,
 )
@@ -72,6 +83,11 @@ DEFAULT_TRUNCATION_VOXEL_MULTIPLE = 4.0
 DEFAULT_MAX_PART_HEIGHT_MM = 150.0
 
 DEFAULT_POISSON_DEPTH = 9
+
+# R-30: a single frame's own board-candidate count needed to trust a per-frame re-anchoring fit.
+# Deliberately smaller than DEFAULT_MIN_BOARD_POINTS (which pools every frame) -- a bare
+# assumption (D-033), not yet measured against the golden set's real per-frame counts.
+DEFAULT_MIN_FRAME_BOARD_POINTS = 100
 
 
 def build_voxel_grid(
@@ -107,6 +123,192 @@ def build_voxel_grid(
     centers = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)
     shape = (len(axis_coords[0]), len(axis_coords[1]), len(axis_coords[2]))
     return centers, shape
+
+
+@dataclass(frozen=True)
+class FrameReanchorReport:
+    """What R-30's re-anchoring measured and did for one frame, for the golden rerun's figures."""
+
+    frame_index: int
+    candidate_count: int
+    tilt_before_deg: float
+    offset_shift_mm: float
+
+
+def _rotation_aligning_unit_vectors(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """The minimal rotation matrix taking unit vector `a` onto unit vector `b`.
+
+    Rodrigues' rotation formula from the rotation axis `a x b` and angle between them. R-30's
+    board normals are always near-vertical (tilt bounded by `DEFAULT_MAX_BOARD_TILT_DEG`
+    upstream), so `a` and `b` are never antiparallel in practice; that degenerate case (a 180
+    degree rotation, whose axis this formula can't recover from a near-zero cross product) is
+    rejected rather than guessed at.
+    """
+    cross = np.cross(a, b)
+    sin_angle = float(np.linalg.norm(cross))
+    cos_angle = float(np.dot(a, b))
+    if sin_angle < 1e-12:
+        if cos_angle > 0:
+            return np.eye(3)
+        raise ValueError(
+            "frame and global board normals are antiparallel -- no minimal rotation exists; "
+            "this frame's fitted plane is not a small drift from the consensus."
+        )
+    axis = cross / sin_angle
+    skew = np.array(
+        [
+            [0.0, -axis[2], axis[1]],
+            [axis[2], 0.0, -axis[0]],
+            [-axis[1], axis[0], 0.0],
+        ]
+    )
+    return np.eye(3) + skew * sin_angle + skew @ skew * (1.0 - cos_angle)
+
+
+def reanchor_frames_to_board(
+    board_frame_points: np.ndarray,
+    board_extrinsic: np.ndarray,
+    valid_depth: np.ndarray,
+    global_board_surface: BoardSurface,
+    footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
+    search_band_mm: float = DEFAULT_BOARD_SEARCH_BAND_MM,
+    sigma_clip: float = DEFAULT_BOARD_FIT_SIGMA_CLIP,
+    max_fit_iterations: int = DEFAULT_BOARD_FIT_MAX_ITERATIONS,
+    min_frame_board_points: int = DEFAULT_MIN_FRAME_BOARD_POINTS,
+) -> tuple[np.ndarray, np.ndarray, list[FrameReanchorReport]]:
+    """R-30: correct each frame's own board-plane drift before its points enter fusion.
+
+    D-060 traced R-17's raised-board-layer artifact to per-frame VGGT pose error: some frames'
+    own board sits a few mm/degrees off the consensus plane R-23's one global alignment can't
+    fix. For each frame, this fits that frame's *own* board plane (the same robust fit
+    `measure_board_surface` uses, via `fit_board_plane_robust`, restricted to this frame's own
+    candidate points) and applies the rigid (rotation + translation) correction that brings it
+    onto `global_board_surface` -- not a per-point vertical shift, which can't correct tilt.
+
+    The correction is applied to both representations `fuse_run` needs downstream: the frame's
+    own `board_frame_points` (so the global board-plane fit and `segment_part`'s masking see the
+    corrected geometry), and its `board_extrinsic` (so `fuse_tsdf`'s re-projection of voxels into
+    this frame's real, unchanged depth measurements lands in the corrected frame). Derivation:
+    with `x' = R_s @ x + t_s` the corrected point for original point `x`, and
+    `x_cam = R_board @ x + t_board` (the frame's existing camera-from-board pose, unchanged, since
+    the physical depth measurement itself doesn't change), substituting `x = R_s.T @ (x' - t_s)`
+    gives `x_cam = (R_board @ R_s.T) @ x' + (t_board - R_board @ R_s.T @ t_s)` -- the corrected
+    extrinsic below.
+
+    Returns `(corrected_board_frame_points, corrected_board_extrinsic, reports)` -- one report
+    per frame, for the golden rerun to record (candidate count, tilt before correction, and the
+    z-shift applied at that frame's own candidate centroid).
+
+    Raises:
+        ValueError: a frame has fewer than `min_frame_board_points` of its own valid, in-footprint,
+            near-the-assumed-board-height candidate points -- too little of this frame's own board
+            is visible to trust a per-frame fit, rather than silently skipping correction for it
+            or guessing.
+    """
+    board_frame_points = np.asarray(board_frame_points, dtype=np.float64)
+    board_extrinsic = np.asarray(board_extrinsic, dtype=np.float64)
+    valid_depth = np.asarray(valid_depth, dtype=bool)
+    if board_frame_points.ndim != 4 or board_frame_points.shape[3] != 3:
+        raise ValueError(
+            f"board_frame_points must have shape (S,H,W,3), got {board_frame_points.shape}"
+        )
+    frame_count, height, width, _ = board_frame_points.shape
+    if board_extrinsic.shape != (frame_count, 3, 4):
+        raise ValueError(
+            f"board_extrinsic must be ({frame_count},3,4), got {board_extrinsic.shape}"
+        )
+    if valid_depth.shape != (frame_count, height, width):
+        raise ValueError(
+            f"valid_depth must be ({frame_count},{height},{width}), got {valid_depth.shape}"
+        )
+    footprint_width_mm, footprint_height_mm = footprint_mm
+
+    normal_global = np.array(
+        [-global_board_surface.slope_x, -global_board_surface.slope_y, 1.0]
+    )
+    normal_global = normal_global / np.linalg.norm(normal_global)
+
+    corrected_points = board_frame_points.copy()
+    corrected_extrinsic = board_extrinsic.copy()
+    reports: list[FrameReanchorReport] = []
+
+    for frame_index in range(frame_count):
+        points_flat = board_frame_points[frame_index].reshape(-1, 3)
+        x_mm, y_mm, z_mm = points_flat[:, 0], points_flat[:, 1], points_flat[:, 2]
+        in_footprint = (
+            (x_mm >= 0.0)
+            & (x_mm <= footprint_width_mm)
+            & (y_mm >= 0.0)
+            & (y_mm <= footprint_height_mm)
+        )
+        candidates = (
+            valid_depth[frame_index].reshape(-1)
+            & in_footprint
+            & (np.abs(z_mm) <= search_band_mm)
+        )
+        candidate_count = int(np.count_nonzero(candidates))
+        if candidate_count < min_frame_board_points:
+            raise ValueError(
+                f"frame {frame_index}: only {candidate_count} of its own board candidate points "
+                f"within {search_band_mm} mm of z=0 inside the footprint; need at least "
+                f"{min_frame_board_points} to trust a per-frame re-anchoring fit for this frame, "
+                "rather than skip or guess its correction."
+            )
+
+        cx_mm, cy_mm, cz_mm = x_mm[candidates], y_mm[candidates], z_mm[candidates]
+        slope_x, slope_y, z_at_origin_mm, _residual_sigma_mm, _inlier_count = (
+            fit_board_plane_robust(
+                cx_mm,
+                cy_mm,
+                cz_mm,
+                sigma_clip,
+                max_fit_iterations,
+                min_frame_board_points,
+            )
+        )
+        tilt_before_deg = float(np.degrees(np.arctan(np.hypot(slope_x, slope_y))))
+
+        normal_local = np.array([-slope_x, -slope_y, 1.0])
+        normal_local = normal_local / np.linalg.norm(normal_local)
+        rotation_correction = _rotation_aligning_unit_vectors(
+            normal_local, normal_global
+        )
+
+        centroid_x, centroid_y = float(np.mean(cx_mm)), float(np.mean(cy_mm))
+        centroid_z_local = slope_x * centroid_x + slope_y * centroid_y + z_at_origin_mm
+        centroid_rotated = rotation_correction @ np.array(
+            [centroid_x, centroid_y, centroid_z_local]
+        )
+        centroid_target_z = global_board_surface.plane_z_mm(
+            np.array([centroid_rotated[0]]), np.array([centroid_rotated[1]])
+        )[0]
+        translation_correction = np.array(
+            [0.0, 0.0, float(centroid_target_z - centroid_rotated[2])]
+        )
+
+        corrected_points[frame_index] = (
+            points_flat @ rotation_correction.T + translation_correction
+        ).reshape(height, width, 3)
+
+        rotation_board = board_extrinsic[frame_index, :, :3]
+        translation_board = board_extrinsic[frame_index, :, 3]
+        rotation_board_corrected = rotation_board @ rotation_correction.T
+        translation_board_corrected = (
+            translation_board - rotation_board_corrected @ translation_correction
+        )
+        corrected_extrinsic[frame_index, :, :3] = rotation_board_corrected
+        corrected_extrinsic[frame_index, :, 3] = translation_board_corrected
+
+        reports.append(
+            FrameReanchorReport(
+                frame_index=frame_index,
+                candidate_count=candidate_count,
+                tilt_before_deg=tilt_before_deg,
+                offset_shift_mm=float(translation_correction[2]),
+            )
+        )
+
+    return corrected_points, corrected_extrinsic, reports
 
 
 def fuse_tsdf(
@@ -439,9 +641,11 @@ def write_fusion_report(
     min_confidence: float,
     min_confidence_source: str,
     confidence_dropped_pixel_count: int,
+    reanchor_reports: list[FrameReanchorReport],
+    board_surface_before_reanchoring: BoardSurface,
 ) -> dict[str, Any]:
     report = {
-        "story": ["R-07", "R-20", "R-21"],
+        "story": ["R-07", "R-20", "R-21", "R-30"],
         "source_run_dir": str(reconstruction_run_dir),
         "source_alignment_json": str(alignment_json_path),
         "units": "mm",
@@ -464,6 +668,21 @@ def write_fusion_report(
         "min_confidence": min_confidence,
         "min_confidence_source": min_confidence_source,
         "confidence_dropped_pixel_count": confidence_dropped_pixel_count,
+        # R-30: the board surface measured before any per-frame correction (also the target
+        # every frame was corrected onto), the one measured after (same plane by construction,
+        # but its tighter residual_sigma_mm is the actual before/after diagnostic), and each
+        # frame's own pre-correction tilt/candidate count/applied shift -- what the golden
+        # rerun's acceptance criteria ask to be recorded, not just asserted to "look better".
+        "board_surface_before_reanchoring": board_surface_before_reanchoring.as_report(),
+        "reanchor_reports": [
+            {
+                "frame_index": r.frame_index,
+                "candidate_count": r.candidate_count,
+                "tilt_before_deg": r.tilt_before_deg,
+                "offset_shift_mm": r.offset_shift_mm,
+            }
+            for r in reanchor_reports
+        ],
     }
     path = Path(path)
     path.write_text(
@@ -548,10 +767,31 @@ def fuse_run(
 
     # Only pixels with a real depth measurement feed the board-plane fit -- an invalid pixel
     # (depth <= 0 or non-finite) unprojects to the camera centre, not a board point.
+    valid_depth = np.isfinite(depth) & (depth > 0.0)
+    flat_valid_depth = valid_depth.reshape(-1)
+    board_surface_before_reanchoring = measure_board_surface(
+        board_frame_points.reshape(-1, 3)[flat_valid_depth],
+        footprint_mm,
+        max_tilt_deg=max_board_tilt_deg,
+        height_threshold_mm=height_threshold_mm,
+    )
+
+    # R-30: correct each frame's own board-plane drift (D-060) before any of it feeds
+    # segmentation or fusion -- see reanchor_frames_to_board's docstring for the derivation.
+    board_frame_points, board_extrinsic, reanchor_reports = reanchor_frames_to_board(
+        board_frame_points,
+        board_extrinsic,
+        valid_depth,
+        board_surface_before_reanchoring,
+        footprint_mm,
+    )
+
+    # Re-fit after correction: the target plane is the same by construction, but this is the
+    # fit that now actually describes the (much tighter) corrected cloud, and is what
+    # segmentation and the voxel grid's bounds use from here on.
     flat_points = board_frame_points.reshape(-1, 3)
-    valid_depth = (np.isfinite(depth) & (depth > 0.0)).reshape(-1)
     board_surface = measure_board_surface(
-        flat_points[valid_depth],
+        flat_points[flat_valid_depth],
         footprint_mm,
         max_tilt_deg=max_board_tilt_deg,
         height_threshold_mm=height_threshold_mm,
@@ -561,8 +801,8 @@ def fuse_run(
     # and never classified as part geometry -- fuse_tsdf already drops invalid-depth pixels on
     # its own, independently of this mask, so their keep value doesn't otherwise matter.
     segmented_flat = np.zeros(flat_points.shape[0], dtype=bool)
-    segmented_flat[valid_depth] = segment_part(
-        flat_points[valid_depth],
+    segmented_flat[flat_valid_depth] = segment_part(
+        flat_points[flat_valid_depth],
         board_surface,
         height_threshold_mm,
         footprint_mm,
@@ -639,6 +879,8 @@ def fuse_run(
         min_confidence=resolved_min_confidence,
         min_confidence_source=min_confidence_source,
         confidence_dropped_pixel_count=confidence_dropped_pixel_count,
+        reanchor_reports=reanchor_reports,
+        board_surface_before_reanchoring=board_surface_before_reanchoring,
     )
 
 
