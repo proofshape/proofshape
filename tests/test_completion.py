@@ -507,11 +507,10 @@ def test_no_runner_prepares_inputs_records_unavailable_and_warns_nobody(tmp_path
     report = _report(out_dir)
     assert report["status"] == "unavailable"
     assert completion.RUNNER_ENV in report["reason"]
-    assert report["provisional_parameters"] == [
-        "max_samples",
-        "budget_s",
-        "overrun_allowance_s",
-    ]
+    # A-12 measured K's budget and allowance, so nothing is provisional any more (but still listed).
+    assert report["provisional_parameters"] == []
+    # The GPU the budget was measured on (A-12), so a report says which hardware it fits.
+    assert report["parameters"]["budget_measured_gpu"] == contract.BUDGET_MEASURED_GPU
     assert (
         report["input"]["view"]["frame_name"] == "frame_0001.jpg"
     )  # it saw every vertex
@@ -857,7 +856,7 @@ def _fake_upstream_stages(monkeypatch, source: completion.PipelineArtifacts) -> 
         copy_into(source.fusion_dir, out)
         return {}
 
-    def fake_provenance(model_path, reconstruction_dir, alignment_path, out):
+    def fake_provenance(model_path, reconstruction_dir, alignment_path, out, **_kwargs):
         copy_into(source.provenance_dir, out)
         return {}
 

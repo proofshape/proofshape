@@ -726,6 +726,97 @@ def test_main_reports_a_named_failure_when_run_json_predates_the_field(
     assert "min_confidence" in error_output
 
 
+# --- R-30: provenance_run prefers fuse_run's own per-frame corrected extrinsic -------------------
+
+
+def test_provenance_run_uses_fusion_dirs_corrected_extrinsic_over_the_drifted_global_rebuild(
+    tmp_path,
+):
+    """TabeenRaoof's review on #270: without `fusion_dir`, provenance rebuilds camera poses from
+    poses.npz + the one global alignment, blind to fuse_run's own per-frame re-anchoring -- so a
+    mesh fused from corrected frames gets checked against the *uncorrected*, still-drifted camera
+    it was corrected away from. Frame 1's raw pose here is drifted 5mm further out in x than the
+    pose its depth image was actually captured from; only corrected_extrinsic.npz holds the real
+    one."""
+    run_dir = tmp_path / "run"
+    extrinsic, intrinsic, depth, vertices, faces = _build_two_frame_scene()
+    drifted_extrinsic = extrinsic.copy()
+    drifted_extrinsic[
+        1, 0, 3
+    ] = -25.0  # true camera centre x=20mm; raw pose claims x=25mm
+    _write_synthetic_run(run_dir, depth, drifted_extrinsic, intrinsic)
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+    mesh_ply_path = run_dir / "mesh.ply"
+    tsdf_fusion.write_mesh_ply(mesh_ply_path, vertices, faces)
+
+    report_uncorrected = provenance.provenance_run(
+        mesh_ply_path, run_dir, alignment_json, tmp_path / "out_uncorrected"
+    )
+    assert report_uncorrected["extrinsic_source"] == "global_alignment"
+    assert (
+        report_uncorrected["observed_vertex_count"] == 0
+    )  # vertex 0 now seen by frame 0 only
+
+    fusion_dir = tmp_path / "fusion"
+    fusion_dir.mkdir()
+    np.savez_compressed(fusion_dir / "corrected_extrinsic.npz", extrinsic=extrinsic)
+    report_corrected = provenance.provenance_run(
+        mesh_ply_path,
+        run_dir,
+        alignment_json,
+        tmp_path / "out_corrected",
+        fusion_dir=fusion_dir,
+    )
+    assert report_corrected["extrinsic_source"] == "reanchored"
+    assert report_corrected["observed_vertex_count"] == 1  # both frames see it again
+
+
+def test_provenance_run_rejects_a_corrected_extrinsic_with_the_wrong_frame_count(
+    tmp_path,
+):
+    mesh_ply_path, run_dir, alignment_json = _write_two_frame_scene_run(tmp_path)
+    fusion_dir = tmp_path / "fusion"
+    fusion_dir.mkdir()
+    np.savez_compressed(  # 1 frame's worth, but this run has 2
+        fusion_dir / "corrected_extrinsic.npz", extrinsic=np.eye(3, 4)[None]
+    )
+
+    with pytest.raises(ValueError, match="expected"):
+        provenance.provenance_run(
+            mesh_ply_path,
+            run_dir,
+            alignment_json,
+            tmp_path / "out",
+            fusion_dir=fusion_dir,
+        )
+
+
+def test_main_passes_fusion_dir_through_and_reports_reanchored_source(tmp_path):
+    mesh_ply_path, run_dir, alignment_json = _write_two_frame_scene_run(tmp_path)
+    extrinsic, _intrinsic, _depth, _vertices, _faces = _build_two_frame_scene()
+    fusion_dir = tmp_path / "fusion"
+    fusion_dir.mkdir()
+    np.savez_compressed(fusion_dir / "corrected_extrinsic.npz", extrinsic=extrinsic)
+    out_dir = tmp_path / "out"
+
+    exit_code = provenance.main(
+        [
+            str(mesh_ply_path),
+            str(run_dir),
+            str(alignment_json),
+            "--out-dir",
+            str(out_dir),
+            "--fusion-dir",
+            str(fusion_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    report = json.loads((out_dir / "provenance.json").read_text())
+    assert report["extrinsic_source"] == "reanchored"
+
+
 # --- R-25: signed camera-facing gate and explicit depth-gate evidence -----------------------------
 
 

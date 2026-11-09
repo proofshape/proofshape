@@ -459,20 +459,24 @@ a second concurrent session is skipped with a warning.
 - it must not start a sample that would end past the budget.
 
 Pins, seeds and every file layout are checked strictly, and a mesh in the wrong units (LaS-Comp
-works in a unit cube) is rejected. The real LaS-Comp runner is A-12. `tests/completion_stub_runner.py`
-is the CI stand-in.
+works in a unit cube) is rejected. The real LaS-Comp runner is `scripts/lascomp_runner.py` (A-12),
+in its own Python 3.10 environment built by `scripts/setup_completion_env.sh` on a CUDA host.
+`tests/completion_stub_runner.py` is the CI stand-in.
 
-**Running it elsewhere** (A-12's Colab check):
+**Running it elsewhere** (A-12's Colab check; its story notes have the full round trip):
 ```
 python -m recon.completion prepare <session>/artifacts   # on the Mac: inputs + request, no runner
-# copy artifacts/completion/ to the CUDA host, run the runner on its request.json, copy runner/ back
+# on the CUDA host, once:  bash scripts/setup_completion_env.sh
+# then, per folder:        ~/lascomp-venv/bin/python -I scripts/lascomp_runner.py \
+#                            --lascomp-root ~/LaS-Comp --request <folder>/request.json
 python -m recon.completion ingest <session>/artifacts    # back on the Mac: samples + completion.json
 ```
 
 **Parameters.** Every number is a declared default in `CompletionParameters`, with its reason in the
 docstring.
-- `max_samples` (8), `budget_s` (2460) and `overrun_allowance_s` (360) are **provisional**, derived
-  from A-10's single T4 run, and A-12 replaces them with measured values.
+- `max_samples` (8), `budget_s` (2850) and `overrun_allowance_s` (90) were measured by A-12 on a
+  Colab T4, s-04 and s-02 at LaS-Comp's default steps. They hold for a T4 only; another GPU needs
+  its own measurement.
 - The isolation defaults come from A-10's s-04 inspection and the golden set's fusion cuts. Re-check
   them once R-26 and R-27 change segmentation and cleanup.
 - Once a runner is configured, the served model waits for the budget, which is longer than capture

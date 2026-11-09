@@ -1,0 +1,58 @@
+solid g02_03_right_triangle_40x30x20mm
+  facet normal 0.000000e+00 0.000000e+00 -1.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 0.000000 30.000000 0.000000
+      vertex 40.000000 0.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 1.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 20.000000
+      vertex 40.000000 0.000000 20.000000
+      vertex 0.000000 30.000000 20.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 -1.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 40.000000 0.000000 0.000000
+      vertex 40.000000 0.000000 20.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 -1.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 40.000000 0.000000 20.000000
+      vertex 0.000000 0.000000 20.000000
+    endloop
+  endfacet
+  facet normal 6.000000e-01 8.000000e-01 0.000000e+00
+    outer loop
+      vertex 40.000000 0.000000 0.000000
+      vertex 0.000000 30.000000 0.000000
+      vertex 0.000000 30.000000 20.000000
+    endloop
+  endfacet
+  facet normal 6.000000e-01 8.000000e-01 0.000000e+00
+    outer loop
+      vertex 40.000000 0.000000 0.000000
+      vertex 0.000000 30.000000 20.000000
+      vertex 40.000000 0.000000 20.000000
+    endloop
+  endfacet
+  facet normal -1.000000e+00 -0.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 30.000000 0.000000
+      vertex 0.000000 0.000000 0.000000
+      vertex 0.000000 0.000000 20.000000
+    endloop
+  endfacet
+  facet normal -1.000000e+00 -0.000000e+00 0.000000e+00
+    outer loop
+      vertex 0.000000 30.000000 0.000000
+      vertex 0.000000 0.000000 20.000000
+      vertex 0.000000 30.000000 20.000000
+    endloop
+  endfacet
+endsolid g02_03_right_triangle_40x30x20mm

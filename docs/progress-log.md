@@ -1884,3 +1884,175 @@ sharpens the part geometry too.
 
 **Close-out:** owner reported 7 h actual against 3 h estimated. R-26 and its index row are
 marked Done on this final head, which is also the head the golden rerun confirmed.
+
+## 2026-11-06 — I-05 orientation ambiguity: refine every candidate, flag a near-tie runner-up (D-061, PR #257)
+
+**Who:** @TabeenRaoof.
+
+**What changed:** added `inspection.registration.check_ambiguity(candidates, model, cad)`. It
+refines every I-03 candidate with I-04's `refine` on the same samples, merges only poses whose
+transforms agree (symmetric alternatives stay separate), ranks them fitness first then RMSE, and
+marks the session ambiguous when the runner-up's inlier RMSE is within 20% of the best's. It
+returns the best pose, the runner-up, their ratio, every refined pose, any candidate that couldn't
+be refined with its reason, and the contract's `registration_orientation_ambiguous` reason code.
+
+**Decision proposed:** D-061 raises D-008's threshold from 10% to 20%. On I-01 output with its 20%
+hidden patch, a plate whose one symmetry-breaking hole is missing (D-008's own case) was flagged
+9/12 at 10% and 12/12 at 20%, while the disambiguated cases (hole in place, hole shifted 3 mm, and
+s-04) were flagged 0/12 at either. s-05 was flagged 12/12. The margins are narrow (1.15 against
+1.22), which D-061 records. It needs both other members' agreement in the PR.
+
+**Also closed, from #233's review:** a ±25% sanity bound on the free-scale residual (with the
+bottom and half of s-04 hidden, 5 of 24 seeds had read +0.29 to +6.36), the s-05 basin test now
+measuring yaw relative to the truth, `ransac:0` failures recorded rather than fatal, and two
+mutations that I-03's scale tests missed. Refining every candidate also fixes a wrong I-03 pick:
+on #251's shifted-hole seed, the best pose went from 11 mm off to 0.05 mm.
+
+**Close-out:** 2.5 h actual against 3 h estimated, the owner's measured figure (D-033), updated
+from the 1 h recorded before review. I-05 and its index row are Done on the close-out head before
+approval, per D-038. All synthetic; no real-capture registration has been run yet.
+
+## 2026-11-07 — A-12 LaS-Comp runner, CUDA setup and the T4 measurement (PR #259)
+
+**Who:** @TabeenRaoof.
+
+**What changed:**
+- `scripts/lascomp_runner.py` is the real model behind A-04's completion contract. It runs in
+  LaS-Comp's own Python 3.10 environment, checks the pins before importing torch, loads the
+  pipeline once and samples under the contract's budget rule.
+- `scripts/setup_completion_env.sh` builds that environment on a CUDA host at D-057's pins.
+- A-04's `budget_s` and `overrun_allowance_s` are now measured values, and nothing is listed as
+  provisional any more.
+
+**The measurement** (Colab T4, one session; the method was fixed in the story before any run):
+- s-04 took 312.0–316.4 s a sample and s-02 322.1–328.0 s. About 95% of that is the
+  sparse-structure stage. Loading took 63.3–70.0 s from process start.
+- Every observed point lay within 1 mm of its completion in 99.5–100% of cases.
+- Seed-to-seed spread on the unseen surface was 0.77–2.48 mm. Running the same seed twice gave a
+  noise floor of 0.18 mm.
+- `budget_s` is now 2850 and `overrun_allowance_s` 90, against the provisional 2460 and 360. K
+  stays 8.
+- Blocking launches off gave no speed-up (314.2 s), so it isn't adopted.
+- 50 sparse-structure steps halved the time but collapsed the unseen-surface spread from a median
+  of 1.58 mm to 0.40 mm, so it isn't adopted either. Fewer steps don't keep the spread that A-05
+  needs.
+
+**Found on the way:**
+- Two setup bugs, both fixed before anything was measured: an opencv pin that can't coexist with
+  numpy 1.26.4, and LaS-Comp's committed bytecode caches. A first Colab attempt lost all four runs
+  to the second bug, 0.2 s after each launch.
+- DINOv2's hub code was unpinned during the run. It is now pinned at the commit the run used
+  (`7764ea0f`, main since 2026-06-03), and every run checks it.
+- D-058's ~49 min wait and the image environment wait for the first story that configures a
+  runner for suppliers. The index records them as waiting on a decision.
+
+**Close-out:** owner reported 5.5 h actual against 5 h estimated. A-12 and its index row are Done on
+the final review head. The raw results hold golden photos, so they stay outside the repository.
+
+## 2026-11-07 — s-04 from 30 vs 15 photos, a macOS reconstruction hang (#261, R-31), open issues checked
+
+**Who:** @TabeenRaoof. A follow-up to A-12, recorded as P-29 (4 h actual, the owner's figure).
+
+**Measurement: does the photo count change accuracy?** Golden s-04 was reconstructed on the M2 Max
+three ways: from all 30 photos, and from two 15-photo subsets (every other photo, starting from the
+first and from the second). Each was compared with the s-04 CAD using `recon/cad_size_check.py`, as
+a ratio to CAD:
+
+| Photos | Board scale | Height | 60 / 65 / 26 mm edges | Fit residual | Observed |
+|---|---|---|---|---|---|
+| 30 | 0.999 | 0.990 | 0.989 / 0.886 / 1.047 | 1.52 mm | 0.169 |
+| 15 (first set) | 0.999 | 1.001 | 0.926 / 0.942 / 1.023 | 1.50 mm | 0.124 |
+| 15 (second set) | 0.999 | 0.997 | 0.978 / 0.963 / 1.003 | 0.68 mm | 0.082 |
+
+- Scale and height are right whatever the count.
+- The edge errors change more with *which* 15 photos are used than between 15 and 30.
+- More photos buy coverage, roughly twice the observed surface. They don't buy shape accuracy.
+- The narrow walls and uneven edges are R-22's second finding (per-pixel depth). They're now
+  written up as the R-32 spike.
+- **Shape, not just size.** Drawn to scale against s-04's observed shell and measured, A-12's
+  completions show three kinds of shape error:
+  - **Invented by the model.** A raised patch, 86–180 mm² and 1.6–3.2 mm above the top face,
+    appears in 5 of 6 samples. The same seed gives the same patch (172 vs 166 mm²), so it comes
+    from the seed, not the photos. The padlock's shackle is the same kind of guess. Both are
+    Inferred surface, which never passes or fails a part, and flagging them is A-05's job.
+  - **Copied from bad input.** Every sample has a base flange 8–9 mm outside the walls
+    (397–870 mm²), because the observed shell itself flares at the base. That goes to R-30
+    and #231.
+  - **In the observed surface itself.** The long 60 mm wall leans about 3 mm over its height,
+    and its lower half is about 5 mm thick. The short wall stands straight. This surface can
+    pass or fail a part, so R-32 now measures lean and thickness too.
+- Caveats: one part, one capture, nominal CAD rather than calipers. This is a quick test, not an
+  accuracy result.
+
+**Found on the way: #261.** Every reconstruction on the Mac hangs forever. Open3D and torch each
+ship their own `libomp`, and `recon/provenance.py` has imported Open3D at module level since
+`4237642`, R-27's PR #250. `OMP_NUM_THREADS=1` is the verified workaround, and all three runs above
+used it. Filed as #261 and written up as R-31 (Ready, 2 h).
+
+**Open issues checked against the stories:**
+- P-27's ten follow-up stories cover all 24 of its issues, and 18 of those are closed.
+- #183 and #184 were fixed by R-27 and #108 by C-09, but none had been closed. All three are now
+  closed, each with a comment linking the code that fixed it.
+- #189–#191 stay with C-20 (@mbj1994). #181 and #200 still wait on a team decision.
+- #231 is still present: on today's s-04 run, 70% of the served model's faces are walls and 56% of
+  its Observed faces are board skin. R-30 covers the skin. The walls have no story, so the
+  question went to @dalwalyk on #258.
+
+## 2026-11-08 — C-20 phone-orientation fixes and real-device check (PR #264)
+
+**Who:** @mbj1994.
+
+**What changed:**
+- Duplicate-frame heading differences now wrap correctly across 0/360 degrees.
+- Orbit heading/elevation use the full device rotation, including roll, and the Python server replay
+  uses the same maths as the browser.
+- Exposure is checked before blur so black/white frames report the lighting problem first.
+- The capture manual now allows portrait, roll and upright landscape guidance.
+
+**Real-device check:** iPhone 13, iOS 26.5.2, Safari 26.5.
+Using the local HTTPS capture server and contract stub, accepted frames advanced orbit coverage,
+guidance remained stable with roll, upright landscape stayed level rather than falsely marking the
+straight-down slot, and the arrow changed sensibly while moving around the object until it reported
+**On target**. Normal gate rejections also appeared between accepted frames.
+
+**Close-out:** owner reported 4 h actual against 3 h estimated. C-20 and its index row are Done on
+this final review head.
+
+## 2026-11-09 — R-30 per-frame board re-anchoring closed (D-060's fix, PR #270)
+
+**Who:** @dalwalyk. Claimed in #258.
+
+**What changed:** `fit_board_plane_robust` was pulled out of `measure_board_surface` (R-21) so
+the identical robust fit runs per frame, not a second, possibly-drifted copy of it.
+`reanchor_frames_to_board` (`recon/tsdf_fusion.py`) fits each frame's own board plane from its
+own candidate points, rotates its normal onto the global plane's normal, then shifts purely in z
+at that frame's own candidate centroid -- the full rotation-plus-translation correction, applied
+consistently to both `board_frame_points` and `board_extrinsic`.
+
+**Golden rerun (@TabeenRaoof):** every frame lands within 0.23 mm of the shared plane (was up to
+4.4 mm), board sigma tightens 2-4x on all five objects, every object's height cut drops to the
+2.0 mm floor as D-060's prototype predicted, and the first-density-gap rule agrees with the
+threshold cut once the ghost layer is gone (criterion 4 holds).
+
+**Two real issues review found, both fixed before merge, neither guessed at:**
+- `provenance_run` independently rebuilt every frame's pose from `poses.npz` and the one global
+  alignment, blind to this story's per-frame correction -- the corrected mesh was being checked
+  against the drifted cameras it was corrected away from. Fixed: `fuse_run` now persists its
+  corrected extrinsic to `corrected_extrinsic.npz`; `provenance_run`/`service.py`/the CLI prefer
+  it when given.
+- Re-anchoring left 6 edges shared by 3 faces on s-03 (0 on `main`), tripping the same
+  non-manifold refusal #247 already describes for the Poisson path. @TabeenRaoof measured it on
+  the real mesh first (17 of 43,043 faces, one part/board seam) rather than leaving the scoping
+  call blind, and ruled out Open3D's `remove_non_manifold_edges()` (it deleted 14,751 faces on
+  the same mesh). `mesh_cleanup.drop_non_manifold_faces` drops just those 17 faces before the
+  component filter; `fill_small_holes` closes the gap normally. s-03 completes again.
+
+**Also addresses #231's board-skin half** (a frame straddling the segmentation cut surviving
+into fusion as skin on the part) -- the walls half stays with R-33.
+
+**Close-out:** owner reported 6 h actual against 5 h estimated. `offset_shift_mm`'s diagnostic
+still conflates the real per-frame offset with a rotate-about-origin artifact (confirmed not a
+correctness issue); left for a later story. s-02's board-band coverage rose rather than fell
+because its cut moved to the fixed 2.0 mm floor while its own post-correction sigma (0.58 mm) is
+still the highest of the five -- a sigma-relative cut is a candidate for R-33 or later, not this
+story.

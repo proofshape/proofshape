@@ -168,6 +168,73 @@ class BoardSurface:
         }
 
 
+def fit_board_plane_robust(
+    cx_mm: np.ndarray,
+    cy_mm: np.ndarray,
+    cz_mm: np.ndarray,
+    sigma_clip: float = DEFAULT_BOARD_FIT_SIGMA_CLIP,
+    max_fit_iterations: int = DEFAULT_BOARD_FIT_MAX_ITERATIONS,
+    min_inlier_points: int = DEFAULT_MIN_BOARD_POINTS,
+) -> tuple[float, float, float, float, int]:
+    """Robust plane fit (median start, then least-squares with iterative MAD-sigma clipping,
+    deterministic -- no RANSAC, no random state) over already-selected candidate points.
+
+    Pulled out of `measure_board_surface` (R-21) so R-30's per-frame re-anchoring can fit the
+    identical plane to one frame's own candidate points, not a second, drifted copy of the fit.
+
+    Returns `(slope_x, slope_y, z_at_origin_mm, residual_sigma_mm, inlier_count)` for the plane
+    `z = slope_x*x + slope_y*y + z_at_origin_mm`.
+
+    Raises:
+        ValueError: fewer than 3 inlier points at any point during fitting, a degenerate
+            (collinear) point spread, or fewer than `min_inlier_points` inliers at convergence.
+    """
+    median_z_mm = float(np.median(cz_mm))
+    start_sigma_mm = 1.4826 * float(np.median(np.abs(cz_mm - median_z_mm)))
+    if start_sigma_mm > 0:
+        inlier = np.abs(cz_mm - median_z_mm) <= sigma_clip * start_sigma_mm
+    else:
+        inlier = np.ones_like(cz_mm, dtype=bool)
+
+    coefficients = np.array([0.0, 0.0, median_z_mm])
+    residual_sigma_mm = start_sigma_mm
+    for _ in range(max_fit_iterations):
+        inlier_count = int(np.count_nonzero(inlier))
+        if inlier_count < 3:
+            raise ValueError(
+                f"only {inlier_count} inlier board points survived robust fitting; too few to "
+                "fit a plane."
+            )
+        design = np.column_stack([cx_mm[inlier], cy_mm[inlier], np.ones(inlier_count)])
+        coefficients, _, rank, _ = np.linalg.lstsq(design, cz_mm[inlier], rcond=None)
+        if rank < 3:
+            raise ValueError(
+                "candidate board points do not span a plane (rank-deficient fit) -- "
+                "the footprint's x/y spread is degenerate."
+            )
+        residuals_mm = cz_mm - (
+            coefficients[0] * cx_mm + coefficients[1] * cy_mm + coefficients[2]
+        )
+        residual_sigma_mm = 1.4826 * float(np.median(np.abs(residuals_mm[inlier])))
+        if residual_sigma_mm <= 0:
+            new_inlier = inlier
+        else:
+            new_inlier = np.abs(residuals_mm) <= sigma_clip * residual_sigma_mm
+        if np.array_equal(new_inlier, inlier):
+            break
+        inlier = new_inlier
+
+    inlier_count = int(np.count_nonzero(inlier))
+    if inlier_count < min_inlier_points:
+        raise ValueError(
+            f"only {inlier_count} inlier board points after robust fitting; need at least "
+            f"{min_inlier_points}. Not falling back to z=0 silently."
+        )
+
+    slope_x, slope_y, z_at_origin_mm = (float(c) for c in coefficients)
+    return slope_x, slope_y, z_at_origin_mm, residual_sigma_mm, inlier_count
+
+
 def measure_board_surface(
     points_board_frame_mm: np.ndarray,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
@@ -244,49 +311,11 @@ def measure_board_surface(
     cy_mm = y_mm[candidates]
     cz_mm = z_mm[candidates]
 
-    median_z_mm = float(np.median(cz_mm))
-    start_sigma_mm = 1.4826 * float(np.median(np.abs(cz_mm - median_z_mm)))
-    if start_sigma_mm > 0:
-        inlier = np.abs(cz_mm - median_z_mm) <= sigma_clip * start_sigma_mm
-    else:
-        inlier = np.ones_like(cz_mm, dtype=bool)
-
-    coefficients = np.array([0.0, 0.0, median_z_mm])
-    residual_sigma_mm = start_sigma_mm
-    for _ in range(max_fit_iterations):
-        inlier_count = int(np.count_nonzero(inlier))
-        if inlier_count < 3:
-            raise ValueError(
-                f"only {inlier_count} inlier board points survived robust fitting; too few to "
-                "fit a plane."
-            )
-        design = np.column_stack([cx_mm[inlier], cy_mm[inlier], np.ones(inlier_count)])
-        coefficients, _, rank, _ = np.linalg.lstsq(design, cz_mm[inlier], rcond=None)
-        if rank < 3:
-            raise ValueError(
-                "candidate board points do not span a plane (rank-deficient fit) -- "
-                "the footprint's x/y spread is degenerate."
-            )
-        residuals_mm = cz_mm - (
-            coefficients[0] * cx_mm + coefficients[1] * cy_mm + coefficients[2]
+    slope_x, slope_y, z_at_origin_mm, residual_sigma_mm, inlier_count = (
+        fit_board_plane_robust(
+            cx_mm, cy_mm, cz_mm, sigma_clip, max_fit_iterations, min_board_points
         )
-        residual_sigma_mm = 1.4826 * float(np.median(np.abs(residuals_mm[inlier])))
-        if residual_sigma_mm <= 0:
-            new_inlier = inlier
-        else:
-            new_inlier = np.abs(residuals_mm) <= sigma_clip * residual_sigma_mm
-        if np.array_equal(new_inlier, inlier):
-            break
-        inlier = new_inlier
-
-    inlier_count = int(np.count_nonzero(inlier))
-    if inlier_count < min_board_points:
-        raise ValueError(
-            f"only {inlier_count} inlier board points after robust fitting; need at least "
-            f"{min_board_points}. Not falling back to z=0 silently."
-        )
-
-    slope_x, slope_y, z_at_origin_mm = (float(c) for c in coefficients)
+    )
     tilt_deg = float(np.degrees(np.arctan(np.hypot(slope_x, slope_y))))
     if tilt_deg > max_tilt_deg:
         raise ValueError(

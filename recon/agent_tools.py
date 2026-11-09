@@ -18,6 +18,7 @@ Two of the five tools have a phone-side source (`capture/src/frame_gate.ts`,
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -75,27 +76,59 @@ def _angular_distance_deg(a: float, b: float) -> float:
     return 360.0 - diff if diff > 180.0 else diff
 
 
-def _relative_azimuth_deg(raw_alpha_deg: float, anchor_deg: float) -> float:
-    return ((raw_alpha_deg - anchor_deg) % 360.0 + 360.0) % 360.0
+def _relative_azimuth_deg(raw_heading_deg: float, anchor_deg: float) -> float:
+    return ((raw_heading_deg - anchor_deg) % 360.0 + 360.0) % 360.0
 
 
-def _elevation_from_beta(beta_deg: float) -> float:
-    return 90.0 - beta_deg
+@dataclass(frozen=True)
+class _ViewAngles:
+    heading_deg: float
+    elevation_deg: float
 
 
-def _anchor_alpha_deg(accepted_alphas: list[float]) -> float | None:
-    return accepted_alphas[0] if accepted_alphas else None
+def _view_angles_from_gyro(gyro: dict[str, float]) -> _ViewAngles:
+    """Direct Python mirror of capture/src/orbit.ts::viewAnglesFromGyro (D-054).
+
+    W3C device orientation is intrinsic Z-X'-Y''. The rear camera looks along
+    R(alpha, beta, gamma) * (0, 0, -1). ProofShape keeps the browser's existing
+    azimuth convention where gamma=0 gives heading=alpha, so heading is atan2(-x, y);
+    downward elevation is asin(-z).
+    """
+    alpha = math.radians(float(gyro["alpha"]))
+    beta = math.radians(float(gyro["beta"]))
+    gamma = math.radians(float(gyro["gamma"]))
+
+    cos_alpha, sin_alpha = math.cos(alpha), math.sin(alpha)
+    cos_beta, sin_beta = math.cos(beta), math.sin(beta)
+    cos_gamma, sin_gamma = math.cos(gamma), math.sin(gamma)
+
+    x = -cos_alpha * sin_gamma - sin_alpha * sin_beta * cos_gamma
+    y = -sin_alpha * sin_gamma + cos_alpha * sin_beta * cos_gamma
+    z = -cos_beta * cos_gamma
+
+    heading_deg = math.degrees(math.atan2(-x, y)) % 360.0
+    downward = max(-1.0, min(1.0, -z))
+    elevation_deg = math.degrees(math.asin(downward))
+    return _ViewAngles(heading_deg=heading_deg, elevation_deg=elevation_deg)
+
+
+def _anchor_heading_deg(accepted_gyros: list[dict[str, float]]) -> float | None:
+    return (
+        _view_angles_from_gyro(accepted_gyros[0]).heading_deg
+        if accepted_gyros
+        else None
+    )
 
 
 def _nearest_eligible_slot_index(
-    alpha_deg: float,
-    beta_deg: float,
+    gyro: dict[str, float],
     anchor_deg: float,
     orbit: tuple[OrbitSlot, ...],
     tolerance_deg: float,
 ) -> int | None:
-    elevation_deg = _elevation_from_beta(beta_deg)
-    azimuth_deg = _relative_azimuth_deg(alpha_deg, anchor_deg)
+    view = _view_angles_from_gyro(gyro)
+    elevation_deg = view.elevation_deg
+    azimuth_deg = _relative_azimuth_deg(view.heading_deg, anchor_deg)
 
     best_index: int | None = None
     best_elevation_dist = float("inf")
@@ -122,14 +155,12 @@ def compute_coverage(
 ) -> dict[str, Any]:
     """Direct port of `orbit.ts`'s `computeCoverage`, cross-checked against
     `capture/src/orbit.test.ts`'s own cases in `tests/test_agent_tools.py`."""
-    alphas = [float(g["alpha"]) for g in accepted_gyros]
-    anchor_deg = _anchor_alpha_deg(alphas)
+    anchor_deg = _anchor_heading_deg(accepted_gyros)
     covered = [False] * len(orbit)
     if anchor_deg is not None:
         for gyro in accepted_gyros:
             index = _nearest_eligible_slot_index(
-                float(gyro["alpha"]),
-                float(gyro["beta"]),
+                gyro,
                 anchor_deg,
                 orbit,
                 tolerance_deg,

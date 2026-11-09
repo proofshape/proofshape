@@ -61,6 +61,54 @@ def _component_labels(
     return labels, component_count
 
 
+def drop_non_manifold_faces(
+    vertices: np.ndarray, faces: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Drop every face incident to an edge shared by more than two faces.
+
+    R-30 review on #270 (@TabeenRaoof): per-frame re-anchoring can leave a handful of faces,
+    right where a part meets the re-cut board, sharing an edge with a third face -- not just
+    two -- which `find_boundary_loops` and provenance's winding/facing checks both assume never
+    happens. Measured on the real s-03 mesh: 6 such edges touch only 17 of 43,043 faces,
+    clustered at one part/board seam; dropping those 17 faces (not Open3D's
+    `remove_non_manifold_edges()`, which deleted 14,751 faces on the same mesh) leaves a gap
+    small enough for `fill_small_holes` to close normally afterward. Vertices are left as-is --
+    `filter_connected_components`, which runs right after this, already drops any vertex no
+    face references any more.
+
+    Returns `(vertices, faces, dropped_face_count)`.
+    """
+    vertices = np.asarray(vertices, dtype=np.float32)
+    faces = np.asarray(faces, dtype=np.int64)
+    if faces.ndim != 2 or faces.shape[1] != 3:
+        raise ValueError(f"faces must have shape (F,3), got {faces.shape}")
+    if len(faces) == 0:
+        return vertices, faces.astype(np.int32), 0
+
+    edge_owner_count: dict[tuple[int, int], int] = {}
+    for triangle in faces:
+        for i in range(3):
+            a, b = int(triangle[i]), int(triangle[(i + 1) % 3])
+            key = (a, b) if a < b else (b, a)
+            edge_owner_count[key] = edge_owner_count.get(key, 0) + 1
+
+    bad_edges = {edge for edge, count in edge_owner_count.items() if count > 2}
+    if not bad_edges:
+        return vertices, faces.astype(np.int32), 0
+
+    keep_face = np.ones(len(faces), dtype=bool)
+    for index, triangle in enumerate(faces):
+        for i in range(3):
+            a, b = int(triangle[i]), int(triangle[(i + 1) % 3])
+            key = (a, b) if a < b else (b, a)
+            if key in bad_edges:
+                keep_face[index] = False
+                break
+
+    kept_faces = faces[keep_face].astype(np.int32)
+    return vertices, kept_faces, int(len(faces) - len(kept_faces))
+
+
 def filter_connected_components(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -459,10 +507,15 @@ def write_cleanup_report(
     max_file_size_bytes: int,
     component_report: dict[str, int | float],
     size_redecimation_rounds: int,
+    non_manifold_faces_dropped: int = 0,
 ) -> dict[str, Any]:
     report = {
         "story": "R-08",
         "source_mesh_ply": str(mesh_ply_path),
+        # R-30 review on #270: faces dropped by drop_non_manifold_faces, before the component
+        # filter below -- almost always 0; non-zero means re-anchoring left a seam provenance
+        # couldn't have labelled anyway.
+        "non_manifold_faces_dropped": non_manifold_faces_dropped,
         "faces_before_component_filter": faces_before,
         "faces_after_component_filter": faces_after_component_filter,
         "holes_filled": holes_filled,
@@ -504,6 +557,10 @@ def cleanup_run(
 
     vertices, faces = read_mesh_ply(mesh_ply_path)
     faces_before = len(faces)
+
+    vertices, faces, non_manifold_faces_dropped = drop_non_manifold_faces(
+        vertices, faces
+    )
 
     vertices, faces, component_report = filter_connected_components(
         vertices, faces, min_face_fraction=min_component_face_fraction
@@ -547,6 +604,7 @@ def cleanup_run(
         max_file_size_bytes=max_file_size_bytes,
         component_report=component_report,
         size_redecimation_rounds=size_redecimation_rounds,
+        non_manifold_faces_dropped=non_manifold_faces_dropped,
     )
 
 
