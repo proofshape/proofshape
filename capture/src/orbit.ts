@@ -46,34 +46,75 @@ export function angularDistanceDeg(a: number, b: number): number {
   return diff > 180 ? 360 - diff : diff;
 }
 
-export function relativeAzimuthDeg(rawAlphaDeg: number, anchorDeg: number): number {
-  return (((rawAlphaDeg - anchorDeg) % 360) + 360) % 360;
+export function relativeAzimuthDeg(rawHeadingDeg: number, anchorDeg: number): number {
+  return (((rawHeadingDeg - anchorDeg) % 360) + 360) % 360;
 }
 
-// beta: W3C front-back tilt, 0 deg when the device lies flat screen-up, ~90 deg when held
-// upright facing the user. The normal upright photo pose -- standing, rear camera pointing
-// roughly horizontally at the part -- is beta ~= 90, which this function maps to elevation 0
-// (level with the part; *not* the "mid elevation" ring, which sits higher at 45 deg -- an
-// earlier version of this comment, a test name, and the story notes all called beta~90 "mid
-// elevation" by mistake, confusingly, even though the arithmetic itself was always correct.
-// Fixed everywhere per review, TabeenRaoof and mbj1994 both independently caught it). Tilting the
-// phone forward/down to point the camera at the part from above moves beta toward 0, i.e.
-// elevation toward 90 (straight down). This mapping itself is a defensible first pass, not a
-// verified one -- isolated here specifically so it's a one-line fix if the real-device manual
-// check shows it's backwards. That same check should also confirm two things this function
-// assumes but can't verify itself: portrait orientation (beta/gamma swap roles in landscape), and
-// which rotation direction W3C's alpha actually increases in on a real device.
-// Also assumes betaDeg stays within [0, 180] -- W3C's full range is [-180, 180], but a negative
-// reading (tilted back past flat) has no sensible elevation in this story's orbit-walking
-// context and isn't reachable by normal use; flagged rather than guarded against, per TabeenRaoof's
-// PR #120 review, since it would require tilting past flat to trigger.
+export interface ViewAngles {
+  readonly headingDeg: number; // app azimuth convention: gamma=0 preserves heading=alpha
+  readonly elevationDeg: number; // 0 = horizontal, +90 = rear camera straight down
+}
+
+function radiansToDegrees(value: number): number {
+  return (value * 180) / Math.PI;
+}
+
+function normalizeHeadingDeg(value: number): number {
+  return ((value % 360) + 360) % 360;
+}
+
+// W3C Device Orientation is intrinsic Z-X'-Y''. The rear camera looks out of the back of the
+// screen, i.e. along body-frame (0, 0, -1). Compute that vector after the full rotation rather
+// than treating alpha/beta independently: gamma (roll) changes both heading and elevation, and
+// in landscape beta/gamma exchange the roles a portrait-only shortcut would assume.
+//
+// For R = Rz(alpha) Rx(beta) Ry(gamma), d = R * (0, 0, -1):
+//   x = -cos(alpha) sin(gamma) - sin(alpha) sin(beta) cos(gamma)
+//   y = -sin(alpha) sin(gamma) + cos(alpha) sin(beta) cos(gamma)
+//   z = -cos(beta) cos(gamma)
+//
+// ProofShape's existing azimuth convention increases with alpha when gamma=0, the opposite sign
+// of the W3C compass-heading example, so heading is atan2(-x, y). Downward elevation is asin(-z).
+export function viewAnglesFromGyro(reading: Gyro): ViewAngles {
+  const alpha = (reading.alpha * Math.PI) / 180;
+  const beta = (reading.beta * Math.PI) / 180;
+  const gamma = (reading.gamma * Math.PI) / 180;
+
+  const cosAlpha = Math.cos(alpha);
+  const sinAlpha = Math.sin(alpha);
+  const cosBeta = Math.cos(beta);
+  const sinBeta = Math.sin(beta);
+  const cosGamma = Math.cos(gamma);
+  const sinGamma = Math.sin(gamma);
+
+  const x = -cosAlpha * sinGamma - sinAlpha * sinBeta * cosGamma;
+  const y = -sinAlpha * sinGamma + cosAlpha * sinBeta * cosGamma;
+  const z = -cosBeta * cosGamma;
+
+  const headingDeg = normalizeHeadingDeg(radiansToDegrees(Math.atan2(-x, y)));
+  // Floating-point trig can produce 1 +/- epsilon at exact poles; clamp before asin.
+  const downward = Math.max(-1, Math.min(1, -z));
+  const elevationDeg = radiansToDegrees(Math.asin(downward));
+  return { headingDeg, elevationDeg };
+}
+
+// Compatibility helper for synthetic fixtures that intentionally set gamma=0. Orbit coverage and
+// arrow guidance use viewAnglesFromGyro above; this helper is no longer the runtime orientation
+// model.
 export function elevationFromBeta(betaDeg: number): number {
   return 90 - betaDeg;
 }
 
 // null when there are no accepted frames yet -- nothing to anchor azimuth to.
+export function anchorHeadingDeg(acceptedReadings: readonly Gyro[]): number | null {
+  const first = acceptedReadings[0];
+  return first ? viewAnglesFromGyro(first).headingDeg : null;
+}
+
+// Kept as a compatibility alias for older callers/tests; despite the historical name, C-20 makes
+// the anchor the camera's full roll-aware heading, not raw alpha.
 export function anchorAlphaDeg(acceptedReadings: readonly Gyro[]): number | null {
-  return acceptedReadings[0]?.alpha ?? null;
+  return anchorHeadingDeg(acceptedReadings);
 }
 
 // A reading counts toward its single nearest *eligible* slot only, not every slot within
@@ -91,8 +132,8 @@ function nearestEligibleSlotIndex(
 ): number | null {
   // Plain subtraction, not angularDistanceDeg: unlike azimuth, elevation isn't a wraparound
   // quantity (computeArrowGuidance's elevationDiff uses the same plain subtraction).
-  const elevationDeg = elevationFromBeta(reading.beta);
-  const azimuthDeg = relativeAzimuthDeg(reading.alpha, anchorDeg);
+  const { headingDeg, elevationDeg } = viewAnglesFromGyro(reading);
+  const azimuthDeg = relativeAzimuthDeg(headingDeg, anchorDeg);
 
   let bestIndex: number | null = null;
   let bestElevationDist = Infinity;
@@ -129,7 +170,7 @@ export function computeCoverage(
   orbit: readonly OrbitSlot[] = DEFAULT_ORBIT,
   toleranceDeg: number = DEFAULT_COVERAGE_TOLERANCE_DEG,
 ): CoverageState {
-  const anchorDeg = anchorAlphaDeg(acceptedReadings);
+  const anchorDeg = anchorHeadingDeg(acceptedReadings);
   const covered = orbit.map(() => false);
   if (anchorDeg !== null) {
     for (const reading of acceptedReadings) {
@@ -154,11 +195,12 @@ export type ArrowGuidance =
 // the spec's wording.
 export function computeArrowGuidance(
   liveGyro: Gyro,
-  anchorAlphaDegValue: number,
+  anchorHeadingDegValue: number,
   target: OrbitSlot,
   toleranceDeg: number = DEFAULT_COVERAGE_TOLERANCE_DEG,
 ): ArrowGuidance {
-  const liveElevationDeg = elevationFromBeta(liveGyro.beta);
+  const { headingDeg: liveHeadingDeg, elevationDeg: liveElevationDeg } =
+    viewAnglesFromGyro(liveGyro);
   const elevationDiff = target.elevationDeg - liveElevationDeg;
   const elevationOnTarget = Math.abs(elevationDiff) <= toleranceDeg;
 
@@ -169,7 +211,7 @@ export function computeArrowGuidance(
     return { onTarget: false, azimuthDeltaDeg: 0, elevationDeltaDeg: elevationDiff };
   }
 
-  const liveAzimuthDeg = relativeAzimuthDeg(liveGyro.alpha, anchorAlphaDegValue);
+  const liveAzimuthDeg = relativeAzimuthDeg(liveHeadingDeg, anchorHeadingDegValue);
   const rawAzimuthDiff = target.azimuthDeg - liveAzimuthDeg;
   // Signed shortest path around the circle, in (-180, 180].
   const azimuthDiff = ((((rawAzimuthDiff + 180) % 360) + 360) % 360) - 180;
