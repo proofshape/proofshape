@@ -49,6 +49,44 @@ def _flat_grid(n: int = 20):
     return vertices, np.array(faces, dtype=np.int32)
 
 
+# --- drop_non_manifold_faces (R-30, review on #270) ----------------------------------------------
+
+
+def test_drop_non_manifold_faces_removes_every_face_on_the_bad_edge_only():
+    # Add a fifth vertex and a fourth face reusing edge (0,1), already owned by two of the
+    # tetrahedron's own faces -- now 3 faces share it, which is what R-30's re-anchoring left on
+    # the real s-03 mesh at one part/board seam.
+    vertices = np.vstack([_TETRAHEDRON_VERTICES, [[2.0, 2.0, 2.0]]]).astype(np.float32)
+    extra_face = np.array([[0, 1, 4]], dtype=np.int32)
+    faces = np.vstack([_TETRAHEDRON_FACES_CLOSED, extra_face]).astype(np.int32)
+
+    kept_vertices, kept_faces, dropped_count = mesh_cleanup.drop_non_manifold_faces(
+        vertices, faces
+    )
+
+    assert (
+        dropped_count == 3
+    )  # the two original faces on edge (0,1), plus the extra one
+    np.testing.assert_array_equal(kept_vertices, vertices)  # vertices are left as-is
+    remaining = {tuple(sorted(int(i) for i in face)) for face in kept_faces}
+    assert remaining == {(1, 2, 3), (0, 2, 3)}
+
+
+def test_drop_non_manifold_faces_leaves_a_manifold_mesh_untouched():
+    kept_vertices, kept_faces, dropped_count = mesh_cleanup.drop_non_manifold_faces(
+        _TETRAHEDRON_VERTICES, _TETRAHEDRON_FACES_CLOSED
+    )
+
+    assert dropped_count == 0
+    np.testing.assert_array_equal(kept_faces, _TETRAHEDRON_FACES_CLOSED)
+    np.testing.assert_array_equal(kept_vertices, _TETRAHEDRON_VERTICES)
+
+
+def test_drop_non_manifold_faces_rejects_bad_shape():
+    with pytest.raises(ValueError, match="faces"):
+        mesh_cleanup.drop_non_manifold_faces(np.zeros((3, 3)), np.zeros((1, 4)))
+
+
 # --- keep_largest_connected_component -----------------------------------------------------------
 
 
