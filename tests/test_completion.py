@@ -856,7 +856,7 @@ def _fake_upstream_stages(monkeypatch, source: completion.PipelineArtifacts) -> 
         copy_into(source.fusion_dir, out)
         return {}
 
-    def fake_provenance(model_path, reconstruction_dir, alignment_path, out):
+    def fake_provenance(model_path, reconstruction_dir, alignment_path, out, **_kwargs):
         copy_into(source.provenance_dir, out)
         return {}
 

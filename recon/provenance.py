@@ -852,6 +852,7 @@ def write_provenance_report(
     min_confidence_source: str,
     confidence_dropped_pixel_count: int,
     observation_count: int,
+    extrinsic_source: str,
 ) -> dict[str, Any]:
     observed_vertex_count = int(np.count_nonzero(vertex_labels == LABEL_OBSERVED))
     observed_face_count = int(np.count_nonzero(face_labels == LABEL_OBSERVED))
@@ -867,6 +868,11 @@ def write_provenance_report(
         "min_confidence": min_confidence,
         "min_confidence_source": min_confidence_source,
         "confidence_dropped_pixel_count": confidence_dropped_pixel_count,
+        # R-30: "reanchored" means fusion_dir's own corrected_extrinsic.npz was used (so this
+        # mesh's observations are checked against the same per-frame-corrected cameras it was
+        # fused from); "global_alignment" means poses.npz + the one global similarity transform
+        # were rebuilt directly, with no per-frame correction applied.
+        "extrinsic_source": extrinsic_source,
         # Rows in observations.npz. Comparing it between a run at threshold 0 and one at the real
         # threshold, on the same mesh, is how many (vertex, frame) observations confidence removed.
         "observation_count": observation_count,
@@ -906,6 +912,7 @@ def provenance_run(
     min_triangulation_angle_deg: float = DEFAULT_MIN_TRIANGULATION_ANGLE_DEG,
     depth_consistency_tolerance_mm: float = DEFAULT_DEPTH_CONSISTENCY_TOLERANCE_MM,
     min_confidence: float | None = None,
+    fusion_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Load a mesh (R-07's `.ply` or R-08's `.glb`) plus R-01/R-04 output, label every vertex,
     and write a colored GLB, a JSON report, and the raw observations table.
@@ -915,11 +922,20 @@ def provenance_run(
     so in the pipeline provenance trusts exactly the pixels fusion did. A `run.json` that is
     missing or predates that field is an explicit error, never a silent 0.0. Pass `min_confidence`
     explicitly to override it -- e.g. 0.0 to reproduce pre-R-24 labelling for comparison.
+
+    R-30 (review on #270): `fusion_dir`, when given and holding a `corrected_extrinsic.npz`
+    (`fuse_run`'s own per-frame board re-anchoring output), is used in place of rebuilding camera
+    poses from `reconstruction_run_dir`'s raw `poses.npz` and the single global alignment. Without
+    this, a mesh fused from re-anchored frames would be checked against the *uncorrected*,
+    still-drifted cameras -- the same frames the mesh itself was re-anchored away from. `None`
+    (the default) keeps the pre-R-30 behaviour, for callers with no fusion-side correction to
+    prefer.
     """
     mesh_path = Path(mesh_path)
     reconstruction_run_dir = Path(reconstruction_run_dir)
     alignment_json_path = Path(alignment_json_path)
     out_dir = Path(out_dir)
+    fusion_dir = Path(fusion_dir) if fusion_dir is not None else None
     if out_dir.exists() and any(out_dir.iterdir()):
         raise FileExistsError(
             f"{out_dir} already has files in it. Pick a new --out-dir or delete it deliberately; "
@@ -951,9 +967,24 @@ def provenance_run(
     rotation = np.asarray(alignment_json["rotation"], dtype=np.float64)
     translation = np.asarray(alignment_json["translation_mm"], dtype=np.float64)
 
-    board_extrinsic = apply_similarity_transform_to_extrinsic(
-        extrinsic, scale, rotation, translation
+    corrected_extrinsic_path = (
+        fusion_dir / "corrected_extrinsic.npz" if fusion_dir else None
     )
+    if corrected_extrinsic_path is not None and corrected_extrinsic_path.exists():
+        extrinsic_source = "reanchored"
+        with np.load(corrected_extrinsic_path) as corrected:
+            board_extrinsic = corrected["extrinsic"].astype(np.float64)
+        if board_extrinsic.shape != extrinsic.shape:
+            raise ValueError(
+                f"{corrected_extrinsic_path} has shape {board_extrinsic.shape}, expected "
+                f"{extrinsic.shape} to match {reconstruction_run_dir / 'poses.npz'}'s frame "
+                "count -- refusing to mix extrinsics from two different runs."
+            )
+    else:
+        extrinsic_source = "global_alignment"
+        board_extrinsic = apply_similarity_transform_to_extrinsic(
+            extrinsic, scale, rotation, translation
+        )
     depth_mm = scale * depth
     camera_centers_mm = camera_centres(board_extrinsic)
 
@@ -1031,6 +1062,7 @@ def provenance_run(
         depth_consistency_tolerance_mm,
         min_confidence=resolved_min_confidence,
         min_confidence_source=min_confidence_source,
+        extrinsic_source=extrinsic_source,
         confidence_dropped_pixel_count=confidence_dropped_pixel_count,
         observation_count=len(observations["vertex_index"]),
     )
@@ -1074,6 +1106,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "(default: use whatever points.ply was already built with, D-045 / R-24)"
         ),
     )
+    parser.add_argument(
+        "--fusion-dir",
+        type=Path,
+        default=None,
+        help=(
+            "R-30: fuse_run's own out_dir, to prefer its corrected_extrinsic.npz over "
+            "rebuilding uncorrected cameras from poses.npz (default: not preferred)"
+        ),
+    )
     return parser
 
 
@@ -1092,6 +1133,7 @@ def main(argv: list[str] | None = None) -> int:
             min_triangulation_angle_deg=args.min_triangulation_angle_deg,
             depth_consistency_tolerance_mm=args.depth_consistency_tolerance_mm,
             min_confidence=args.min_confidence,
+            fusion_dir=args.fusion_dir,
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         # R-24: a run.json that is missing or predates min_confidence now stops provenance too

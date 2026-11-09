@@ -861,6 +861,14 @@ def fuse_run(
         total_voxel_count = observed_voxel_count
 
     write_mesh_ply(out_dir / "mesh.ply", vertices_mm, faces)
+    # R-30 (review on #270, @TabeenRaoof): the re-anchoring correction above only ever lived in
+    # this function's local `board_extrinsic` -- provenance/uncertainty independently rebuild
+    # their own camera poses from poses.npz and the single global alignment, so without this they
+    # would silently check the corrected mesh against the *uncorrected*, still-drifted cameras.
+    # Persisted here, in the same (S,3,4) shape and "extrinsic" key poses.npz itself uses, so a
+    # caller that has it can load it exactly like a pose array; provenance_run prefers it when
+    # given a fusion_dir that has one.
+    np.savez_compressed(out_dir / "corrected_extrinsic.npz", extrinsic=board_extrinsic)
     return write_fusion_report(
         out_dir / "tsdf_fusion.json",
         reconstruction_run_dir,
