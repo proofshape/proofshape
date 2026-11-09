@@ -948,18 +948,18 @@ describe("mountAppShell", () => {
     expect(coveredCountText()).toMatch(/^Covered: 0\//);
   });
 
-  it("a gate rejection for exposure never calls uploadFrame", async () => {
+  it("an all-black frame reports exposure before blur and never calls uploadFrame", async () => {
     const mounted = await startSuccessfulSession();
-    // Sharp (strong contrast -> clears the blur check) but every pixel is clipped (0 or 255).
-    const clipped = sharpWellExposedImageData();
-    for (let i = 0; i < clipped.data.length; i += 4) {
-      const value = (i / 4) % 2 === 0 ? 0 : 255;
-      clipped.data[i] = value;
-      clipped.data[i + 1] = value;
-      clipped.data[i + 2] = value;
-      clipped.data[i + 3] = 255;
+    // Uniform black fails both checks: it is fully clipped *and* has zero Laplacian variance.
+    // Exposure must run first so the user gets the actionable lighting error, not "hold steadier."
+    const black = sharpWellExposedImageData();
+    for (let i = 0; i < black.data.length; i += 4) {
+      black.data[i] = 0;
+      black.data[i + 1] = 0;
+      black.data[i + 2] = 0;
+      black.data[i + 3] = 255;
     }
-    stubCanvasContext(clipped);
+    stubCanvasContext(black);
     setVideoDimensions(mounted.cameraPreview, 640, 480);
     dispatchOrientation(1, 45, 0);
     await vi.waitFor(() => {
@@ -967,8 +967,9 @@ describe("mountAppShell", () => {
     });
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    await captureAndWaitForStatus(mounted, /clipped/i);
+    await captureAndWaitForStatus(mounted, /frame_rejected_exposure/i);
 
+    expect(mounted.captureStatus.textContent).not.toMatch(/frame_rejected_blur/i);
     expect(
       fetchSpy.mock.calls.some(([url]) => typeof url === "string" && url.includes("/frames")),
     ).toBe(false);

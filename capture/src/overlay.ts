@@ -4,7 +4,13 @@
 // own the camera stream or gyro permission-granting; by the time this mounts, gyro.ts's
 // permission flow has already run.
 
-import { computeArrowGuidance, computeCoverage, DEFAULT_ORBIT, type OrbitSlot } from "./orbit.js";
+import {
+  anchorHeadingDeg,
+  computeArrowGuidance,
+  computeCoverage,
+  DEFAULT_ORBIT,
+  type OrbitSlot,
+} from "./orbit.js";
 import { requireElement } from "./dom.js";
 import type { Gyro } from "./types.js";
 
@@ -68,8 +74,8 @@ export function mountGyroOverlay(
       arrow.style.visibility = "hidden";
       return;
     }
-    const anchorDeg = acceptedReadings[0]?.alpha;
-    if (anchorDeg === undefined) {
+    const anchorDeg = anchorHeadingDeg(acceptedReadings);
+    if (anchorDeg === null) {
       // No accepted frames yet -- nothing to anchor azimuth to, so no arrow guidance yet.
       return;
     }
