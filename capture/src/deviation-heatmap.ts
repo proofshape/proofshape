@@ -109,7 +109,8 @@ export function createDeviationHeatmapController(
       color.count !== deviation.count ||
       color.count !== measured.count ||
       seenColors.has(color)
-    ) return;
+    )
+      return;
     seenColors.add(color);
 
     const observed = new Uint8Array(color.count);
@@ -157,7 +158,8 @@ export function createDeviationHeatmapController(
           );
           continue;
         }
-        const gated = geometry.observed[index] === 1 && geometry.measured.getX(index) >= 0.5;
+        const gated =
+          geometry.observed[index] === 1 && geometry.measured.getX(index) >= 0.5;
         const rgb = gated
           ? deviationToRgb(geometry.deviation.getX(index), range.rangeMm)
           : PROVENANCE_DISPLAY_COLORS.unobserved;
