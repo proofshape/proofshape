@@ -6,7 +6,10 @@ import {
   createDeviationHeatmapController,
   createDeviationLegend,
 } from "./deviation-heatmap.js";
-import { createProvenanceLegend, remapModelProvenanceColors } from "./provenance-colors.js";
+import {
+  createProvenanceLegend,
+  remapModelProvenanceColors,
+} from "./provenance-colors.js";
 import type { ReconstructionResult } from "./types.js";
 
 interface LoadedModel {
