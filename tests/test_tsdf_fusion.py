@@ -327,7 +327,7 @@ def test_extract_mesh_marching_cubes_returns_empty_when_nothing_observed():
     assert len(faces) == 0
 
 
-def test_extract_mesh_marching_cubes_erodes_a_thin_free_space_sliver_at_the_edge():
+def test_extract_mesh_marching_cubes_filters_a_thin_free_space_sliver_at_the_edge():
     # R-33 (review on #231): a thin sliver of observed free space (tsdf=+8) reaching right up to
     # never-observed voxels (tsdf stays at fuse_tsdf's own 0.0 default). A plain weight>0 mask
     # alone still lets skimage build a face here, using the never-observed voxels' raw 0.0 value
@@ -335,7 +335,9 @@ def test_extract_mesh_marching_cubes_erodes_a_thin_free_space_sliver_at_the_edge
     # that an observed-free-space/never-observed boundary fabricates walls. Confirmed empirically
     # (not every observed/unobserved boundary triggers skimage's mask quirk -- a full-width flat
     # slab doesn't, matching skimage's own corner-count-dependent activation rule; a thin sliver,
-    # closer to the ragged edge of real multi-view camera coverage, does).
+    # closer to the ragged edge of real multi-view camera coverage, does). The fix's per-cube
+    # filter (review on #287) catches every face skimage builds here: only two voxels in the
+    # whole volume are observed, so no cube can ever have all 8 corners observed.
     shape = (4, 3, 3)
     tsdf = np.zeros(shape)
     weight = np.zeros(shape)
@@ -352,8 +354,8 @@ def test_extract_mesh_marching_cubes_erodes_a_thin_free_space_sliver_at_the_edge
 
     assert len(faces) == 0
 
-    # Not a vacuous test: skimage itself, given the *old*, un-eroded mask, does fabricate faces
-    # at this exact boundary -- confirming this is a real fix, not a no-op on an already-safe case.
+    # Not a vacuous test: skimage itself, given the raw unfiltered mask, does fabricate faces at
+    # this exact boundary -- confirming this is a real fix, not a no-op on an already-safe case.
     from skimage.measure import marching_cubes
 
     old_mask = weight > 0.0
@@ -384,26 +386,44 @@ def test_extract_mesh_marching_cubes_returns_empty_when_nothing_crosses_zero():
     assert len(faces) == 0
 
 
-def test_extract_mesh_marching_cubes_returns_empty_when_erosion_removes_every_voxel():
-    # A single interior observed voxel has no full 3x3x3 neighbourhood of its own -- it survives
-    # weight>0 but not the erosion, so the new safe_mask.any() guard must fire before ever
-    # calling marching_cubes.
-    shape = (3, 3, 3)
+def test_extract_mesh_marching_cubes_keeps_the_real_plane_and_drops_the_sliver():
+    # Review on #287: the sliver test above never reaches `marching_cubes` with a mask that
+    # would have found anything to interpolate, so nothing pins which mask actually reaches
+    # skimage, or that a real surface right next to a sliver survives the filter intact. This
+    # scene does reach skimage for real: a fully observed block holding a genuine surface
+    # (the x=2.5 voxel plane), plus a thin observed free-space sliver beside it that the raw,
+    # unfiltered mask fabricates extra faces from -- reproduced directly below.
+    shape = (12, 8, 8)
     tsdf = np.zeros(shape)
     weight = np.zeros(shape)
-    weight[1, 1, 1] = 1.0
-    tsdf[1, 1, 1] = 3.0
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[0:6] = x[0:6] - 2.5  # real surface at x = 2.5 voxels
+    weight[0:6] = 1.0
+    tsdf[6:9, 3:4, 3:4] = 8.0  # thin observed free-space sliver
+    weight[6:9, 3:4, 3:4] = 1.0
 
     vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
         tsdf.reshape(-1),
         weight.reshape(-1),
         shape,
-        voxel_size_mm=10.0,
+        voxel_size_mm=1.0,
         origin_mm=np.zeros(3),
     )
 
-    assert len(vertices_mm) == 0
-    assert len(faces) == 0
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - 2.5) < 0.6)
+
+    # Not a vacuous test: skimage itself, given the raw unfiltered mask, builds extra faces that
+    # reach out to the sliver, well past the real plane -- confirming the filter is doing real
+    # work on this scene, not passing it through untouched.
+    from skimage.measure import marching_cubes
+
+    old_mask = weight > 0.0
+    _old_vertices, old_faces, _normals, _values = marching_cubes(
+        tsdf, level=0.0, spacing=(1.0, 1.0, 1.0), mask=old_mask
+    )
+    assert len(old_faces) > len(faces)
 
 
 # --- write_mesh_ply / read_mesh_ply --------------------------------------------------------------

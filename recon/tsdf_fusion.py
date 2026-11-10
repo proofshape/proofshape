@@ -570,34 +570,33 @@ def extract_mesh_marching_cubes(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract the zero-crossing surface as a mesh, ignoring never-observed voxels.
 
-    R-33 (review on #231): a plain `weight == 0` mask does not actually keep unobserved space
-    from fabricating a surface, despite this function's own former claim that it did. skimage's
-    `mask` only gates whether a cube (8 corners) is attempted at all -- empirically, as little as
-    one `True` corner is enough to trigger it, and the *other 7 corners' raw stored values* are
-    then used for interpolation regardless of their own mask status. A never-touched voxel's
-    `tsdf` default of `0.0` sits exactly on `level=0.0`, so every cube straddling an observed/
-    never-observed boundary is a guaranteed crossing -- this is why #231's wall surfaces exist:
-    on real golden data, 90-98% of wall points have zero contributing frames, not "too few".
+    R-33 (review on #231, then #287): a plain `weight == 0` mask does not actually keep
+    unobserved space from fabricating a surface, despite this function's own former claim that
+    it did. skimage's `mask` only gates whether a cube (8 corners) is attempted at all --
+    empirically, as little as one `True` corner is enough to trigger it, and the *other 7
+    corners' raw stored values* are then used for interpolation regardless of their own mask
+    status. A never-touched voxel's `tsdf` default of `0.0` sits exactly on `level=0.0`, so
+    every cube straddling an observed/never-observed boundary is a guaranteed crossing -- this
+    is why #231's wall surfaces exist: on real golden data, 90-98% of wall points have zero
+    contributing frames, not "too few".
 
-    The fix is to guarantee no cube with *any* unobserved corner can ever present a `True`
-    corner to skimage, regardless of its real (unknown, compiled) activation threshold: erode
-    `observed_mask` by a full 3x3x3 neighbourhood first. A voxel survives erosion only if every
-    cube it could be a corner of (up to 8) is itself fully observed -- so a cube with a bad
-    corner has every one of its 8 corners erased, not just that one. `border_value=True` keeps
-    the volume's own outer edge from being eroded just for being an edge. The visible cost is
-    that the extracted surface recedes by one voxel at every true observed/unobserved boundary
-    -- the correct trade-off against fabricating geometry nobody observed.
+    The fix runs skimage against the plain `weight > 0` mask -- so real surface right at a
+    boundary still interpolates from every corner that genuinely is observed -- then drops every
+    face whose own cube (the 8 grid points `floor(centroid)` through `floor(centroid) + 1`) is
+    not *fully* observed, and reindexes the surviving vertices. A face that survives this filter
+    is never built from an unobserved corner's fabricated `0.0`, regardless of skimage's real
+    (unknown, compiled) activation threshold. Measured against blanket-eroding the mask instead
+    (this fix's first version, review on #287): filtering by cube keeps materially more real part
+    geometry at every true boundary, since erosion throws away a whole voxel of margin on both
+    sides of a boundary while this only throws away the cubes that actually mix observed and
+    unobserved corners (golden-object comparison in R-33.md).
     """
-    from scipy.ndimage import binary_erosion
     from skimage.measure import marching_cubes
 
     tsdf_volume = np.asarray(tsdf, dtype=np.float64).reshape(shape)
     weight_volume = np.asarray(weight, dtype=np.float64).reshape(shape)
     observed_mask = weight_volume > 0.0
-    safe_mask = binary_erosion(
-        observed_mask, structure=np.ones((3, 3, 3), dtype=bool), border_value=True
-    )
-    if not safe_mask.any():
+    if not observed_mask.any():
         return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
 
     try:
@@ -605,7 +604,7 @@ def extract_mesh_marching_cubes(
             tsdf_volume,
             level=0.0,
             spacing=(voxel_size_mm, voxel_size_mm, voxel_size_mm),
-            mask=safe_mask,
+            mask=observed_mask,
         )
     except RuntimeError as exc:
         # skimage raises rather than returning empty arrays when no observed cell straddles the
@@ -624,10 +623,58 @@ def extract_mesh_marching_cubes(
             raise
         return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
 
+    vertices, faces = _drop_faces_with_an_unobserved_corner(
+        vertices, faces, observed_mask, voxel_size_mm
+    )
+    if len(faces) == 0:
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
+
     vertices_mm = (vertices + np.asarray(origin_mm, dtype=np.float64)).astype(
         np.float32
     )
     return vertices_mm, faces.astype(np.int32)
+
+
+def _drop_faces_with_an_unobserved_corner(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    observed_mask: np.ndarray,
+    voxel_size_mm: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Keep only faces whose own marching-cubes cube has all 8 corners observed (R-33, #287).
+
+    skimage's `spacing` argument scaled the returned vertices by `voxel_size_mm`; dividing back
+    out gives each vertex's position in voxel-index units, where `floor` of a face's centroid
+    identifies which cube -- the 8 grid points from that index to index + 1 on each axis -- the
+    face belongs to. A triangle that happens to lie exactly on a cube face is attributed to
+    whichever cube its centroid floors into; skimage places vertices on cube edges rather than
+    corners, so a real triangle's centroid landing on an exact integer on every axis at once
+    does not arise.
+    """
+    cube_observed = (
+        observed_mask[:-1, :-1, :-1]
+        & observed_mask[1:, :-1, :-1]
+        & observed_mask[:-1, 1:, :-1]
+        & observed_mask[:-1, :-1, 1:]
+        & observed_mask[1:, 1:, :-1]
+        & observed_mask[1:, :-1, 1:]
+        & observed_mask[:-1, 1:, 1:]
+        & observed_mask[1:, 1:, 1:]
+    )
+    voxel_index = vertices / voxel_size_mm
+    centroid_index = voxel_index[faces].mean(axis=1)
+    cube_index = np.clip(
+        np.floor(centroid_index).astype(np.int64),
+        0,
+        np.asarray(cube_observed.shape) - 1,
+    )
+    keep = cube_observed[cube_index[:, 0], cube_index[:, 1], cube_index[:, 2]]
+
+    kept_faces = faces[keep]
+    used_vertices = np.unique(kept_faces)
+    remap = np.full(len(vertices), -1, dtype=np.int64)
+    remap[used_vertices] = np.arange(len(used_vertices))
+    return vertices[used_vertices], remap[kept_faces]
 
 
 def _orient_poisson_normals(point_cloud, points_mm: np.ndarray) -> str:
