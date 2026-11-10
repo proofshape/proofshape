@@ -548,7 +548,7 @@ def measure_wall_profiles(
 
         edge_heights = heights[selected]
         signed_offsets = (points_xy[selected] - p0) @ normal
-        bins: list[WallHeightBin] = []
+        raw_bins: list[tuple[float, float, int, np.ndarray, np.ndarray]] = []
         for bin_index in range(bin_count):
             lo = height_edges[bin_index]
             hi = height_edges[bin_index + 1]
@@ -559,22 +559,40 @@ def measure_wall_profiles(
             count = int(np.count_nonzero(in_bin))
             if count < min_points_per_bin:
                 continue
-            offsets = signed_offsets[in_bin]
-            p10, p90 = np.percentile(offsets, [10, 90])
+            heights_in_bin = edge_heights[in_bin]
+            offsets_in_bin = signed_offsets[in_bin]
+            raw_bins.append(
+                (
+                    float(np.median(heights_in_bin)),
+                    float(np.median(offsets_in_bin)),
+                    count,
+                    heights_in_bin,
+                    offsets_in_bin,
+                )
+            )
+
+        if len(raw_bins) < 2:
+            continue
+        bin_heights = np.asarray([item[0] for item in raw_bins], dtype=np.float64)
+        bin_offsets = np.asarray([item[1] for item in raw_bins], dtype=np.float64)
+        slope, _intercept = np.polyfit(bin_heights, bin_offsets, 1)
+
+        bins: list[WallHeightBin] = []
+        for height_mm, _offset_mm, count, heights_in_bin, offsets_in_bin in raw_bins:
+            # Remove the fitted lean within this height band before measuring thickness.
+            # Otherwise a genuinely leaning but razor-thin wall looks artificially thick simply
+            # because its centre moves sideways from the bottom to the top of the bin.
+            detrended_offsets = offsets_in_bin - slope * (heights_in_bin - height_mm)
+            p10, p90 = np.percentile(detrended_offsets, [10, 90])
             bins.append(
                 WallHeightBin(
-                    height_mm=float(np.median(edge_heights[in_bin])),
-                    offset_mm=float(np.median(offsets)),
+                    height_mm=height_mm,
+                    offset_mm=float(np.median(detrended_offsets)),
                     thickness_mm=float(p90 - p10),
                     point_count=count,
                 )
             )
 
-        if len(bins) < 2:
-            continue
-        bin_heights = np.asarray([item.height_mm for item in bins], dtype=np.float64)
-        bin_offsets = np.asarray([item.offset_mm for item in bins], dtype=np.float64)
-        slope, _intercept = np.polyfit(bin_heights, bin_offsets, 1)
         height_span = float(bin_heights[-1] - bin_heights[0])
         profiles.append(
             WallProfileMeasurement(
