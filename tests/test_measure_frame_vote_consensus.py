@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import numpy as np
+import pytest
 
-from recon import mesh_cleanup, provenance
+from recon import mesh_cleanup, provenance, tsdf_fusion
 from recon.part_segmentation import BoardSurface
 from scripts import measure_frame_vote_consensus as m
+
+ROOT = Path(__file__).resolve().parents[1]
 
 FLAT_BOARD = BoardSurface(
     slope_x=0.0,
@@ -93,7 +99,10 @@ def test_sample_points_separates_wall_and_part_faces(tmp_path):
         (50.0, 50.0, -10.0),  # part: inside the part's xy, under the height cap
     ]
     vertices, faces = _triangle_mesh(centroids)
+    # "part" samples are Observed-only (review on #281); the part face's own 3 vertices
+    # (indices 6-8) are Observed, both wall faces' are not.
     colors = np.tile(np.asarray(provenance.UNOBSERVED_COLOR, dtype=np.uint8), (9, 1))
+    colors[6:9] = provenance.OBSERVED_COLOR
     fusion_dir = tmp_path / "fusion"
     _write_fusion_dir(fusion_dir)
     provenance_glb = tmp_path / "mesh_provenance.glb"
@@ -260,32 +269,28 @@ def test_measure_reruns_fusion_and_reports_wall_versus_part_votes(tmp_path):
     alignment_json = _write_dense_reconstruction_run(run_dir, [wall_point, part_point])
 
     vertices, faces = _triangle_mesh([wall_point, part_point])
+    # "part" samples are Observed-only (review on #281); part_point's own 3 vertices (indices
+    # 3-5) are Observed, wall_point's are not.
     colors = np.tile(np.asarray(provenance.UNOBSERVED_COLOR, dtype=np.uint8), (6, 1))
+    colors[3:6] = provenance.OBSERVED_COLOR
+    provenance_glb = tmp_path / "mesh_provenance.glb"
+    mesh_cleanup.write_glb(provenance_glb, vertices, faces, colors)
+
+    # A genuine first fuse_run, not a hand-written tsdf_fusion.json -- so its real face_count/
+    # vertex_count are there for measure()'s own reproduction check to compare its rerun against
+    # (review on #281, @TabeenRaoof). height_threshold_mm must be positive (segment_part's own
+    # rule); 1.0mm clears both sample points' real height above the dense board (~30 and ~10mm)
+    # with plenty of margin.
     fusion_dir = tmp_path / "fusion"
-    # height_threshold_mm must be positive (segment_part's own rule); 1.0mm clears both sample
-    # points' real height above the dense board (~30 and ~10mm) with plenty of margin.
-    board_with_positive_threshold = BoardSurface(
-        slope_x=0.0,
-        slope_y=0.0,
-        z_at_origin_mm=0.0,
-        offset_mm=0.0,
-        tilt_deg=0.0,
-        residual_sigma_mm=0.0,
-        inlier_count=0,
-        candidate_count=0,
-        board_layer_top_mm=None,
-        height_threshold_mm=1.0,
-    )
-    _write_fusion_dir(
+    tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
         fusion_dir,
         voxel_size_mm=2.0,
         truncation_mm=25.0,
-        bounds_min_mm=[0.0, 0.0, -50.0],
-        bounds_max_mm=[160.0, 120.0, 0.0],
-        board=board_with_positive_threshold,
+        height_threshold_mm=1.0,
+        min_confidence=0.0,
     )
-    provenance_glb = tmp_path / "mesh_provenance.glb"
-    mesh_cleanup.write_glb(provenance_glb, vertices, faces, colors)
 
     summary = m.measure(
         run_dir,
@@ -302,6 +307,83 @@ def test_measure_reruns_fusion_and_reports_wall_versus_part_votes(tmp_path):
 
     assert summary["wall"]["contributing_frame_count"] == 1.0
     assert summary["wall"]["near_surface_frame_count"] == 1.0
+    assert summary["wall"]["near_surface_le_1_share"] == 1.0
     assert summary["part"]["contributing_frame_count"] == 1.0
     assert summary["part"]["near_surface_frame_count"] == 1.0
     assert (tmp_path / "vote_out" / "vote_consensus.json").exists()
+
+    results = json.loads(
+        (tmp_path / "vote_out" / "wall_vs_part_votes.json").read_text()
+    )
+    assert results["summary"] == summary
+    assert [sample["group"] for sample in results["samples"]] == ["wall", "part"]
+    assert results["samples"][0]["point_mm"] == list(wall_point)
+    assert results["samples"][1]["point_mm"] == list(part_point)
+
+
+def test_measure_refuses_when_the_rerun_does_not_reproduce_the_first_fusion(tmp_path):
+    # Review on #281, @TabeenRaoof: min_kept_points/max_part_height_mm/max_board_tilt_deg/
+    # footprint_mm aren't recorded in tsdf_fusion.json, so a first run that didn't leave one of
+    # them at its default silently gets a different rerun -- simulated here by corrupting the
+    # recorded face_count after a real first run, standing in for that drift.
+    wall_point = (140.0, 100.0, -40.0)
+    part_point = (80.0, 60.0, -20.0)
+    run_dir = tmp_path / "run"
+    alignment_json = _write_dense_reconstruction_run(run_dir, [wall_point, part_point])
+
+    vertices, faces = _triangle_mesh([wall_point, part_point])
+    colors = np.tile(np.asarray(provenance.UNOBSERVED_COLOR, dtype=np.uint8), (6, 1))
+    colors[3:6] = provenance.OBSERVED_COLOR
+    provenance_glb = tmp_path / "mesh_provenance.glb"
+    mesh_cleanup.write_glb(provenance_glb, vertices, faces, colors)
+
+    fusion_dir = tmp_path / "fusion"
+    tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        fusion_dir,
+        voxel_size_mm=2.0,
+        truncation_mm=25.0,
+        height_threshold_mm=1.0,
+        min_confidence=0.0,
+    )
+    report_path = fusion_dir / "tsdf_fusion.json"
+    report = json.loads(report_path.read_text())
+    report["face_count"] += 1
+    report_path.write_text(json.dumps(report))
+
+    with pytest.raises(ValueError, match="rerun"):
+        m.measure(
+            run_dir,
+            alignment_json,
+            fusion_dir,
+            provenance_glb,
+            tmp_path / "vote_out",
+            sample_count=10,
+            seed=0,
+            part_x_mm=(70.0, 90.0),
+            part_y_mm=(50.0, 70.0),
+            part_height_mm=33.0,
+        )
+
+
+def test_main_module_runs_as_a_subprocess_with_minus_m(tmp_path):
+    # Review on #281, @TabeenRaoof: the documented `python scripts/measure_frame_vote_
+    # consensus.py` form fails with ModuleNotFoundError on an install where only `recon` and
+    # `inspection` are importable and the repository root isn't on sys.path, because this
+    # script (unlike measure_wall_share.py) imports from the `scripts` package itself, which has
+    # no __init__.py to put the repo root there. `-m`, run from the repository root, does.
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.measure_frame_vote_consensus", "--help"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        "RECONSTRUCTION_RUN_DIR" in result.stdout
+        or "reconstruction_run_dir" in result.stdout
+    )
