@@ -38,7 +38,6 @@ function makeScene(includeMeasured = true): { scene: THREE.Scene; color: THREE.B
   }
   const scene = new THREE.Scene();
   scene.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()));
-  remapModelProvenanceColors(scene);
   return { scene, color };
 }
 
@@ -69,9 +68,11 @@ describe("C-14 deviation heatmap", () => {
 
   it("requires both Observed provenance and measured=1, and restores provenance exactly", () => {
     const { scene, color } = makeScene();
-    const before = snapshot(color);
     const controller = createDeviationHeatmapController(scene);
     expect(controller.available).toBe(true);
+    remapModelProvenanceColors(scene);
+    controller.captureProvenanceColors();
+    const before = snapshot(color);
     expect(controller.measuredObservedVertices).toBe(2);
     expect(controller.range).toEqual({ rangeMm: 5, source: "largest-measured" });
 
