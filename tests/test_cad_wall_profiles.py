@@ -24,7 +24,7 @@ def _synthetic_wall(
         centre_offset_mm = slope * (height_mm - 25.0)
         for x_mm in np.linspace(5.0, 45.0, 9):
             for thickness_offset_mm in np.linspace(
-                -half_thickness_mm, half_thickness_mm, 9
+                -half_thickness_mm, half_thickness_mm, 11
             ):
                 rows.append(
                     [
