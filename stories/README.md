@@ -381,7 +381,7 @@ Full detail in each story file.
 | [R-29](R/R-29.md) | Contract-shaped validation errors and an Inferred-aware hard-rule test | 2 h | F-03, R-14 | Done | @dalwalyk |
 | [R-30](R/R-30.md) | Per-frame board re-anchoring before fusion | 5 h | R-07, R-21 | Done | @dalwalyk |
 | [R-31](R/R-31.md) | macOS: Open3D and torch in one process without a deadlock (#261) | 2 h | R-27 | Done | @mbj1994 |
-| [R-32](R/R-32.md) | Spike: is R-22's per-pixel depth error VGGT's own? Compare backends on s-04 and s-05 | 5 h | R-11, R-12, R-22, R-23 | Ready | _unclaimed_ |
+| [R-32](R/R-32.md) | Spike: is R-22's per-pixel depth error VGGT's own? Compare backends on s-04 and s-05 | 5 h | R-11, R-12, R-22, R-23 | Claimed | @mbj1994 |
 | [R-33](R/R-33.md) | Wall surfaces fill the fusion volume | 5 h | R-07, R-30 | Claimed | @dalwalyk |
 | [C-19](C/C-19.md) | The viewer says when a model has no provenance; the mock matches the service | 3 h | C-10, C-12, C-13 | Done | @dalwalyk |
 | [C-20](C/C-20.md) | Capture gate and orbit maths: heading wrap, roll, gate order | 3 h | C-06, C-07, C-09 | Done | @mbj1994 |
