@@ -34,9 +34,7 @@ def generate(path: Path) -> None:
         faces,
         colors=colors,
         extra_vertex_attributes={
-            "_DEVIATION_MM": np.array(
-                [-2.0, 0.0, 1.0, 0.0, 3.0], dtype=np.float32
-            ),
+            "_DEVIATION_MM": np.array([-2.0, 0.0, 1.0, 0.0, 3.0], dtype=np.float32),
             "_DEVIATION_MEASURED": np.array(
                 [1.0, 0.0, 1.0, 0.0, 1.0], dtype=np.float32
             ),
