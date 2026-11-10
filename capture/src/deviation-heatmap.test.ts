@@ -9,7 +9,7 @@ import {
 } from "./deviation-heatmap.js";
 import { remapModelProvenanceColors } from "./provenance-colors.js";
 
-function makeScene(): { scene: THREE.Scene; color: THREE.BufferAttribute } {
+function makeScene(includeMeasured = true): { scene: THREE.Scene; color: THREE.BufferAttribute } {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute(
     "position",
@@ -30,10 +30,12 @@ function makeScene(): { scene: THREE.Scene; color: THREE.BufferAttribute } {
     "_deviation_mm",
     new THREE.BufferAttribute(new Float32Array([-2, 99, 1, 5]), 1),
   );
-  geometry.setAttribute(
-    "_deviation_measured",
-    new THREE.BufferAttribute(new Float32Array([1, 1, 0, 1]), 1),
-  );
+  if (includeMeasured) {
+    geometry.setAttribute(
+      "_deviation_measured",
+      new THREE.BufferAttribute(new Float32Array([1, 1, 0, 1]), 1),
+    );
+  }
   const scene = new THREE.Scene();
   scene.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()));
   remapModelProvenanceColors(scene);
@@ -85,9 +87,7 @@ describe("C-14 deviation heatmap", () => {
   });
 
   it("is unavailable without both custom attributes", () => {
-    const { scene } = makeScene();
-    const mesh = scene.children[0] as THREE.Mesh;
-    mesh.geometry.deleteAttribute("_deviation_measured");
+    const { scene } = makeScene(false);
     expect(createDeviationHeatmapController(scene).available).toBe(false);
   });
 
