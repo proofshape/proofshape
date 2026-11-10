@@ -2,6 +2,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { setStatus } from "./camera.js";
+import {
+  createDeviationHeatmapController,
+  createDeviationLegend,
+} from "./deviation-heatmap.js";
 import { createProvenanceLegend, remapModelProvenanceColors } from "./provenance-colors.js";
 import type { ReconstructionResult } from "./types.js";
 
@@ -26,6 +30,7 @@ export interface ModelViewerOptions {
   // C-13: the deployed service's glb_url is behind Lightning's bearer-token gate (D-042/D-048)
   // just like every other route -- a plain `loader.load(url)`/`<a href>` would 401.
   authToken?: string;
+  toleranceMm?: number;
 }
 
 interface ModelViewerUnavailable {
@@ -288,8 +293,42 @@ export function mountModelViewer(
       }
       try {
         const provenance = remapModelProvenanceColors(loaded.scene);
+        const heatmap = createDeviationHeatmapController(loaded.scene, options.toleranceMm);
         if (provenance.foundProvenance) {
-          controlsContainer.append(createProvenanceLegend());
+          const legendHost = document.createElement("div");
+          const showProvenanceLegend = (): void => {
+            legendHost.replaceChildren(createProvenanceLegend());
+          };
+          showProvenanceLegend();
+
+          if (heatmap.available) {
+            const label = document.createElement("label");
+            label.textContent = "Colour by: ";
+            const select = document.createElement("select");
+            select.setAttribute("aria-label", "Colour 3D model by");
+
+            const provenanceOption = document.createElement("option");
+            provenanceOption.value = "provenance";
+            provenanceOption.textContent = "what was seen";
+
+            const deviationOption = document.createElement("option");
+            deviationOption.value = "deviation";
+            deviationOption.textContent = "deviation from CAD";
+
+            select.append(provenanceOption, deviationOption);
+            select.addEventListener("change", () => {
+              if (select.value === "deviation") {
+                heatmap.setMode("deviation");
+                legendHost.replaceChildren(createDeviationLegend(heatmap.range));
+              } else {
+                heatmap.setMode("provenance");
+                showProvenanceLegend();
+              }
+            });
+            label.append(select);
+            controlsContainer.append(label);
+          }
+          controlsContainer.append(legendHost);
         }
         disposePreview = createThreePreview(viewport, loaded.scene);
         // C-19 (#192): a model with no provenance colors at all (every mock session today, and
