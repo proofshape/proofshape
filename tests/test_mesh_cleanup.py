@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pygltflib
 import pytest
 
 from recon import mesh_cleanup, tsdf_fusion
