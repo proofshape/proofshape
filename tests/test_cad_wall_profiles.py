@@ -9,7 +9,6 @@ import pytest
 
 from recon.cad_size_check import measure_wall_profiles
 
-
 FLAT_BOARD = (0.0, 0.0, 0.0)
 
 
