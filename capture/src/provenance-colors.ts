@@ -45,13 +45,14 @@ function srgbChannelToLinear(channelByte: number): number {
   return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4);
 }
 
-function displayRgbToLinear(rgb: Rgb): Rgb {
+export function displayRgbToLinear(rgb: Rgb): Rgb {
   return [srgbChannelToLinear(rgb[0]), srgbChannelToLinear(rgb[1]), srgbChannelToLinear(rgb[2])];
 }
 
 // Three.js stores vertex colours in linear working space while the CSS legend uses sRGB.
-// Precompute the four palette colours once instead of doing three Math.pow calls per vertex.
-const LINEAR_DISPLAY_COLORS = Object.fromEntries(
+// Export this for C-14 so the heatmap can gate against the exact displayed Observed class and
+// restore the provenance buffer exactly after switching modes.
+export const LINEAR_DISPLAY_COLORS = Object.fromEntries(
   Object.entries(PROVENANCE_DISPLAY_COLORS).map(([key, rgb]) => [key, displayRgbToLinear(rgb)]),
 ) as Record<ProvenanceDisplayClass, Rgb>;
 
