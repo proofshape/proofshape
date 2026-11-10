@@ -16,8 +16,7 @@ def test_c14_fixture_matches_generator_byte_for_byte(tmp_path, capsys):
 
     if actual != expected:
         print(
-            "GENERATED_C14_FIXTURE_BASE64="
-            + base64.b64encode(actual).decode("ascii")
+            "GENERATED_C14_FIXTURE_BASE64=" + base64.b64encode(actual).decode("ascii")
         )
 
     assert actual == expected
