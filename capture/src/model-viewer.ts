@@ -292,8 +292,9 @@ export function mountModelViewer(
         return;
       }
       try {
-        const provenance = remapModelProvenanceColors(loaded.scene);
         const heatmap = createDeviationHeatmapController(loaded.scene, options.toleranceMm);
+        const provenance = remapModelProvenanceColors(loaded.scene);
+        heatmap.captureProvenanceColors();
         if (provenance.foundProvenance) {
           const legendHost = document.createElement("div");
           const showProvenanceLegend = (): void => {
