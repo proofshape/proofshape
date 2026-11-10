@@ -482,6 +482,7 @@ class PrismMeasurement:
     rotation_deg: float
     edges: list[EdgeMeasurement]
     wall_profiles: list[WallProfileMeasurement]
+    transformed_edges: list[tuple[np.ndarray, np.ndarray]]
 
 
 def measure_wall_profiles(
@@ -781,6 +782,7 @@ def measure_prism(
         rotation_deg=float(math.degrees(math.atan2(transform[1, 0], transform[0, 0]))),
         edges=edge_measurements,
         wall_profiles=wall_profiles,
+        transformed_edges=transformed_edges,
     )
 
 
@@ -1163,20 +1165,21 @@ def build_report(
 
         if observed_glb is not None:
             observed_points = load_observed_surface_points(Path(observed_glb))
-            observed_measurement = measure_prism(observed_points, prism, board_plane)
+            observed_profiles = measure_wall_profiles(
+                observed_points,
+                measurement.transformed_edges,
+                board_plane,
+                measurement.height_mm,
+                measurement.alignment_residual_mm,
+            )
             report["prism"]["fused_observed"] = {
                 "provenance_glb": str(observed_glb),
-                "height_mm": observed_measurement.height_mm,
-                "height_ratio": observed_measurement.height_ratio,
-                "alignment_residual_mm": observed_measurement.alignment_residual_mm,
-                "rotation_deg": observed_measurement.rotation_deg,
-                "wall_profiles": _wall_profiles_report(
-                    observed_measurement.wall_profiles
-                ),
+                "wall_profiles": _wall_profiles_report(observed_profiles),
                 "note": (
                     "Only vertices participating in fully Observed provenance faces are used. "
-                    "The CAD is rigidly aligned independently to this fused Observed surface, "
-                    "so lean and thickness describe shape rather than a global pose offset."
+                    "The same CAD wall pose fitted on the raw cloud is reused here, so raw and "
+                    "fused offsets are directly comparable and a lean introduced by fusion is "
+                    "not absorbed by a second independent alignment."
                 ),
             }
 
