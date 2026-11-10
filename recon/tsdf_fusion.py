@@ -89,6 +89,12 @@ DEFAULT_POISSON_DEPTH = 9
 # assumption (D-033), not yet measured against the golden set's real per-frame counts.
 DEFAULT_MIN_FRAME_BOARD_POINTS = 100
 
+# R-33 criterion 2: a frame's own signed distance to a sample point counts as "voted on the
+# surface" within this many mm of zero -- tied to the voxel grid's own resolution (one voxel),
+# since that is the finest distinction marching cubes can make. A bare assumption, not measured;
+# overridable via measure_voxel_vote_consensus's own parameter.
+DEFAULT_NEAR_SURFACE_MM = DEFAULT_VOXEL_SIZE_MM
+
 
 def build_voxel_grid(
     bounds_min_mm: np.ndarray, bounds_max_mm: np.ndarray, voxel_size_mm: float
@@ -413,6 +419,148 @@ def fuse_tsdf(
     return tsdf, weight
 
 
+@dataclass(frozen=True)
+class VoxelVoteReport:
+    """R-33 criterion 2: one sample point's per-frame vote breakdown.
+
+    `contributing_frame_count` is how many frames said anything at all about this point (the
+    same `contributes` test `fuse_tsdf` uses: in bounds, a real depth measurement, not occluded
+    beyond `truncation_mm` behind that measurement). Of those, `near_surface_frame_count` voted
+    the point is on the surface itself (within `near_surface_mm` of zero signed distance);
+    `in_front_frame_count` voted it is empty space in front of what that frame saw;
+    `behind_frame_count` voted it is behind that frame's surface but still within the truncation
+    band. The three always sum to `contributing_frame_count`.
+    """
+
+    contributing_frame_count: int
+    near_surface_frame_count: int
+    in_front_frame_count: int
+    behind_frame_count: int
+
+    def as_report(self) -> dict[str, int]:
+        return {
+            "contributing_frame_count": self.contributing_frame_count,
+            "near_surface_frame_count": self.near_surface_frame_count,
+            "in_front_frame_count": self.in_front_frame_count,
+            "behind_frame_count": self.behind_frame_count,
+        }
+
+
+def measure_voxel_vote_consensus(
+    depth_mm: np.ndarray,
+    extrinsic_board: np.ndarray,
+    intrinsic: np.ndarray,
+    sample_points_mm: np.ndarray,
+    truncation_mm: float,
+    near_surface_mm: float = DEFAULT_NEAR_SURFACE_MM,
+    keep_mask: np.ndarray | None = None,
+) -> list[VoxelVoteReport]:
+    """R-33 criterion 2: for a handful of sample points (not the whole dense grid), how many
+    frames actually voted each one "on the surface" versus merely in front of or behind one.
+
+    #231's wall surfaces are suspected to come from `fuse_tsdf`'s per-voxel update having no
+    requirement that more than one frame agree a voxel is *on* the surface before trusting a
+    near-zero crossing -- `weight` only counts frames that said anything at all. This measures
+    that directly: reuses `fuse_tsdf`'s exact per-frame `contributes`/`signed_distance` logic
+    (the same occlusion rule -- a frame farther behind the surface than `truncation_mm` says
+    nothing about this point, excluded from every count here too, not just the near/front/behind
+    split) but, instead of averaging into one TSDF value, classifies and keeps every contributing
+    frame's own vote for each sample point. A real surface point should show broad multi-frame
+    agreement at `near_surface`; a spurious wall point, by the suspected mechanism, should be
+    decided by very few frames (often one), split between `in_front` and `behind` rather than
+    clustered at `near_surface`.
+
+    Call this on a handful of sample points (tens to low hundreds), not a dense grid -- it keeps
+    every frame's own classification per point rather than discarding it into a running average,
+    so its cost and memory scale with frame_count * len(sample_points_mm).
+    """
+    depth_mm = np.asarray(depth_mm, dtype=np.float64)
+    if depth_mm.ndim != 3:
+        raise ValueError(f"depth_mm must have shape (S,H,W), got {depth_mm.shape}")
+    frame_count, height, width = depth_mm.shape
+    extrinsic_board = np.asarray(extrinsic_board, dtype=np.float64)
+    if extrinsic_board.shape != (frame_count, 3, 4):
+        raise ValueError(
+            f"extrinsic_board must be ({frame_count},3,4), got {extrinsic_board.shape}"
+        )
+    intrinsic = np.asarray(intrinsic, dtype=np.float64)
+    if intrinsic.shape != (frame_count, 3, 3):
+        raise ValueError(
+            f"intrinsic must be ({frame_count},3,3), got {intrinsic.shape}"
+        )
+    sample_points_mm = np.asarray(sample_points_mm, dtype=np.float64)
+    if sample_points_mm.ndim != 2 or sample_points_mm.shape[1] != 3:
+        raise ValueError(
+            f"sample_points_mm must have shape (N,3), got {sample_points_mm.shape}"
+        )
+    if not np.isfinite(truncation_mm) or truncation_mm <= 0:
+        raise ValueError("truncation_mm must be a positive, finite number.")
+    if not np.isfinite(near_surface_mm) or near_surface_mm <= 0:
+        raise ValueError("near_surface_mm must be a positive, finite number.")
+    if near_surface_mm > truncation_mm:
+        raise ValueError("near_surface_mm must not exceed truncation_mm.")
+    if keep_mask is not None:
+        keep_mask = np.asarray(keep_mask, dtype=bool)
+        if keep_mask.shape != depth_mm.shape:
+            raise ValueError(
+                f"keep_mask must match depth_mm's shape {depth_mm.shape}, got {keep_mask.shape}"
+            )
+
+    sample_count = sample_points_mm.shape[0]
+    near_surface_votes = np.zeros(sample_count, dtype=np.int64)
+    in_front_votes = np.zeros(sample_count, dtype=np.int64)
+    behind_votes = np.zeros(sample_count, dtype=np.int64)
+
+    for frame_index in range(frame_count):
+        rotation = extrinsic_board[frame_index, :, :3]
+        translation = extrinsic_board[frame_index, :, 3]
+        u, v, z_cam = project_points_to_camera(
+            sample_points_mm, rotation, translation, intrinsic[frame_index]
+        )
+
+        in_front_frame = z_cam > 1e-9
+        u_index = np.round(u).astype(np.int64)
+        v_index = np.round(v).astype(np.int64)
+
+        in_bounds = (
+            in_front_frame
+            & (u_index >= 0)
+            & (u_index < width)
+            & (v_index >= 0)
+            & (v_index < height)
+        )
+        clamped_u = np.where(in_bounds, u_index, 0)
+        clamped_v = np.where(in_bounds, v_index, 0)
+
+        depth_sample = depth_mm[frame_index, clamped_v, clamped_u]
+        has_depth = in_bounds & np.isfinite(depth_sample) & (depth_sample > 0.0)
+        if keep_mask is not None:
+            sample_kept = keep_mask[frame_index, clamped_v, clamped_u]
+            has_depth = has_depth & sample_kept
+
+        signed_distance = depth_sample - z_cam
+        contributes = has_depth & (signed_distance > -truncation_mm)
+
+        near_surface_votes += contributes & (np.abs(signed_distance) <= near_surface_mm)
+        in_front_votes += contributes & (signed_distance > near_surface_mm)
+        behind_votes += (
+            contributes
+            & (signed_distance < -near_surface_mm)
+            & (signed_distance > -truncation_mm)
+        )
+
+    contributing_votes = near_surface_votes + in_front_votes + behind_votes
+    return [
+        VoxelVoteReport(
+            contributing_frame_count=int(contributing_votes[i]),
+            near_surface_frame_count=int(near_surface_votes[i]),
+            in_front_frame_count=int(in_front_votes[i]),
+            behind_frame_count=int(behind_votes[i]),
+        )
+        for i in range(sample_count)
+    ]
+
+
 def extract_mesh_marching_cubes(
     tsdf: np.ndarray,
     weight: np.ndarray,
@@ -704,6 +852,8 @@ def fuse_run(
     max_board_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
     min_confidence: float | None = None,
     min_kept_points: int = DEFAULT_MIN_KEPT_POINTS,
+    vote_sample_points_mm: np.ndarray | None = None,
+    vote_near_surface_mm: float = DEFAULT_NEAR_SURFACE_MM,
 ) -> dict[str, Any]:
     """Load R-01 depth/poses and an R-04 alignment, fuse, extract a mesh, and write the outputs.
 
@@ -715,6 +865,13 @@ def fuse_run(
     R-21: the board surface is fit from this run's own valid-depth pixels before segmenting, so
     the height cut (and the voxel grid's z top, below) follow the real board, not z=0.
     `height_threshold_mm` still overrides the measured value when given, same as `segment_run`.
+
+    `vote_sample_points_mm` (R-33 criterion 2), when given, runs
+    `measure_voxel_vote_consensus` on those points using this exact run's own depth/extrinsic/
+    keep_mask, and writes the result to `vote_consensus.json` in `out_dir` -- for comparing a
+    sample of wall-classified points against a sample of part points from a previous run of this
+    same reconstruction. `method` must be `"marching_cubes"`: the vote mechanism this measures
+    is specific to `fuse_tsdf`'s per-voxel update, which the Poisson path never runs.
 
     `min_confidence=None` (the default) reads the threshold the source run itself used
     (`run.json`'s own `min_confidence`), so the fused surface agrees with `points.ply` by
@@ -729,6 +886,11 @@ def fuse_run(
     if method not in ("marching_cubes", "poisson"):
         raise ValueError(
             f"method must be 'marching_cubes' or 'poisson', got {method!r}"
+        )
+    if vote_sample_points_mm is not None and method != "marching_cubes":
+        raise ValueError(
+            "vote_sample_points_mm needs method='marching_cubes' -- the vote mechanism it "
+            "measures is fuse_tsdf's own per-voxel update, which the Poisson path never runs."
         )
     if out_dir.exists() and any(out_dir.iterdir()):
         raise FileExistsError(
@@ -859,6 +1021,34 @@ def fuse_run(
         vertices_mm, faces = extract_mesh_poisson(board_frame_points[keep_mask])
         observed_voxel_count = int(np.count_nonzero(keep_mask))
         total_voxel_count = observed_voxel_count
+
+    if vote_sample_points_mm is not None:
+        vote_reports = measure_voxel_vote_consensus(
+            depth_mm,
+            board_extrinsic,
+            intrinsic,
+            vote_sample_points_mm,
+            resolved_truncation_mm,
+            near_surface_mm=vote_near_surface_mm,
+            keep_mask=keep_mask,
+        )
+        (out_dir / "vote_consensus.json").write_text(
+            json.dumps(
+                {
+                    "story": "R-33",
+                    "near_surface_mm": vote_near_surface_mm,
+                    "truncation_mm": resolved_truncation_mm,
+                    "sample_points_mm": np.asarray(
+                        vote_sample_points_mm, dtype=float
+                    ).tolist(),
+                    "votes": [report.as_report() for report in vote_reports],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
     write_mesh_ply(out_dir / "mesh.ply", vertices_mm, faces)
     # R-30 (review on #270, @TabeenRaoof): the re-anchoring correction above only ever lived in
