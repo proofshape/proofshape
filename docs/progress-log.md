@@ -2086,7 +2086,7 @@ readings file's new `kind`s. Those land in the printing PR, which also closes th
 
 ## 2026-11-09 — P-30 capture-app stories written up (C-14..C-18, C-21, R-34)
 
-**Who:** @TabeenRaoof (PR #nn). The claim was #282.
+**Who:** @TabeenRaoof (PR #283). The claim was #282.
 
 **What changed:** the capture app's five remaining titles, plus two stories nobody had, in a new
 "Capture app" section of `stories/README.md`. The two new ones are hosting, which D-048 deferred to
