@@ -183,6 +183,108 @@ def test_fuse_tsdf_rejects_bad_shapes():
         )
 
 
+# --- measure_voxel_vote_consensus (R-33 criterion 2) -----------------------------------------
+# Same single-pixel-ray fixtures as fuse_tsdf's own tests above.
+
+
+def test_measure_voxel_vote_consensus_classifies_near_in_front_and_behind():
+    # z=30: 20mm in front (in_front); z=50: exactly on the measured surface (near_surface);
+    # z=70: 20mm behind, within the 25mm truncation band (behind).
+    voxel_centers = np.array([[0.0, 0.0, 30.0], [0.0, 0.0, 50.0], [0.0, 0.0, 70.0]])
+    depth_mm = _ray_depth(50.0)
+
+    reports = tsdf_fusion.measure_voxel_vote_consensus(
+        depth_mm,
+        _RAY_EXTRINSIC,
+        _RAY_INTRINSIC,
+        voxel_centers,
+        truncation_mm=25.0,
+        near_surface_mm=5.0,
+    )
+
+    assert [r.contributing_frame_count for r in reports] == [1, 1, 1]
+    assert [r.near_surface_frame_count for r in reports] == [0, 1, 0]
+    assert [r.in_front_frame_count for r in reports] == [1, 0, 0]
+    assert [r.behind_frame_count for r in reports] == [0, 0, 1]
+
+
+def test_measure_voxel_vote_consensus_far_behind_contributes_nothing():
+    voxel_centers = np.array(
+        [[0.0, 0.0, 75.0]]
+    )  # 25mm behind, outside a 10mm truncation band
+    depth_mm = _ray_depth(50.0)
+
+    (report,) = tsdf_fusion.measure_voxel_vote_consensus(
+        depth_mm, _RAY_EXTRINSIC, _RAY_INTRINSIC, voxel_centers, truncation_mm=10.0
+    )
+
+    assert report.as_report() == {
+        "contributing_frame_count": 0,
+        "near_surface_frame_count": 0,
+        "in_front_frame_count": 0,
+        "behind_frame_count": 0,
+    }
+
+
+def test_measure_voxel_vote_consensus_tallies_one_vote_per_contributing_frame():
+    # Same voxel, two frames: frame 0 reads it as on the surface, frame 1 reads it 4mm in front
+    # -- with near_surface_mm=2, frame 1's vote is just outside the near band.
+    voxel_centers = np.array([[0.0, 0.0, 50.0]])
+    depth_mm = np.concatenate([_ray_depth(50.0), _ray_depth(54.0)], axis=0)
+    extrinsic = np.concatenate([_RAY_EXTRINSIC, _RAY_EXTRINSIC], axis=0)
+    intrinsic = np.concatenate([_RAY_INTRINSIC, _RAY_INTRINSIC], axis=0)
+
+    (report,) = tsdf_fusion.measure_voxel_vote_consensus(
+        depth_mm,
+        extrinsic,
+        intrinsic,
+        voxel_centers,
+        truncation_mm=25.0,
+        near_surface_mm=2.0,
+    )
+
+    assert report.contributing_frame_count == 2
+    assert report.near_surface_frame_count == 1
+    assert report.in_front_frame_count == 1
+    assert report.behind_frame_count == 0
+
+
+def test_measure_voxel_vote_consensus_keep_mask_excludes_masked_pixels():
+    voxel_centers = np.array([[0.0, 0.0, 50.0]])
+    depth_mm = _ray_depth(50.0)
+    keep_mask = np.zeros((1, 3, 3), dtype=bool)
+
+    (report,) = tsdf_fusion.measure_voxel_vote_consensus(
+        depth_mm,
+        _RAY_EXTRINSIC,
+        _RAY_INTRINSIC,
+        voxel_centers,
+        truncation_mm=25.0,
+        keep_mask=keep_mask,
+    )
+
+    assert report.contributing_frame_count == 0
+
+
+def test_measure_voxel_vote_consensus_rejects_bad_shape():
+    with pytest.raises(ValueError, match="depth_mm"):
+        tsdf_fusion.measure_voxel_vote_consensus(
+            np.zeros((3, 3)), _RAY_EXTRINSIC, _RAY_INTRINSIC, np.zeros((1, 3)), 1.0
+        )
+
+
+def test_measure_voxel_vote_consensus_rejects_near_surface_mm_past_truncation():
+    with pytest.raises(ValueError, match="near_surface_mm"):
+        tsdf_fusion.measure_voxel_vote_consensus(
+            _ray_depth(50.0),
+            _RAY_EXTRINSIC,
+            _RAY_INTRINSIC,
+            np.zeros((1, 3)),
+            truncation_mm=5.0,
+            near_surface_mm=10.0,
+        )
+
+
 # --- extract_mesh_marching_cubes ---------------------------------------------------------------
 
 
@@ -792,6 +894,47 @@ def test_fuse_run_rejects_unknown_method(tmp_path):
     with pytest.raises(ValueError, match="method"):
         tsdf_fusion.fuse_run(
             run_dir, alignment_json, tmp_path / "out", method="nonsense"
+        )
+
+
+def test_fuse_run_writes_vote_consensus_when_sample_points_given(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth())
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+    out_dir = tmp_path / "mesh_out"
+    sample_points_mm = np.array([[80.0, 60.0, -40.0], [10.0, 10.0, -10.0]])
+
+    tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        out_dir,
+        voxel_size_mm=10.0,
+        min_kept_points=0,
+        vote_sample_points_mm=sample_points_mm,
+    )
+
+    vote_report = json.loads((out_dir / "vote_consensus.json").read_text())
+    assert len(vote_report["votes"]) == 2
+    assert vote_report["sample_points_mm"] == sample_points_mm.tolist()
+    # the part pixel's own unprojected point: this frame votes it on the surface.
+    assert vote_report["votes"][0]["near_surface_frame_count"] == 1
+
+
+def test_fuse_run_rejects_vote_sample_points_with_poisson(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth())
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    with pytest.raises(ValueError, match="marching_cubes"):
+        tsdf_fusion.fuse_run(
+            run_dir,
+            alignment_json,
+            tmp_path / "out",
+            method="poisson",
+            min_kept_points=0,
+            vote_sample_points_mm=np.array([[80.0, 60.0, -40.0]]),
         )
 
 
