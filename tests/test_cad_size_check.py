@@ -729,6 +729,78 @@ def test_build_report_with_and_without_cad(tmp_path: Path) -> None:
         assert edge["ratio"] == pytest.approx(1.0, abs=0.08)
 
 
+def _fused_wall_glb(path: Path, outward_mm: float, decoy_outward_mm: float) -> None:
+    """A provenance-coloured fused mesh of the synthetic run's 30 mm box at (80, 60): every wall a
+    fully Observed grid `outward_mm` outside the CAD, plus a decoy grid `decoy_outward_mm` out on
+    faces that each have an Unobserved corner, so no decoy face counts as Observed."""
+    from recon import mesh_cleanup, provenance
+
+    low, high = np.array([80.0, 60.0]), np.array([110.0, 90.0])
+    vertices, faces, labels = [], [], []
+
+    def add_grid(outward: float, observed_pattern) -> None:
+        for axis, side in ((0, -1), (0, 1), (1, -1), (1, 1)):
+            wall = (low if side < 0 else high)[axis] + side * outward
+            along = 1 - axis
+            start = len(vertices)
+            columns = np.linspace(low[along] + 2.0, high[along] - 2.0, 12)
+            rows = np.linspace(2.0, 58.0, 15)
+            for row_index, height in enumerate(rows):
+                for column_index, position in enumerate(columns):
+                    xy = [0.0, 0.0]
+                    xy[axis], xy[along] = wall, position
+                    vertices.append([xy[0], xy[1], -height])
+                    labels.append(observed_pattern(row_index, column_index))
+            width = len(columns)
+            for row_index in range(len(rows) - 1):
+                for column_index in range(width - 1):
+                    a = start + row_index * width + column_index
+                    faces.append([a, a + 1, a + width + 1])
+                    faces.append([a, a + width + 1, a + width])
+
+    observed, unobserved = provenance.LABEL_OBSERVED, provenance.LABEL_UNOBSERVED
+    add_grid(outward_mm, lambda r, c: observed)
+    # Every second vertex Unobserved, so every decoy triangle has an Unobserved corner.
+    add_grid(decoy_outward_mm, lambda r, c: observed if (r + c) % 2 else unobserved)
+    mesh_cleanup.write_glb(
+        path,
+        np.asarray(vertices, dtype=np.float64),
+        np.asarray(faces, dtype=np.int64),
+        provenance.labels_to_colors(np.asarray(labels, dtype=object)),
+    )
+
+
+def test_build_report_measures_the_fused_surface_with_the_raw_clouds_pose(
+    tmp_path: Path,
+) -> None:
+    # R-32's review: the fused surface is measured with the CAD wall pose fitted on the raw
+    # cloud, and only on fully Observed faces. The raw cloud sits on the CAD walls; the fused
+    # Observed walls sit 1 mm outside them, so they must read -1.0 (outside is negative), while
+    # the 5 mm decoys, all on faces with an Unobserved corner, must not move that at all.
+    prism = _box_prism(30.0, 60.0)
+    run_dir, board_dir = tmp_path / "run", tmp_path / "board"
+    _write_synthetic_run(run_dir, board_dir, prism)
+    stl_path = tmp_path / "box.stl"
+    stl_path.write_text(_box_ascii_stl_text(30.0, 60.0), encoding="ascii")
+    glb_path = tmp_path / "uncertainty" / "mesh_uncertainty.glb"
+    glb_path.parent.mkdir()
+    _fused_wall_glb(glb_path, outward_mm=1.0, decoy_outward_mm=5.0)
+
+    report = build_report(run_dir, board_dir, cad_path=stl_path, observed_glb=glb_path)
+
+    raw = report["prism"]["raw_wall_profiles"]
+    fused = report["prism"]["fused_observed"]
+    assert fused["labels"].startswith("served")
+    assert fused["wall_offset_convention"] == report["prism"]["wall_offset_convention"]
+    assert len(raw) == len(fused["wall_profiles"]) == 4
+    for profile in raw:
+        for item in profile["height_bins"]:
+            assert item["offset_mm"] == pytest.approx(0.0, abs=0.3)
+    for profile in fused["wall_profiles"]:
+        for item in profile["height_bins"]:
+            assert item["offset_mm"] == pytest.approx(-1.0, abs=0.3)
+
+
 def test_write_report_refuses_overwrite(tmp_path: Path) -> None:
     out_path = tmp_path / "report.json"
     write_report(out_path, {"a": 1})

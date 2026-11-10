@@ -452,6 +452,20 @@ class EdgeMeasurement:
     )
 
 
+# R-32's sign convention, stated once and copied into every report that carries a wall profile.
+# Each offset is measured along the wall's *inward* normal, found from the fitted footprint itself
+# (towards its centre), never from the edge's direction: _fit_rigid_2d tries both handednesses,
+# so a mirrored fit reverses the edges' winding, and a direction-based normal would then flip the
+# sign of every offset on a run-by-run basis. A positive offset is surface inside the CAD wall (the
+# part reads small there); a positive lean is a wall moving inward as it rises. Checked, mirrored
+# and not, by test_wall_offset_sign_is_positive_inside_the_cad_wall.
+WALL_OFFSET_CONVENTION = (
+    "offset_mm is the surface's signed distance from the CAD wall: positive means inside the CAD "
+    "footprint (the part reads small there), negative means outside. lean_mm and lean_deg are "
+    "positive when the wall moves inward as height increases."
+)
+
+
 @dataclass(frozen=True)
 class WallHeightBin:
     height_mm: float
@@ -471,6 +485,11 @@ class WallProfileMeasurement:
     lean_deg: float
     thickness_median_mm: float
     bins: list[WallHeightBin]
+    # Where the wall is, in board-frame mm, and which way is inside. A mirror-symmetric footprint
+    # (s-05's square) can fit with any of its edges on any physical wall, so edge_index alone
+    # doesn't name the same wall in two runs; these do.
+    midpoint_xy_mm: tuple[float, float]
+    inward_normal_xy: tuple[float, float]
 
 
 @dataclass(frozen=True)
@@ -504,7 +523,8 @@ def measure_wall_profiles(
     as the median signed normal offset plus the p10-p90 spread (thickness) in each band.
 
     lean_mm is the fitted change in signed wall offset from the first valid height bin to the
-    last; lean_deg is atan(d offset / d height). No tolerance or accuracy judgement is made.
+    last; lean_deg is atan(d offset / d height). Signs follow WALL_OFFSET_CONVENTION: a positive
+    offset is inside the CAD wall, and a positive lean moves inward going up. No tolerance or accuracy judgement is made.
     An edge with too little surface evidence is omitted instead of fabricating a zero measurement.
     """
     points = np.asarray(points_board_frame_mm, dtype=np.float64)
@@ -534,12 +554,19 @@ def measure_wall_profiles(
         0.10 * part_height_mm, 0.90 * part_height_mm, bin_count + 1
     )
 
+    footprint_centre = np.mean(
+        [np.asarray(p0, dtype=np.float64) for p0, _ in transformed_edges], axis=0
+    )
     profiles: list[WallProfileMeasurement] = []
     for edge_index, (p0, p1) in enumerate(transformed_edges):
         direction = p1 - p0
         cad_length_mm = float(np.linalg.norm(direction))
         unit_direction = direction / cad_length_mm
         normal = np.array([-unit_direction[1], unit_direction[0]])
+        midpoint = (p0 + p1) / 2.0
+        if float(np.dot(footprint_centre - midpoint, normal)) < 0.0:
+            # Point inward whatever the edges' winding (see WALL_OFFSET_CONVENTION).
+            normal = -normal
         selected = (assignment == edge_index) & (
             distances[:, edge_index] <= distance_limit_mm
         )
@@ -607,6 +634,8 @@ def measure_wall_profiles(
                     np.median([item.thickness_mm for item in bins])
                 ),
                 bins=bins,
+                midpoint_xy_mm=(float(midpoint[0]), float(midpoint[1])),
+                inward_normal_xy=(float(normal[0]), float(normal[1])),
             )
         )
     return profiles
@@ -618,6 +647,8 @@ def _wall_profiles_report(
     return [
         {
             "edge_index": profile.edge_index,
+            "midpoint_xy_mm": list(profile.midpoint_xy_mm),
+            "inward_normal_xy": list(profile.inward_normal_xy),
             "cad_length_mm": profile.cad_length_mm,
             "point_count": profile.point_count,
             "height_min_mm": profile.height_min_mm,
@@ -637,6 +668,26 @@ def _wall_profiles_report(
         }
         for profile in profiles
     ]
+
+
+def observed_glb_labels(glb_path: Path) -> str:
+    """Which labels a fused GLB carries, named in the report so the two can never be confused.
+
+    R-32 measures the fused surface on the *served* labels, `uncertainty/mesh_uncertainty.glb`:
+    R-10 has already downgraded noisy-depth vertices to Unobserved there, so it is the surface
+    that can pass or fail a part. `provenance/mesh_provenance.glb` holds R-09's labels from before
+    that downgrade, and so keeps the noisiest wall vertices; a run on it is labelled as such
+    rather than refused, so the two can be compared deliberately.
+    """
+    name = Path(glb_path).name
+    if name == "mesh_uncertainty.glb":
+        return "served: R-10's labels, after the sigma downgrade (uncertainty/mesh_uncertainty.glb)"
+    if name == "mesh_provenance.glb":
+        return (
+            "not served: R-09's labels, before R-10's sigma downgrade "
+            "(provenance/mesh_provenance.glb)"
+        )
+    return f"unrecognised file name {name!r}: labels as given"
 
 
 def load_observed_surface_points(provenance_glb: Path) -> np.ndarray:
@@ -1170,6 +1221,7 @@ def build_report(
                 for edge in measurement.edges
             ],
             "raw_wall_profiles": _wall_profiles_report(measurement.wall_profiles),
+            "wall_offset_convention": WALL_OFFSET_CONVENTION,
             "note": (
                 "Measurements only; no tolerance or pass/fail claim is made here (D-003) -- "
                 "that is R-16's job once a real tolerance exists. *_ratio_over_board_scale "
@@ -1189,7 +1241,9 @@ def build_report(
                 measurement.alignment_residual_mm,
             )
             report["prism"]["fused_observed"] = {
-                "provenance_glb": str(observed_glb),
+                "observed_glb": str(observed_glb),
+                "labels": observed_glb_labels(Path(observed_glb)),
+                "wall_offset_convention": WALL_OFFSET_CONVENTION,
                 "wall_profiles": _wall_profiles_report(observed_profiles),
                 "note": (
                     "Only vertices participating in fully Observed provenance faces are used. "
@@ -1248,8 +1302,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--observed-glb",
         type=Path,
         default=None,
-        help="optional fused mesh_provenance.glb; when supplied, repeat R-32's wall "
-        "lean/thickness measurement on fully Observed fused surface",
+        help="optional fused, provenance-coloured GLB: repeat R-32's wall lean/thickness "
+        "measurement on its fully Observed surface. Use the run's served "
+        "uncertainty/mesh_uncertainty.glb (R-10's labels); the report names which labels it got",
     )
     parser.add_argument("--out", type=Path, default=None)
     return parser
