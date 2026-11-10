@@ -502,6 +502,7 @@ def write_glb(
     document.set_binary_blob(bytes(binary))
     document.save_binary(str(path))
 
+
 def read_glb(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Read back a GLB written by write_glb. The automated proxy for "loads in a browser": a
     genuinely malformed GLB won't parse here either. Only understands this module's own minimal
