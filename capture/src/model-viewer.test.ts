@@ -301,5 +301,4 @@ describe("mountModelViewer", () => {
     });
     expect(target.querySelector('select[aria-label="Colour 3D model by"]')).not.toBeNull();
   });
-
 });
