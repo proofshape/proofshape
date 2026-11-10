@@ -2110,3 +2110,29 @@ is consistent and `--fix` changes nothing. P-30 closed at 1 h actual, the owner'
 **Next:** the Nov 13 boundary call carries or cuts each story. That is 26 h of capture stories
 against S6's 11 capture hours, plus R-34's 6 h. R-34 is a D-031 request, realistically for the Dec 2
 boundary, which puts C-16 and C-17 just before M7's code freeze.
+
+## 2026-11-10 — R-33 criterion 2 recorded: golden-set measurement (PR #285)
+
+**Who:** @dalwalyk (author); reviewed and approved by @mbj1994.
+
+**What changed:** recorded @TabeenRaoof's criterion-2 measurement from #231's comment thread into
+`R-33.md`: `scripts/measure_frame_vote_consensus.py` run on all five golden objects. R-33's own
+"Why this exists" hypothesis — a single noisy frame voting a near-zero crossing — turns out only
+half right. At 90–98% of sampled wall points, no frame contributes any vote at all, while real part
+surface gets broad multi-frame agreement (median 11.5–17.5 contributing frames). Also recorded the
+likely mechanism, shown synthetically by @TabeenRaoof: `fuse_tsdf` initialises every voxel's TSDF to
+`0.0`, exactly `extract_mesh_marching_cubes`'s own `level=0.0`; scikit-image 0.24 doesn't guarantee
+its `mask=weight>0` keeps a mask boundary from fabricating a surface, and a synthetic grid with no
+real surface still built 541 faces along an observed/unobserved boundary. Two further notes for
+whoever designs criterion 3: a naive `+truncation_mm` initialisation only partly fixes it, and a
+no-crossing volume would newly crash `extract_mesh_marching_cubes` with an uncaught `ValueError`.
+Docs only, no code.
+
+**Result:** merged to `main` at `cbac8a8`. R-33 stays `Claimed` — no fix is claimed here.
+`check_story_states.py` clean; ruff, typescript and pytest all green on the merged head.
+
+**Concluded:** criterion 2's real driver is zero-vote wall points at the mask boundary, not an
+occasional false near-surface vote from a single frame.
+
+**Next:** PR #287, "stop marching cubes fabricating walls at the mask boundary," is already open
+against this finding as the criterion-3 fix.
