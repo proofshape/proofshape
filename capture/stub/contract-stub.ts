@@ -53,10 +53,19 @@ const PROVENANCE_MODEL_FIXTURE_PATH = join(
   "fixtures",
   "model-provenance.glb",
 );
+const DEVIATION_MODEL_FIXTURE_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+  "model-deviation.glb",
+);
 
 // C-11/C-12 (main.ts's ?viewer-demo=1/c12): fixed ids a developer can load model.glb for
 // directly, with no session ever created -- see handleModel.
-const DEVICE_CHECK_SESSION_IDS = new Set(["c11-device-check", "c12-provenance-check"]);
+const DEVICE_CHECK_SESSION_IDS = new Set([
+  "c11-device-check",
+  "c12-provenance-check",
+  "c14-deviation-check",
+]);
 
 // C-19 (#193): can't share a constant across Python/TypeScript -- kept in step with
 // recon/service.py's own MIN_FINISH_FRAMES by a test that reads both (contract-stub.test.ts).
@@ -360,7 +369,11 @@ export function createContractStub(): ContractStub {
       }
     }
     const fixturePath =
-      sessionId === "c12-provenance-check" ? PROVENANCE_MODEL_FIXTURE_PATH : MODEL_FIXTURE_PATH;
+      sessionId === "c12-provenance-check"
+        ? PROVENANCE_MODEL_FIXTURE_PATH
+        : sessionId === "c14-deviation-check"
+          ? DEVIATION_MODEL_FIXTURE_PATH
+          : MODEL_FIXTURE_PATH;
     const bytes = readFileSync(fixturePath);
     res.writeHead(200, {
       "Content-Type": "model/gltf-binary",
