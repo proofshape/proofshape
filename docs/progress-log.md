@@ -2105,7 +2105,7 @@ provenance colours. The manual's §0, §3.4, §4, §8.2 and §8.3 now name the s
 part.
 
 **Result:** C-14, C-18 and C-21 Ready; C-15, R-34, C-16 and C-17 Blocked; none claimed. The checker
-is consistent and `--fix` changes nothing. No code.
+is consistent and `--fix` changes nothing. P-30 closed at 1 h actual, the owner's figure. No code.
 
 **Next:** the Nov 13 boundary call carries or cuts each story. That is 26 h of capture stories
 against S6's 11 capture hours, plus R-34's 6 h. R-34 is a D-031 request, realistically for the Dec 2
