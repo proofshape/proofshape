@@ -2056,3 +2056,30 @@ correctness issue); left for a later story. s-02's board-band coverage rose rath
 because its cut moved to the fixed 2.0 mm floor while its own post-correction sigma (0.58 mm) is
 still the highest of the five -- a sigma-relative cut is a candidate for R-33 or later, not this
 story.
+
+## 2026-11-09 — G-05 defect ladder designed, checked by registration and fusion before printing (PR #276)
+
+**Who:** @TabeenRaoof. Claimed in #273.
+
+**What changed:**
+- `scripts/make_g05_defect_ladder.py` writes ten ASCII STL parts into `fixtures/reference_cad/`.
+  - The control is a 50 × 32 × 20 mm L-plate with a 12 mm square through-hole.
+  - The nine variants each add one 2 / 4 / 8 mm defect: the hole moved along +x, a 10 × 10 mm
+    pocket in the top, or a bump on the same spot.
+- `tests/test_make_g05_defect_ladder.py` checks that the committed files:
+  - are exactly the generator's output;
+  - are closed, outward-wound solids of the designed volume;
+  - differ from the plate only by their own defect;
+  - register to the control.
+
+**Measured before printing (synthetic, with the board-contact face hidden):**
+- None of the ten parts is flagged orientation-ambiguous over seeds 0–7, and the best pose is
+  always the true one.
+- The narrowest margin is the 8 mm shift's 1.22, against D-061's 1.20.
+- Without its corner notch, the same plate with its hole missing is flagged on every seed. That is
+  what the notch is for.
+- Ideal-depth fusion through R-07's `fuse_tsdf` keeps the 12 mm hole open. On the 4 mm part it
+  moves the hole's centre by exactly 4.0 mm.
+
+**Not done here:** printing (from G-01's first lab visit, 2026-11-10), calipering, and the
+readings file's new `kind`s. Those land in the printing PR, which also closes the story (D-038).
