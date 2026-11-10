@@ -13,6 +13,8 @@ One-command helpers. Each is runnable on its own; none is part of the shipped sy
 | `container_entrypoint.sh` | **The one exception to "not shipped":** the R-15 image's entrypoint. It fetches the model weights, then serves `recon.service`. |
 | `setup_completion_env.sh` | A-12: builds LaS-Comp's own Python 3.10 / torch 2.4 environment on a CUDA host (Colab or Lightning), at D-057's pins, and prints the `PROOFSHAPE_COMPLETION_RUNNER` line to use. Never touches the host's own torch. See `recon/README.md`, A-12. |
 | `lascomp_runner.py` | A-12: the real model behind A-04's completion contract. Runs inside that environment, launched by the service (or by hand on a prepared completion folder). Also `--check` (setup's last step) and `--ensure-encoder-entry`. |
+| `measure_wall_share.py` | R-33: classifies a served `mesh_provenance.glb`'s faces into part / board skin / volume boundary / wall by centroid, the same diagnostic #231 and #258 ran by hand, so it can be rerun after a pipeline change instead of redone by hand. The part's own x/y footprint and height cap default to being derived from `completion.isolate_part`; `--part-x-mm`/`--part-y-mm`/`--part-height-mm` override any of them. |
+| `measure_frame_vote_consensus.py` | R-33 criterion 2: samples wall and part points via `measure_wall_share`, then reruns `fuse_run` with those points as `vote_sample_points_mm` to compare how many frames vote each group "on the surface" versus merely in front of or behind one. |
 | `make_g05_defect_ladder.py` | G-05: writes the defect ladder's ten CAD files into `fixtures/reference_cad/`, or with `--check` exits 1 if a committed file differs. Standard library only; the design and why are in `stories/G/G-05.md`. |
 
 ## Node helpers

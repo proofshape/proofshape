@@ -380,7 +380,7 @@ Full detail in each story file.
 | [R-28](R/R-28.md) | Portrait-safe VGGT intrinsics rescale and correct board metadata | 2 h | R-02, R-03, R-22, R-23 | Done | @dalwalyk |
 | [R-29](R/R-29.md) | Contract-shaped validation errors and an Inferred-aware hard-rule test | 2 h | F-03, R-14 | Done | @dalwalyk |
 | [R-30](R/R-30.md) | Per-frame board re-anchoring before fusion | 5 h | R-07, R-21 | Done | @dalwalyk |
-| [R-31](R/R-31.md) | macOS: Open3D and torch in one process without a deadlock (#261) | 2 h | R-27 | Claimed | @mbj1994 |
+| [R-31](R/R-31.md) | macOS: Open3D and torch in one process without a deadlock (#261) | 2 h | R-27 | Done | @mbj1994 |
 | [R-32](R/R-32.md) | Spike: is R-22's per-pixel depth error VGGT's own? Compare backends on s-04 and s-05 | 5 h | R-11, R-12, R-22, R-23 | Claimed | @mbj1994 |
 | [R-33](R/R-33.md) | Wall surfaces fill the fusion volume | 5 h | R-07, R-30 | Claimed | @dalwalyk |
 | [C-19](C/C-19.md) | The viewer says when a model has no provenance; the mock matches the service | 3 h | C-10, C-12, C-13 | Done | @dalwalyk |
@@ -474,6 +474,7 @@ Full detail in each story file.
 | [P-26](P/P-26.md) | Write up the first generative-AI stories | — | nothing | Done | @TabeenRaoof |
 | [P-27](P/P-27.md) | Review every Done story; file its code bugs and write up the follow-up stories | — | nothing | Done | @TabeenRaoof |
 | [P-29](P/P-29.md) | Accuracy check after A-12; open issues reconciled with the stories | — | nothing | Done | @TabeenRaoof |
+| [P-30](P/P-30.md) | Write up the capture-app stories | — | nothing | Claimed | @TabeenRaoof |
 
 ---
 

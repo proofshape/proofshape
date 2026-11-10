@@ -19,7 +19,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from recon import agent_tools
+# R-31: import the process guard before agent_tools -> provenance -> Open3D. The module applies
+# the macOS-only OMP_NUM_THREADS=1 guard as an import side effect; Linux is unchanged.
+from recon import runtime_env as _runtime_env  # noqa: F401
 from recon.vlm_check import VlmSupervisor
 
 MIN_FINISH_FRAMES = 3
@@ -514,6 +516,10 @@ def create_app(
     known_order_codes: set[str] | None = None,
     vlm_supervisor: VlmSupervisor | None = None,
 ) -> FastAPI:
+    # R-31: keep agent_tools lazy so the runtime guard above has already run before its
+    # provenance dependency can import Open3D.
+    from recon import agent_tools
+
     root = Path(
         data_dir or os.environ.get("PROOFSHAPE_DATA_DIR", "proofshape-data/sessions")
     )
