@@ -1190,6 +1190,69 @@ Re-checked after R-26 merged: D-059 and D-060 are now on `main`, and D-061 is st
 *Agreement:* proposed in I-05's PR, which asks both @mbj1994 and @dalwalyk to agree and merges
 only with both approving.
 
+**D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
+provenance, and the viewer does the colouring.** (2026-11-09)
+Settles how I-06's per-vertex deviation reaches C-14's viewer. Recorded by P-30, so that I-06, still
+titles-only, is written against it.
+
+**Two new vertex attributes.** The GLB served at `getReconstruction`'s `glb_url` gains two
+application-specific vertex attributes. glTF requires the leading underscore.
+- **`_DEVIATION_MM`:** one float32 per vertex, in the served mesh's own vertex order. The vertices
+  are not moved. The value is the signed distance to the CAD in millimetres: positive where the
+  part has extra material, negative where material is missing (glossary; proposal §7.2).
+- **`_DEVIATION_MEASURED`:** one float32 per vertex, exactly 1.0 where I-06 computed a deviation
+  and 0.0 everywhere else. `_DEVIATION_MM` is 0.0 wherever this is 0.0.
+- Neither may hold NaN, which glTF forbids in float accessors.
+- Both are float32 so that every element sits on the 4-byte boundary glTF requires for vertex
+  attributes. A tightly packed uint8 mask would not.
+- three.js's GLTFLoader exposes them as `_deviation_mm` and `_deviation_measured`.
+
+**COLOR_0 is unchanged.** It is still 255 for Observed and 128 for Unobserved
+(`recon/provenance.py`), remapped by `capture/src/provenance-colors.ts`.
+- **I-06 measures Observed vertices only.** It sets `_DEVIATION_MEASURED` to 1.0 only on Observed
+  vertices that it actually compared with the CAD. That excludes any it leaves out, such as
+  surface outside the registered part.
+- **The viewer has two independent gates.** It colours a vertex by deviation only when COLOR_0
+  says Observed **and** `_DEVIATION_MEASURED` is 1.0. Every other vertex is drawn the Unobserved
+  grey. So a fault on either side can't paint unseen surface (D-005).
+
+**When it appears.** A GLB without these attributes is valid: every session with no CAD, and every
+session before its verdict. The viewer then offers no heatmap. I-06 writes the new GLB beside the
+old one and switches the session record in one atomic write, the way `SessionStore` already
+writes. So `glb_url` stays the same and no viewer reads a half-written file.
+
+**One writer.** `recon/mesh_cleanup.write_glb` gains optional extra vertex attributes. C-14's mock
+fixture and I-06 both use it, so the format is one piece of code on both sides.
+
+**No contract change.** The contract says per-vertex provenance and uncertainty "travel inside the
+GLB itself, not in this JSON body". It doesn't specify the GLB's contents, and the `model.glb`
+route is outside the schema. So this layout is recorded here, not in the frozen file.
+
+*Why:*
+- **Colours baked on the server** would fix the palette, the range and the legend when the file is
+  written, and would overwrite the provenance colours the viewer already relies on. That is the
+  sprint plan's stand-in (§5, D4: "Vertex colors in the GLB") and R-09's note that heatmap
+  colouring is I-06's job. This decision departs from both.
+- **Numbers let the viewer choose.** The viewer can take its range from the order's tolerance,
+  label the legend in mm, and switch back to provenance without fetching anything.
+- **One file needs no new route and no D-031 round.**
+
+*Known cost:* the served GLB grows by 8 bytes per vertex (for 30,000 vertices, about 240 kB). A
+tool that doesn't know these attributes ignores them.
+
+*Not decided here:*
+- the colour scale, its range and its legend (C-14);
+- how the distance is computed and which vertices are compared (I-06);
+- whether a later D-031 request names these attributes in the contract;
+- σ, which today lives in `uncertainty/sigma_mm.npz`, not in the GLB, despite the contract's
+  wording.
+
+*Checked against D-028:* fetched every origin branch on 2026-11-09. D-061 is the highest anywhere,
+so D-062 was the first free number.
+
+*Agreement:* it binds I-06's writer, and nobody has written I-06 yet, so P-30's pull request asks
+both @mbj1994 and @dalwalyk to agree, and merges only with both approving.
+
 ---
 
 ## Open — not yet decided

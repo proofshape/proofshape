@@ -41,7 +41,7 @@ README; this is only which one to reach for.
 | The capture app on a real phone | `npm run dev:device` in `capture/`, then open the printed `https://<LAN-IP>:<port>` on a phone on the same Wi-Fi and accept the self-signed certificate once. It answers from a **mock service** with a canned model; enter the order code `PO-48213-A`. | [`capture/README.md`](../capture/README.md) |
 | Real photos through the real reconstruction service | `uvicorn recon.service:app` on a machine with a CUDA GPU, then drive a capture folder through it with `scripts/smoke_r14.py`. | [`recon/README.md`](../recon/README.md), R-14 |
 | The service on the shared cloud GPU | R-15's runbook: start, check TLS and the token, smoke-test, **stop**. Stopping is the only thing that ends billing. | [`recon/README.md`](../recon/README.md), R-15 |
-| A real phone session against the real service | **Works now**, on a Mac (D-049). Terminal 1: `PROOFSHAPE_RECON_DEVICE=mps uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1`. Terminal 2, in `capture/`: `PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device`. Then open `https://<LAN-IP>:5173/?order=<code>` on the phone. The cloud deployment is not used for this and has never served a phone (O-005). | [`capture/README.md`](../capture/README.md), C-13 |
+| A real phone session against the real service | **Works now**, on a Mac (D-049). Terminal 1: `PROOFSHAPE_RECON_DEVICE=mps uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1`. Terminal 2, in `capture/`: `PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device`. Then open `https://<LAN-IP>:5173/?order=<code>` on the phone. The cloud deployment is not used for this and has never served a phone (O-005; hosting the app is C-21). | [`capture/README.md`](../capture/README.md), C-13 |
 
 ---
 
@@ -158,7 +158,7 @@ is deliberate, and the margins are doing three jobs:
 
 1. Keeping the paper's outline clearly separated from the pattern, so the outline scale check
    works.
-2. Reserving space for the per-order QR code and orientation arrow (**Planned** — see §4).
+2. Reserving space for the per-order QR code and orientation arrow (**Planned**, C-17 — see §4).
 3. Giving a part that is larger than the pattern somewhere to sit without hanging off the sheet.
 
 **If the part is larger than the pattern but still roughly sheet-sized, that is fine for pose.**
@@ -182,8 +182,9 @@ decision the team has made. **Undecided.**
 
 ## 4 · Setting up an order — the buyer
 
-**Status: Planned.** Built by the capture-lane stories (C-16 buyer setup, C-17 board PDF with
-order code) and the inspection stories (I-01 through I-10).
+**Status: Planned.** Built by C-16 (the buyer page), R-34 (the order store it saves to, and the
+service checking order codes against it), C-17 (the printable sheet with the order code) and the
+inspection stories (I-01 through I-10).
 
 The intended flow:
 
@@ -202,11 +203,12 @@ The intended flow:
 **What exists today instead.** There is no buyer side and no order storage. The supplier types an
 order code by hand (§5). The mock service accepts only `PO-48213-A`; the real reconstruction
 service accepts **any** non-empty code, because there is no buyer database to check it against
-(`recon/README.md`, R-14). A capture link can pre-fill the order code with `?order=<code>` (C-13).
+(`recon/README.md`, R-14; R-34 is the planned store). A capture link can pre-fill the order code with `?order=<code>` (C-13).
 
-**Undecided:** when the per-order QR code and orientation arrow actually get added to the printed
-sheet. Margin space is reserved for them; the golden-capture set does not need them, since there
-is no real purchase order to bind to yet (D-034).
+**Planned** (C-17): the order code, a QR code and an orientation arrow in the sheet's margin, with
+the board itself unchanged. Where they sit is recorded as a decision when C-17 is built (D-034 left
+it open). The golden-capture set does not need them, since there is no real purchase order to bind
+to yet.
 
 ---
 
@@ -359,7 +361,7 @@ usually the blue region.
 
 **Status: Planned** (I-07 verdict logic, I-08 unobserved-geometry rule, I-10 Unverifiable path).
 The four values are frozen in the contract; today a verdict request always answers
-`no_cad_uploaded`, because there is no way to upload a CAD yet.
+`no_cad_uploaded`, because there is no way to upload a CAD yet (R-34).
 
 There are exactly four. No fifth value can be added without a recorded decision, because the hard
 rule's guarantees are stated in terms of this closed set.
@@ -377,7 +379,9 @@ unobserved region into either a Pass or a Fail — if it could not see it, it sa
 
 ### 8.3 The report
 
-**Status: Planned** (C-14 heatmap rendering, C-15 report page).
+**Status: Planned** (C-14 heatmap rendering, C-15 report page; the deviation data is I-06's,
+D-062). **Planned:** only Observed surface is coloured by deviation; everything else stays grey
+(D-005).
 
 One page, shareable with the buyer: the verdict, the deviation heatmap, the model, **which
 reference sheet was used**, which regions were observed, and any limits declared at intake.
