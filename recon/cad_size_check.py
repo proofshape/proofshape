@@ -453,6 +453,27 @@ class EdgeMeasurement:
 
 
 @dataclass(frozen=True)
+class WallHeightBin:
+    height_mm: float
+    offset_mm: float
+    thickness_mm: float
+    point_count: int
+
+
+@dataclass(frozen=True)
+class WallProfileMeasurement:
+    edge_index: int
+    cad_length_mm: float
+    point_count: int
+    height_min_mm: float
+    height_max_mm: float
+    lean_mm: float
+    lean_deg: float
+    thickness_median_mm: float
+    bins: list[WallHeightBin]
+
+
+@dataclass(frozen=True)
 class PrismMeasurement:
     height_mm: float
     cad_height_mm: float
@@ -460,6 +481,166 @@ class PrismMeasurement:
     alignment_residual_mm: float
     rotation_deg: float
     edges: list[EdgeMeasurement]
+    wall_profiles: list[WallProfileMeasurement]
+
+
+def measure_wall_profiles(
+    points_board_frame_mm: np.ndarray,
+    transformed_edges: list[tuple[np.ndarray, np.ndarray]],
+    board_plane: tuple[float, float, float],
+    part_height_mm: float,
+    alignment_residual_mm: float,
+    *,
+    bin_count: int = 5,
+    min_points_per_bin: int = 5,
+) -> list[WallProfileMeasurement]:
+    """Measure each flat wall's signed offset, lean and thickness as a function of height.
+
+    R-32 needs to distinguish a depth error already present in the raw reconstruction from a
+    shape error introduced later by fusion. The CAD pose is fixed by the same rigid 2-D fit used
+    for the size measurement. For each CAD edge, wall points are assigned to their nearest edge
+    line, split into equal height bands from 10% to 90% of the measured part height, and reported
+    as the median signed normal offset plus the p10-p90 spread (thickness) in each band.
+
+    lean_mm is the fitted change in signed wall offset from the first valid height bin to the
+    last; lean_deg is atan(d offset / d height). No tolerance or accuracy judgement is made.
+    An edge with too little surface evidence is omitted instead of fabricating a zero measurement.
+    """
+    points = np.asarray(points_board_frame_mm, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError(
+            f"points_board_frame_mm must have shape (N,3), got {points.shape}"
+        )
+    if part_height_mm <= 0:
+        raise ValueError("part_height_mm must be positive.")
+    if bin_count < 2:
+        raise ValueError("bin_count must be at least 2.")
+    if min_points_per_bin < 1:
+        raise ValueError("min_points_per_bin must be positive.")
+
+    heights = compute_height_above_board(points, board_plane)
+    wall_band = (heights >= 0.10 * part_height_mm) & (
+        heights <= 0.90 * part_height_mm
+    )
+    points = points[wall_band]
+    heights = heights[wall_band]
+    if len(points) == 0:
+        return []
+
+    points_xy = points[:, :2]
+    distances = _edge_line_distances(points_xy, transformed_edges)
+    assignment = distances.argmin(axis=1)
+    distance_limit_mm = max(8.0, 4.0 * alignment_residual_mm)
+    height_edges = np.linspace(
+        0.10 * part_height_mm, 0.90 * part_height_mm, bin_count + 1
+    )
+
+    profiles: list[WallProfileMeasurement] = []
+    for edge_index, (p0, p1) in enumerate(transformed_edges):
+        direction = p1 - p0
+        cad_length_mm = float(np.linalg.norm(direction))
+        unit_direction = direction / cad_length_mm
+        normal = np.array([-unit_direction[1], unit_direction[0]])
+        selected = (assignment == edge_index) & (
+            distances[:, edge_index] <= distance_limit_mm
+        )
+        if int(np.count_nonzero(selected)) < 2 * min_points_per_bin:
+            continue
+
+        edge_heights = heights[selected]
+        signed_offsets = (points_xy[selected] - p0) @ normal
+        bins: list[WallHeightBin] = []
+        for bin_index in range(bin_count):
+            lo = height_edges[bin_index]
+            hi = height_edges[bin_index + 1]
+            if bin_index == bin_count - 1:
+                in_bin = (edge_heights >= lo) & (edge_heights <= hi)
+            else:
+                in_bin = (edge_heights >= lo) & (edge_heights < hi)
+            count = int(np.count_nonzero(in_bin))
+            if count < min_points_per_bin:
+                continue
+            offsets = signed_offsets[in_bin]
+            p10, p90 = np.percentile(offsets, [10, 90])
+            bins.append(
+                WallHeightBin(
+                    height_mm=float(np.median(edge_heights[in_bin])),
+                    offset_mm=float(np.median(offsets)),
+                    thickness_mm=float(p90 - p10),
+                    point_count=count,
+                )
+            )
+
+        if len(bins) < 2:
+            continue
+        bin_heights = np.asarray([item.height_mm for item in bins], dtype=np.float64)
+        bin_offsets = np.asarray([item.offset_mm for item in bins], dtype=np.float64)
+        slope, _intercept = np.polyfit(bin_heights, bin_offsets, 1)
+        height_span = float(bin_heights[-1] - bin_heights[0])
+        profiles.append(
+            WallProfileMeasurement(
+                edge_index=edge_index,
+                cad_length_mm=cad_length_mm,
+                point_count=int(np.count_nonzero(selected)),
+                height_min_mm=float(bin_heights[0]),
+                height_max_mm=float(bin_heights[-1]),
+                lean_mm=float(slope * height_span),
+                lean_deg=float(math.degrees(math.atan(float(slope)))),
+                thickness_median_mm=float(
+                    np.median([item.thickness_mm for item in bins])
+                ),
+                bins=bins,
+            )
+        )
+    return profiles
+
+
+def _wall_profiles_report(
+    profiles: list[WallProfileMeasurement],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "edge_index": profile.edge_index,
+            "cad_length_mm": profile.cad_length_mm,
+            "point_count": profile.point_count,
+            "height_min_mm": profile.height_min_mm,
+            "height_max_mm": profile.height_max_mm,
+            "lean_mm": profile.lean_mm,
+            "lean_deg": profile.lean_deg,
+            "thickness_median_mm": profile.thickness_median_mm,
+            "height_bins": [
+                {
+                    "height_mm": item.height_mm,
+                    "offset_mm": item.offset_mm,
+                    "thickness_mm": item.thickness_mm,
+                    "point_count": item.point_count,
+                }
+                for item in profile.bins
+            ],
+        }
+        for profile in profiles
+    ]
+
+
+def load_observed_surface_points(provenance_glb: Path) -> np.ndarray:
+    """Return vertices participating in fully Observed faces of a provenance GLB.
+
+    Imports provenance lazily so the normal raw-cloud CAD check keeps its lightweight import
+    surface. R-09's conservative rule is preserved: a face counts only when all three vertices
+    are Observed.
+    """
+    from recon import mesh_cleanup, provenance
+
+    vertices, faces, colors = mesh_cleanup.read_glb(Path(provenance_glb))
+    if colors is None:
+        raise ValueError(f"{provenance_glb} has no provenance vertex colors.")
+    vertex_labels = provenance.colors_to_labels(colors)
+    face_labels = provenance.label_faces(faces, vertex_labels)
+    observed_faces = faces[face_labels == provenance.LABEL_OBSERVED]
+    if len(observed_faces) == 0:
+        raise ValueError(f"{provenance_glb} has no fully Observed faces.")
+    observed_vertex_indices = np.unique(observed_faces.reshape(-1))
+    return vertices[observed_vertex_indices].astype(np.float64)
 
 
 def measure_prism(
@@ -491,9 +672,11 @@ def measure_prism(
             "Too few candidate points above the board to measure the part."
         )
 
-    candidate_xy = points[region, :2]
+    candidate_points = points[region]
+    candidate_xy = candidate_points[:, :2]
     candidate_height = height[region]
     blob_mask = _largest_connected_blob(candidate_xy)
+    candidate_points = candidate_points[blob_mask]
     candidate_xy = candidate_xy[blob_mask]
     candidate_height = candidate_height[blob_mask]
 
@@ -582,6 +765,14 @@ def measure_prism(
             )
         )
 
+    wall_profiles = measure_wall_profiles(
+        candidate_points,
+        transformed_edges,
+        board_plane,
+        height_mm,
+        residual,
+    )
+
     return PrismMeasurement(
         height_mm=height_mm,
         cad_height_mm=prism.height_mm,
@@ -589,6 +780,7 @@ def measure_prism(
         alignment_residual_mm=residual,
         rotation_deg=float(math.degrees(math.atan2(transform[1, 0], transform[0, 0]))),
         edges=edge_measurements,
+        wall_profiles=wall_profiles,
     )
 
 
@@ -864,6 +1056,7 @@ def build_report(
     board_pose_dir: Path,
     cad_path: Path | None = None,
     min_confidence: float = 0.0,
+    observed_glb: Path | None = None,
 ) -> dict[str, Any]:
     """Run the board-ruler check, and the CAD check if a CAD path is given.
 
@@ -958,13 +1151,34 @@ def build_report(
                 }
                 for edge in measurement.edges
             ],
+            "raw_wall_profiles": _wall_profiles_report(measurement.wall_profiles),
             "note": (
                 "Measurements only; no tolerance or pass/fail claim is made here (D-003) -- "
                 "that is R-16's job once a real tolerance exists. *_ratio_over_board_scale "
                 "divides out the board-ruler's measured scale error, isolating whatever error "
-                "is specific to this part rather than shared with the whole scene."
+                "is specific to this part rather than shared with the whole scene. R-32 wall "
+                "profiles report signed CAD-wall offset by height, lean and p10-p90 thickness."
             ),
         }
+
+        if observed_glb is not None:
+            observed_points = load_observed_surface_points(Path(observed_glb))
+            observed_measurement = measure_prism(observed_points, prism, board_plane)
+            report["prism"]["fused_observed"] = {
+                "provenance_glb": str(observed_glb),
+                "height_mm": observed_measurement.height_mm,
+                "height_ratio": observed_measurement.height_ratio,
+                "alignment_residual_mm": observed_measurement.alignment_residual_mm,
+                "rotation_deg": observed_measurement.rotation_deg,
+                "wall_profiles": _wall_profiles_report(
+                    observed_measurement.wall_profiles
+                ),
+                "note": (
+                    "Only vertices participating in fully Observed provenance faces are used. "
+                    "The CAD is rigidly aligned independently to this fused Observed surface, "
+                    "so lean and thickness describe shape rather than a global pose offset."
+                ),
+            }
 
     return report
 
@@ -1011,6 +1225,13 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="drop points.ply points whose depth confidence is below this before the CAD check "
         "(default keeps all; does not affect the board-ruler check)",
     )
+    parser.add_argument(
+        "--observed-glb",
+        type=Path,
+        default=None,
+        help="optional fused mesh_provenance.glb; when supplied, repeat R-32's wall "
+        "lean/thickness measurement on fully Observed fused surface",
+    )
     parser.add_argument("--out", type=Path, default=None)
     return parser
 
@@ -1020,7 +1241,11 @@ def main(argv: list[str] | None = None) -> int:
     out = args.out or args.recon_run_dir / "cad_size_check.json"
     try:
         report = build_report(
-            args.recon_run_dir, args.board_pose_dir, args.cad, args.min_confidence
+            args.recon_run_dir,
+            args.board_pose_dir,
+            args.cad,
+            args.min_confidence,
+            args.observed_glb,
         )
         write_report(out, report)
     except (FileNotFoundError, FileExistsError, ValueError, CalibrationFailure) as exc:
