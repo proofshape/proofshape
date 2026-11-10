@@ -340,18 +340,27 @@ def write_glb_with_size_limit(
         redecimation_rounds += 1
 
 
+def _append_aligned_blob(buffer: bytearray, blob: bytes) -> tuple[int, int]:
+    """Append one GLB bufferView payload at a 4-byte-aligned offset."""
+    while len(buffer) % 4:
+        buffer.append(0)
+    offset = len(buffer)
+    buffer.extend(blob)
+    return offset, len(blob)
+
+
 def write_glb(
     path: Path,
     vertices: np.ndarray,
     faces: np.ndarray,
     colors: np.ndarray | None = None,
+    extra_vertex_attributes: dict[str, np.ndarray] | None = None,
 ) -> None:
-    """Write a minimal, valid GLB: one mesh, POSITION + triangle indices, no materials.
+    """Write a minimal GLB with optional COLOR_0 and scalar float32 custom attributes.
 
-    `colors`, if given, is (N,3) uint8 RGB -- written as a COLOR_0 vertex attribute (R-09's
-    per-vertex provenance labels, as `contracts/openapi.yaml` specifies: labels travel as vertex
-    colors inside the GLB, not as separate JSON fields). Omitting it keeps R-08's original
-    colorless output unchanged.
+    C-14/D-062 uses this for _DEVIATION_MM and _DEVIATION_MEASURED. Every
+    bufferView begins at a four-byte boundary so a tightly packed RGB COLOR_0 with an odd
+    vertex count cannot misalign the following float accessors.
     """
     vertices = np.asarray(vertices, dtype=np.float32)
     faces = np.asarray(faces, dtype=np.uint32)
@@ -366,26 +375,37 @@ def write_glb(
                 f"colors must have the same shape as vertices {vertices.shape}, got {colors.shape}"
             )
 
-    indices_blob = faces.tobytes()
-    positions_blob = vertices.tobytes()
-    colors_blob = colors.tobytes() if colors is not None else b""
+    extras: dict[str, np.ndarray] = {}
+    for name, values in (extra_vertex_attributes or {}).items():
+        if not name.startswith("_"):
+            raise ValueError(
+                f"custom vertex attribute {name!r} must start with '_' per glTF semantics"
+            )
+        array = np.asarray(values, dtype=np.float32)
+        if array.ndim == 2 and array.shape[1] == 1:
+            array = array[:, 0]
+        if array.shape != (len(vertices),):
+            raise ValueError(
+                f"{name} must have one scalar per vertex ({len(vertices)},), got {array.shape}"
+            )
+        if not np.isfinite(array).all():
+            raise ValueError(f"{name} must contain only finite float32 values")
+        extras[name] = array
 
-    attributes = pygltflib.Attributes(POSITION=1)
-    buffer_views = [
+    binary = bytearray()
+    buffer_views: list[pygltflib.BufferView] = []
+    accessors: list[pygltflib.Accessor] = []
+
+    index_offset, index_length = _append_aligned_blob(binary, faces.tobytes())
+    buffer_views.append(
         pygltflib.BufferView(
             buffer=0,
-            byteOffset=0,
-            byteLength=len(indices_blob),
+            byteOffset=index_offset,
+            byteLength=index_length,
             target=pygltflib.ELEMENT_ARRAY_BUFFER,
-        ),
-        pygltflib.BufferView(
-            buffer=0,
-            byteOffset=len(indices_blob),
-            byteLength=len(positions_blob),
-            target=pygltflib.ARRAY_BUFFER,
-        ),
-    ]
-    accessors = [
+        )
+    )
+    accessors.append(
         pygltflib.Accessor(
             bufferView=0,
             componentType=pygltflib.UNSIGNED_INT,
@@ -393,7 +413,19 @@ def write_glb(
             type=pygltflib.SCALAR,
             min=[int(faces.min())] if faces.size else [0],
             max=[int(faces.max())] if faces.size else [0],
-        ),
+        )
+    )
+
+    position_offset, position_length = _append_aligned_blob(binary, vertices.tobytes())
+    buffer_views.append(
+        pygltflib.BufferView(
+            buffer=0,
+            byteOffset=position_offset,
+            byteLength=position_length,
+            target=pygltflib.ARRAY_BUFFER,
+        )
+    )
+    accessors.append(
         pygltflib.Accessor(
             bufferView=1,
             componentType=pygltflib.FLOAT,
@@ -401,21 +433,25 @@ def write_glb(
             type=pygltflib.VEC3,
             min=vertices.min(axis=0).tolist() if len(vertices) else [0.0, 0.0, 0.0],
             max=vertices.max(axis=0).tolist() if len(vertices) else [0.0, 0.0, 0.0],
-        ),
-    ]
+        )
+    )
+    attributes = pygltflib.Attributes(POSITION=1)
+
     if colors is not None:
-        attributes.COLOR_0 = 2
+        color_offset, color_length = _append_aligned_blob(binary, colors.tobytes())
+        color_view_index = len(buffer_views)
         buffer_views.append(
             pygltflib.BufferView(
                 buffer=0,
-                byteOffset=len(indices_blob) + len(positions_blob),
-                byteLength=len(colors_blob),
+                byteOffset=color_offset,
+                byteLength=color_length,
                 target=pygltflib.ARRAY_BUFFER,
             )
         )
+        color_accessor_index = len(accessors)
         accessors.append(
             pygltflib.Accessor(
-                bufferView=2,
+                bufferView=color_view_index,
                 componentType=pygltflib.UNSIGNED_BYTE,
                 count=len(colors),
                 type=pygltflib.VEC3,
@@ -424,6 +460,31 @@ def write_glb(
                 max=colors.max(axis=0).tolist() if len(colors) else [0, 0, 0],
             )
         )
+        attributes.COLOR_0 = color_accessor_index
+
+    for name, values in extras.items():
+        offset, length = _append_aligned_blob(binary, values.tobytes())
+        view_index = len(buffer_views)
+        buffer_views.append(
+            pygltflib.BufferView(
+                buffer=0,
+                byteOffset=offset,
+                byteLength=length,
+                target=pygltflib.ARRAY_BUFFER,
+            )
+        )
+        accessor_index = len(accessors)
+        accessors.append(
+            pygltflib.Accessor(
+                bufferView=view_index,
+                componentType=pygltflib.FLOAT,
+                count=len(values),
+                type=pygltflib.SCALAR,
+                min=[float(values.min())] if len(values) else [0.0],
+                max=[float(values.max())] if len(values) else [0.0],
+            )
+        )
+        setattr(attributes, name, accessor_index)
 
     document = pygltflib.GLTF2(
         scene=0,
@@ -434,17 +495,12 @@ def write_glb(
                 primitives=[pygltflib.Primitive(attributes=attributes, indices=0)]
             )
         ],
-        buffers=[
-            pygltflib.Buffer(
-                byteLength=len(indices_blob) + len(positions_blob) + len(colors_blob)
-            )
-        ],
+        buffers=[pygltflib.Buffer(byteLength=len(binary))],
         bufferViews=buffer_views,
         accessors=accessors,
     )
-    document.set_binary_blob(indices_blob + positions_blob + colors_blob)
+    document.set_binary_blob(bytes(binary))
     document.save_binary(str(path))
-
 
 def read_glb(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Read back a GLB written by write_glb. The automated proxy for "loads in a browser": a
