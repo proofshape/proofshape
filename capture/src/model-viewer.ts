@@ -2,10 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { setStatus } from "./camera.js";
-import {
-  createDeviationHeatmapController,
-  createDeviationLegend,
-} from "./deviation-heatmap.js";
+import { createDeviationHeatmapController, createDeviationLegend } from "./deviation-heatmap.js";
 import { createProvenanceLegend, remapModelProvenanceColors } from "./provenance-colors.js";
 import type { ReconstructionResult } from "./types.js";
 
