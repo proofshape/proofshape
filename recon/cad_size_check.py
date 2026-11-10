@@ -520,9 +520,7 @@ def measure_wall_profiles(
         raise ValueError("min_points_per_bin must be positive.")
 
     heights = compute_height_above_board(points, board_plane)
-    wall_band = (heights >= 0.10 * part_height_mm) & (
-        heights <= 0.90 * part_height_mm
-    )
+    wall_band = (heights >= 0.10 * part_height_mm) & (heights <= 0.90 * part_height_mm)
     points = points[wall_band]
     heights = heights[wall_band]
     if len(points) == 0:
