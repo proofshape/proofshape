@@ -239,4 +239,66 @@ describe("mountModelViewer", () => {
       expect(target.textContent).toContain("has no provenance colours");
     });
   });
+  it("offers the C-14 colour mode when measured Observed deviation data exists", async () => {
+    const THREE = await import("three");
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), 3),
+    );
+    geometry.setAttribute(
+      "color",
+      new THREE.BufferAttribute(
+        new Uint8Array([255, 255, 255, 128, 128, 128, 255, 255, 255]),
+        3,
+        true,
+      ),
+    );
+    geometry.setAttribute(
+      "_deviation_mm",
+      new THREE.BufferAttribute(new Float32Array([-2, 99, 1]), 1),
+    );
+    geometry.setAttribute(
+      "_deviation_measured",
+      new THREE.BufferAttribute(new Float32Array([1, 1, 0]), 1),
+    );
+    const scene = new THREE.Scene();
+    scene.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial()));
+    const target = makeRoot();
+
+    mountModelViewer(target, complete("https://example.test/model.glb"), {
+      loaderFactory: () => ({
+        load: (_url, onLoad) => {
+          onLoad({ scene });
+        },
+      }),
+    });
+
+    await vi.waitFor(() => {
+      if (!target.textContent.includes("3D model loaded")) {
+        throw new Error("still pending");
+      }
+    });
+    const select = target.querySelector('select[aria-label="Colour 3D model by"]');
+    expect(select).toBeInstanceOf(HTMLSelectElement);
+    (select as HTMLSelectElement).value = "deviation";
+    select?.dispatchEvent(new Event("change"));
+    expect(target.textContent).toContain("Deviation from CAD (mm)");
+    expect(target.textContent).toContain("not a tolerance");
+  });
+
+  it("loads the committed C-14 fixture through the real GLTFLoader", async () => {
+    const target = makeRoot();
+
+    mountModelViewer(target, complete("https://example.test/model.glb"), {
+      loaderFactory: () => realGltfLoaderFor("model-deviation.glb"),
+    });
+
+    await vi.waitFor(() => {
+      if (!target.textContent.includes("3D model loaded")) {
+        throw new Error("still pending");
+      }
+    });
+    expect(target.querySelector('select[aria-label="Colour 3D model by"]')).not.toBeNull();
+  });
 });

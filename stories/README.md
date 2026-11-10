@@ -400,7 +400,7 @@ capture hours, for device testing and its fixes. So these go to the Nov 13 bound
 carried or cut, never silently rolled forward (working agreement 4). Each story says what it
 waits for and where it sits on the cut list (§10).
 
-**Ready now: C-14, C-18 and C-21.**
+**Ready now: C-15, C-18 and C-21.**
 - C-14 and C-15 are built against the mock (sprint plan §5, D4). The real deviations come from
   I-06 and the real verdict from I-07. Both are still titles-only, and both are checked end to
   end at X-03 or X-04.
@@ -427,8 +427,8 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [C-14](C/C-14.md) | Heatmap rendering in the viewer (D-062) | 4 h | C-12 | Claimed | @mbj1994 |
-| [C-15](C/C-15.md) | Report page: verdict, reasons, heatmap, print to PDF | 5 h | C-10, C-14, C-19 | Blocked | _unclaimed_ |
+| [C-14](C/C-14.md) | Heatmap rendering in the viewer (D-062) | 4 h | C-12 | Done | @mbj1994 |
+| [C-15](C/C-15.md) | Report page: verdict, reasons, heatmap, print to PDF | 5 h | C-10, C-14, C-19 | Ready | _unclaimed_ |
 | [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Blocked | _unclaimed_ |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Blocked | _unclaimed_ |
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
