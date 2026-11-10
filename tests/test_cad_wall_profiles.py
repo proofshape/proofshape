@@ -1,5 +1,7 @@
 """R-32 tests for CAD-wall lean and thickness measurements."""
 
+from __future__ import annotations
+
 import math
 
 import numpy as np
