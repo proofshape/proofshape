@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import sys
 
@@ -424,6 +425,66 @@ def test_extract_mesh_marching_cubes_keeps_the_real_plane_and_drops_the_sliver()
         tsdf, level=0.0, spacing=(1.0, 1.0, 1.0), mask=old_mask
     )
     assert len(old_faces) > len(faces)
+
+
+def test_extract_mesh_marching_cubes_filter_at_the_real_voxel_size_and_an_offset_origin():
+    # Review on #287: the plane-plus-sliver test above uses voxel_size_mm=1.0, where dividing a
+    # vertex's mm position by voxel_size_mm to recover its voxel index is a no-op -- so it can't
+    # tell a correct division from a dropped one. Real fusion runs use ~2 mm voxels and a
+    # non-zero origin_mm; this repeats the same scene at voxel_size_mm=2.0 with an offset origin,
+    # so the real plane only lands at the expected mm location if the voxel-index recovery (and
+    # thus the cube lookup built from it) is actually correct.
+    shape = (12, 8, 8)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[0:6] = x[0:6] - 2.5
+    weight[0:6] = 1.0
+    tsdf[6:9, 3:4, 3:4] = 8.0
+    weight[6:9, 3:4, 3:4] = 1.0
+    origin = np.array([10.0, -4.0, -30.0])
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=2.0,
+        origin_mm=origin,
+    )
+
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - (origin[0] + 2.5 * 2.0)) < 1.2)
+
+
+@pytest.mark.parametrize("corner", list(itertools.product((0, 1), repeat=3)))
+def test_extract_mesh_marching_cubes_drops_a_cube_missing_any_one_corner(corner):
+    # Review on #287: two cubes along x -- A (x 0..1), fully observed, and B (x 1..2), missing
+    # exactly one of its 8 corners (parametrized over which one). The surface crosses both
+    # (x=0.5 in A, x=1.5 in B), so if the filter checked fewer than all 8 corners (an `&`
+    # weakened to `|` on any one of them, say), B would wrongly keep its face too. Only A's
+    # surface may survive, whichever corner of B is the one missing.
+    shape = (3, 2, 2)
+    tsdf = np.zeros(shape)
+    weight = np.ones(shape)
+    tsdf[0] = 1.0
+    tsdf[1] = -1.0
+    tsdf[2] = 1.0
+    weight[1 + corner[0], corner[1], corner[2]] = 0.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0] if len(faces) else np.array([])
+    assert np.all(centroid_x < 1.0)
+    if corner[0] == 1:
+        # The missing corner sits at x=2, not shared with cube A, so A still keeps its surface.
+        assert np.any(centroid_x < 1.0)
 
 
 # --- write_mesh_ply / read_mesh_ply --------------------------------------------------------------
