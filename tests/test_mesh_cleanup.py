@@ -318,9 +318,7 @@ def test_write_glb_custom_float_attributes_are_aligned_for_odd_vertex_count(tmp_
         [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0.5, 0.5, 1]],
         dtype=np.float32,
     )
-    faces = np.array(
-        [[0, 1, 4], [1, 3, 4], [3, 2, 4], [2, 0, 4]], dtype=np.int32
-    )
+    faces = np.array([[0, 1, 4], [1, 3, 4], [3, 2, 4], [2, 0, 4]], dtype=np.int32)
     colors = np.array(
         [
             [255, 255, 255],
