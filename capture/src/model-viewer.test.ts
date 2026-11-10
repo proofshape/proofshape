@@ -268,7 +268,9 @@ describe("mountModelViewer", () => {
 
     mountModelViewer(target, complete("https://example.test/model.glb"), {
       loaderFactory: () => ({
-        load: (_url, onLoad) => onLoad({ scene }),
+        load: (_url, onLoad) => {
+          onLoad({ scene });
+        },
       }),
     });
 
