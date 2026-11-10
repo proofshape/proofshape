@@ -570,17 +570,34 @@ def extract_mesh_marching_cubes(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract the zero-crossing surface as a mesh, ignoring never-observed voxels.
 
-    Voxels with `weight == 0` are masked out of the marching-cubes input entirely (skimage's
-    `mask` parameter), so unobserved space can never fabricate a surface -- the same "unobserved
-    geometry never asserts anything" principle AGENTS.md's hard rule states for the verdict logic,
-    applied here at the meshing level.
+    R-33 (review on #231): a plain `weight == 0` mask does not actually keep unobserved space
+    from fabricating a surface, despite this function's own former claim that it did. skimage's
+    `mask` only gates whether a cube (8 corners) is attempted at all -- empirically, as little as
+    one `True` corner is enough to trigger it, and the *other 7 corners' raw stored values* are
+    then used for interpolation regardless of their own mask status. A never-touched voxel's
+    `tsdf` default of `0.0` sits exactly on `level=0.0`, so every cube straddling an observed/
+    never-observed boundary is a guaranteed crossing -- this is why #231's wall surfaces exist:
+    on real golden data, 90-98% of wall points have zero contributing frames, not "too few".
+
+    The fix is to guarantee no cube with *any* unobserved corner can ever present a `True`
+    corner to skimage, regardless of its real (unknown, compiled) activation threshold: erode
+    `observed_mask` by a full 3x3x3 neighbourhood first. A voxel survives erosion only if every
+    cube it could be a corner of (up to 8) is itself fully observed -- so a cube with a bad
+    corner has every one of its 8 corners erased, not just that one. `border_value=True` keeps
+    the volume's own outer edge from being eroded just for being an edge. The visible cost is
+    that the extracted surface recedes by one voxel at every true observed/unobserved boundary
+    -- the correct trade-off against fabricating geometry nobody observed.
     """
+    from scipy.ndimage import binary_erosion
     from skimage.measure import marching_cubes
 
     tsdf_volume = np.asarray(tsdf, dtype=np.float64).reshape(shape)
     weight_volume = np.asarray(weight, dtype=np.float64).reshape(shape)
     observed_mask = weight_volume > 0.0
-    if not observed_mask.any():
+    safe_mask = binary_erosion(
+        observed_mask, structure=np.ones((3, 3, 3), dtype=bool), border_value=True
+    )
+    if not safe_mask.any():
         return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
 
     try:
@@ -588,13 +605,22 @@ def extract_mesh_marching_cubes(
             tsdf_volume,
             level=0.0,
             spacing=(voxel_size_mm, voxel_size_mm, voxel_size_mm),
-            mask=observed_mask,
+            mask=safe_mask,
         )
     except RuntimeError as exc:
         # skimage raises rather than returning empty arrays when no observed cell straddles the
         # zero level -- a legitimate outcome (too few/too sparse observations to close a
         # surface), not a bug, so it's treated the same as the "nothing observed" case above.
         if "No surface found" not in str(exc):
+            raise
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
+    except ValueError as exc:
+        # A separate, pre-existing gap (review on #231): skimage's own level-range check runs
+        # over the *entire raw volume*, ignoring mask entirely, and raises this when nothing in
+        # the array crosses zero at all. Reachable even without this fix, just rare in practice
+        # (a real grid almost always has an untouched 0.0 voxel somewhere) -- closed here rather
+        # than left as a second uncaught exception shape for the same "no real surface" outcome.
+        if "Surface level must be within volume data range" not in str(exc):
             raise
         return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
 

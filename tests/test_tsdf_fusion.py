@@ -327,6 +327,85 @@ def test_extract_mesh_marching_cubes_returns_empty_when_nothing_observed():
     assert len(faces) == 0
 
 
+def test_extract_mesh_marching_cubes_erodes_a_thin_free_space_sliver_at_the_edge():
+    # R-33 (review on #231): a thin sliver of observed free space (tsdf=+8) reaching right up to
+    # never-observed voxels (tsdf stays at fuse_tsdf's own 0.0 default). A plain weight>0 mask
+    # alone still lets skimage build a face here, using the never-observed voxels' raw 0.0 value
+    # even though they're individually masked False -- this reproduces TabeenRaoof's own finding
+    # that an observed-free-space/never-observed boundary fabricates walls. Confirmed empirically
+    # (not every observed/unobserved boundary triggers skimage's mask quirk -- a full-width flat
+    # slab doesn't, matching skimage's own corner-count-dependent activation rule; a thin sliver,
+    # closer to the ragged edge of real multi-view camera coverage, does).
+    shape = (4, 3, 3)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    tsdf[0:2, 1:2, 1:2] = 8.0
+    weight[0:2, 1:2, 1:2] = 1.0
+
+    _vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=10.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(faces) == 0
+
+    # Not a vacuous test: skimage itself, given the *old*, un-eroded mask, does fabricate faces
+    # at this exact boundary -- confirming this is a real fix, not a no-op on an already-safe case.
+    from skimage.measure import marching_cubes
+
+    old_mask = weight > 0.0
+    _old_vertices, old_faces, _normals, _values = marching_cubes(
+        tsdf, level=0.0, spacing=(10.0, 10.0, 10.0), mask=old_mask
+    )
+    assert len(old_faces) > 0
+
+
+def test_extract_mesh_marching_cubes_returns_empty_when_nothing_crosses_zero():
+    # Review on #231: skimage's own level-range check runs over the entire raw volume, ignoring
+    # mask, and raises ValueError when nothing in the array ever crosses zero -- reachable even
+    # before this fix, just rare in practice (a real grid almost always has an untouched 0.0
+    # voxel somewhere). A fully-observed, all-positive volume hits it directly.
+    shape = (2, 2, 2)
+    tsdf = np.full(shape, 5.0)
+    weight = np.ones(shape)
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=10.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(vertices_mm) == 0
+    assert len(faces) == 0
+
+
+def test_extract_mesh_marching_cubes_returns_empty_when_erosion_removes_every_voxel():
+    # A single interior observed voxel has no full 3x3x3 neighbourhood of its own -- it survives
+    # weight>0 but not the erosion, so the new safe_mask.any() guard must fire before ever
+    # calling marching_cubes.
+    shape = (3, 3, 3)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    weight[1, 1, 1] = 1.0
+    tsdf[1, 1, 1] = 3.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=10.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(vertices_mm) == 0
+    assert len(faces) == 0
+
+
 # --- write_mesh_ply / read_mesh_ply --------------------------------------------------------------
 
 
