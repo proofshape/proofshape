@@ -13,6 +13,7 @@ One-command helpers. Each is runnable on its own; none is part of the shipped sy
 | `container_entrypoint.sh` | **The one exception to "not shipped":** the R-15 image's entrypoint. It fetches the model weights, then serves `recon.service`. |
 | `setup_completion_env.sh` | A-12: builds LaS-Comp's own Python 3.10 / torch 2.4 environment on a CUDA host (Colab or Lightning), at D-057's pins, and prints the `PROOFSHAPE_COMPLETION_RUNNER` line to use. Never touches the host's own torch. See `recon/README.md`, A-12. |
 | `lascomp_runner.py` | A-12: the real model behind A-04's completion contract. Runs inside that environment, launched by the service (or by hand on a prepared completion folder). Also `--check` (setup's last step) and `--ensure-encoder-entry`. |
+| `make_g05_defect_ladder.py` | G-05: writes the defect ladder's ten CAD files into `fixtures/reference_cad/`, or with `--check` exits 1 if a committed file differs. Standard library only; the design and why are in `stories/G/G-05.md`. |
 
 ## Node helpers
 
