@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import {
-  LINEAR_DISPLAY_COLORS,
   PROVENANCE_DISPLAY_COLORS,
+  PROVENANCE_SOURCE_COLORS,
   displayRgbToLinear,
   type Rgb,
 } from "./provenance-colors.js";
@@ -17,6 +17,7 @@ export interface DeviationHeatmapController {
   available: boolean;
   measuredObservedVertices: number;
   range: DeviationRange;
+  captureProvenanceColors: () => void;
   setMode: (mode: HeatmapMode) => void;
 }
 
@@ -32,16 +33,16 @@ const NEGATIVE_RGB: Rgb = [37, 99, 235];
 const ZERO_RGB: Rgb = [250, 250, 250];
 const POSITIVE_RGB: Rgb = [185, 28, 28];
 
-function close(a: number, b: number): boolean {
-  return Math.abs(a - b) < 1e-6;
+function channelToByte(value: number): number {
+  return Math.round(Math.min(1, Math.max(0, value)) * 255);
 }
 
-function isDisplayedObserved(color: THREE.BufferAttribute, index: number): boolean {
-  const expected = LINEAR_DISPLAY_COLORS.observed;
+function isSourceObserved(color: THREE.BufferAttribute, index: number): boolean {
+  const expected = PROVENANCE_SOURCE_COLORS.observed;
   return (
-    close(color.getX(index), expected[0]) &&
-    close(color.getY(index), expected[1]) &&
-    close(color.getZ(index), expected[2])
+    channelToByte(color.getX(index)) === expected[0] &&
+    channelToByte(color.getY(index)) === expected[1] &&
+    channelToByte(color.getZ(index)) === expected[2]
   );
 }
 
@@ -114,10 +115,7 @@ export function createDeviationHeatmapController(
     const observed = new Uint8Array(color.count);
     const provenanceSnapshot = new Float32Array(color.count * 3);
     for (let index = 0; index < color.count; index += 1) {
-      provenanceSnapshot[index * 3] = color.getX(index);
-      provenanceSnapshot[index * 3 + 1] = color.getY(index);
-      provenanceSnapshot[index * 3 + 2] = color.getZ(index);
-      if (isDisplayedObserved(color, index)) {
+      if (isSourceObserved(color, index)) {
         observed[index] = 1;
         if (measured.getX(index) >= 0.5) {
           const value = deviation.getX(index);
@@ -133,8 +131,21 @@ export function createDeviationHeatmapController(
 
   const range = chooseDeviationRange(measuredValues, toleranceMm);
   const available = measuredObservedVertices > 0;
+  let provenanceCaptured = false;
+
+  const captureProvenanceColors = (): void => {
+    for (const geometry of geometries) {
+      for (let index = 0; index < geometry.color.count; index += 1) {
+        geometry.provenanceSnapshot[index * 3] = geometry.color.getX(index);
+        geometry.provenanceSnapshot[index * 3 + 1] = geometry.color.getY(index);
+        geometry.provenanceSnapshot[index * 3 + 2] = geometry.color.getZ(index);
+      }
+    }
+    provenanceCaptured = true;
+  };
+
   const setMode = (mode: HeatmapMode): void => {
-    if (!available) return;
+    if (!available || !provenanceCaptured) return;
     for (const geometry of geometries) {
       for (let index = 0; index < geometry.color.count; index += 1) {
         if (mode === "provenance") {
@@ -156,7 +167,13 @@ export function createDeviationHeatmapController(
       geometry.color.needsUpdate = true;
     }
   };
-  return { available, measuredObservedVertices, range, setMode };
+  return {
+    available,
+    measuredObservedVertices,
+    range,
+    captureProvenanceColors,
+    setMode,
+  };
 }
 
 function formatMm(value: number): string {
