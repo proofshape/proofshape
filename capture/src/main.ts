@@ -11,13 +11,15 @@ if (!shellRoot) {
 // needing a finished session. Keeping this behind an explicit query parameter makes the real
 // app flow unchanged while giving a phone a direct WebGL/orbit/pinch check with no devtools.
 const viewerDemo = new URLSearchParams(window.location.search).get("viewer-demo");
-if (viewerDemo === "1" || viewerDemo === "c12") {
+if (viewerDemo === "1" || viewerDemo === "c12" || viewerDemo === "c14") {
   mountModelViewer(shellRoot, {
     status: "complete",
     glb_url:
       viewerDemo === "c12"
         ? "/v1/sessions/c12-provenance-check/model.glb"
-        : "/v1/sessions/c11-device-check/model.glb",
+        : viewerDemo === "c14"
+          ? "/v1/sessions/c14-deviation-check/model.glb"
+          : "/v1/sessions/c11-device-check/model.glb",
     metric: false,
   });
 } else {
