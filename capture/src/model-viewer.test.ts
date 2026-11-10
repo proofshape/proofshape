@@ -285,4 +285,19 @@ describe("mountModelViewer", () => {
     expect(target.textContent).toContain("not a tolerance");
   });
 
+  it("loads the committed C-14 fixture through the real GLTFLoader", async () => {
+    const target = makeRoot();
+
+    mountModelViewer(target, complete("https://example.test/model.glb"), {
+      loaderFactory: () => realGltfLoaderFor("model-deviation.glb"),
+    });
+
+    await vi.waitFor(() => {
+      if (!target.textContent.includes("3D model loaded")) {
+        throw new Error("still pending");
+      }
+    });
+    expect(target.querySelector('select[aria-label="Colour 3D model by"]')).not.toBeNull();
+  });
+
 });
