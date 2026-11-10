@@ -16,12 +16,7 @@ function makeScene(includeMeasured = true): { scene: THREE.Scene; color: THREE.B
     new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0]), 3),
   );
   const color = new THREE.BufferAttribute(
-    new Uint8Array([
-      255, 255, 255,
-      128, 128, 128,
-      255, 255, 255,
-      255, 255, 255,
-    ]),
+    new Uint8Array([255, 255, 255, 128, 128, 128, 255, 255, 255, 255, 255, 255]),
     3,
     true,
   );
