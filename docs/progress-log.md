@@ -2083,3 +2083,30 @@ story.
 
 **Not done here:** printing (from G-01's first lab visit, 2026-11-10), calipering, and the
 readings file's new `kind`s. Those land in the printing PR, which also closes the story (D-038).
+
+## 2026-11-09 — P-30 capture-app stories written up (C-14..C-18, C-21, R-34)
+
+**Who:** @TabeenRaoof (PR #283). The claim was #282.
+
+**What changed:** the capture app's five remaining titles, plus two stories nobody had, in a new
+"Capture app" section of `stories/README.md`. The two new ones are hosting, which D-048 deferred to
+its own story, and the order store the buyer page needs.
+- C-14: heatmap rendering in the viewer, built against a canned sample in the mock.
+- C-15: the report page, built against the contract's verdict examples, printing to PDF.
+- R-34: the order store and the order-code check, a D-031 contract change.
+- C-16: the buyer page: CAD, the editable tolerance table, the placement note and the capture link.
+- C-17: the board PDF with the order code, a QR code and an orientation arrow, with the board
+  unchanged.
+- C-18: device testing on one iPhone and one Android phone, keyboard access and error messages.
+- C-21: CI builds the app, GitHub Pages deploys it from `main`, and O-005 is answered first.
+
+D-062 records how I-06's deviation reaches the viewer: as numbers in the served GLB, beside the
+provenance colours. The manual's §0, §3.4, §4, §8.2 and §8.3 now name the story that builds each
+part.
+
+**Result:** C-14, C-18 and C-21 Ready; C-15, R-34, C-16 and C-17 Blocked; none claimed. The checker
+is consistent and `--fix` changes nothing. P-30 closed at 1 h actual, the owner's figure. No code.
+
+**Next:** the Nov 13 boundary call carries or cuts each story. That is 26 h of capture stories
+against S6's 11 capture hours, plus R-34's 6 h. R-34 is a D-031 request, realistically for the Dec 2
+boundary, which puts C-16 and C-17 just before M7's code freeze.
