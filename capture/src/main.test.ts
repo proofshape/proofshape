@@ -46,7 +46,7 @@ describe("main entrypoint", () => {
   it("mounts the normal app shell when viewer-demo is absent", async () => {
     const root = await loadMain("/");
 
-    expect(mocks.mountAppShell).toHaveBeenCalledWith(root, { baseUrl: "" });
+    expect(mocks.mountAppShell).toHaveBeenCalledWith(root, { baseUrl: "", appBasePath: "/" });
     expect(mocks.mountModelViewer).not.toHaveBeenCalled();
   });
 
@@ -55,6 +55,7 @@ describe("main entrypoint", () => {
 
     expect(mocks.mountAppShell).toHaveBeenCalledWith(root, {
       baseUrl: "",
+      appBasePath: "/",
       initialOrderCode: "PO-48213-A",
     });
   });
@@ -67,6 +68,7 @@ describe("main entrypoint", () => {
 
     expect(mocks.mountAppShell).toHaveBeenCalledWith(root, {
       baseUrl: "https://example.lightning.ai",
+      appBasePath: "/",
       authToken: "the-token",
     });
 
