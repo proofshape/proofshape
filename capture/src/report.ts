@@ -251,7 +251,7 @@ export function mountReportPage(root: HTMLElement, options: ReportPageOptions): 
   const printButton = requireElement(root, "#report-print-button", HTMLButtonElement);
   const mountViewer = options.mountViewer ?? mountModelViewer;
   let disposeViewer = (): void => undefined;
-  let disposed = false;
+  const lifecycle = { disposed: false };
 
   const beforePrint = (): void => {
     snapshotHeatmapForPrint(root);
@@ -267,7 +267,7 @@ export function mountReportPage(root: HTMLElement, options: ReportPageOptions): 
         getReconstruction(options.baseUrl, options.sessionId, options.authToken),
         getVerdict(options.baseUrl, options.sessionId, options.authToken),
       ]);
-      if (disposed) return;
+      if (lifecycle.disposed) return;
 
       if (reconstruction.ok) {
         renderReconstructionSummary(root, reconstruction.body);
@@ -299,7 +299,7 @@ export function mountReportPage(root: HTMLElement, options: ReportPageOptions): 
   })();
 
   return () => {
-    disposed = true;
+    lifecycle.disposed = true;
     window.removeEventListener("beforeprint", beforePrint);
     disposeViewer();
   };
