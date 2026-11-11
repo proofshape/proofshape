@@ -221,7 +221,8 @@ describe("C-15 report page", () => {
   it("snapshots the heatmap canvas on beforeprint and the print button calls window.print", async () => {
     const sessionId = await finishedSession("pass");
     const target = root();
-    const printSpy = vi.spyOn(window, "print").mockImplementation(() => undefined);
+    const printSpy = vi.fn();
+    Object.defineProperty(window, "print", { value: printSpy, configurable: true });
 
     mountReportPage(target, { baseUrl, sessionId, mountViewer: fakeViewer() });
 
