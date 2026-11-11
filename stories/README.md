@@ -400,7 +400,7 @@ capture hours, for device testing and its fixes. So these go to the Nov 13 bound
 carried or cut, never silently rolled forward (working agreement 4). Each story says what it
 waits for and where it sits on the cut list (§10).
 
-**Ready now: C-18 and C-21.**
+**Ready now: C-18.**
 - C-14 and C-15 are built against the mock (sprint plan §5, D4). The real deviations come from
   I-06 and the real verdict from I-07. Both are still titles-only, and both are checked end to
   end at X-03 or X-04.
@@ -433,7 +433,7 @@ Full detail in each story file.
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Blocked | _unclaimed_ |
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone and one Android phone | 4 h | C-13, C-20 | Ready | _unclaimed_ |
-| [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Ready | _unclaimed_ |
+| [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
 
 ---
 
