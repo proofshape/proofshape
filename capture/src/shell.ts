@@ -54,10 +54,17 @@ export interface AppShellOptions {
   reconstructionPollIntervalMs?: number;
   reconstructionMaxAttempts?: number;
   modelViewerOptions?: ModelViewerOptions;
+  // C-21: Vite BASE_URL for links between the Pages-hosted capture and report entrypoints.
+  appBasePath?: string;
 }
 
 const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
 const DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS = 300;
+
+export function buildReportHref(sessionId: string, appBasePath = "/"): string {
+  const base = appBasePath.endsWith("/") ? appBasePath : `${appBasePath}/`;
+  return `${base}report.html?session=${encodeURIComponent(sessionId)}`;
+}
 
 export const APP_SHELL_HTML = `
   <section>
@@ -513,7 +520,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     );
     retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
     if (outcome === "complete") {
-      reportLink.href = `report.html?session=${encodeURIComponent(sessionId)}`;
+      reportLink.href = buildReportHref(sessionId, options.appBasePath);
       reportLink.hidden = false;
     }
     if (outcome === "timeout") {
