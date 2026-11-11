@@ -266,6 +266,45 @@ describe("contract-stub shapes match the committed examples", () => {
     expect(match).not.toBeNull();
     expect(Number(match?.[1])).toBe(MIN_FINISH_FRAMES);
   });
+
+  it("serves the Pass and Rescan verdict contract examples", async () => {
+    const createResponse = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_code: "PO-48213-A" }),
+    });
+    const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
+
+    for (const [scenario, exampleName] of [
+      ["pass", "getVerdict.response-200"],
+      ["rescan", "getVerdict.response-200-rescan-unobserved"],
+    ] as const) {
+      stub.setVerdictScenario(scenario);
+      const response = await fetch(`${baseUrl}/v1/sessions/${sessionId}/verdict`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(loadExample(exampleName));
+    }
+  });
+
+  it("serves no_cad_uploaded by default and the canned Fail fixture on request", async () => {
+    const createResponse = await fetch(`${baseUrl}/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_code: "PO-48213-A" }),
+    });
+    const { session_id: sessionId } = (await createResponse.json()) as { session_id: string };
+
+    const noCad = await fetch(`${baseUrl}/v1/sessions/${sessionId}/verdict`);
+    expect(noCad.status).toBe(404);
+    expect(await noCad.json()).toEqual(loadExample("getVerdict.response-404"));
+
+    stub.setVerdictScenario("fail");
+    const failed = await fetch(`${baseUrl}/v1/sessions/${sessionId}/verdict`);
+    expect(failed.status).toBe(200);
+    const body = (await failed.json()) as { verdict?: string; reason_codes?: string[] };
+    expect(body.verdict).toBe("Fail");
+    expect(body.reason_codes).toContain("observed_deviation_out_of_spec");
+  });
 });
 
 // C-09: `npm run dev:device` serves HTTPS over HTTP/2 (Vite's resolveHttpServer uses
