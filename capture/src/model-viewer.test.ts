@@ -287,6 +287,25 @@ describe("mountModelViewer", () => {
     expect(target.textContent).toContain("not a tolerance");
   });
 
+  it("can open a deviation-capable model directly in C-14 heatmap mode", async () => {
+    const target = makeRoot();
+
+    mountModelViewer(target, complete("https://example.test/model.glb"), {
+      loaderFactory: () => realGltfLoaderFor("model-deviation.glb"),
+      initialColourMode: "deviation",
+    });
+
+    await vi.waitFor(() => {
+      if (!target.textContent.includes("3D model loaded")) {
+        throw new Error("still pending");
+      }
+    });
+    const select = target.querySelector('select[aria-label="Colour 3D model by"]');
+    expect(select).toBeInstanceOf(HTMLSelectElement);
+    expect((select as HTMLSelectElement).value).toBe("deviation");
+    expect(target.textContent).toContain("Deviation from CAD (mm)");
+  });
+
   it("loads the committed C-14 fixture through the real GLTFLoader", async () => {
     const target = makeRoot();
 

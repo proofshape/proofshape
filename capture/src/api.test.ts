@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSession, finishSession, getReconstruction, uploadFrame } from "./api.js";
+import { createSession, finishSession, getReconstruction, getVerdict, uploadFrame } from "./api.js";
 import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 
 const FAKE_JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
@@ -187,6 +187,31 @@ describe("api against the contract stub", () => {
     expect(body.code).toBe("session_not_found");
   });
 
+  it("returns the contract Pass verdict from getVerdict", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+    stub.setVerdictScenario("pass");
+
+    const result = await getVerdict(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.verdict).toBe("Pass");
+      expect(result.body.regions.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("returns no_cad_uploaded as the contract 404 from getVerdict", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+
+    const result = await getVerdict(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(404);
+      expect(result.error.code).toBe("no_cad_uploaded");
+    }
+  });
+
   it("fails loudly, not as a contract status, when the frame isn't a JPEG", async () => {
     const session = await createSession(baseUrl, "PO-48213-A");
     if (!session.ok) throw new Error("setup: createSession failed");
@@ -223,9 +248,10 @@ describe("api against the contract stub", () => {
         "the-token",
       );
       await getReconstruction(baseUrl, session.body.session_id, "the-token");
+      await getVerdict(baseUrl, session.body.session_id, "the-token");
       await finishSession(baseUrl, session.body.session_id, "the-token");
 
-      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      expect(fetchSpy).toHaveBeenCalledTimes(5);
       for (const call of fetchSpy.mock.calls) {
         expect(authorizationHeaderOf(call[1])).toBe("Bearer the-token");
       }

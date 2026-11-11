@@ -2,7 +2,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { setStatus } from "./camera.js";
-import { createDeviationHeatmapController, createDeviationLegend } from "./deviation-heatmap.js";
+import {
+  createDeviationHeatmapController,
+  createDeviationLegend,
+  type HeatmapMode,
+} from "./deviation-heatmap.js";
 import { createProvenanceLegend, remapModelProvenanceColors } from "./provenance-colors.js";
 import type { ReconstructionResult } from "./types.js";
 
@@ -28,6 +32,7 @@ export interface ModelViewerOptions {
   // just like every other route -- a plain `loader.load(url)`/`<a href>` would 401.
   authToken?: string;
   toleranceMm?: number;
+  initialColourMode?: HeatmapMode;
 }
 
 interface ModelViewerUnavailable {
@@ -156,7 +161,9 @@ function createThreePreview(viewport: HTMLElement, model: THREE.Object3D): () =>
   keyLight.position.set(1, 2, 3);
   scene.add(keyLight);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // C-15: preserve the last rendered frame so beforeprint can snapshot the WebGL canvas.
+  // Without this, browsers may clear the drawing buffer after compositing and print a blank image.
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   let controls: OrbitControls | null = null;
   let resizeAttached = false;
   const resize = (): void => {
@@ -314,15 +321,22 @@ export function mountModelViewer(
             deviationOption.textContent = "deviation from CAD";
 
             select.append(provenanceOption, deviationOption);
-            select.addEventListener("change", () => {
-              if (select.value === "deviation") {
+            const setColourMode = (mode: HeatmapMode): void => {
+              select.value = mode;
+              if (mode === "deviation") {
                 heatmap.setMode("deviation");
                 legendHost.replaceChildren(createDeviationLegend(heatmap.range));
               } else {
                 heatmap.setMode("provenance");
                 showProvenanceLegend();
               }
+            };
+            select.addEventListener("change", () => {
+              setColourMode(select.value === "deviation" ? "deviation" : "provenance");
             });
+            if (options.initialColourMode === "deviation") {
+              setColourMode("deviation");
+            }
             label.append(select);
             controlsContainer.append(label);
           }
