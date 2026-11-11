@@ -2159,8 +2159,18 @@ face-share figures across two different measurements, and conflated R-33's four-
 list with its actual five acceptance criteria (this PR covers criteria 4 and 5, not just one).
 `@TabeenRaoof` also caught that `Fixes #231` would have been premature — #231 has two halves, and
 only the wall half is actually resolved; s-02 still serves 54.4% of its faces as board skin, a
-problem R-30 already flagged and punted. Filed as #292 rather than silently closed; #231 got a
-plain comment instead of `Fixes`.
+problem R-30 already flagged and punted. Filed as #292; #231 got a plain comment instead of
+`Fixes`, and the PR body/commits were written to avoid the literal closing keyword.
+
+**It closed anyway.** GitHub's closing-keyword parser doesn't parse negation — one of #290's own
+commit messages explained a design choice as "Stop short of `Fixes #231`", and the parser matched
+the literal substring regardless of the surrounding sentence, auto-closing #231 the moment that
+commit reached `main` in #290's merge. Caught by `@mbj1994` reviewing this very log entry (PR
+#294), since the log's own "#231 stays open" no longer matched GitHub's actual state. Reopened
+with an explanatory comment rather than rewriting the record to match the accident. **Lesson:**
+a commit message discussing why an issue isn't being closed still can't contain that issue's
+closing-keyword phrase verbatim, even negated — GitHub's parser only pattern-matches text, once
+that commit reaches the default branch.
 
 **Result:** merged to `main` at `2ef99e1`. R-33 `State: Done`, `8 h actual` (est 5, a real measured
 figure, not the estimate copied over). `check_story_states.py` clean; ruff, typescript and pytest
@@ -2168,7 +2178,8 @@ all green on the merged head.
 
 **Concluded:** all five of R-33's acceptance criteria are done across #278, #285, #287 and #290.
 The wall-fabrication bug #231 named is fixed and independently confirmed twice (TabeenRaoof's
-stored runs, this PR's fresh ones). #231 stays open for its other half.
+stored runs, this PR's fresh ones). #231 is reopened and stays open for its other half, tracked
+by #292.
 
 **Next:** #292 (s-02's board-skin regression under R-30's fixed 2.0 mm cut) is unclaimed. R-30's
 own notes suggest a sigma-relative cut as the starting point.
