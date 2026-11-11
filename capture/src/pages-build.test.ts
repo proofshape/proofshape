@@ -26,8 +26,7 @@ describe("GitHub Pages production build", () => {
     const outputs = rollupOutputs.filter(isRollupOutput).flatMap((entry) => entry.output);
 
     const html = outputs.find(
-      (entry): entry is OutputAsset =>
-        entry.type === "asset" && entry.fileName === "index.html",
+      (entry): entry is OutputAsset => entry.type === "asset" && entry.fileName === "index.html",
     );
 
     expect(html).toBeDefined();
