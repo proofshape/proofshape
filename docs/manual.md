@@ -355,9 +355,10 @@ completion isn't set up there (D-058).
 **Most of today's models should read mostly blue.** Fusion used to leave wall-like artifact
 surfaces around the part spanning the whole board area (R-18, R-20); R-33 found and fixed the
 cause (marching cubes could fabricate a face from a single unobserved corner's stored `0.0`) and
-confirmed on a fresh rerun of all five golden objects that the walls are gone, 0.0–2.6% of served
-faces by area rather than the 33–78% measured before the fix: observed fraction on the golden
-objects now runs about 75–92%, not 10–40%. A little slate grey at the true observed/unobserved
+confirmed on a fresh rerun of all five golden objects that the walls are gone, 0.2–2.6% of served
+faces by face count against 34–79% before the fix (same measure, criterion 1's own "after R-30"
+row): observed fraction on the golden objects now runs about 75–92%, not 10–40%. A little slate grey
+at the true observed/unobserved
 boundary is still expected and is the hard rule working, not a defect.
 
 ### 8.2 The four verdicts
