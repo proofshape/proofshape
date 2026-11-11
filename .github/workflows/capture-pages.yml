@@ -1,0 +1,82 @@
+name: Capture Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "capture/**"
+      - ".github/workflows/capture-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: capture-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: capture/package-lock.json
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Install dependencies
+        working-directory: capture
+        run: npm ci
+
+      - name: Guard public recon configuration
+        env:
+          PUBLIC_RECON_ENABLED: ${{ vars.PROOFSHAPE_PUBLIC_RECON_ENABLED }}
+          RECON_BASE_URL: ${{ vars.PROOFSHAPE_RECON_BASE_URL }}
+          RECON_TOKEN: ${{ secrets.PROOFSHAPE_RECON_TOKEN }}
+        run: |
+          if [ "$PUBLIC_RECON_ENABLED" = "true" ]; then
+            if [ -z "$RECON_BASE_URL" ] || [ -z "$RECON_TOKEN" ]; then
+              echo "Public recon is enabled but its URL/token is incomplete." >&2
+              exit 1
+            fi
+          elif [ -n "$RECON_BASE_URL" ] || [ -n "$RECON_TOKEN" ]; then
+            echo "Recon URL/token are configured but intentionally ignored until PROOFSHAPE_PUBLIC_RECON_ENABLED=true." >&2
+          fi
+
+      - name: Build capture app
+        working-directory: capture
+        env:
+          VITE_RECON_BASE_URL: ${{ vars.PROOFSHAPE_PUBLIC_RECON_ENABLED == 'true' && vars.PROOFSHAPE_RECON_BASE_URL || '' }}
+          VITE_RECON_TOKEN: ${{ vars.PROOFSHAPE_PUBLIC_RECON_ENABLED == 'true' && secrets.PROOFSHAPE_RECON_TOKEN || '' }}
+        run: npm run build -- --base "/${{ github.event.repository.name }}/"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: capture/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 5
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
