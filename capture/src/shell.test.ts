@@ -497,6 +497,28 @@ describe("mountAppShell", () => {
     expect(mounted.reconstructionStatus.textContent).toContain("Observed fraction: 0.910");
   });
 
+  it("hides the previous session report link immediately when a new Start begins", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stub.setReconstructionPendingPolls(0);
+
+    mounted.finishButton.click();
+    const reportLink = document.getElementById("shell-report-link");
+    expect(reportLink).toBeInstanceOf(HTMLAnchorElement);
+    await vi.waitFor(() => {
+      if ((reportLink as HTMLAnchorElement).hidden) throw new Error("report link not shown yet");
+    });
+    const firstHref = (reportLink as HTMLAnchorElement).getAttribute("href");
+    expect(firstHref).toMatch(/^report\.html\?session=/);
+
+    mounted.button.disabled = false;
+    mounted.button.click();
+
+    expect((reportLink as HTMLAnchorElement).hidden).toBe(true);
+    expect((reportLink as HTMLAnchorElement).hasAttribute("href")).toBe(false);
+  });
+
   it("states that a non-metric result makes no dimensional claims", async () => {
     const mounted = await startSuccessfulSession();
     if (mounted.state.sessionId === null) throw new Error("session id missing");

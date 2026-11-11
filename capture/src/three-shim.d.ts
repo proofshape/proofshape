@@ -90,7 +90,7 @@ declare module "three" {
 
   export class WebGLRenderer {
     domElement: HTMLCanvasElement;
-    constructor(parameters?: { antialias?: boolean });
+    constructor(parameters?: { antialias?: boolean; preserveDrawingBuffer?: boolean });
     setPixelRatio(value: number): void;
     setSize(width: number, height: number, updateStyle?: boolean): void;
     render(scene: Scene, camera: PerspectiveCamera): void;

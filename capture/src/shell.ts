@@ -80,6 +80,7 @@ export const APP_SHELL_HTML = `
     </button>
     <p id="shell-finish-status"></p>
     <p id="shell-reconstruction-status"></p>
+    <a id="shell-report-link" hidden>Open condition report</a>
   </section>
   <section>
     <h2>3D model (C-11)</h2>
@@ -114,6 +115,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   );
   const finishStatus = requireElement(root, "#shell-finish-status");
   const reconstructionStatus = requireElement(root, "#shell-reconstruction-status");
+  const reportLink = requireTyped(root, "#shell-report-link", HTMLAnchorElement, "<a>");
   const modelViewer = requireElement(root, "#shell-model-viewer");
 
   const state: AppState = {
@@ -231,6 +233,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     setStatus(sessionStatus, "", "info");
     setStatus(cameraStatus, "", "info");
     setStatus(gyroStatus, "", "info");
+    reportLink.hidden = true;
+    reportLink.removeAttribute("href");
     startButton.disabled = true;
     // Fresh coverage tracking and gate-dedup state for this attempt -- without this, a frame
     // locally accepted under an abandoned session (e.g. a bad order code, then retried) would
@@ -491,11 +495,14 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     if (state.sessionId === null) {
       return;
     }
+    const sessionId = state.sessionId;
+    reportLink.hidden = true;
+    reportLink.removeAttribute("href");
     retryReconstructionButton.hidden = true;
     remountModelViewer({ status: "pending" });
     const outcome = await pollReconstruction(
       options.baseUrl,
-      state.sessionId,
+      sessionId,
       reconstructionStatus,
       options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
       options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
@@ -505,6 +512,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       options.authToken,
     );
     retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
+    if (outcome === "complete") {
+      reportLink.href = `report.html?session=${encodeURIComponent(sessionId)}`;
+      reportLink.hidden = false;
+    }
     if (outcome === "timeout") {
       remountModelViewer({
         status: "unavailable",

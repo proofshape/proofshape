@@ -9,6 +9,7 @@ import type {
   ReconstructionResult,
   Session,
   UploadFrameResult,
+  VerdictResult,
 } from "../src/types.js";
 
 // C-01 started this as a three-route contract stub. C-10 extends it into the capture-side mock
@@ -47,6 +48,15 @@ const RECONSTRUCTION_NO_REFERENCE = loadExample(
   "getReconstruction.response-200-no-reference",
 ) as ReconstructionResult;
 const RECONSTRUCTION_404 = loadExample("getReconstruction.response-404") as ErrorDetail;
+const VERDICT_PASS = loadExample("getVerdict.response-200") as VerdictResult;
+const VERDICT_RESCAN = loadExample("getVerdict.response-200-rescan-unobserved") as VerdictResult;
+const VERDICT_404 = loadExample("getVerdict.response-404") as ErrorDetail;
+const VERDICT_FAIL = JSON.parse(
+  readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "fixtures", "verdict-fail.json"),
+    "utf-8",
+  ),
+) as VerdictResult;
 const MODEL_FIXTURE_PATH = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "model.glb");
 const PROVENANCE_MODEL_FIXTURE_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -91,6 +101,8 @@ function sessionNotFound(): ErrorDetail {
   return { code: "session_not_found", message: "No session with that id." };
 }
 
+export type VerdictScenario = "no_cad" | "pass" | "rescan" | "fail";
+
 export interface ContractStub {
   // A Connect-style listener: usable both as a bare `http.createServer` handler (tests) and as
   // Vite dev middleware (`server.middlewares.use`, so `npm run dev` needs no separate process
@@ -102,6 +114,7 @@ export interface ContractStub {
   setReconstructionPendingPolls: (count: number) => void;
   failReconstruction: () => void;
   useNoReferenceReconstruction: () => void;
+  setVerdictScenario: (scenario: VerdictScenario, sessionId?: string) => void;
 }
 
 export function createContractStub(): ContractStub {
@@ -111,6 +124,8 @@ export function createContractStub(): ContractStub {
   let reconstructionPendingPolls = 1;
   let reconstructionShouldFail = false;
   let reconstructionNoReference = false;
+  let latestSessionId: string | null = null;
+  const verdictScenarios = new Map<string, VerdictScenario>();
 
   function sendJson(res: ServerResponse, status: number, body: unknown): void {
     const text = JSON.stringify(body);
@@ -187,6 +202,7 @@ export function createContractStub(): ContractStub {
       modelReady: false,
     };
     sessions.set(session.session_id, session);
+    latestSessionId = session.session_id;
     const body: Session = {
       session_id: session.session_id,
       order_code: session.order_code,
@@ -350,6 +366,21 @@ export function createContractStub(): ContractStub {
     sendJson(res, 200, body);
   }
 
+  function handleVerdict(res: ServerResponse, sessionId: string): void {
+    if (!sessions.has(sessionId)) {
+      sendJson(res, 404, sessionNotFound());
+      return;
+    }
+    const scenario = verdictScenarios.get(sessionId) ?? "no_cad";
+    if (scenario === "no_cad") {
+      sendJson(res, 404, VERDICT_404);
+      return;
+    }
+    const verdict =
+      scenario === "pass" ? VERDICT_PASS : scenario === "rescan" ? VERDICT_RESCAN : VERDICT_FAIL;
+    sendJson(res, 200, verdict);
+  }
+
   function handleModel(res: ServerResponse, sessionId: string): void {
     // C-11/C-12 device-check helper (main.ts's ?viewer-demo=1/c12): this route serves its
     // canned GLB directly by design, with no session ever created -- the state checks below
@@ -371,7 +402,9 @@ export function createContractStub(): ContractStub {
     const fixturePath =
       sessionId === "c12-provenance-check"
         ? PROVENANCE_MODEL_FIXTURE_PATH
-        : sessionId === "c14-deviation-check"
+        : sessionId === "c14-deviation-check" ||
+            (!DEVICE_CHECK_SESSION_IDS.has(sessionId) &&
+              (verdictScenarios.get(sessionId) ?? "no_cad") !== "no_cad")
           ? DEVIATION_MODEL_FIXTURE_PATH
           : MODEL_FIXTURE_PATH;
     const bytes = readFileSync(fixturePath);
@@ -388,6 +421,7 @@ export function createContractStub(): ContractStub {
     const finishMatch = /^\/v1\/sessions\/([^/]+)\/finish$/.exec(path);
     const reconstructionMatch = /^\/v1\/sessions\/([^/]+)\/reconstruction$/.exec(path);
     const modelMatch = /^\/v1\/sessions\/([^/]+)\/model\.glb$/.exec(path);
+    const verdictMatch = /^\/v1\/sessions\/([^/]+)\/verdict$/.exec(path);
 
     if (req.method === "POST" && path === "/v1/sessions") {
       toWebRequest(req)
@@ -420,6 +454,10 @@ export function createContractStub(): ContractStub {
       handleModel(res, modelMatch[1] as string);
       return;
     }
+    if (req.method === "GET" && verdictMatch) {
+      handleVerdict(res, verdictMatch[1] as string);
+      return;
+    }
 
     if (next) {
       next();
@@ -442,6 +480,13 @@ export function createContractStub(): ContractStub {
     },
     useNoReferenceReconstruction: () => {
       reconstructionNoReference = true;
+    },
+    setVerdictScenario: (scenario: VerdictScenario, sessionId?: string) => {
+      const targetSessionId = sessionId ?? latestSessionId;
+      if (targetSessionId === null || !sessions.has(targetSessionId)) {
+        throw new Error("stub: setVerdictScenario requires an existing session");
+      }
+      verdictScenarios.set(targetSessionId, scenario);
     },
   };
 }
