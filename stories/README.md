@@ -430,7 +430,7 @@ Full detail in each story file.
 | [C-14](C/C-14.md) | Heatmap rendering in the viewer (D-062) | 4 h | C-12 | Done | @mbj1994 |
 | [C-15](C/C-15.md) | Report page: verdict, reasons, heatmap, print to PDF | 5 h | C-10, C-14, C-19 | Done | @mbj1994 |
 | [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Blocked | _unclaimed_ |
-| [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Claimed | @dalwalyk |
+| [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Done | @dalwalyk |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Blocked | _unclaimed_ |
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone and one Android phone | 4 h | C-13, C-20 | Ready | _unclaimed_ |
