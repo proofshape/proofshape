@@ -144,7 +144,7 @@ describe("C-11 model viewer shell wiring", () => {
     expect(mounted.modelViewer.querySelector("a")?.getAttribute("href")).toMatch(/model\.glb$/);
     expect(mounted.reportLink.hidden).toBe(false);
     expect(mounted.reportLink.getAttribute("href")).toBe(
-      `report.html?session=${encodeURIComponent(mounted.state.sessionId ?? "")}`,
+      `/report.html?session=${encodeURIComponent(mounted.state.sessionId ?? "")}`,
     );
   });
 
