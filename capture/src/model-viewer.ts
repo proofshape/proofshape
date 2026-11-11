@@ -161,7 +161,9 @@ function createThreePreview(viewport: HTMLElement, model: THREE.Object3D): () =>
   keyLight.position.set(1, 2, 3);
   scene.add(keyLight);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // C-15: preserve the last rendered frame so beforeprint can snapshot the WebGL canvas.
+  // Without this, browsers may clear the drawing buffer after compositing and print a blank image.
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   let controls: OrbitControls | null = null;
   let resizeAttached = false;
   const resize = (): void => {
