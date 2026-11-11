@@ -352,10 +352,14 @@ step (A-04) didn't finish. The model, its colours and its observed fraction are 
 either way, so there's nothing to redo. On the M2 Max this warning never appears, because
 completion isn't set up there (D-058).
 
-**Expect a lot of slate grey on today's models.** Fusion still leaves wall-like artifact surfaces
-around the part (R-18, R-20). They come out Unobserved, which is the hard rule working, but they
-make the observed fraction low: about 10–40% on the golden objects (R-24). The part itself is
-usually the blue region.
+**Most of today's models should read mostly blue.** Fusion used to leave wall-like artifact
+surfaces around the part spanning the whole board area (R-18, R-20); R-33 found and fixed the
+cause (marching cubes could fabricate a face from a single unobserved corner's stored `0.0`) and
+confirmed on a fresh rerun of all five golden objects that the walls are gone, 0.2–2.6% of served
+faces by face count against 34–79% before the fix (same measure, criterion 1's own "after R-30"
+row): observed fraction on the golden objects now runs about 75–92%, not 10–40%. A little slate grey
+at the true observed/unobserved
+boundary is still expected and is the hard rule working, not a defect.
 
 ### 8.2 The four verdicts
 
