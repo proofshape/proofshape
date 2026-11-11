@@ -124,39 +124,39 @@ describe("C-15 report page", () => {
   it(
     "renders Rescan reasons, hides unobserved deviation and shows the placement note",
     async () => {
-    const sessionId = await finishedSession("rescan");
-    const target = root();
+      const sessionId = await finishedSession("rescan");
+      const target = root();
 
-    mountReportPage(target, {
-      baseUrl,
-      sessionId,
-      placementNote: "Keep the sealing face toward the printed arrow.",
-      mountViewer: fakeViewer(),
-    });
+      mountReportPage(target, {
+        baseUrl,
+        sessionId,
+        placementNote: "Keep the sealing face toward the printed arrow.",
+        mountViewer: fakeViewer(),
+      });
 
-    await vi.waitFor(() => {
-      if (target.querySelector("#report-verdict")?.textContent !== "Rescan") {
-        throw new Error("report still loading");
-      }
-    });
+      await vi.waitFor(() => {
+        if (target.querySelector("#report-verdict")?.textContent !== "Rescan") {
+          throw new Error("report still loading");
+        }
+      });
 
-    expect(target.textContent).toContain("Shoot it again, covering the named region.");
-    expect(target.textContent).toContain("The sealing face was not seen in enough usable views.");
-    expect(target.textContent).toContain(
-      "More than one CAD orientation is plausible for this reconstruction.",
-    );
-    expect(target.textContent).toContain(
-      "Placement note: Keep the sealing face toward the printed arrow.",
-    );
+      expect(target.textContent).toContain("Shoot it again, covering the named region.");
+      expect(target.textContent).toContain("The sealing face was not seen in enough usable views.");
+      expect(target.textContent).toContain(
+        "More than one CAD orientation is plausible for this reconstruction.",
+      );
+      expect(target.textContent).toContain(
+        "Placement note: Keep the sealing face toward the printed arrow.",
+      );
 
-    const rows = [...target.querySelectorAll("#report-regions tr")].map((row) =>
-      row.textContent.replace(/\s+/g, " ").trim(),
-    );
-    const sealingFace = rows.find((row) => row.includes("sealing_face"));
-    expect(sealingFace).toContain("unobserved");
-    expect(sealingFace).toContain("—");
-    expect(sealingFace).toContain("No");
-      expect(sealingFace).not.toContain("0.00 mm");
+      const rows = [...target.querySelectorAll("#report-regions tr")].map((row) =>
+        row.textContent.replace(/\s+/g, " ").trim(),
+      );
+      const sealingFace = rows.find((row) => row.includes("sealing_face"));
+      expect(sealingFace).toContain("unobserved");
+      expect(sealingFace).toContain("—");
+      expect(sealingFace).toContain("No");
+        expect(sealingFace).not.toContain("0.00 mm");
     },
   );
 
@@ -225,38 +225,38 @@ describe("C-15 report page", () => {
   it(
     "snapshots the heatmap canvas on beforeprint and the print button calls window.print",
     async () => {
-    const sessionId = await finishedSession("pass");
-    const target = root();
-    const printSpy = vi.spyOn(window, "print").mockImplementation(() => undefined);
+      const sessionId = await finishedSession("pass");
+      const target = root();
+      const printSpy = vi.spyOn(window, "print").mockImplementation(() => undefined);
 
-    mountReportPage(target, { baseUrl, sessionId, mountViewer: fakeViewer() });
+      mountReportPage(target, { baseUrl, sessionId, mountViewer: fakeViewer() });
 
-    await vi.waitFor(() => {
-      if (target.querySelector("#report-model-viewer canvas") === null) {
-        throw new Error("viewer not mounted yet");
-      }
-    });
+      await vi.waitFor(() => {
+        if (target.querySelector("#report-model-viewer canvas") === null) {
+          throw new Error("viewer not mounted yet");
+        }
+      });
 
-    window.dispatchEvent(new Event("beforeprint"));
-    const image = target.querySelector("#report-print-heatmap");
-    expect(image).toBeInstanceOf(HTMLImageElement);
-    expect((image as HTMLImageElement).hidden).toBe(false);
-    expect((image as HTMLImageElement).src).toBe("data:image/png;base64,heatmap");
+      window.dispatchEvent(new Event("beforeprint"));
+      const image = target.querySelector("#report-print-heatmap");
+      expect(image).toBeInstanceOf(HTMLImageElement);
+      expect((image as HTMLImageElement).hidden).toBe(false);
+      expect((image as HTMLImageElement).src).toBe("data:image/png;base64,heatmap");
 
-    const printLegend = target.querySelector("#report-print-legend");
-    expect(printLegend).toBeInstanceOf(HTMLElement);
-    expect((printLegend as HTMLElement).hidden).toBe(false);
-    expect(printLegend?.textContent).toContain("largest measured deviation, not a tolerance");
+      const printLegend = target.querySelector("#report-print-legend");
+      expect(printLegend).toBeInstanceOf(HTMLElement);
+      expect((printLegend as HTMLElement).hidden).toBe(false);
+      expect(printLegend?.textContent).toContain("largest measured deviation, not a tolerance");
 
-    const printStatus = target.querySelector("#report-print-viewer-status");
-    expect(printStatus).toBeInstanceOf(HTMLElement);
-    expect((printStatus as HTMLElement).hidden).toBe(false);
-    expect(printStatus?.textContent).toContain("has no provenance colours");
+      const printStatus = target.querySelector("#report-print-viewer-status");
+      expect(printStatus).toBeInstanceOf(HTMLElement);
+      expect((printStatus as HTMLElement).hidden).toBe(false);
+      expect(printStatus?.textContent).toContain("has no provenance colours");
 
-    const button = target.querySelector("#report-print-button");
-    expect(button).toBeInstanceOf(HTMLButtonElement);
-    (button as HTMLButtonElement).click();
-      expect(printSpy).toHaveBeenCalledOnce();
+      const button = target.querySelector("#report-print-button");
+      expect(button).toBeInstanceOf(HTMLButtonElement);
+      (button as HTMLButtonElement).click();
+        expect(printSpy).toHaveBeenCalledOnce();
     },
   );
 
