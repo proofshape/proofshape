@@ -114,7 +114,7 @@ export interface ContractStub {
   setReconstructionPendingPolls: (count: number) => void;
   failReconstruction: () => void;
   useNoReferenceReconstruction: () => void;
-  setVerdictScenario: (scenario: VerdictScenario) => void;
+  setVerdictScenario: (scenario: VerdictScenario, sessionId?: string) => void;
 }
 
 export function createContractStub(): ContractStub {
@@ -124,7 +124,8 @@ export function createContractStub(): ContractStub {
   let reconstructionPendingPolls = 1;
   let reconstructionShouldFail = false;
   let reconstructionNoReference = false;
-  let verdictScenario: VerdictScenario = "no_cad";
+  let latestSessionId: string | null = null;
+  const verdictScenarios = new Map<string, VerdictScenario>();
 
   function sendJson(res: ServerResponse, status: number, body: unknown): void {
     const text = JSON.stringify(body);
@@ -201,6 +202,7 @@ export function createContractStub(): ContractStub {
       modelReady: false,
     };
     sessions.set(session.session_id, session);
+    latestSessionId = session.session_id;
     const body: Session = {
       session_id: session.session_id,
       order_code: session.order_code,
@@ -369,16 +371,13 @@ export function createContractStub(): ContractStub {
       sendJson(res, 404, sessionNotFound());
       return;
     }
-    if (verdictScenario === "no_cad") {
+    const scenario = verdictScenarios.get(sessionId) ?? "no_cad";
+    if (scenario === "no_cad") {
       sendJson(res, 404, VERDICT_404);
       return;
     }
     const verdict =
-      verdictScenario === "pass"
-        ? VERDICT_PASS
-        : verdictScenario === "rescan"
-          ? VERDICT_RESCAN
-          : VERDICT_FAIL;
+      scenario === "pass" ? VERDICT_PASS : scenario === "rescan" ? VERDICT_RESCAN : VERDICT_FAIL;
     sendJson(res, 200, verdict);
   }
 
@@ -404,7 +403,8 @@ export function createContractStub(): ContractStub {
       sessionId === "c12-provenance-check"
         ? PROVENANCE_MODEL_FIXTURE_PATH
         : sessionId === "c14-deviation-check" ||
-            (!DEVICE_CHECK_SESSION_IDS.has(sessionId) && verdictScenario !== "no_cad")
+            (!DEVICE_CHECK_SESSION_IDS.has(sessionId) &&
+              (verdictScenarios.get(sessionId) ?? "no_cad") !== "no_cad")
           ? DEVIATION_MODEL_FIXTURE_PATH
           : MODEL_FIXTURE_PATH;
     const bytes = readFileSync(fixturePath);
@@ -481,8 +481,12 @@ export function createContractStub(): ContractStub {
     useNoReferenceReconstruction: () => {
       reconstructionNoReference = true;
     },
-    setVerdictScenario: (scenario: VerdictScenario) => {
-      verdictScenario = scenario;
+    setVerdictScenario: (scenario: VerdictScenario, sessionId?: string) => {
+      const targetSessionId = sessionId ?? latestSessionId;
+      if (targetSessionId === null || !sessions.has(targetSessionId)) {
+        throw new Error("stub: setVerdictScenario requires an existing session");
+      }
+      verdictScenarios.set(targetSessionId, scenario);
     },
   };
 }
