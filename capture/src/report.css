@@ -119,8 +119,14 @@ td {
     display: none !important;
   }
 
-  #report-print-heatmap:not([hidden]) {
+  #report-print-heatmap:not([hidden]),
+  #report-print-legend:not([hidden]) {
     display: block !important;
+  }
+
+  #report-print-legend {
+    font-size: 8pt;
+    margin-top: 3px;
   }
 
   th,
