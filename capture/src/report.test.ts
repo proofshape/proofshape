@@ -67,8 +67,8 @@ describe("C-15 report page", () => {
         result: unknown,
         options?: { initialColourMode?: string },
       ): (() => void) => {
-        void result;
-        void options;
+        target.dataset.viewerResultType = typeof result;
+        target.dataset.initialColourMode = options?.initialColourMode ?? "";
         const canvas = document.createElement("canvas");
         Object.defineProperty(canvas, "toDataURL", {
           value: vi.fn(() => "data:image/png;base64,heatmap"),
