@@ -87,3 +87,39 @@ JS, visible to anyone who opens dev tools on the page (D-048). This path has nev
 Lightning; what is still unknown about it is recorded as O-005 in `docs/decisions.md`. If you use
 it, set both on the command line or export them, and stop the deployment afterwards
 (`recon/README.md`, R-15 runbook): it bills a GPU until `stop` runs.
+
+## GitHub Pages hosting (C-21)
+
+The capture app is built and deployed by `.github/workflows/capture-pages.yml`
+whenever a push to `main` changes `capture/**`. The workflow uses the base path
+reported by `actions/configure-pages`, so repository Pages and a future custom
+domain both build the correct asset URLs, then publishes `capture/dist`.
+
+An organisation/repository admin must set
+**Settings → Pages → Build and deployment → Source** to **GitHub Actions** once.
+No laptop dev server is required to open the resulting HTTPS page.
+
+The hosted page is deliberately disconnected from the paid reconstruction service
+until O-005 is answered and recorded in `docs/decisions.md`. Public recon can
+only be enabled when all three O-005 confirmations are explicitly set to `true`:
+
+- `PROOFSHAPE_CORS_PREFLIGHT_CONFIRMED` — the real Lightning deployment accepted
+  the browser's token-less CORS preflight.
+- `PROOFSHAPE_PUBLIC_TOKEN_ACCEPTED` — the team explicitly accepted that the
+  bearer token is visible in the public client bundle.
+- `PROOFSHAPE_ORDER_GATE_CONFIRMED` — the deployed service rejects unknown order
+  codes before they can start paid GPU work, through R-34 or configured
+  `known_order_codes`.
+
+Only after those are true may `PROOFSHAPE_PUBLIC_RECON_ENABLED` be set to
+`true`, together with `PROOFSHAPE_RECON_BASE_URL` and the
+`PROOFSHAPE_RECON_TOKEN` secret. The workflow fails closed when public recon is
+enabled without any O-005 prerequisite or without the URL/token.
+
+The `?viewer-demo=1`, `?viewer-demo=c12`, and `?viewer-demo=c14` helpers
+remain development only because they depend on Vite's contract stub. A production
+Pages build displays a clear message instead of trying and failing to call a
+nonexistent stub.
+
+The Mac path in the C-13 section above remains the fallback when Pages or
+Lightning is unavailable.
