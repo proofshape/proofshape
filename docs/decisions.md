@@ -1253,6 +1253,45 @@ so D-062 was the first free number.
 *Agreement:* it binds I-06's writer, and nobody has written I-06 yet, so P-30's pull request asks
 both @mbj1994 and @dalwalyk to agree, and merges only with both approving.
 
+**D-063 · The board height-clearance floor is also sigma-relative:
+`max(min_clearance_mm, clearance_sigma_k * residual_sigma_mm, board_layer_top_mm)`, k = 4.0.**
+(2026-11-11)
+R-30 (D-060's downstream fix) moved every golden object's measured-path height cut to the fixed
+`DEFAULT_MIN_BOARD_CLEARANCE_MM` floor (2.0 mm). R-30's own completion record flagged that s-02's
+post-correction `residual_sigma_mm` (0.58 mm, s-03 close behind at 0.57 mm) sits only about 3.4
+sigma under that floor -- thin enough for real above-plane board noise to cross it and read as
+part/skin -- and explicitly punted a sigma-relative fix to "R-33 or a later story." R-35/#292 is
+that story.
+
+*Measured:* swept k = 4.0 and 4.5 against all five golden objects' real fused data
+(`scripts/measure_wall_share.py`'s board-skin face share, plus `isolate_part`'s core stats; full
+table in R-35.md). s-02's and s-03's residual sigma (0.575/0.566 mm on this run) are both close
+enough to each other, and to s-01's (0.438 mm), that any k large enough to meaningfully raise
+their floor also narrows the margin before s-01's own floor would start moving too. At k=4.5,
+s-01 is left with only 0.03 mm of headroom before its own sigma floor would cross 2.0 mm --
+too close to a coincidence of one run. At k=4.0, s-01 keeps about 12% headroom, a real margin,
+while s-02's board-skin share still drops 8.4 points and s-03's drops 2.0 points. s-04/s-05 are
+unaffected at either value.
+
+*Why:* a single fixed floor assumes every board is at least as clean as the noisiest one it was
+ever tuned against; the golden set alone spans a 1.6x range in residual sigma (0.36-0.58 mm), so a
+floor sized for the clean end leaves no margin on the noisy end. D-003 requires this k be
+measured, not guessed, since it is exactly the kind of tolerance/k that decision governs.
+
+*Known cost:* does not fully close s-02's board-skin problem -- its share (46.0%) stays far above
+the other four objects' (0.6-4.9%) even at the chosen k. s-02 is the reflective padlock under a
+different lighting condition from its twin s-01; the remainder is likely reflectivity- or
+lighting-related, not a sigma-floor problem, and is left for a later story if the team wants it
+closed further.
+
+*Does not change:* D-060's layer-top search logic or `board_layer_top_mm`'s own computation --
+this is a second, independent floor under the same `max(...)`, not a revision of the search.
+Does not change the explicit `height_threshold_mm` override path (R-26), which still takes
+neither floor, by design.
+
+*Checked against D-028:* fetched every origin branch on 2026-11-11. D-062 is the highest anywhere,
+so D-063 was the first free number.
+
 ---
 
 ## Open — not yet decided
