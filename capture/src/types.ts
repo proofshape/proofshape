@@ -59,7 +59,6 @@ export interface ReconstructionResult {
   warnings?: string[];
 }
 
-
 export type Provenance = "observed" | "unobserved" | "inferred";
 
 export type Verdict = "Pass" | "Fail" | "Rescan" | "Unverifiable";
