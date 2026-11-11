@@ -168,6 +168,23 @@ describe("C-15 report page", () => {
     expect(target.textContent).not.toMatch(/σ_floor|±\s*\d/);
   });
 
+  it("shows No dimensional claims and scale not checked when the fields say so", async () => {
+    const sessionId = await finishedSession("no_cad");
+    stub.useNoReferenceReconstruction();
+    const target = root();
+
+    mountReportPage(target, { baseUrl, sessionId, mountViewer: fakeViewer() });
+
+    await vi.waitFor(() => {
+      if (target.querySelector("#report-reference")?.textContent !== "no reference") {
+        throw new Error("report still loading");
+      }
+    });
+
+    expect(target.querySelector("#report-metric")?.textContent).toBe("No dimensional claims");
+    expect(target.querySelector("#report-scale")?.textContent).toBe("not checked");
+  });
+
   it("treats no_cad_uploaded as model only, not a report error", async () => {
     const sessionId = await finishedSession("no_cad");
     const target = root();
