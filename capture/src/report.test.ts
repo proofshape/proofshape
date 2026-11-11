@@ -77,7 +77,11 @@ describe("C-15 report page", () => {
         legend.setAttribute("aria-label", "Deviation from CAD legend");
         legend.textContent =
           "Deviation from CAD (mm): −3 mm · 0 mm · +3 mm — scale: largest measured deviation, not a tolerance.";
-        target.append(canvas, legend);
+        const status = document.createElement("p");
+        status.setAttribute("role", "status");
+        status.textContent =
+          "3D model loaded. This model has no provenance colours; observed and unobserved surface cannot be told apart.";
+        target.append(canvas, legend, status);
         return () => undefined;
       },
     );
@@ -238,6 +242,11 @@ describe("C-15 report page", () => {
     expect(printLegend).toBeInstanceOf(HTMLElement);
     expect((printLegend as HTMLElement).hidden).toBe(false);
     expect(printLegend?.textContent).toContain("largest measured deviation, not a tolerance");
+
+    const printStatus = target.querySelector("#report-print-viewer-status");
+    expect(printStatus).toBeInstanceOf(HTMLElement);
+    expect((printStatus as HTMLElement).hidden).toBe(false);
+    expect(printStatus?.textContent).toContain("has no provenance colours");
 
     const button = target.querySelector("#report-print-button");
     expect(button).toBeInstanceOf(HTMLButtonElement);
