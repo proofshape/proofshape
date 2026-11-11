@@ -104,6 +104,7 @@ export const REPORT_HTML = `
       <div id="report-model-viewer"></div>
       <img id="report-print-heatmap" alt="Deviation heatmap snapshot for print" hidden />
       <p id="report-print-legend" class="report-print-legend" hidden></p>
+      <p id="report-print-viewer-status" class="report-print-viewer-status" hidden></p>
     </section>
 
     <section aria-labelledby="report-narrative-title">
@@ -227,6 +228,8 @@ export function snapshotHeatmapForPrint(root: HTMLElement): boolean {
   const canvas = root.querySelector("#report-model-viewer canvas");
   const image = root.querySelector("#report-print-heatmap");
   const printLegend = root.querySelector("#report-print-legend");
+  const printViewerStatus = root.querySelector("#report-print-viewer-status");
+  const viewerStatus = root.querySelector('#report-model-viewer [role="status"]');
   const activeLegend = root.querySelector(
     '#report-model-viewer [aria-label="Deviation from CAD legend"], ' +
       '#report-model-viewer [aria-label="3D model provenance legend"]',
@@ -239,6 +242,16 @@ export function snapshotHeatmapForPrint(root: HTMLElement): boolean {
     } else {
       printLegend.textContent = "";
       printLegend.hidden = true;
+    }
+  }
+
+  if (printViewerStatus instanceof HTMLElement) {
+    if (viewerStatus instanceof HTMLElement && viewerStatus.textContent.trim() !== "") {
+      printViewerStatus.textContent = viewerStatus.textContent;
+      printViewerStatus.hidden = false;
+    } else {
+      printViewerStatus.textContent = "";
+      printViewerStatus.hidden = true;
     }
   }
 
