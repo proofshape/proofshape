@@ -405,7 +405,8 @@ export function createContractStub(): ContractStub {
     const fixturePath =
       sessionId === "c12-provenance-check"
         ? PROVENANCE_MODEL_FIXTURE_PATH
-        : sessionId === "c14-deviation-check"
+        : sessionId === "c14-deviation-check" ||
+            (!DEVICE_CHECK_SESSION_IDS.has(sessionId) && verdictScenario !== "no_cad")
           ? DEVIATION_MODEL_FIXTURE_PATH
           : MODEL_FIXTURE_PATH;
     const bytes = readFileSync(fixturePath);
