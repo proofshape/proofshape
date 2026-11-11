@@ -1,5 +1,4 @@
 import { fileURLToPath } from "node:url";
-import type { OutputAsset, RollupOutput } from "rollup";
 import { build } from "vite";
 import { describe, expect, it } from "vitest";
 
@@ -18,12 +17,17 @@ describe("GitHub Pages production build", () => {
       },
     });
 
-    const output = (result as RollupOutput).output;
-    const html = output.find(
-      (entry): entry is OutputAsset => entry.type === "asset" && entry.fileName === "index.html",
+    const outputs = Array.isArray(result)
+      ? result.flatMap((entry) => entry.output)
+      : result.output;
+    const html = outputs.find(
+      (entry) => entry.type === "asset" && entry.fileName === "index.html",
     );
 
     expect(html).toBeDefined();
-    expect(String(html?.source)).toContain("/proofshape/assets/");
+    if (!html || html.type !== "asset") {
+      throw new Error("Pages build test: index.html asset missing");
+    }
+    expect(String(html.source)).toContain("/proofshape/assets/");
   });
 });
