@@ -21,10 +21,7 @@ export type ViewerDemoMode = ViewerDemo | "unavailable" | undefined;
 
 // C-21: viewer-demo relies on the Vite dev stub, so it must never try to run from a hosted
 // production build. Unknown values are ignored and fall through to the normal capture app.
-export function resolveViewerDemo(
-  raw: string | null,
-  isDevelopment: boolean,
-): ViewerDemoMode {
+export function resolveViewerDemo(raw: string | null, isDevelopment: boolean): ViewerDemoMode {
   if (raw !== "1" && raw !== "c12" && raw !== "c14") {
     return undefined;
   }
