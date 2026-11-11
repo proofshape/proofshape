@@ -248,6 +248,11 @@ describe("C-15 report page", () => {
     expect((printStatus as HTMLElement).hidden).toBe(false);
     expect(printStatus?.textContent).toContain("has no provenance colours");
 
+    window.dispatchEvent(new Event("afterprint"));
+    expect((image as HTMLImageElement).hidden).toBe(true);
+    expect((printLegend as HTMLElement).hidden).toBe(true);
+    expect((printStatus as HTMLElement).hidden).toBe(true);
+
     const button = target.querySelector("#report-print-button");
     expect(button).toBeInstanceOf(HTMLButtonElement);
     (button as HTMLButtonElement).click();
