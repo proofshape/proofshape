@@ -8,7 +8,7 @@ function isRollupOutput(value: unknown): value is RollupOutput {
 }
 
 describe("GitHub Pages production build", () => {
-  it("rewrites entry assets under the configured base path", async () => {
+  it("rewrites both HTML entries under the configured base path", async () => {
     const result = await build({
       configFile: false,
       root: fileURLToPath(new URL("..", import.meta.url)),
@@ -17,7 +17,10 @@ describe("GitHub Pages production build", () => {
       build: {
         write: false,
         rollupOptions: {
-          input: fileURLToPath(new URL("../index.html", import.meta.url)),
+          input: {
+            capture: fileURLToPath(new URL("../index.html", import.meta.url)),
+            report: fileURLToPath(new URL("../report.html", import.meta.url)),
+          },
         },
       },
     });
@@ -25,14 +28,13 @@ describe("GitHub Pages production build", () => {
     const rollupOutputs = Array.isArray(result) ? result : [result];
     const outputs = rollupOutputs.filter(isRollupOutput).flatMap((entry) => entry.output);
 
-    const html = outputs.find(
-      (entry): entry is OutputAsset => entry.type === "asset" && entry.fileName === "index.html",
+    const htmlAssets = new Map(
+      outputs
+        .filter((entry): entry is OutputAsset => entry.type === "asset")
+        .map((entry) => [entry.fileName, String(entry.source)]),
     );
 
-    expect(html).toBeDefined();
-    if (!html) {
-      throw new Error("Pages build test: index.html asset missing");
-    }
-    expect(String(html.source)).toContain("/proofshape/assets/");
+    expect(htmlAssets.get("index.html")).toContain("/proofshape/assets/");
+    expect(htmlAssets.get("report.html")).toContain("/proofshape/assets/");
   });
 });
