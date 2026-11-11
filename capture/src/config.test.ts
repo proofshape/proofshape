@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolveAuthToken, resolveBaseUrl } from "./config.js";
+import {
+  resolveAppBasePath,
+  resolveAuthToken,
+  resolveBaseUrl,
+  resolveViewerDemo,
+} from "./config.js";
 
 describe("resolveBaseUrl", () => {
   it("falls back to empty string when unset", () => {
@@ -27,5 +32,30 @@ describe("resolveAuthToken", () => {
 
   it("trims surrounding whitespace from a real token", () => {
     expect(resolveAuthToken("  secret-token  ")).toBe("secret-token");
+  });
+});
+
+
+describe("resolveAppBasePath", () => {
+  it("keeps root builds at root", () => {
+    expect(resolveAppBasePath(undefined)).toBe("/");
+    expect(resolveAppBasePath("/")).toBe("/");
+  });
+
+  it("normalizes a GitHub Pages repository path", () => {
+    expect(resolveAppBasePath("proofshape")).toBe("/proofshape/");
+    expect(resolveAppBasePath("/proofshape/")).toBe("/proofshape/");
+  });
+});
+
+describe("resolveViewerDemo", () => {
+  it("allows the canned viewer demos only in development", () => {
+    expect(resolveViewerDemo("c14", true)).toBe("c14");
+    expect(resolveViewerDemo("c14", false)).toBe("unavailable");
+  });
+
+  it("ignores unrelated query values", () => {
+    expect(resolveViewerDemo(null, false)).toBeNull();
+    expect(resolveViewerDemo("other", true)).toBeNull();
   });
 });
