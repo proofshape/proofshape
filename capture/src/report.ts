@@ -103,6 +103,7 @@ export const REPORT_HTML = `
       <h2 id="report-heatmap-title">Deviation heatmap</h2>
       <div id="report-model-viewer"></div>
       <img id="report-print-heatmap" alt="Deviation heatmap snapshot for print" hidden />
+      <p id="report-print-legend" class="report-print-legend" hidden></p>
     </section>
 
     <section aria-labelledby="report-narrative-title">
@@ -225,6 +226,22 @@ function renderReconstructionSummary(root: HTMLElement, result: ReconstructionRe
 export function snapshotHeatmapForPrint(root: HTMLElement): boolean {
   const canvas = root.querySelector("#report-model-viewer canvas");
   const image = root.querySelector("#report-print-heatmap");
+  const printLegend = root.querySelector("#report-print-legend");
+  const activeLegend = root.querySelector(
+    '#report-model-viewer [aria-label="Deviation from CAD legend"], ' +
+      '#report-model-viewer [aria-label="3D model provenance legend"]',
+  );
+
+  if (printLegend instanceof HTMLElement) {
+    if (activeLegend instanceof HTMLElement && activeLegend.textContent.trim() !== "") {
+      printLegend.textContent = activeLegend.textContent;
+      printLegend.hidden = false;
+    } else {
+      printLegend.textContent = "";
+      printLegend.hidden = true;
+    }
+  }
+
   if (!(canvas instanceof HTMLCanvasElement) || !(image instanceof HTMLImageElement)) {
     return false;
   }
