@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import sys
 
@@ -325,6 +326,194 @@ def test_extract_mesh_marching_cubes_returns_empty_when_nothing_observed():
 
     assert len(vertices_mm) == 0
     assert len(faces) == 0
+
+
+def test_extract_mesh_marching_cubes_filters_a_thin_free_space_sliver_at_the_edge():
+    # R-33 (review on #231): a thin sliver of observed free space (tsdf=+8) reaching right up to
+    # never-observed voxels (tsdf stays at fuse_tsdf's own 0.0 default). A plain weight>0 mask
+    # alone still lets skimage build a face here, using the never-observed voxels' raw 0.0 value
+    # even though they're individually masked False -- this reproduces TabeenRaoof's own finding
+    # that an observed-free-space/never-observed boundary fabricates walls. Confirmed empirically
+    # (not every observed/unobserved boundary triggers skimage's mask quirk -- a full-width flat
+    # slab doesn't, matching skimage's own corner-count-dependent activation rule; a thin sliver,
+    # closer to the ragged edge of real multi-view camera coverage, does). The fix's per-cube
+    # filter (review on #287) catches every face skimage builds here: only two voxels in the
+    # whole volume are observed, so no cube can ever have all 8 corners observed.
+    shape = (4, 3, 3)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    tsdf[0:2, 1:2, 1:2] = 8.0
+    weight[0:2, 1:2, 1:2] = 1.0
+
+    _vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=10.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(faces) == 0
+
+    # Not a vacuous test: skimage itself, given the raw unfiltered mask, does fabricate faces at
+    # this exact boundary -- confirming this is a real fix, not a no-op on an already-safe case.
+    from skimage.measure import marching_cubes
+
+    old_mask = weight > 0.0
+    _old_vertices, old_faces, _normals, _values = marching_cubes(
+        tsdf, level=0.0, spacing=(10.0, 10.0, 10.0), mask=old_mask
+    )
+    assert len(old_faces) > 0
+
+
+def test_extract_mesh_marching_cubes_returns_empty_when_nothing_crosses_zero():
+    # Review on #231: skimage's own level-range check runs over the entire raw volume, ignoring
+    # mask, and raises ValueError when nothing in the array ever crosses zero -- reachable even
+    # before this fix, just rare in practice (a real grid almost always has an untouched 0.0
+    # voxel somewhere). A fully-observed, all-positive volume hits it directly.
+    shape = (2, 2, 2)
+    tsdf = np.full(shape, 5.0)
+    weight = np.ones(shape)
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=10.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(vertices_mm) == 0
+    assert len(faces) == 0
+
+
+def test_extract_mesh_marching_cubes_keeps_the_real_plane_and_drops_the_sliver():
+    # Review on #287: the sliver test above never reaches `marching_cubes` with a mask that
+    # would have found anything to interpolate, so nothing pins which mask actually reaches
+    # skimage, or that a real surface right next to a sliver survives the filter intact. This
+    # scene does reach skimage for real: a fully observed block holding a genuine surface
+    # (the x=2.5 voxel plane), plus a thin observed free-space sliver beside it that the raw,
+    # unfiltered mask fabricates extra faces from -- reproduced directly below.
+    shape = (12, 8, 8)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[0:6] = x[0:6] - 2.5  # real surface at x = 2.5 voxels
+    weight[0:6] = 1.0
+    tsdf[6:9, 3:4, 3:4] = 8.0  # thin observed free-space sliver
+    weight[6:9, 3:4, 3:4] = 1.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - 2.5) < 0.6)
+
+    # Not a vacuous test: skimage itself, given the raw unfiltered mask, builds extra faces that
+    # reach out to the sliver, well past the real plane -- confirming the filter is doing real
+    # work on this scene, not passing it through untouched.
+    from skimage.measure import marching_cubes
+
+    old_mask = weight > 0.0
+    _old_vertices, old_faces, _normals, _values = marching_cubes(
+        tsdf, level=0.0, spacing=(1.0, 1.0, 1.0), mask=old_mask
+    )
+    assert len(old_faces) > len(faces)
+
+
+def test_extract_mesh_marching_cubes_filter_at_the_real_voxel_size_and_an_offset_origin():
+    # Review on #287: the plane-plus-sliver test above uses voxel_size_mm=1.0, where dividing a
+    # vertex's mm position by voxel_size_mm to recover its voxel index is a no-op -- so it can't
+    # tell a correct division from a dropped one. Real fusion runs use ~2 mm voxels and a
+    # non-zero origin_mm; this repeats the same scene at voxel_size_mm=2.0 with an offset origin,
+    # so the real plane only lands at the expected mm location if the voxel-index recovery (and
+    # thus the cube lookup built from it) is actually correct.
+    shape = (12, 8, 8)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[0:6] = x[0:6] - 2.5
+    weight[0:6] = 1.0
+    tsdf[6:9, 3:4, 3:4] = 8.0
+    weight[6:9, 3:4, 3:4] = 1.0
+    origin = np.array([10.0, -4.0, -30.0])
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=2.0,
+        origin_mm=origin,
+    )
+
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - (origin[0] + 2.5 * 2.0)) < 1.2)
+
+
+@pytest.mark.parametrize("corner", list(itertools.product((0, 1), repeat=3)))
+def test_extract_mesh_marching_cubes_drops_a_cube_missing_any_one_corner(corner):
+    # Review on #287: two cubes along x -- A (x 0..1), fully observed, and B (x 1..2), missing
+    # exactly one of its 8 corners (parametrized over which one). The surface crosses both
+    # (x=0.5 in A, x=1.5 in B), so if the filter checked fewer than all 8 corners (an `&`
+    # weakened to `|` on any one of them, say), B would wrongly keep its face too. Only A's
+    # surface may survive, whichever corner of B is the one missing.
+    shape = (3, 2, 2)
+    tsdf = np.zeros(shape)
+    weight = np.ones(shape)
+    tsdf[0] = 1.0
+    tsdf[1] = -1.0
+    tsdf[2] = 1.0
+    weight[1 + corner[0], corner[1], corner[2]] = 0.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0] if len(faces) else np.array([])
+    assert np.all(centroid_x < 1.0)
+    if corner[0] == 1:
+        # The missing corner sits at x=2, not shared with cube A, so A still keeps its surface.
+        assert np.any(centroid_x < 1.0)
+
+
+def test_extract_mesh_marching_cubes_floors_the_cube_index_rather_than_rounding():
+    # Review on #287: np.round instead of np.floor passed both tests above. Each puts its surface
+    # at a centroid of x.5 in voxel units, where np.round's round-half-to-even either agrees with
+    # floor outright (round(2.5) == floor(2.5) == 2) or disagrees but only by pointing past the
+    # grid's last cube, which np.clip then pulls back to the same cube floor would have picked.
+    # Three cubes along x (indices 0, 1, 2) puts the x=1.5 crossing's two candidate cubes --
+    # floor's 1 and round's 2 -- both in bounds, so clipping can't paper over the difference.
+    # Cube 1 (x in [1, 2]) is fully observed; cube 2 (x in [2, 3]) is missing one corner. The
+    # correct (floor) cube keeps the face; the wrong (round) cube would drop it as unobserved.
+    shape = (4, 2, 2)
+    tsdf = np.zeros(shape)
+    weight = np.ones(shape)
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[:] = np.where(x < 1.5, -1.0, 1.0)
+    weight[3, 0, 0] = 0.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - 1.5) < 0.5)
 
 
 # --- write_mesh_ply / read_mesh_ply --------------------------------------------------------------
