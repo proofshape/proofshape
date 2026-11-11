@@ -487,6 +487,35 @@ def test_extract_mesh_marching_cubes_drops_a_cube_missing_any_one_corner(corner)
         assert np.any(centroid_x < 1.0)
 
 
+def test_extract_mesh_marching_cubes_floors_the_cube_index_rather_than_rounding():
+    # Review on #287: np.round instead of np.floor passed both tests above. Each puts its surface
+    # at a centroid of x.5 in voxel units, where np.round's round-half-to-even either agrees with
+    # floor outright (round(2.5) == floor(2.5) == 2) or disagrees but only by pointing past the
+    # grid's last cube, which np.clip then pulls back to the same cube floor would have picked.
+    # Three cubes along x (indices 0, 1, 2) puts the x=1.5 crossing's two candidate cubes --
+    # floor's 1 and round's 2 -- both in bounds, so clipping can't paper over the difference.
+    # Cube 1 (x in [1, 2]) is fully observed; cube 2 (x in [2, 3]) is missing one corner. The
+    # correct (floor) cube keeps the face; the wrong (round) cube would drop it as unobserved.
+    shape = (4, 2, 2)
+    tsdf = np.zeros(shape)
+    weight = np.ones(shape)
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[:] = np.where(x < 1.5, -1.0, 1.0)
+    weight[3, 0, 0] = 0.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - 1.5) < 0.5)
+
+
 # --- write_mesh_ply / read_mesh_ply --------------------------------------------------------------
 
 
