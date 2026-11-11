@@ -62,11 +62,7 @@ describe("C-15 report page", () => {
 
   function fakeViewer() {
     return vi.fn(
-      (
-        target: HTMLElement,
-        _result: unknown,
-        _options?: { initialColourMode?: string },
-      ): (() => void) => {
+      (target: HTMLElement): (() => void) => {
         const canvas = document.createElement("canvas");
         Object.defineProperty(canvas, "toDataURL", {
           value: vi.fn(() => "data:image/png;base64,heatmap"),
