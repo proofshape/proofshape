@@ -18,8 +18,7 @@ const REASON_TEXT: Record<string, string> = {
   sealing_face_not_seen: "The sealing face was not seen in enough usable views.",
   registration_orientation_ambiguous:
     "More than one CAD orientation is plausible for this reconstruction.",
-  observed_deviation_out_of_spec:
-    "A measured, Observed region is outside the order specification.",
+  observed_deviation_out_of_spec: "A measured, Observed region is outside the order specification.",
   scale_disagreement: "The independent scale sources disagreed.",
 };
 
