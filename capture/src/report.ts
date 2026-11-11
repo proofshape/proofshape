@@ -208,7 +208,9 @@ function renderModelOnly(root: HTMLElement): void {
 
 function renderReconstructionSummary(root: HTMLElement, result: ReconstructionResult): void {
   requireElement(root, "#report-reference", HTMLElement).textContent =
-    REFERENCE_TEXT[result.reference_tier_used ?? ""] ?? result.reference_tier_used ?? "not reported";
+    REFERENCE_TEXT[result.reference_tier_used ?? ""] ??
+    result.reference_tier_used ??
+    "not reported";
   requireElement(root, "#report-metric", HTMLElement).textContent =
     result.metric === true ? "Metric" : "No dimensional claims";
   requireElement(root, "#report-observed", HTMLElement).textContent =
@@ -324,7 +326,9 @@ export function mountReportPage(root: HTMLElement, options: ReportPageOptions): 
           `Could not load verdict — ${verdict.error.message}`;
       }
     } catch (error) {
-      status.textContent = `Could not load report — ${error instanceof Error ? error.message : String(error)}`;
+      status.textContent = `Could not load report — ${
+        error instanceof Error ? error.message : String(error)
+      }`;
     }
   })();
 
