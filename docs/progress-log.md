@@ -2210,7 +2210,7 @@ improvement. She also caught that `Fixes #292` would have auto-closed an issue t
 fully resolve -- switched to "Part of #292", same pattern as #231.
 
 **Result:** merged to `main` at `1d27c57`. R-35 `State: Done`, `3 h actual` (est 3). Two independent
-golden reruns agree to three decimal places (2.299/2.262 here, 2.303/2.264 on TabeenRaoof's stored
+golden reruns agree to within 0.004 mm (2.299/2.262 here, 2.303/2.264 on TabeenRaoof's stored
 runs). `check_story_states.py` clean; ruff, typescript and pytest all green on the merged head.
 #292 stays open -- the fix helps but doesn't fully close s-02's board-skin problem.
 
