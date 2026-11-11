@@ -2159,8 +2159,8 @@ face-share figures across two different measurements, and conflated R-33's four-
 list with its actual five acceptance criteria (this PR covers criteria 4 and 5, not just one).
 `@TabeenRaoof` also caught that `Fixes #231` would have been premature — #231 has two halves, and
 only the wall half is actually resolved; s-02 still serves 54.4% of its faces as board skin, a
-problem R-30 already flagged and punted. Filed as #292; #231 got a plain comment instead of
-`Fixes`, and the PR body/commits were written to avoid the literal closing keyword.
+problem R-30 already flagged and punted. Filed as #292; #231 got a plain comment and PR #290 was
+intended not to close it.
 
 **It closed anyway.** GitHub's closing-keyword parser doesn't parse negation — one of #290's own
 commit messages explained a design choice as "Stop short of `Fixes #231`", and the parser matched
