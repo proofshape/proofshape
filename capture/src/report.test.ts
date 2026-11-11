@@ -67,7 +67,11 @@ describe("C-15 report page", () => {
         Object.defineProperty(canvas, "toDataURL", {
           value: vi.fn(() => "data:image/png;base64,heatmap"),
         });
-        target.append(canvas);
+        const legend = document.createElement("div");
+        legend.setAttribute("aria-label", "Deviation from CAD legend");
+        legend.textContent =
+          "Deviation from CAD (mm): −3 mm · 0 mm · +3 mm — scale: largest measured deviation, not a tolerance.";
+        target.append(canvas, legend);
         return () => undefined;
       },
     );
@@ -223,6 +227,11 @@ describe("C-15 report page", () => {
     expect(image).toBeInstanceOf(HTMLImageElement);
     expect((image as HTMLImageElement).hidden).toBe(false);
     expect((image as HTMLImageElement).src).toBe("data:image/png;base64,heatmap");
+
+    const printLegend = target.querySelector("#report-print-legend");
+    expect(printLegend).toBeInstanceOf(HTMLElement);
+    expect((printLegend as HTMLElement).hidden).toBe(false);
+    expect(printLegend?.textContent).toContain("largest measured deviation, not a tolerance");
 
     const button = target.querySelector("#report-print-button");
     expect(button).toBeInstanceOf(HTMLButtonElement);
