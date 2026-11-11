@@ -121,7 +121,9 @@ describe("C-15 report page", () => {
     expect(mountViewer.mock.calls[0]?.[2]).toMatchObject({ initialColourMode: "deviation" });
   });
 
-  it("renders Rescan reasons, hides unobserved deviation and shows the placement note", async () => {
+  it(
+    "renders Rescan reasons, hides unobserved deviation and shows the placement note",
+    async () => {
     const sessionId = await finishedSession("rescan");
     const target = root();
 
@@ -154,8 +156,9 @@ describe("C-15 report page", () => {
     expect(sealingFace).toContain("unobserved");
     expect(sealingFace).toContain("—");
     expect(sealingFace).toContain("No");
-    expect(sealingFace).not.toContain("0.00 mm");
-  });
+      expect(sealingFace).not.toContain("0.00 mm");
+    },
+  );
 
   it("renders the canned Fail example without inventing a tolerance value", async () => {
     const sessionId = await finishedSession("fail");
@@ -219,7 +222,9 @@ describe("C-15 report page", () => {
     expect(VERDICT_ACTIONS.Unverifiable).toContain("CMM");
   });
 
-  it("snapshots the heatmap canvas on beforeprint and the print button calls window.print", async () => {
+  it(
+    "snapshots the heatmap canvas on beforeprint and the print button calls window.print",
+    async () => {
     const sessionId = await finishedSession("pass");
     const target = root();
     const printSpy = vi.spyOn(window, "print").mockImplementation(() => undefined);
@@ -251,8 +256,9 @@ describe("C-15 report page", () => {
     const button = target.querySelector("#report-print-button");
     expect(button).toBeInstanceOf(HTMLButtonElement);
     (button as HTMLButtonElement).click();
-    expect(printSpy).toHaveBeenCalledOnce();
-  });
+      expect(printSpy).toHaveBeenCalledOnce();
+    },
+  );
 
   it("returns false when there is no printable canvas", () => {
     const target = root();
