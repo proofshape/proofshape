@@ -24,8 +24,9 @@ deployed on a cloud GPU (§0). A phone can also run a whole session against the 
 the service running on a Mac and the capture dev server forwarding its requests (§0, C-13, D-049).
 That path works, but in its first test, after the D-050 fix, only 2 of 7 finished phone sessions
 produced a model (§5). Pointing the phone at the cloud deployment has never been tried (O-005).
-Nothing on the buyer side — CAD upload, tolerances, verdicts, the report — is built yet (§4, §8.2,
-§8.3).
+Buyer CAD upload, tolerances and the real verdict backend are not built yet (§4, §8.2). The
+report page itself is now built (C-15): it works against the contract mock today and will consume
+I-07's real verdict once that backend exists (§8.3).
 
 ---
 
@@ -359,9 +360,10 @@ usually the blue region.
 
 ### 8.2 The four verdicts
 
-**Status: Planned** (I-07 verdict logic, I-08 unobserved-geometry rule, I-10 Unverifiable path).
-The four values are frozen in the contract; today a verdict request always answers
-`no_cad_uploaded`, because there is no way to upload a CAD yet (R-34).
+**Status: Planned in the real service** (I-07 verdict logic, I-08 unobserved-geometry rule,
+I-10 Unverifiable path). The C-15 report page is built against the frozen contract examples, but
+today a real verdict request still answers `no_cad_uploaded`, because there is no way to upload a
+CAD yet (R-34).
 
 There are exactly four. No fifth value can be added without a recorded decision, because the hard
 rule's guarantees are stated in terms of this closed set.
@@ -379,14 +381,28 @@ unobserved region into either a Pass or a Fail — if it could not see it, it sa
 
 ### 8.3 The report
 
-**Status: Planned** (C-14 heatmap rendering, C-15 report page; the deviation data is I-06's,
-D-062). **Planned:** only Observed surface is coloured by deviation; everything else stays grey
-(D-005).
+**Status: Works now against the contract mock** (C-14 heatmap rendering, C-15 report page).
+The real deviation/verdict backend is still Planned (I-06/I-07), so today's real service normally
+shows the model-only path described in §8.2.
 
-One page, shareable with the buyer: the verdict, the deviation heatmap, the model, **which
-reference sheet was used**, which regions were observed, and any limits declared at intake.
+After a reconstruction completes, choose **Open condition report**. You can also open
+`report.html?session=<id>` directly for a known session. The page shows the contract verdict and
+"What to do" text, every reason code, the critical-region table, orientation status, the reference
+used, metric/no-dimensional-claims status, observed fraction, scale-agreement status and the
+session id. If the order has no CAD, it says **"No CAD on this order: model only"** rather than
+treating that as a report error.
 
-**Planned:** an LLM writes the narrative summary (A-09).
+The C-14 deviation heatmap opens by default. Only surface that is both Observed and measured is
+coloured by deviation; everything else stays grey (D-005). A region that is not Observed shows
+"—" for deviation, never zero.
+
+Choose **Print / Save as PDF** to use the browser's print dialog. Before printing, the page
+snapshots the WebGL heatmap and copies its active legend so the exported page keeps both the image
+and the signed-mm scale. The one-page mobile print layout still needs the whole-system mobile
+check at X-04.
+
+The narrative section is a marked placeholder only. **Planned:** A-09 supplies the LLM narrative;
+C-15 does not generate one.
 
 ---
 
