@@ -121,7 +121,6 @@ export async function getReconstruction(
   unexpectedStatus("getReconstruction", response, body);
 }
 
-
 export async function getVerdict(
   baseUrl: string,
   sessionId: string,
