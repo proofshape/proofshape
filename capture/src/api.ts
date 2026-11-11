@@ -126,10 +126,9 @@ export async function getVerdict(
   sessionId: string,
   authToken?: string,
 ): Promise<ApiResult<VerdictResult>> {
-  const response = await fetch(
-    `${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/verdict`,
-    { headers: authHeaders(authToken) },
-  );
+  const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/verdict`, {
+    headers: authHeaders(authToken),
+  });
   const body = await readJsonBody(response, "getVerdict");
   if (response.status === 200) {
     return { ok: true, status: response.status, body: body as VerdictResult };
