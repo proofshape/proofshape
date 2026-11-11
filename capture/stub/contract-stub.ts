@@ -49,9 +49,7 @@ const RECONSTRUCTION_NO_REFERENCE = loadExample(
 ) as ReconstructionResult;
 const RECONSTRUCTION_404 = loadExample("getReconstruction.response-404") as ErrorDetail;
 const VERDICT_PASS = loadExample("getVerdict.response-200") as VerdictResult;
-const VERDICT_RESCAN = loadExample(
-  "getVerdict.response-200-rescan-unobserved",
-) as VerdictResult;
+const VERDICT_RESCAN = loadExample("getVerdict.response-200-rescan-unobserved") as VerdictResult;
 const VERDICT_404 = loadExample("getVerdict.response-404") as ErrorDetail;
 const VERDICT_FAIL = JSON.parse(
   readFileSync(
