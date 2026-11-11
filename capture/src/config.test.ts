@@ -35,7 +35,6 @@ describe("resolveAuthToken", () => {
   });
 });
 
-
 describe("resolveAppBasePath", () => {
   it("keeps root builds at root", () => {
     expect(resolveAppBasePath(undefined)).toBe("/");
