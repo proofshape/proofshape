@@ -1,8 +1,4 @@
-import {
-  resolveAuthToken,
-  resolveBaseUrl,
-  resolveViewerDemo,
-} from "./config.js";
+import { resolveAuthToken, resolveBaseUrl, resolveViewerDemo } from "./config.js";
 import { mountModelViewer } from "./model-viewer.js";
 import { mountAppShell } from "./shell.js";
 
