@@ -83,8 +83,12 @@ jobs:
           PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
         run: |
           expected="${PAGES_BASE_PATH}/assets/"
-          if ! grep -R -F "$expected" dist/index.html dist/report.html >/dev/null; then
-            echo "Built HTML does not contain the configured Pages asset base: $expected" >&2
+          if ! grep -F "$expected" dist/index.html >/dev/null; then
+            echo "index.html does not contain the configured Pages asset base: $expected" >&2
+            exit 1
+          fi
+          if ! grep -F "$expected" dist/report.html >/dev/null; then
+            echo "report.html does not contain the configured Pages asset base: $expected" >&2
             exit 1
           fi
 
