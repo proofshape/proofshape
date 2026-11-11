@@ -1,0 +1,74 @@
+name: Capture Pages
+
+on:
+  pull_request:
+    paths:
+      - "capture/**"
+      - ".github/workflows/capture-pages.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "capture/**"
+      - ".github/workflows/capture-pages.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capture-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: capture/package-lock.json
+
+      - name: Install dependencies
+        working-directory: capture
+        run: npm ci
+
+      - name: Build capture app for GitHub Pages
+        working-directory: capture
+        env:
+          VITE_APP_BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_RECON_BASE_URL: ${{ vars.PROOFSHAPE_RECON_BASE_URL }}
+          VITE_RECON_TOKEN: ${{ vars.PROOFSHAPE_RECON_TOKEN }}
+        run: npm run build
+
+      - name: Configure Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: capture/dist
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
