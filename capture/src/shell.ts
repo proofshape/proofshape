@@ -493,13 +493,14 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     if (state.sessionId === null) {
       return;
     }
+    const sessionId = state.sessionId;
     reportLink.hidden = true;
     reportLink.removeAttribute("href");
     retryReconstructionButton.hidden = true;
     remountModelViewer({ status: "pending" });
     const outcome = await pollReconstruction(
       options.baseUrl,
-      state.sessionId,
+      sessionId,
       reconstructionStatus,
       options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
       options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
@@ -509,8 +510,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       options.authToken,
     );
     retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
-    if (outcome === "complete" && state.sessionId !== null) {
-      reportLink.href = `report.html?session=${encodeURIComponent(state.sessionId)}`;
+    if (outcome === "complete") {
+      reportLink.href = `report.html?session=${encodeURIComponent(sessionId)}`;
       reportLink.hidden = false;
     }
     if (outcome === "timeout") {
