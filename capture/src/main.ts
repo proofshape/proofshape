@@ -1,4 +1,4 @@
-import { resolveAuthToken, resolveBaseUrl } from "./config.js";
+import { resolveAuthToken, resolveBaseUrl, resolveViewerDemo } from "./config.js";
 import { mountModelViewer } from "./model-viewer.js";
 import { mountAppShell } from "./shell.js";
 
@@ -8,10 +8,17 @@ if (!shellRoot) {
 }
 
 // C-11 device-check helper: the contract stub serves its canned GLB at this route without
-// needing a finished session. Keeping this behind an explicit query parameter makes the real
-// app flow unchanged while giving a phone a direct WebGL/orbit/pinch check with no devtools.
-const viewerDemo = new URLSearchParams(window.location.search).get("viewer-demo");
-if (viewerDemo === "1" || viewerDemo === "c12" || viewerDemo === "c14") {
+// needing a finished session. C-21 makes this explicitly development-only because a hosted
+// production build has no dev stub behind /v1.
+const viewerDemo = resolveViewerDemo(
+  new URLSearchParams(window.location.search).get("viewer-demo"),
+  import.meta.env.DEV,
+);
+
+if (viewerDemo === "unavailable") {
+  shellRoot.innerHTML =
+    '<p role="status">Viewer demo is available only in development builds. Open the normal capture link instead.</p>';
+} else if (viewerDemo === "1" || viewerDemo === "c12" || viewerDemo === "c14") {
   mountModelViewer(shellRoot, {
     status: "complete",
     glb_url:
@@ -24,18 +31,15 @@ if (viewerDemo === "1" || viewerDemo === "c12" || viewerDemo === "c14") {
   });
 } else {
   // C-13: VITE_RECON_BASE_URL/VITE_RECON_TOKEN point this build at the deployed service instead
-  // of the local contract stub; both are unset in every existing dev/test run, so baseUrl stays
-  // "" and authToken stays undefined -- today's behaviour is the default.
+  // of the local contract stub. C-21's Pages workflow leaves both blank until O-005 is settled,
+  // so publishing the static app cannot accidentally expose a token or start paid GPU work.
   const baseUrl = resolveBaseUrl(import.meta.env.VITE_RECON_BASE_URL);
   const authToken = resolveAuthToken(import.meta.env.VITE_RECON_TOKEN);
-  // Same reasoning as viewer-demo above: a capture link pre-fills the order code so a supplier
-  // isn't typing one in.
+  // A capture link pre-fills the order code so a supplier is not typing one in. This remains
+  // relative to the current page, so the same ?order= link works at / locally and under the
+  // /proofshape/ GitHub Pages base path.
   const initialOrderCode = new URLSearchParams(window.location.search).get("order") ?? undefined;
 
-  // Return value not captured: nothing consumes it yet until C-05 exists to read/write it.
-  // mountAppShell still returns it for tests and for whenever C-05 is wired in here. Keys are
-  // omitted rather than set to `undefined` -- tsconfig's exactOptionalPropertyTypes treats those
-  // as different things.
   mountAppShell(shellRoot, {
     baseUrl,
     ...(authToken !== undefined ? { authToken } : {}),
