@@ -40,12 +40,11 @@ describe("C-15 report page", () => {
     const created = await createSession(baseUrl, "PO-48213-A");
     if (!created.ok) throw new Error("setup: createSession failed");
     for (let index = 0; index < MIN_FINISH_FRAMES; index += 1) {
-      const uploaded = await uploadFrame(
-        baseUrl,
-        created.body.session_id,
-        FRAME,
-        { alpha: 1, beta: 2, gamma: 3 },
-      );
+      const uploaded = await uploadFrame(baseUrl, created.body.session_id, FRAME, {
+        alpha: 1,
+        beta: 2,
+        gamma: 3,
+      });
       if (!uploaded.ok) throw new Error("setup: uploadFrame failed");
     }
     const finished = await finishSession(baseUrl, created.body.session_id);
