@@ -2183,3 +2183,41 @@ by #292.
 
 **Next:** #292 (s-02's board-skin regression under R-30's fixed 2.0 mm cut) is unclaimed. R-30's
 own notes suggest a sigma-relative cut as the starting point.
+
+## 2026-11-11 — R-35 Done: sigma-relative board-clearance floor (PR #299)
+
+**Who:** @dalwalyk (PR #299, claimed via #297); reviewed by @mbj1994 and @TabeenRaoof.
+
+**What changed:** `measure_board_surface`'s measured-path height threshold is now
+`max(min_clearance_mm, clearance_sigma_k * residual_sigma_mm, board_layer_top_mm)` rather than
+`max(min_clearance_mm, board_layer_top_mm)` -- `residual_sigma_mm` was already computed in the
+same function and already a `BoardSurface` field, so no new plumbing was needed. The explicit
+`height_threshold_mm` override path is untouched by design (R-26/D-060). `k` is a measured value
+(D-003): swept 4.0 and 4.5 against all five golden objects' real fused data. 4.5 helped s-02/s-03
+more but left s-01 only 0.03 mm of headroom before its own sigma floor would start moving it too;
+**k=4.0** keeps s-01 at about 12% real headroom while still dropping s-02's board-skin face share
+8.4 points (54.4% -> 46.0%) and s-03's 2.0 points (5.3% -> 3.3%), with s-01/s-04/s-05 byte-identical
+at either value. Recorded as D-063.
+
+**Review found two real gaps**, both fixed before merge: the override path could silently leak the
+sigma floor (a mutated version returning `max(float(height_threshold_mm), clearance_sigma_k *
+residual_sigma_mm)` still passed all 92 existing tests, since the old override test's board was too
+quiet for the leak to show) -- closed with a new test on a noisy board with a low explicit
+override, verified to fail under that exact mutation. And the raised cut has a real cost, not just
+a benefit: `@TabeenRaoof`'s independent rerun on her own stored golden data found it also trims some
+real part base (1.8 cm² on s-03, 0.7 cm² on s-02), which the record now states plainly alongside the
+improvement. She also caught that `Fixes #292` would have auto-closed an issue this PR doesn't
+fully resolve -- switched to "Part of #292", same pattern as #231.
+
+**Result:** merged to `main` at `1d27c57`. R-35 `State: Done`, `3 h actual` (est 3). Two independent
+golden reruns agree to within 0.004 mm (2.299/2.262 here, 2.303/2.264 on TabeenRaoof's stored
+runs). `check_story_states.py` clean; ruff, typescript and pytest all green on the merged head.
+#292 stays open -- the fix helps but doesn't fully close s-02's board-skin problem.
+
+**Concluded:** a single fixed clearance floor can't account for every golden object's own board
+noise; making it sigma-relative measurably helps the two noisiest objects without touching the
+other three, but s-02's remaining board-skin share (46.0%, against 0.6-4.9% on the other four)
+looks like a separate reflectivity/lighting problem, not a sigma-floor one.
+
+**Next:** s-02's residual board-skin share is unclaimed, tracked by #292. R-30's note that it's the
+reflective padlock under a different lighting condition from its twin s-01 is the lead to follow.
