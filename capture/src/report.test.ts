@@ -156,7 +156,7 @@ describe("C-15 report page", () => {
       expect(sealingFace).toContain("unobserved");
       expect(sealingFace).toContain("—");
       expect(sealingFace).toContain("No");
-        expect(sealingFace).not.toContain("0.00 mm");
+      expect(sealingFace).not.toContain("0.00 mm");
     },
   );
 
@@ -256,7 +256,7 @@ describe("C-15 report page", () => {
       const button = target.querySelector("#report-print-button");
       expect(button).toBeInstanceOf(HTMLButtonElement);
       (button as HTMLButtonElement).click();
-        expect(printSpy).toHaveBeenCalledOnce();
+      expect(printSpy).toHaveBeenCalledOnce();
     },
   );
 
