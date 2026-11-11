@@ -510,7 +510,7 @@ describe("mountAppShell", () => {
       if ((reportLink as HTMLAnchorElement).hidden) throw new Error("report link not shown yet");
     });
     const firstHref = (reportLink as HTMLAnchorElement).getAttribute("href");
-    expect(firstHref).toMatch(/^report\.html\?session=/);
+    expect(firstHref).toMatch(/^\/report\.html\?session=/);
 
     mounted.button.disabled = false;
     mounted.button.click();
