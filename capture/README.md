@@ -35,7 +35,33 @@ npm test             # vitest
 npm run typecheck    # tsc --noEmit
 npm run lint         # eslint
 npm run format:check # prettier --check
+npm run build        # production Vite build; CI runs this on every PR
 ```
+
+## GitHub Pages hosting (C-21)
+
+`.github/workflows/capture-pages.yml` validates a Pages-shaped production build on pull requests
+that touch `capture/`, but **publishes only from a push to `main`**. An organisation admin must
+set the repository's Pages source to **GitHub Actions** once; no branch-based Pages source is used.
+
+The workflow builds with `VITE_APP_BASE_PATH=/proofshape/` (derived from the repository name), so
+the capture and report entrypoints work below the repository path rather than assuming site root.
+The hosted page uses real HTTPS, so phones do not need the self-signed certificate used by
+`npm run dev:device`.
+
+Two repository **Actions variables** are reserved for the remote service:
+
+- `PROOFSHAPE_RECON_BASE_URL` → exposed to Vite as `VITE_RECON_BASE_URL`.
+- `PROOFSHAPE_RECON_TOKEN` → exposed to Vite as `VITE_RECON_TOKEN`.
+
+**Leave both unset until O-005 is answered and recorded.** Any token supplied to a static Pages
+build is visible to everyone who can download the JavaScript bundle; using an Actions secret would
+not make the built token private. After O-005 approves a public service configuration, set the
+variables, rebuild from `main`, run the required hosted-phone check, then stop the paid deployment.
+
+The `?viewer-demo=1`, `?viewer-demo=c12`, and `?viewer-demo=c14` helpers depend on the local
+contract stub. They remain available in development builds only. A production/Pages build shows a
+clear "development builds only" message instead of requesting a missing canned `/v1` fixture.
 
 ## The contract stub
 
