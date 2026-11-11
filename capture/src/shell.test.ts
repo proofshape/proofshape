@@ -140,12 +140,12 @@ describe("mountAppShell", () => {
     window.dispatchEvent(event);
   }
 
-  async function startSuccessfulSession(): Promise<
-    ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }
-  > {
+  async function startSuccessfulSession(
+    overrides: Partial<AppShellOptions> = {},
+  ): Promise<ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }> {
     const { trackStopSpy } = stubGrantedCamera();
     stubGyroPermission("granted");
-    const mounted = mount();
+    const mounted = mount(overrides);
     mounted.orderCode.value = "PO-48213-A";
     mounted.button.click();
     await vi.waitFor(() => {
@@ -517,6 +517,25 @@ describe("mountAppShell", () => {
 
     expect((reportLink as HTMLAnchorElement).hidden).toBe(true);
     expect((reportLink as HTMLAnchorElement).hasAttribute("href")).toBe(false);
+  });
+
+  it("builds the condition-report link under the configured app base path", async () => {
+    const mounted = await startSuccessfulSession({ appBasePath: "/proofshape/" });
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    const sessionId = mounted.state.sessionId;
+    await uploadAcceptedFrame(sessionId);
+    stub.setReconstructionPendingPolls(0);
+
+    mounted.finishButton.click();
+    const reportLink = document.getElementById("shell-report-link");
+    expect(reportLink).toBeInstanceOf(HTMLAnchorElement);
+    await vi.waitFor(() => {
+      if ((reportLink as HTMLAnchorElement).hidden) throw new Error("report link not shown yet");
+    });
+
+    expect((reportLink as HTMLAnchorElement).getAttribute("href")).toBe(
+      `/proofshape/report.html?session=${encodeURIComponent(sessionId)}`,
+    );
   });
 
   it("states that a non-metric result makes no dimensional claims", async () => {
