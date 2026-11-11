@@ -54,6 +54,8 @@ const server = {
 };
 
 export default defineConfig({
+  // C-21: production Pages builds pass /<repo>/ here. Dev/test stay rooted at /.
+  base: process.env.VITE_APP_BASE_PATH ?? "/",
   plugins: [
     ...(usingContractStub ? [contractStubPlugin()] : []),
     ...(servingForDeviceTesting ? [basicSsl()] : []),
