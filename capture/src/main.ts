@@ -1,4 +1,9 @@
-import { resolveAuthToken, resolveBaseUrl } from "./config.js";
+import {
+  resolveAppBasePath,
+  resolveAuthToken,
+  resolveBaseUrl,
+  resolveViewerDemo,
+} from "./config.js";
 import { mountModelViewer } from "./model-viewer.js";
 import { mountAppShell } from "./shell.js";
 
@@ -10,8 +15,14 @@ if (!shellRoot) {
 // C-11 device-check helper: the contract stub serves its canned GLB at this route without
 // needing a finished session. Keeping this behind an explicit query parameter makes the real
 // app flow unchanged while giving a phone a direct WebGL/orbit/pinch check with no devtools.
-const viewerDemo = new URLSearchParams(window.location.search).get("viewer-demo");
-if (viewerDemo === "1" || viewerDemo === "c12" || viewerDemo === "c14") {
+const viewerDemo = resolveViewerDemo(
+  new URLSearchParams(window.location.search).get("viewer-demo"),
+  import.meta.env.DEV,
+);
+if (viewerDemo === "unavailable") {
+  shellRoot.innerHTML =
+    '<p role="status">Viewer demo modes are available only in development builds because they use the local canned service.</p>';
+} else if (viewerDemo !== null) {
   mountModelViewer(shellRoot, {
     status: "complete",
     glb_url:
@@ -28,6 +39,7 @@ if (viewerDemo === "1" || viewerDemo === "c12" || viewerDemo === "c14") {
   // "" and authToken stays undefined -- today's behaviour is the default.
   const baseUrl = resolveBaseUrl(import.meta.env.VITE_RECON_BASE_URL);
   const authToken = resolveAuthToken(import.meta.env.VITE_RECON_TOKEN);
+  const appBasePath = resolveAppBasePath(import.meta.env.BASE_URL);
   // Same reasoning as viewer-demo above: a capture link pre-fills the order code so a supplier
   // isn't typing one in.
   const initialOrderCode = new URLSearchParams(window.location.search).get("order") ?? undefined;
@@ -38,6 +50,7 @@ if (viewerDemo === "1" || viewerDemo === "c12" || viewerDemo === "c14") {
   // as different things.
   mountAppShell(shellRoot, {
     baseUrl,
+    appBasePath,
     ...(authToken !== undefined ? { authToken } : {}),
     ...(initialOrderCode !== undefined ? { initialOrderCode } : {}),
   });
