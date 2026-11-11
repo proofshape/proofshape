@@ -281,7 +281,7 @@ Full detail in each story file.
 | [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Ready | _unclaimed_ |
 | [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Blocked | _unclaimed_ |
 | [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Blocked | _unclaimed_ |
-| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, R-34 | Blocked | _unclaimed_ |
+| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34 | Blocked | _unclaimed_ |
 | [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Blocked | _unclaimed_ |
 
 ---
@@ -292,12 +292,13 @@ The fourth slice of Phase 3 written up early, because it is overdue. The course 
 third of the project to be generative AI, and those components are never cut (AGENTS.md, D-017).
 VLM supervision was due in S2 (its M2 gate, "a screen photo is rejected by the VLM", was missed)
 and shape completion in S3; none of it is built. A-01/A-04/A-06/A-08/A-10/A-11/A-12 were the
-first stories that could start without the verdict, plus the agent's tools (A-06) and its
+first stories that could start without the verdict, including the agent's tools (A-06) and its
 deterministic fallback (A-08), which the proposal says is built first. A-02 (veto), A-03 (spec
-parser), A-05 (disagreement map), A-07 (agent loop) and A-09 (narrative) stayed titles-only until
-the verdict, A-04 or A-06/A-08 existed (P-26); written up below now that two of those three have
-(P-31) — A-06/A-08 are both Done, unblocking A-07; A-02/A-03/A-05/A-09 are still correctly
-Blocked on I-07, C-16 or a completion-runner story that doesn't exist yet.
+parser), A-05 (disagreement map), A-07 (agent loop), A-13 (agent model pin) and A-09 (narrative)
+stayed titles-only until the verdict, A-04 or A-06/A-08 existed (P-26); written up below now that
+two of those three have (P-31). A-07's core loop and A-05's fixture-scoped first pass are Ready;
+A-13 and the split-out C-22 (agent conversation view) depend on A-07; A-03's parser core is Ready,
+with its table-wiring follow-up waiting on C-16; A-02 and A-09 are still correctly Blocked on I-07.
 
 **What counts.** The test is "if you run it twice, can it give two different answers?"
 (AGENTS.md). A VLM's reply and sampled completions both can; the reconstruction backbone can't
@@ -328,9 +329,10 @@ Full detail in each story file.
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
 | [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
-| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | C-16 | Blocked | _unclaimed_ |
+| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Ready | _unclaimed_ |
 | [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Ready | _unclaimed_ |
-| [A-07](A/A-07.md) | Agent loop | 20 h | A-06, A-08 | Ready | _unclaimed_ |
+| [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Ready | _unclaimed_ |
+| [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Blocked | _unclaimed_ |
 | [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
 
 **Waiting on a decision, no story yet:**
@@ -431,11 +433,12 @@ COLOR_0's provenance, and the viewer colours only measured, Observed vertices.
 **Not here:**
 - S5's other capture bullets belong to generative-AI stories:
   - the prose-to-spec parser (A-03), whose table is C-16's;
-  - the disagreement-map arrow (A-05);
-  - the agent conversation view (A-07).
+  - the disagreement-map arrow (A-05).
+- The agent conversation view, split out of A-07 on review (P-31/#302), is its own story in this
+  section: C-22.
 - The whole system on both phones, and the backup demo, are X-04 and X-05.
 
-These seven total 32 h, planning estimates. That is 26 h of capture stories against S6's 11
+These eight total 38 h, planning estimates. That is 32 h of capture stories against S6's 11
 capture hours, and R-34's 6 h in the recon lane.
 
 Full detail in each story file.
@@ -450,6 +453,7 @@ Full detail in each story file.
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone and one Android phone | 4 h | C-13, C-20 | Ready | _unclaimed_ |
 | [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
+| [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Blocked | _unclaimed_ |
 
 ---
 
@@ -501,10 +505,10 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [X-01](X/X-01.md) | Integration point I1 | 2 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-08, C-09, R-14, R-15, F-05, F-07 | Ready | _unclaimed_ |
-| [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-02 | Blocked | _unclaimed_ |
-| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04 | Blocked | _unclaimed_ |
-| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18 | Blocked | _unclaimed_ |
+| [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Ready | _unclaimed_ |
+| [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Blocked | _unclaimed_ |
+| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Blocked | _unclaimed_ |
+| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
 ---
