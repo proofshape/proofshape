@@ -233,6 +233,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     setStatus(sessionStatus, "", "info");
     setStatus(cameraStatus, "", "info");
     setStatus(gyroStatus, "", "info");
+    reportLink.hidden = true;
+    reportLink.removeAttribute("href");
     startButton.disabled = true;
     // Fresh coverage tracking and gate-dedup state for this attempt -- without this, a frame
     // locally accepted under an abandoned session (e.g. a bad order code, then retried) would
