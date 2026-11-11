@@ -305,6 +305,41 @@ describe("contract-stub shapes match the committed examples", () => {
     expect(body.verdict).toBe("Fail");
     expect(body.reason_codes).toContain("observed_deviation_out_of_spec");
   });
+
+  it("keeps verdict and deviation-model scenarios scoped to one session", async () => {
+    stub.setReconstructionPendingPolls(0);
+
+    async function createReadySession(): Promise<string> {
+      const created = await fetch(`${baseUrl}/v1/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order_code: "PO-48213-A" }),
+      });
+      const { session_id: sessionId } = (await created.json()) as { session_id: string };
+      await uploadMinimumFrames(baseUrl, sessionId);
+      await fetch(`${baseUrl}/v1/sessions/${sessionId}/finish`, { method: "POST" });
+      await fetch(`${baseUrl}/v1/sessions/${sessionId}/reconstruction`);
+      return sessionId;
+    }
+
+    const sessionA = await createReadySession();
+    const sessionB = await createReadySession();
+    stub.setVerdictScenario("fail", sessionB);
+
+    const verdictA = await fetch(`${baseUrl}/v1/sessions/${sessionA}/verdict`);
+    const verdictB = await fetch(`${baseUrl}/v1/sessions/${sessionB}/verdict`);
+    expect(verdictA.status).toBe(404);
+    expect(verdictB.status).toBe(200);
+    expect(((await verdictB.json()) as { verdict?: string }).verdict).toBe("Fail");
+
+    const modelA = new Uint8Array(
+      await (await fetch(`${baseUrl}/v1/sessions/${sessionA}/model.glb`)).arrayBuffer(),
+    );
+    const modelB = new Uint8Array(
+      await (await fetch(`${baseUrl}/v1/sessions/${sessionB}/model.glb`)).arrayBuffer(),
+    );
+    expect(modelA).not.toEqual(modelB);
+  });
 });
 
 // C-09: `npm run dev:device` serves HTTPS over HTTP/2 (Vite's resolveHttpServer uses
