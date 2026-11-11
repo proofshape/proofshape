@@ -103,10 +103,11 @@ DEFAULT_MIN_BOARD_CLEARANCE_MM = 2.0
 # A board this noisy needs a floor that scales with its own noise, not only a fixed one: R-30's
 # golden rerun left s-02's residual_sigma_mm at 0.58mm (s-03 close behind at 0.57mm), only about
 # 3.4 sigma under the fixed 2.0mm floor above -- real above-plane noise can cross that floor and
-# get kept as "part" when it's actually board skin (#292). Measured against all five golden
-# objects at several candidate k (R-35's notes): this is the smallest multiplier that pulls s-02
-# (and s-03) clear of this without needlessly raising the other three's cut, which are already
-# comfortably under the fixed floor and should not move. D-063.
+# get kept as "part" when it's actually board skin (#292). Swept k=4.0 and 4.5 against all five
+# golden objects (R-35's notes, D-063): 4.5 helps s-02/s-03 more but leaves s-01 only 0.03mm of
+# headroom before its own sigma floor would start moving it too; 4.0 keeps s-01 about 12%
+# headroom while still measurably helping s-02 and s-03. Not the smallest k that moves them at
+# all (that's closer to 3.5) -- chosen for the headroom margin, not for the smallest effect.
 DEFAULT_BOARD_CLEARANCE_SIGMA_K = 4.0
 
 # R-26 rounds 2-3 (#180, review on #241) tried telling a part's own flat top apart from a

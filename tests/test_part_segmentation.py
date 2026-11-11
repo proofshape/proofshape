@@ -379,6 +379,26 @@ def test_measure_board_surface_explicit_height_threshold_skips_the_layer_search(
     assert surface.height_threshold_mm == 12.0
 
 
+def test_explicit_height_threshold_is_not_raised_by_the_sigma_floor_on_a_noisy_board():
+    # #292/D-063 review: the override must stay exactly the caller's value even when the board
+    # is noisy enough that clearance_sigma_k * residual_sigma_mm would exceed it -- a caller
+    # deliberately asking for a low threshold (a buyer's own tolerance, say) must not have it
+    # silently raised underneath them. A version that returned
+    # max(float(height_threshold_mm), clearance_sigma_k * residual_sigma_mm) instead still passes
+    # every other test in this file, since the existing override test's board is too quiet for
+    # k * sigma to ever exceed its threshold -- this is the one that would catch it.
+    rng = np.random.default_rng(11)
+    points = _board_and_part_points(
+        rng, offset_mm=2.0, board_noise_mm=0.6, part_height_above_board_mm=20.0
+    )
+
+    surface = part_segmentation.measure_board_surface(points, height_threshold_mm=1.0)
+
+    assert surface.residual_sigma_mm > 0.4
+    assert surface.board_layer_top_mm is None
+    assert surface.height_threshold_mm == 1.0
+
+
 # --- segment_part: height threshold direction, with a trivial flat surface -------------------
 # board_pose.py's z convention: origin on the paper, z = 0 there, z increasing *into* the
 # table, so a camera (and anything else) above the board has negative z. Height above the board
