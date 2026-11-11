@@ -1,0 +1,111 @@
+name: Capture Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "capture/**"
+      - ".github/workflows/capture-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: capture-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: capture/package-lock.json
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Install dependencies
+        working-directory: capture
+        run: npm ci
+
+      - name: Guard O-005 public recon prerequisites
+        env:
+          PUBLIC_RECON_ENABLED: ${{ vars.PROOFSHAPE_PUBLIC_RECON_ENABLED }}
+          CORS_PREFLIGHT_CONFIRMED: ${{ vars.PROOFSHAPE_CORS_PREFLIGHT_CONFIRMED }}
+          PUBLIC_TOKEN_ACCEPTED: ${{ vars.PROOFSHAPE_PUBLIC_TOKEN_ACCEPTED }}
+          ORDER_GATE_CONFIRMED: ${{ vars.PROOFSHAPE_ORDER_GATE_CONFIRMED }}
+          RECON_BASE_URL: ${{ vars.PROOFSHAPE_RECON_BASE_URL }}
+          RECON_TOKEN: ${{ secrets.PROOFSHAPE_RECON_TOKEN }}
+        run: |
+          if [ "$PUBLIC_RECON_ENABLED" = "true" ]; then
+            if [ "$CORS_PREFLIGHT_CONFIRMED" != "true" ]; then
+              echo "O-005 is incomplete: CORS preflight has not been confirmed." >&2
+              exit 1
+            fi
+            if [ "$PUBLIC_TOKEN_ACCEPTED" != "true" ]; then
+              echo "O-005 is incomplete: public client-bundle token exposure has not been accepted." >&2
+              exit 1
+            fi
+            if [ "$ORDER_GATE_CONFIRMED" != "true" ]; then
+              echo "O-005 is incomplete: order-code protection against arbitrary GPU runs is not confirmed." >&2
+              exit 1
+            fi
+            if [ -z "$RECON_BASE_URL" ] || [ -z "$RECON_TOKEN" ]; then
+              echo "Public recon is enabled but its URL/token is incomplete." >&2
+              exit 1
+            fi
+          fi
+
+      - name: Build capture app
+        working-directory: capture
+        env:
+          VITE_RECON_BASE_URL: ${{ vars.PROOFSHAPE_PUBLIC_RECON_ENABLED == 'true' && vars.PROOFSHAPE_CORS_PREFLIGHT_CONFIRMED == 'true' && vars.PROOFSHAPE_PUBLIC_TOKEN_ACCEPTED == 'true' && vars.PROOFSHAPE_ORDER_GATE_CONFIRMED == 'true' && vars.PROOFSHAPE_RECON_BASE_URL || '' }}
+          VITE_RECON_TOKEN: ${{ vars.PROOFSHAPE_PUBLIC_RECON_ENABLED == 'true' && vars.PROOFSHAPE_CORS_PREFLIGHT_CONFIRMED == 'true' && vars.PROOFSHAPE_PUBLIC_TOKEN_ACCEPTED == 'true' && vars.PROOFSHAPE_ORDER_GATE_CONFIRMED == 'true' && secrets.PROOFSHAPE_RECON_TOKEN || '' }}
+        run: npm run build -- --base "${{ steps.pages.outputs.base_path }}/"
+
+      - name: Verify Pages base-path asset rewriting
+        working-directory: capture
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          expected="${PAGES_BASE_PATH}/assets/"
+          if ! grep -F "$expected" dist/index.html >/dev/null; then
+            echo "index.html does not contain the configured Pages asset base: $expected" >&2
+            exit 1
+          fi
+          if ! grep -F "$expected" dist/report.html >/dev/null; then
+            echo "report.html does not contain the configured Pages asset base: $expected" >&2
+            exit 1
+          fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: capture/dist
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 5
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
