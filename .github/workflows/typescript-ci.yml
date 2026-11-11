@@ -47,6 +47,11 @@ jobs:
         working-directory: capture
         run: npm run typecheck
 
+      - name: Production build
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: capture
+        run: npm run build
+
       - name: ESLint
         if: steps.detect.outputs.exists == 'true'
         working-directory: capture
