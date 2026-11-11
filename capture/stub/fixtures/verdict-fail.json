@@ -16,7 +16,5 @@
       "contributes_to_verdict": true
     }
   ],
-  "reason_codes": [
-    "observed_deviation_out_of_spec"
-  ]
+  "reason_codes": ["observed_deviation_out_of_spec"]
 }
