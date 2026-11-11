@@ -50,8 +50,8 @@ describe("main entrypoint", () => {
     expect(mocks.mountModelViewer).not.toHaveBeenCalled();
   });
 
-  it("passes a capture link's ?order= through as initialOrderCode (C-13)", async () => {
-    const root = await loadMain("/?order=PO-48213-A");
+  it("passes a capture link's ?order= through under the GitHub Pages base path (C-21)", async () => {
+    const root = await loadMain("/proofshape/?order=PO-48213-A");
 
     expect(mocks.mountAppShell).toHaveBeenCalledWith(root, {
       baseUrl: "",
