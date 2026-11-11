@@ -212,6 +212,48 @@ def test_second_board_layer_is_excluded_from_the_cut():
     assert part_kept.all()
 
 
+def test_noisy_single_board_layer_raises_the_floor_above_the_fixed_clearance():
+    # #292: nothing above exercises a clean single board layer that is simply noisier than
+    # DEFAULT_MIN_BOARD_CLEARANCE_MM accounts for -- s-02's real post-R-30 residual_sigma_mm
+    # (0.58mm) left only about 3.4 sigma under the old fixed 2.0mm floor, letting real
+    # above-plane noise survive the cut as "part" when it was really board. No second layer
+    # here at all -- this is the layer-top search finding nothing dramatic, just a plain board
+    # that is this noisy.
+    rng = np.random.default_rng(11)
+    points = _board_and_part_points(
+        rng, offset_mm=2.0, board_noise_mm=0.6, part_height_above_board_mm=20.0
+    )
+
+    surface = part_segmentation.measure_board_surface(points)
+
+    # The sigma floor, not the fixed floor or the layer-top search, must be what's binding.
+    assert surface.residual_sigma_mm > 0.4
+    assert (
+        surface.height_threshold_mm > part_segmentation.DEFAULT_MIN_BOARD_CLEARANCE_MM
+    )
+    assert surface.height_threshold_mm == pytest.approx(
+        part_segmentation.DEFAULT_BOARD_CLEARANCE_SIGMA_K * surface.residual_sigma_mm
+    )
+
+
+def test_clean_board_clearance_is_unaffected_by_the_sigma_floor():
+    # The sigma floor is a second, independent floor alongside the fixed one, not a replacement
+    # for it -- a clean, low-noise board (sigma small enough that clearance_sigma_k * sigma
+    # stays well under the fixed 2.0mm floor) must land at exactly the same threshold the fixed
+    # floor alone always gave.
+    rng = np.random.default_rng(11)
+    points = _board_and_part_points(
+        rng, offset_mm=2.0, board_noise_mm=0.1, part_height_above_board_mm=20.0
+    )
+
+    surface = part_segmentation.measure_board_surface(points)
+
+    assert surface.residual_sigma_mm < 0.2
+    assert surface.height_threshold_mm == pytest.approx(
+        part_segmentation.DEFAULT_MIN_BOARD_CLEARANCE_MM
+    )
+
+
 # --- measure_board_surface: explicit errors, never a silent fallback to z=0 ------------------
 
 
@@ -335,6 +377,26 @@ def test_measure_board_surface_explicit_height_threshold_skips_the_layer_search(
 
     assert surface.board_layer_top_mm is None
     assert surface.height_threshold_mm == 12.0
+
+
+def test_explicit_height_threshold_is_not_raised_by_the_sigma_floor_on_a_noisy_board():
+    # #292/D-063 review: the override must stay exactly the caller's value even when the board
+    # is noisy enough that clearance_sigma_k * residual_sigma_mm would exceed it -- a caller
+    # deliberately asking for a low threshold (a buyer's own tolerance, say) must not have it
+    # silently raised underneath them. A version that returned
+    # max(float(height_threshold_mm), clearance_sigma_k * residual_sigma_mm) instead still passes
+    # every other test in this file, since the existing override test's board is too quiet for
+    # k * sigma to ever exceed its threshold -- this is the one that would catch it.
+    rng = np.random.default_rng(11)
+    points = _board_and_part_points(
+        rng, offset_mm=2.0, board_noise_mm=0.6, part_height_above_board_mm=20.0
+    )
+
+    surface = part_segmentation.measure_board_surface(points, height_threshold_mm=1.0)
+
+    assert surface.residual_sigma_mm > 0.4
+    assert surface.board_layer_top_mm is None
+    assert surface.height_threshold_mm == 1.0
 
 
 # --- segment_part: height threshold direction, with a trivial flat surface -------------------

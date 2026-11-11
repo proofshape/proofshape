@@ -24,9 +24,11 @@ R-21: R-04 aligns camera centres, not the board plane, so the real board does no
 z = 0 -- R-17 measured it 1.6-5.4 mm below z = 0 on the golden set, with tilt up to 0.9 degrees.
 `measure_board_surface` fits a robust plane to the board points actually seen around the part, and
 `segment_part`'s height check is relative to that plane, not to z = 0. The threshold itself is
-measured from the fitted plane's own board layer (see `measure_board_surface`'s docstring), not a
-fixed 2 mm, so a reconstruction with a thicker or noisier board layer (R-17 found a weak second
-layer 4-6 mm up on two of the five golden objects) still gets a threshold that clears it.
+measured from the fitted plane's own board layer and its own residual noise (see
+`measure_board_surface`'s docstring), not a fixed 2 mm, so a reconstruction with a thicker board
+layer (R-17 found a weak second layer 4-6 mm up on two of the five golden objects) or a noisier
+one (R-30 found residual board sigma up to 0.58 mm on the golden set, #292) still gets a threshold
+that clears it.
 """
 
 from __future__ import annotations
@@ -94,8 +96,19 @@ DEFAULT_MAX_BOARD_LAYER_MM = 10.0
 DEFAULT_BOARD_LAYER_DENSITY_FRACTION = 0.05
 
 # The height threshold never goes below this, even if the fitted board layer is thinner --
-# R-06's original fixed margin, kept as a floor once the board is this clean.
+# R-06's original fixed margin, kept as a floor once the board is this clean and this quiet --
+# see DEFAULT_BOARD_CLEARANCE_SIGMA_K just below for the floor that scales with noise instead.
 DEFAULT_MIN_BOARD_CLEARANCE_MM = 2.0
+
+# A board this noisy needs a floor that scales with its own noise, not only a fixed one: R-30's
+# golden rerun left s-02's residual_sigma_mm at 0.58mm (s-03 close behind at 0.57mm), only about
+# 3.4 sigma under the fixed 2.0mm floor above -- real above-plane noise can cross that floor and
+# get kept as "part" when it's actually board skin (#292). Swept k=4.0 and 4.5 against all five
+# golden objects (R-35's notes, D-063): 4.5 helps s-02/s-03 more but leaves s-01 only 0.03mm of
+# headroom before its own sigma floor would start moving it too; 4.0 keeps s-01 about 12%
+# headroom while still measurably helping s-02 and s-03. Not the smallest k that moves them at
+# all (that's closer to 3.5) -- chosen for the headroom margin, not for the smallest effect.
+DEFAULT_BOARD_CLEARANCE_SIGMA_K = 4.0
 
 # R-26 rounds 2-3 (#180, review on #241) tried telling a part's own flat top apart from a
 # legitimate raised board layer (R-17) first with a per-cell median, then with a side-wall
@@ -247,6 +260,7 @@ def measure_board_surface(
     max_board_layer_mm: float = DEFAULT_MAX_BOARD_LAYER_MM,
     layer_density_fraction: float = DEFAULT_BOARD_LAYER_DENSITY_FRACTION,
     min_clearance_mm: float = DEFAULT_MIN_BOARD_CLEARANCE_MM,
+    clearance_sigma_k: float = DEFAULT_BOARD_CLEARANCE_SIGMA_K,
     height_threshold_mm: float | None = None,
 ) -> BoardSurface:
     """Fit the real board surface from the board points around the part, and size the height cut.
@@ -264,9 +278,16 @@ def measure_board_surface(
        The height threshold is set to clear the *top* of the highest dense bin, so a raised
        layer separated from the main board by a sparser gap doesn't slip through the cut.
 
+    The resolved threshold is also never allowed below `clearance_sigma_k` times the plane fit's
+    own `residual_sigma_mm` -- a board that is itself noisier than `min_clearance_mm`'s fixed
+    floor accounts for (R-30 measured 0.58 mm residual sigma on one golden object, only about 3.4
+    sigma under the old fixed 2.0 mm floor, #292) still gets a threshold that clears its own
+    noise, not just whatever the layer search happened to find. D-063.
+
     `height_threshold_mm`, when given, skips this search entirely: the returned
-    `BoardSurface.height_threshold_mm` is this value as-is (no `min_clearance_mm` floor, since
-    it's explicit) and `board_layer_top_mm` is `None`. This is the override's whole point (R-26):
+    `BoardSurface.height_threshold_mm` is this value as-is (no `min_clearance_mm` floor or
+    `clearance_sigma_k` sigma floor, since it's explicit) and `board_layer_top_mm` is `None`.
+    This is the override's whole point (R-26):
     a caller already working around a layer-search failure must not still run into it here. Per
     D-060, this is currently the only reliable way to segment a flat part under
     `DEFAULT_MAX_BOARD_LAYER_MM` -- the search below cannot yet tell such a part's own flat top
@@ -368,7 +389,15 @@ def measure_board_surface(
             "this thick."
         )
     board_layer_top_mm = float(bin_edges_mm[top_bin_index + 1])
-    resolved_height_threshold_mm = max(min_clearance_mm, board_layer_top_mm)
+    # #292/D-063: a fixed floor alone isn't safe on a noisy board -- s-02's post-R-30
+    # residual_sigma_mm (0.58mm) left only about 3.4 sigma under the old fixed 2.0mm floor,
+    # letting real above-plane noise survive as "part". Taking the max against
+    # clearance_sigma_k * residual_sigma_mm as well means the floor rises with the board's own
+    # measured noise instead of staying fixed. board_layer_top_mm still wins outright whenever
+    # the layer search finds real structure (R-21/D-060) above either floor.
+    resolved_height_threshold_mm = max(
+        min_clearance_mm, clearance_sigma_k * residual_sigma_mm, board_layer_top_mm
+    )
 
     return BoardSurface(
         slope_x=slope_x,
