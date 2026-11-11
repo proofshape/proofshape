@@ -120,11 +120,13 @@ td {
   }
 
   #report-print-heatmap:not([hidden]),
-  #report-print-legend:not([hidden]) {
+  #report-print-legend:not([hidden]),
+  #report-print-viewer-status:not([hidden]) {
     display: block !important;
   }
 
-  #report-print-legend {
+  #report-print-legend,
+  #report-print-viewer-status {
     font-size: 8pt;
     margin-top: 3px;
   }
