@@ -23,9 +23,7 @@ describe("GitHub Pages production build", () => {
     });
 
     const rollupOutputs = Array.isArray(result) ? result : [result];
-    const outputs = rollupOutputs
-      .filter(isRollupOutput)
-      .flatMap((entry) => entry.output);
+    const outputs = rollupOutputs.filter(isRollupOutput).flatMap((entry) => entry.output);
 
     const html = outputs.find(
       (entry): entry is OutputAsset =>
