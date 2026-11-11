@@ -235,6 +235,8 @@ Full detail in each story file.
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Blocked | _unclaimed_ |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
+| [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Blocked | _unclaimed_ |
+| [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Blocked | _unclaimed_ |
 
 ---
 
@@ -276,6 +278,11 @@ Full detail in each story file.
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Done | @TabeenRaoof |
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Done | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
+| [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Ready | _unclaimed_ |
+| [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Blocked | _unclaimed_ |
+| [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Blocked | _unclaimed_ |
+| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, R-34 | Blocked | _unclaimed_ |
+| [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Blocked | _unclaimed_ |
 
 ---
 
@@ -284,10 +291,13 @@ Full detail in each story file.
 The fourth slice of Phase 3 written up early, because it is overdue. The course requires about a
 third of the project to be generative AI, and those components are never cut (AGENTS.md, D-017).
 VLM supervision was due in S2 (its M2 gate, "a screen photo is rejected by the VLM", was missed)
-and shape completion in S3; none of it is built. These are the first stories that can start
-without the verdict, plus the agent's tools (A-06) and its deterministic fallback (A-08), which
-the proposal says is built first. A-02 (veto), A-03 (spec parser), A-05 (disagreement map), A-07
-(agent loop) and A-09 (narrative) stay titles-only until the verdict, A-04 or A-06/A-08 exist.
+and shape completion in S3; none of it is built. A-01/A-04/A-06/A-08/A-10/A-11/A-12 were the
+first stories that could start without the verdict, plus the agent's tools (A-06) and its
+deterministic fallback (A-08), which the proposal says is built first. A-02 (veto), A-03 (spec
+parser), A-05 (disagreement map), A-07 (agent loop) and A-09 (narrative) stayed titles-only until
+the verdict, A-04 or A-06/A-08 existed (P-26); written up below now that two of those three have
+(P-31) — A-06/A-08 are both Done, unblocking A-07; A-02/A-03/A-05/A-09 are still correctly
+Blocked on I-07, C-16 or a completion-runner story that doesn't exist yet.
 
 **What counts.** The test is "if you run it twice, can it give two different answers?"
 (AGENTS.md). A VLM's reply and sampled completions both can; the reconstruction backbone can't
@@ -317,6 +327,11 @@ Full detail in each story file.
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Claimed | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
+| [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
+| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | C-16 | Blocked | _unclaimed_ |
+| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Ready | _unclaimed_ |
+| [A-07](A/A-07.md) | Agent loop | 20 h | A-06, A-08 | Ready | _unclaimed_ |
+| [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
 
 **Waiting on a decision, no story yet:**
 - **Completion on a host that serves suppliers.** A-12's runner works on a CUDA host, but two
@@ -402,8 +417,8 @@ waits for and where it sits on the cut list (§10).
 
 **Ready now: C-18.**
 - C-14 and C-15 are built against the mock (sprint plan §5, D4). The real deviations come from
-  I-06 and the real verdict from I-07. Both are still titles-only, and both are checked end to
-  end at X-03 or X-04.
+  I-06 (written up, Ready) and the real verdict from I-07 (written up, Blocked). Both are
+  checked end to end at X-03 or X-04.
 
 **R-34 is a recon story in this section** because C-16 waits on it. It builds the order store
 (proposal §5: "a folder and a JSON file per PO"), and makes `createSession` check the order code
@@ -471,6 +486,29 @@ chain story hands it off the same day if stuck.
 
 ---
 
+## Cross-cutting
+
+The fifth slice written up (P-31), covering the sprint plan's four scheduled integration points
+(I1-I4) and the recorded backup demo. "Integration point (I1-I4): a scheduled day when all other
+work stops and the three parts are wired together and proven" (glossary); "during I1-I4 all other
+work stops" (working agreements). I1 and I2's calendar dates have already passed; X-01 writes up
+and runs I1 as a retrospective check now that every dependency it needs is Done. I3 and I4 are
+still genuinely in the future, correctly Blocked on the verdict chain and on the app reaching
+feature-complete, respectively. X-05 is the kept-current backup recording itself, distinct from
+X-04's one-time act of running and recording I4.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [X-01](X/X-01.md) | Integration point I1 | 2 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-08, C-09, R-14, R-15, F-05, F-07 | Ready | _unclaimed_ |
+| [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-02 | Blocked | _unclaimed_ |
+| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04 | Blocked | _unclaimed_ |
+| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18 | Blocked | _unclaimed_ |
+| [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
+
+---
+
 ## Planning lane
 
 The work that keeps the project steerable but belongs to no single story: the proposal and the
@@ -522,31 +560,7 @@ Full detail in each story file.
 | [P-27](P/P-27.md) | Review every Done story; file its code bugs and write up the follow-up stories | — | nothing | Done | @TabeenRaoof |
 | [P-29](P/P-29.md) | Accuracy check after A-12; open issues reconciled with the stories | — | nothing | Done | @TabeenRaoof |
 | [P-30](P/P-30.md) | Write up the capture-app stories | — | nothing | Done | @TabeenRaoof |
-
----
-
-## Phase 3 and beyond · titles only
-
-Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
-
-The thin capture thread (C-01–C-13), ground truth (G-01–G-09), the first half of inspection
-(I-01–I-05), the first generative-AI stories (A-01, A-04, A-06, A-08, A-10, A-11, A-12) and the
-rest of the capture app (C-14–C-18 and C-21, with R-34) are the exceptions — all written up above,
-not here: the capture thread is meant to run early, ground truth sits on the critical path,
-inspection's sprint has started, generative AI is overdue from S2/S3, and the capture app's last
-stories go to the Nov 13 boundary call.
-
-**Inspection**
-I-06 deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
-
-**Ground truth**
-G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)
-
-**Generative AI**
-A-02 VLM verdict veto · A-03 prose-to-spec parser · A-05 disagreement map (needs *completion on a host that serves suppliers*, above) · A-07 agent loop · A-09 report narrative
-
-**Cross-cutting**
-X-01 integration point I1 · X-02 I2 · X-03 I3 · X-04 I4 · X-05 recorded backup demo
+| [P-31](P/P-31.md) | Write up the remaining inspection, ground-truth, generative-AI and cross-cutting stories | — | nothing | Claimed | @dalwalyk |
 
 ---
 
