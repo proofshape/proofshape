@@ -381,13 +381,60 @@ Full detail in each story file.
 | [R-29](R/R-29.md) | Contract-shaped validation errors and an Inferred-aware hard-rule test | 2 h | F-03, R-14 | Done | @dalwalyk |
 | [R-30](R/R-30.md) | Per-frame board re-anchoring before fusion | 5 h | R-07, R-21 | Done | @dalwalyk |
 | [R-31](R/R-31.md) | macOS: Open3D and torch in one process without a deadlock (#261) | 2 h | R-27 | Done | @mbj1994 |
-| [R-32](R/R-32.md) | Spike: is R-22's per-pixel depth error VGGT's own? Compare backends on s-04 and s-05 | 5 h | R-11, R-12, R-22, R-23 | Claimed | @mbj1994 |
-| [R-33](R/R-33.md) | Wall surfaces fill the fusion volume | 5 h | R-07, R-30 | Claimed | @dalwalyk |
+| [R-32](R/R-32.md) | Spike: is R-22's per-pixel depth error VGGT's own? Compare backends on s-04 and s-05 | 5 h | R-11, R-12, R-22, R-23 | Claimed | @mbj1994; @TabeenRaoof |
+| [R-33](R/R-33.md) | Wall surfaces fill the fusion volume | 5 h | R-07, R-30 | Done | @dalwalyk |
 | [C-19](C/C-19.md) | The viewer says when a model has no provenance; the mock matches the service | 3 h | C-10, C-12, C-13 | Done | @dalwalyk |
 | [C-20](C/C-20.md) | Capture gate and orbit maths: heading wrap, roll, gate order | 3 h | C-06, C-07, C-09 | Done | @mbj1994 |
 | [F-08](F/F-08.md) | Fixture and image safety: downloader verification, case-insensitive photo ignores, image path filters | 3 h | F-06, R-15 | Done | @dalwalyk |
 | [I-12](I/I-12.md) | Synthetic-generator tests that pin noise, seed and the board frame | 2 h | I-01 | Done | @dalwalyk |
 | [P-28](P/P-28.md) | Process tooling: checker exit codes, the decision-number snippet, a portable deck build | 3 h | nothing | Done | @dalwalyk |
+
+---
+
+## Capture app: heatmap, report, buyer side and hosting
+
+The rest of the capture app, written up on 2026-11-09 (P-30). That is four days before M5's
+feature freeze on Nov 13, after which "Nothing new is started" (sprint plan §6). The heatmap and
+the report page were S4 work, and buyer setup, the board PDF and report export S5 work. S6 has 11
+capture hours, for device testing and its fixes. So these go to the Nov 13 boundary call to be
+carried or cut, never silently rolled forward (working agreement 4). Each story says what it
+waits for and where it sits on the cut list (§10).
+
+**Ready now: C-18.**
+- C-14 and C-15 are built against the mock (sprint plan §5, D4). The real deviations come from
+  I-06 and the real verdict from I-07. Both are still titles-only, and both are checked end to
+  end at X-03 or X-04.
+
+**R-34 is a recon story in this section** because C-16 waits on it. It builds the order store
+(proposal §5: "a folder and a JSON file per PO"), and makes `createSession` check the order code
+against it. It is a D-031 contract change on top of A-11's, realistically merging at the Dec 2
+boundary.
+
+**The heatmap's data channel is D-062.** I-06 writes `_DEVIATION_MM` into the served GLB beside
+COLOR_0's provenance, and the viewer colours only measured, Observed vertices.
+
+**Not here:**
+- S5's other capture bullets belong to generative-AI stories:
+  - the prose-to-spec parser (A-03), whose table is C-16's;
+  - the disagreement-map arrow (A-05);
+  - the agent conversation view (A-07).
+- The whole system on both phones, and the backup demo, are X-04 and X-05.
+
+These seven total 32 h, planning estimates. That is 26 h of capture stories against S6's 11
+capture hours, and R-34's 6 h in the recon lane.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [C-14](C/C-14.md) | Heatmap rendering in the viewer (D-062) | 4 h | C-12 | Done | @mbj1994 |
+| [C-15](C/C-15.md) | Report page: verdict, reasons, heatmap, print to PDF | 5 h | C-10, C-14, C-19 | Done | @mbj1994 |
+| [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Blocked | _unclaimed_ |
+| [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Claimed | @dalwalyk |
+| [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Blocked | _unclaimed_ |
+| [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
+| [C-18](C/C-18.md) | Device testing: the capture path on one iPhone and one Android phone | 4 h | C-13, C-20 | Ready | _unclaimed_ |
+| [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
 
 ---
 
@@ -474,7 +521,7 @@ Full detail in each story file.
 | [P-26](P/P-26.md) | Write up the first generative-AI stories | — | nothing | Done | @TabeenRaoof |
 | [P-27](P/P-27.md) | Review every Done story; file its code bugs and write up the follow-up stories | — | nothing | Done | @TabeenRaoof |
 | [P-29](P/P-29.md) | Accuracy check after A-12; open issues reconciled with the stories | — | nothing | Done | @TabeenRaoof |
-| [P-30](P/P-30.md) | Write up the capture-app stories | — | nothing | Claimed | @TabeenRaoof |
+| [P-30](P/P-30.md) | Write up the capture-app stories | — | nothing | Done | @TabeenRaoof |
 
 ---
 
@@ -483,16 +530,14 @@ Full detail in each story file.
 Not written out yet, on purpose. We elaborate one sprint ahead at the boundary call, because most of these would be wrong if written in September.
 
 The thin capture thread (C-01–C-13), ground truth (G-01–G-09), the first half of inspection
-(I-01–I-05) and the first generative-AI stories (A-01, A-04, A-06, A-08, A-10, A-11, A-12) are the
-exceptions — all written up above, not here: the capture thread is meant to run early, ground
-truth sits on the critical path, inspection's sprint has started, and generative AI is overdue
-from S2/S3.
-
-**Capture app**
-C-14 heatmap rendering · C-15 report page · C-16 buyer setup · C-17 board PDF with order code · C-18 device testing
+(I-01–I-05), the first generative-AI stories (A-01, A-04, A-06, A-08, A-10, A-11, A-12) and the
+rest of the capture app (C-14–C-18 and C-21, with R-34) are the exceptions — all written up above,
+not here: the capture thread is meant to run early, ground truth sits on the critical path,
+inspection's sprint has started, generative AI is overdue from S2/S3, and the capture app's last
+stories go to the Nov 13 boundary call.
 
 **Inspection**
-I-06 deviation computation · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
+I-06 deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) · I-07 verdict logic (#157: `max(σ, σ_floor)`) · I-08 unobserved-geometry rule · I-09 intake pre-check · I-10 unverifiable path
 
 **Ground truth**
 G-10 σ_floor for the sheet and card references · G-11 robustness set (glossy, dark and thin parts, a screen photo, the wrong part)

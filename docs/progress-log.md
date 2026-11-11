@@ -2083,3 +2083,103 @@ story.
 
 **Not done here:** printing (from G-01's first lab visit, 2026-11-10), calipering, and the
 readings file's new `kind`s. Those land in the printing PR, which also closes the story (D-038).
+
+## 2026-11-09 — P-30 capture-app stories written up (C-14..C-18, C-21, R-34)
+
+**Who:** @TabeenRaoof (PR #283). The claim was #282.
+
+**What changed:** the capture app's five remaining titles, plus two stories nobody had, in a new
+"Capture app" section of `stories/README.md`. The two new ones are hosting, which D-048 deferred to
+its own story, and the order store the buyer page needs.
+- C-14: heatmap rendering in the viewer, built against a canned sample in the mock.
+- C-15: the report page, built against the contract's verdict examples, printing to PDF.
+- R-34: the order store and the order-code check, a D-031 contract change.
+- C-16: the buyer page: CAD, the editable tolerance table, the placement note and the capture link.
+- C-17: the board PDF with the order code, a QR code and an orientation arrow, with the board
+  unchanged.
+- C-18: device testing on one iPhone and one Android phone, keyboard access and error messages.
+- C-21: CI builds the app, GitHub Pages deploys it from `main`, and O-005 is answered first.
+
+D-062 records how I-06's deviation reaches the viewer: as numbers in the served GLB, beside the
+provenance colours. The manual's §0, §3.4, §4, §8.2 and §8.3 now name the story that builds each
+part.
+
+**Result:** C-14, C-18 and C-21 Ready; C-15, R-34, C-16 and C-17 Blocked; none claimed. The checker
+is consistent and `--fix` changes nothing. P-30 closed at 1 h actual, the owner's figure. No code.
+
+**Next:** the Nov 13 boundary call carries or cuts each story. That is 26 h of capture stories
+against S6's 11 capture hours, plus R-34's 6 h. R-34 is a D-031 request, realistically for the Dec 2
+boundary, which puts C-16 and C-17 just before M7's code freeze.
+
+## 2026-11-10 — R-33 criterion 2 recorded: golden-set measurement (PR #285)
+
+**Who:** @dalwalyk (author); reviewed and approved by @mbj1994.
+
+**What changed:** recorded @TabeenRaoof's criterion-2 measurement from #231's comment thread into
+`R-33.md`: `scripts/measure_frame_vote_consensus.py` run on all five golden objects. R-33's own
+"Why this exists" hypothesis — a single noisy frame voting a near-zero crossing — turns out only
+half right. At 90–98% of sampled wall points, no frame contributes any vote at all, while real part
+surface gets broad multi-frame agreement (median 11.5–17.5 contributing frames). Also recorded the
+likely mechanism, shown synthetically by @TabeenRaoof: `fuse_tsdf` initialises every voxel's TSDF to
+`0.0`, exactly `extract_mesh_marching_cubes`'s own `level=0.0`; scikit-image 0.24 doesn't guarantee
+its `mask=weight>0` keeps a mask boundary from fabricating a surface, and a synthetic grid with no
+real surface still built 541 faces along an observed/unobserved boundary. Two further notes for
+whoever designs criterion 3: a naive `+truncation_mm` initialisation only partly fixes it, and a
+no-crossing volume would newly crash `extract_mesh_marching_cubes` with an uncaught `ValueError`.
+Docs only, no code.
+
+**Result:** merged to `main` at `cbac8a8`. R-33 stays `Claimed` — no fix is claimed here.
+`check_story_states.py` clean; ruff, typescript and pytest all green on the merged head.
+
+**Concluded:** criterion 2's real driver is zero-vote wall points at the mask boundary, not an
+occasional false near-surface vote from a single frame.
+
+**Next:** PR #287, "stop marching cubes fabricating walls at the mask boundary," is already open
+against this finding as the criterion-3 fix.
+
+## 2026-11-11 — R-33 Done: fourth and fifth criteria, real golden rerun (PR #290)
+
+**Who:** @dalwalyk (PR #290); reviewed by @mbj1994 and @TabeenRaoof.
+
+**What changed:** closed R-33's remaining two acceptance criteria with an independent rerun, not
+a transcription of prior review figures: fresh `gdown` of all five golden captures, VGGT on `mps`,
+R-02 through R-10 run end to end with #287's merged exact-filter fix. Wall share (face count) came
+back 0.2–2.6% on all five, down from criterion 1's own 34–79% "after R-30" baseline, with every
+wall-classified face Observed-0% except s-02. Reran criterion 2's own frame-vote-consensus tool
+against the fixed mesh to explain that exception: s-02's residual wall sample gets a median of 28
+contributing frames (broader agreement than its own part sample's 17), so it is real, well-agreed
+geometry a simple height/footprint classifier mislabels, not a recurrence of the fusion bug.
+Confirmed A-04 isolation and C-08 next-view scoring complete on all five fixed meshes with no code
+changes, and the I-03/I-04/I-05 inspection registration lane completes on the two objects with a
+reference CAD (s-04, s-05). `docs/manual.md` §8.1 updated — it still quoted the pre-fix 10–40%
+observed-fraction range.
+
+**Review found two real gaps**, both fixed before merge: the record mixed area-share and
+face-share figures across two different measurements, and conflated R-33's four-bullet-looking
+list with its actual five acceptance criteria (this PR covers criteria 4 and 5, not just one).
+`@TabeenRaoof` also caught that `Fixes #231` would have been premature — #231 has two halves, and
+only the wall half is actually resolved; s-02 still serves 54.4% of its faces as board skin, a
+problem R-30 already flagged and punted. Filed as #292; #231 got a plain comment and PR #290 was
+intended not to close it.
+
+**It closed anyway.** GitHub's closing-keyword parser doesn't parse negation — one of #290's own
+commit messages explained a design choice as "Stop short of `Fixes #231`", and the parser matched
+the literal substring regardless of the surrounding sentence, auto-closing #231 the moment that
+commit reached `main` in #290's merge. Caught by `@mbj1994` reviewing this very log entry (PR
+#294), since the log's own "#231 stays open" no longer matched GitHub's actual state. Reopened
+with an explanatory comment rather than rewriting the record to match the accident. **Lesson:**
+a commit message discussing why an issue isn't being closed still can't contain that issue's
+closing-keyword phrase verbatim, even negated — GitHub's parser only pattern-matches text, once
+that commit reaches the default branch.
+
+**Result:** merged to `main` at `2ef99e1`. R-33 `State: Done`, `8 h actual` (est 5, a real measured
+figure, not the estimate copied over). `check_story_states.py` clean; ruff, typescript and pytest
+all green on the merged head.
+
+**Concluded:** all five of R-33's acceptance criteria are done across #278, #285, #287 and #290.
+The wall-fabrication bug #231 named is fixed and independently confirmed twice (TabeenRaoof's
+stored runs, this PR's fresh ones). #231 is reopened and stays open for its other half, tracked
+by #292.
+
+**Next:** #292 (s-02's board-skin regression under R-30's fixed 2.0 mm cut) is unclaimed. R-30's
+own notes suggest a sigma-relative cut as the starting point.

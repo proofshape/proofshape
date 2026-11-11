@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pygltflib
 import pytest
 
 from recon import mesh_cleanup, tsdf_fusion
@@ -309,6 +310,84 @@ def test_glb_round_trips_with_colors(tmp_path):
     np.testing.assert_allclose(read_vertices, _TETRAHEDRON_VERTICES)
     np.testing.assert_array_equal(read_faces, _TETRAHEDRON_FACES_CLOSED)
     np.testing.assert_array_equal(read_colors, colors)
+
+
+def test_write_glb_custom_float_attributes_are_aligned_for_odd_vertex_count(tmp_path):
+    path = tmp_path / "odd.glb"
+    vertices = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0.5, 0.5, 1]],
+        dtype=np.float32,
+    )
+    faces = np.array([[0, 1, 4], [1, 3, 4], [3, 2, 4], [2, 0, 4]], dtype=np.int32)
+    colors = np.array(
+        [
+            [255, 255, 255],
+            [128, 128, 128],
+            [255, 255, 255],
+            [255, 255, 255],
+            [255, 255, 255],
+        ],
+        dtype=np.uint8,
+    )
+    deviation = np.array([-2.0, 0.0, 1.0, 0.0, 3.0], dtype=np.float32)
+    measured = np.array([1.0, 0.0, 1.0, 0.0, 1.0], dtype=np.float32)
+
+    mesh_cleanup.write_glb(
+        path,
+        vertices,
+        faces,
+        colors=colors,
+        extra_vertex_attributes={
+            "_DEVIATION_MM": deviation,
+            "_DEVIATION_MEASURED": measured,
+        },
+    )
+
+    document = pygltflib.GLTF2().load_binary(str(path))
+    attrs = document.meshes[0].primitives[0].attributes
+    for name, expected in (
+        ("_DEVIATION_MM", deviation),
+        ("_DEVIATION_MEASURED", measured),
+    ):
+        accessor_index = getattr(attrs, name)
+        accessor = document.accessors[accessor_index]
+        view = document.bufferViews[accessor.bufferView]
+        assert view.byteOffset % 4 == 0
+        actual = np.frombuffer(
+            document.binary_blob(),
+            dtype=np.float32,
+            count=accessor.count,
+            offset=view.byteOffset,
+        )
+        np.testing.assert_allclose(actual, expected)
+
+
+def test_write_glb_rejects_bad_custom_attributes(tmp_path):
+    with pytest.raises(ValueError, match="must start"):
+        mesh_cleanup.write_glb(
+            tmp_path / "bad-name.glb",
+            _TETRAHEDRON_VERTICES,
+            _TETRAHEDRON_FACES_CLOSED,
+            extra_vertex_attributes={"DEVIATION_MM": np.zeros(4)},
+        )
+
+    with pytest.raises(ValueError, match="one scalar per vertex"):
+        mesh_cleanup.write_glb(
+            tmp_path / "bad-shape.glb",
+            _TETRAHEDRON_VERTICES,
+            _TETRAHEDRON_FACES_CLOSED,
+            extra_vertex_attributes={"_DEVIATION_MM": np.zeros(3)},
+        )
+
+    bad = np.zeros(4, dtype=np.float32)
+    bad[0] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        mesh_cleanup.write_glb(
+            tmp_path / "nan.glb",
+            _TETRAHEDRON_VERTICES,
+            _TETRAHEDRON_FACES_CLOSED,
+            extra_vertex_attributes={"_DEVIATION_MM": bad},
+        )
 
 
 def test_write_glb_rejects_mismatched_colors_shape():

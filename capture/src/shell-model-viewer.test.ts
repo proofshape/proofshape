@@ -47,6 +47,7 @@ describe("C-11 model viewer shell wiring", () => {
     finishButton: HTMLButtonElement;
     reconstructionStatus: HTMLElement;
     modelViewer: HTMLElement;
+    reportLink: HTMLAnchorElement;
     retryButton: HTMLButtonElement;
   } {
     document.body.innerHTML = '<main id="shell-app"></main>';
@@ -65,6 +66,7 @@ describe("C-11 model viewer shell wiring", () => {
     const finishButton = document.getElementById("shell-finish-button");
     const reconstructionStatus = document.getElementById("shell-reconstruction-status");
     const modelViewer = document.getElementById("shell-model-viewer");
+    const reportLink = document.getElementById("shell-report-link");
     const retryButton = document.getElementById("shell-retry-reconstruction-button");
 
     if (
@@ -72,6 +74,7 @@ describe("C-11 model viewer shell wiring", () => {
       !(startButton instanceof HTMLButtonElement) ||
       !(finishButton instanceof HTMLButtonElement) ||
       !(retryButton instanceof HTMLButtonElement) ||
+      !(reportLink instanceof HTMLAnchorElement) ||
       !reconstructionStatus ||
       !modelViewer
     ) {
@@ -85,6 +88,7 @@ describe("C-11 model viewer shell wiring", () => {
       finishButton,
       reconstructionStatus,
       modelViewer,
+      reportLink,
       retryButton,
     };
   }
@@ -138,6 +142,10 @@ describe("C-11 model viewer shell wiring", () => {
 
     expect(mounted.modelViewer.textContent).toContain("Loading 3D model");
     expect(mounted.modelViewer.querySelector("a")?.getAttribute("href")).toMatch(/model\.glb$/);
+    expect(mounted.reportLink.hidden).toBe(false);
+    expect(mounted.reportLink.getAttribute("href")).toBe(
+      `report.html?session=${encodeURIComponent(mounted.state.sessionId ?? "")}`,
+    );
   });
 
   it("remounts the viewer with the backend failed state", async () => {

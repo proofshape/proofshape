@@ -1,0 +1,20 @@
+{
+  "verdict": "Fail",
+  "declared_at": "post_reconstruction",
+  "orientation_ambiguous": false,
+  "regions": [
+    {
+      "name": "mounting_hole_A",
+      "provenance": "observed",
+      "deviation_mm": 1.8,
+      "contributes_to_verdict": true
+    },
+    {
+      "name": "sealing_face",
+      "provenance": "observed",
+      "deviation_mm": -0.9,
+      "contributes_to_verdict": true
+    }
+  ],
+  "reason_codes": ["observed_deviation_out_of_spec"]
+}

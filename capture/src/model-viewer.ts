@@ -2,6 +2,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { setStatus } from "./camera.js";
+import {
+  createDeviationHeatmapController,
+  createDeviationLegend,
+  type HeatmapMode,
+} from "./deviation-heatmap.js";
 import { createProvenanceLegend, remapModelProvenanceColors } from "./provenance-colors.js";
 import type { ReconstructionResult } from "./types.js";
 
@@ -26,6 +31,8 @@ export interface ModelViewerOptions {
   // C-13: the deployed service's glb_url is behind Lightning's bearer-token gate (D-042/D-048)
   // just like every other route -- a plain `loader.load(url)`/`<a href>` would 401.
   authToken?: string;
+  toleranceMm?: number;
+  initialColourMode?: HeatmapMode;
 }
 
 interface ModelViewerUnavailable {
@@ -154,7 +161,9 @@ function createThreePreview(viewport: HTMLElement, model: THREE.Object3D): () =>
   keyLight.position.set(1, 2, 3);
   scene.add(keyLight);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // C-15: preserve the last rendered frame so beforeprint can snapshot the WebGL canvas.
+  // Without this, browsers may clear the drawing buffer after compositing and print a blank image.
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
   let controls: OrbitControls | null = null;
   let resizeAttached = false;
   const resize = (): void => {
@@ -287,9 +296,51 @@ export function mountModelViewer(
         return;
       }
       try {
+        const heatmap = createDeviationHeatmapController(loaded.scene, options.toleranceMm);
         const provenance = remapModelProvenanceColors(loaded.scene);
+        heatmap.captureProvenanceColors();
         if (provenance.foundProvenance) {
-          controlsContainer.append(createProvenanceLegend());
+          const legendHost = document.createElement("div");
+          const showProvenanceLegend = (): void => {
+            legendHost.replaceChildren(createProvenanceLegend());
+          };
+          showProvenanceLegend();
+
+          if (heatmap.available) {
+            const label = document.createElement("label");
+            label.textContent = "Colour by: ";
+            const select = document.createElement("select");
+            select.setAttribute("aria-label", "Colour 3D model by");
+
+            const provenanceOption = document.createElement("option");
+            provenanceOption.value = "provenance";
+            provenanceOption.textContent = "what was seen";
+
+            const deviationOption = document.createElement("option");
+            deviationOption.value = "deviation";
+            deviationOption.textContent = "deviation from CAD";
+
+            select.append(provenanceOption, deviationOption);
+            const setColourMode = (mode: HeatmapMode): void => {
+              select.value = mode;
+              if (mode === "deviation") {
+                heatmap.setMode("deviation");
+                legendHost.replaceChildren(createDeviationLegend(heatmap.range));
+              } else {
+                heatmap.setMode("provenance");
+                showProvenanceLegend();
+              }
+            };
+            select.addEventListener("change", () => {
+              setColourMode(select.value === "deviation" ? "deviation" : "provenance");
+            });
+            if (options.initialColourMode === "deviation") {
+              setColourMode("deviation");
+            }
+            label.append(select);
+            controlsContainer.append(label);
+          }
+          controlsContainer.append(legendHost);
         }
         disposePreview = createThreePreview(viewport, loaded.scene);
         // C-19 (#192): a model with no provenance colors at all (every mock session today, and

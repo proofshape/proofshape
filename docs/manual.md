@@ -24,8 +24,9 @@ deployed on a cloud GPU (§0). A phone can also run a whole session against the 
 the service running on a Mac and the capture dev server forwarding its requests (§0, C-13, D-049).
 That path works, but in its first test, after the D-050 fix, only 2 of 7 finished phone sessions
 produced a model (§5). Pointing the phone at the cloud deployment has never been tried (O-005).
-Nothing on the buyer side — CAD upload, tolerances, verdicts, the report — is built yet (§4, §8.2,
-§8.3).
+Buyer CAD upload, tolerances and the real verdict backend are not built yet (§4, §8.2). The
+report page itself is now built (C-15): it works against the contract mock today and will consume
+I-07's real verdict once that backend exists (§8.3).
 
 ---
 
@@ -41,7 +42,7 @@ README; this is only which one to reach for.
 | The capture app on a real phone | `npm run dev:device` in `capture/`, then open the printed `https://<LAN-IP>:<port>` on a phone on the same Wi-Fi and accept the self-signed certificate once. It answers from a **mock service** with a canned model; enter the order code `PO-48213-A`. | [`capture/README.md`](../capture/README.md) |
 | Real photos through the real reconstruction service | `uvicorn recon.service:app` on a machine with a CUDA GPU, then drive a capture folder through it with `scripts/smoke_r14.py`. | [`recon/README.md`](../recon/README.md), R-14 |
 | The service on the shared cloud GPU | R-15's runbook: start, check TLS and the token, smoke-test, **stop**. Stopping is the only thing that ends billing. | [`recon/README.md`](../recon/README.md), R-15 |
-| A real phone session against the real service | **Works now**, on a Mac (D-049). Terminal 1: `PROOFSHAPE_RECON_DEVICE=mps uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1`. Terminal 2, in `capture/`: `PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device`. Then open `https://<LAN-IP>:5173/?order=<code>` on the phone. The cloud deployment is not used for this and has never served a phone (O-005). | [`capture/README.md`](../capture/README.md), C-13 |
+| A real phone session against the real service | **Works now**, on a Mac (D-049). Terminal 1: `PROOFSHAPE_RECON_DEVICE=mps uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1`. Terminal 2, in `capture/`: `PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device`. Then open `https://<LAN-IP>:5173/?order=<code>` on the phone. The cloud deployment is not used for this and has never served a phone (O-005; hosting the app is C-21). | [`capture/README.md`](../capture/README.md), C-13 |
 
 ---
 
@@ -158,7 +159,7 @@ is deliberate, and the margins are doing three jobs:
 
 1. Keeping the paper's outline clearly separated from the pattern, so the outline scale check
    works.
-2. Reserving space for the per-order QR code and orientation arrow (**Planned** — see §4).
+2. Reserving space for the per-order QR code and orientation arrow (**Planned**, C-17 — see §4).
 3. Giving a part that is larger than the pattern somewhere to sit without hanging off the sheet.
 
 **If the part is larger than the pattern but still roughly sheet-sized, that is fine for pose.**
@@ -182,8 +183,9 @@ decision the team has made. **Undecided.**
 
 ## 4 · Setting up an order — the buyer
 
-**Status: Planned.** Built by the capture-lane stories (C-16 buyer setup, C-17 board PDF with
-order code) and the inspection stories (I-01 through I-10).
+**Status: Planned.** Built by C-16 (the buyer page), R-34 (the order store it saves to, and the
+service checking order codes against it), C-17 (the printable sheet with the order code) and the
+inspection stories (I-01 through I-10).
 
 The intended flow:
 
@@ -202,11 +204,12 @@ The intended flow:
 **What exists today instead.** There is no buyer side and no order storage. The supplier types an
 order code by hand (§5). The mock service accepts only `PO-48213-A`; the real reconstruction
 service accepts **any** non-empty code, because there is no buyer database to check it against
-(`recon/README.md`, R-14). A capture link can pre-fill the order code with `?order=<code>` (C-13).
+(`recon/README.md`, R-14; R-34 is the planned store). A capture link can pre-fill the order code with `?order=<code>` (C-13).
 
-**Undecided:** when the per-order QR code and orientation arrow actually get added to the printed
-sheet. Margin space is reserved for them; the golden-capture set does not need them, since there
-is no real purchase order to bind to yet (D-034).
+**Planned** (C-17): the order code, a QR code and an orientation arrow in the sheet's margin, with
+the board itself unchanged. Where they sit is recorded as a decision when C-17 is built (D-034 left
+it open). The golden-capture set does not need them, since there is no real purchase order to bind
+to yet.
 
 ---
 
@@ -350,16 +353,21 @@ step (A-04) didn't finish. The model, its colours and its observed fraction are 
 either way, so there's nothing to redo. On the M2 Max this warning never appears, because
 completion isn't set up there (D-058).
 
-**Expect a lot of slate grey on today's models.** Fusion still leaves wall-like artifact surfaces
-around the part (R-18, R-20). They come out Unobserved, which is the hard rule working, but they
-make the observed fraction low: about 10–40% on the golden objects (R-24). The part itself is
-usually the blue region.
+**Most of today's models should read mostly blue.** Fusion used to leave wall-like artifact
+surfaces around the part spanning the whole board area (R-18, R-20); R-33 found and fixed the
+cause (marching cubes could fabricate a face from a single unobserved corner's stored `0.0`) and
+confirmed on a fresh rerun of all five golden objects that the walls are gone, 0.2–2.6% of served
+faces by face count against 34–79% before the fix (same measure, criterion 1's own "after R-30"
+row): observed fraction on the golden objects now runs about 75–92%, not 10–40%. A little slate grey
+at the true observed/unobserved
+boundary is still expected and is the hard rule working, not a defect.
 
 ### 8.2 The four verdicts
 
-**Status: Planned** (I-07 verdict logic, I-08 unobserved-geometry rule, I-10 Unverifiable path).
-The four values are frozen in the contract; today a verdict request always answers
-`no_cad_uploaded`, because there is no way to upload a CAD yet.
+**Status: Planned in the real service** (I-07 verdict logic, I-08 unobserved-geometry rule,
+I-10 Unverifiable path). The C-15 report page is built against the frozen contract examples, but
+today a real verdict request still answers `no_cad_uploaded`, because there is no way to upload a
+CAD yet (R-34).
 
 There are exactly four. No fifth value can be added without a recorded decision, because the hard
 rule's guarantees are stated in terms of this closed set.
@@ -377,12 +385,28 @@ unobserved region into either a Pass or a Fail — if it could not see it, it sa
 
 ### 8.3 The report
 
-**Status: Planned** (C-14 heatmap rendering, C-15 report page).
+**Status: Works now against the contract mock** (C-14 heatmap rendering, C-15 report page).
+The real deviation/verdict backend is still Planned (I-06/I-07), so today's real service normally
+shows the model-only path described in §8.2.
 
-One page, shareable with the buyer: the verdict, the deviation heatmap, the model, **which
-reference sheet was used**, which regions were observed, and any limits declared at intake.
+After a reconstruction completes, choose **Open condition report**. You can also open
+`report.html?session=<id>` directly for a known session. The page shows the contract verdict and
+"What to do" text, every reason code, the critical-region table, orientation status, the reference
+used, metric/no-dimensional-claims status, observed fraction, scale-agreement status and the
+session id. If the order has no CAD, it says **"No CAD on this order: model only"** rather than
+treating that as a report error.
 
-**Planned:** an LLM writes the narrative summary (A-09).
+The C-14 deviation heatmap opens by default. Only surface that is both Observed and measured is
+coloured by deviation; everything else stays grey (D-005). A region that is not Observed shows
+"—" for deviation, never zero.
+
+Choose **Print / Save as PDF** to use the browser's print dialog. Before printing, the page
+snapshots the WebGL heatmap and copies its active legend so the exported page keeps both the image
+and the signed-mm scale. The one-page mobile print layout still needs the whole-system mobile
+check at X-04.
+
+The narrative section is a marked placeholder only. **Planned:** A-09 supplies the LLM narrative;
+C-15 does not generate one.
 
 ---
 
