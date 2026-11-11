@@ -58,3 +58,23 @@ export interface ReconstructionResult {
   stage_timings_s?: Record<string, number>;
   warnings?: string[];
 }
+
+
+export type Provenance = "observed" | "unobserved" | "inferred";
+
+export type Verdict = "Pass" | "Fail" | "Rescan" | "Unverifiable";
+
+export interface Region {
+  name: string;
+  provenance: Provenance;
+  deviation_mm?: number;
+  contributes_to_verdict: boolean;
+}
+
+export interface VerdictResult {
+  verdict: Verdict;
+  declared_at: "intake" | "post_reconstruction";
+  orientation_ambiguous: boolean;
+  regions: Region[];
+  reason_codes?: string[];
+}
