@@ -1,6 +1,11 @@
 import { fileURLToPath } from "node:url";
+import type { OutputAsset, RollupOutput } from "rollup";
 import { build } from "vite";
 import { describe, expect, it } from "vitest";
+
+function isRollupOutput(value: unknown): value is RollupOutput {
+  return typeof value === "object" && value !== null && "output" in value;
+}
 
 describe("GitHub Pages production build", () => {
   it("rewrites entry assets under the configured base path", async () => {
@@ -17,15 +22,18 @@ describe("GitHub Pages production build", () => {
       },
     });
 
-    const outputs = Array.isArray(result)
-      ? result.flatMap((entry) => entry.output)
-      : result.output;
+    const rollupOutputs = Array.isArray(result) ? result : [result];
+    const outputs = rollupOutputs
+      .filter(isRollupOutput)
+      .flatMap((entry) => entry.output);
+
     const html = outputs.find(
-      (entry) => entry.type === "asset" && entry.fileName === "index.html",
+      (entry): entry is OutputAsset =>
+        entry.type === "asset" && entry.fileName === "index.html",
     );
 
     expect(html).toBeDefined();
-    if (!html || html.type !== "asset") {
+    if (!html) {
       throw new Error("Pages build test: index.html asset missing");
     }
     expect(String(html.source)).toContain("/proofshape/assets/");
