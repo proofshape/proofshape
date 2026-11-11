@@ -17,7 +17,6 @@ export function resolveAuthToken(raw: string | undefined): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
-
 // C-21: Vite's BASE_URL is normally "/" in development and "/<repo>/" on GitHub Pages.
 // Keep it as a path (not a full origin) and normalize both ends so links are stable whether an
 // admin supplies "proofshape", "/proofshape", or "/proofshape/" at build time.
