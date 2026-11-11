@@ -16,3 +16,23 @@ export function resolveAuthToken(raw: string | undefined): string | undefined {
   const trimmed = (raw ?? "").trim();
   return trimmed === "" ? undefined : trimmed;
 }
+
+
+// C-21: Vite's BASE_URL is normally "/" in development and "/<repo>/" on GitHub Pages.
+// Keep it as a path (not a full origin) and normalize both ends so links are stable whether an
+// admin supplies "proofshape", "/proofshape", or "/proofshape/" at build time.
+export function resolveAppBasePath(raw: string | undefined): string {
+  const trimmed = (raw ?? "/").trim();
+  if (trimmed === "" || trimmed === "/") return "/";
+  return `/${trimmed.replace(/^\/+|\/+$/g, "")}/`;
+}
+
+export type ViewerDemoMode = "1" | "c12" | "c14";
+
+export function resolveViewerDemo(
+  raw: string | null,
+  isDevelopment: boolean,
+): ViewerDemoMode | "unavailable" | null {
+  if (raw !== "1" && raw !== "c12" && raw !== "c14") return null;
+  return isDevelopment ? raw : "unavailable";
+}
