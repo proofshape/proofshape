@@ -287,7 +287,13 @@ export function mountReportPage(root: HTMLElement, options: ReportPageOptions): 
   const beforePrint = (): void => {
     snapshotHeatmapForPrint(root);
   };
+  const afterPrint = (): void => {
+    requireElement(root, "#report-print-heatmap", HTMLImageElement).hidden = true;
+    requireElement(root, "#report-print-legend", HTMLElement).hidden = true;
+    requireElement(root, "#report-print-viewer-status", HTMLElement).hidden = true;
+  };
   window.addEventListener("beforeprint", beforePrint);
+  window.addEventListener("afterprint", afterPrint);
   printButton.addEventListener("click", () => {
     window.print();
   });
@@ -334,6 +340,7 @@ export function mountReportPage(root: HTMLElement, options: ReportPageOptions): 
   return () => {
     lifecycle.disposed = true;
     window.removeEventListener("beforeprint", beforePrint);
+    window.removeEventListener("afterprint", afterPrint);
     disposeViewer();
   };
 }
