@@ -3,15 +3,17 @@ import type { AgentMessageResult } from "./types.js";
 
 export interface AgentConversationHandle {
   show: (result: AgentMessageResult) => void;
+  transportUnavailable: () => void;
   clear: () => void;
 }
 
 export function mountAgentConversation(container: HTMLElement): AgentConversationHandle {
+  container.hidden = true;
   container.innerHTML = `
     <section aria-labelledby="agent-conversation-title">
       <h2 id="agent-conversation-title">Capture assistant</h2>
-      <p id="agent-conversation-status">No assistant message yet.</p>
-      <ol id="agent-conversation-messages"></ol>
+      <p id="agent-conversation-status" aria-live="polite">No assistant message yet.</p>
+      <ol id="agent-conversation-messages" role="log"></ol>
     </section>
   `;
 
@@ -19,30 +21,51 @@ export function mountAgentConversation(container: HTMLElement): AgentConversatio
   const list = requireTyped(container, "#agent-conversation-messages", HTMLOListElement, "<ol>");
 
   function clear(): void {
+    container.hidden = true;
     list.replaceChildren();
     status.textContent = "No assistant message yet.";
+    delete status.dataset.agentFallbackReason;
+  }
+
+  function transportUnavailable(): void {
+    if (container.hidden) {
+      return;
+    }
+    status.textContent =
+      "Capture assistant is temporarily unavailable. Continue following the capture arrows.";
+    delete status.dataset.agentFallbackReason;
   }
 
   function show(result: AgentMessageResult): void {
-    const item = document.createElement("li");
-    if (result.fallback) {
-      item.textContent =
-        result.message?.trim() ||
+    container.hidden = false;
+
+    const fallbackReason = result.fallback_reason;
+    if (fallbackReason !== null) {
+      status.dataset.agentFallbackReason = fallbackReason;
+      status.textContent =
         "Automatic guidance is active. Continue following the capture arrows.";
-      item.dataset.agentMode = "fallback";
-      status.textContent = result.fallback_reason
-        ? `Fallback guidance active: ${result.fallback_reason}.`
-        : "Fallback guidance active.";
-    } else if (result.message?.trim()) {
-      item.textContent = result.message.trim();
-      item.dataset.agentMode = "agent";
-      status.textContent = "Assistant guidance updated.";
     } else {
-      status.textContent = "No assistant message to show.";
+      delete status.dataset.agentFallbackReason;
+      status.textContent = result.finished
+        ? "Capture assistant says the session is finished."
+        : "Assistant guidance updated.";
+    }
+
+    const message = result.message?.trim();
+    if (!message) {
       return;
     }
+
+    const last = list.lastElementChild;
+    if (last?.textContent === message) {
+      return;
+    }
+
+    const item = document.createElement("li");
+    item.textContent = message;
+    item.dataset.agentMode = fallbackReason === null ? "agent" : "fallback";
     list.append(item);
   }
 
-  return { show, clear };
+  return { show, transportUnavailable, clear };
 }
