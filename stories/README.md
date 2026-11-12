@@ -278,7 +278,7 @@ Full detail in each story file.
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Done | @TabeenRaoof |
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Done | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
-| [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Ready | _unclaimed_ |
+| [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Done | @dalwalyk |
 | [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Blocked | _unclaimed_ |
 | [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Blocked | _unclaimed_ |
 | [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34 | Blocked | _unclaimed_ |
