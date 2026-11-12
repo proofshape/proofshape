@@ -2240,7 +2240,7 @@ waiting rather than active, so this claim is within the cap.
 **Next:** implement A-07's core tool-calling loop against a mock model, then its fallback to
 A-08's deterministic policy.
 
-## 2026-11-11 — G-01 cube readings recorded; story closed with the slicer values deferred (PR #303)
+## 2026-11-11 — G-01 cube readings and slicer settings recorded; story closed (PR #303)
 
 **Who:** @TabeenRaoof (PR #303). The lab facts and protocol came earlier, in #260.
 
@@ -2251,7 +2251,8 @@ A-08's deterministic policy.
   - One typing slip was fixed before commit. Cube 1's tenth X reading had gone in as 30.3; the
     owner checked it, and it is 30.0.
 - `stories/G/G-01.md` gets the 2026-11-10 visit (the lab's only A1 mini, grey Bambu PLA Basic, one
-  spool, about 9:20 am to 12:45 pm), the per-axis deviation table and the completion record.
+  spool, about 9:20 am to 12:45 pm), the slicer settings, the per-axis deviation table and the
+  completion record.
 
 **Measured, with no tolerance (G-04 judges):**
 - The mean − 30 mm over the three cubes: X −0.027, Y −0.073, Z +0.010.
@@ -2259,17 +2260,15 @@ A-08's deterministic policy.
 - Y read short on all three prints, by close to the same amount. Every deviation is under one
   0.1 mm caliper step.
 
-**Deferred:** the slicer values, which are layer height, walls, infill and the Bambu Studio
-version.
-- The owner amended G-01's second acceptance criterion at close. The sliced cube project hadn't
-  been found, and the `.3mf` sent in was the geometry-only file.
-- The values are added to G-01, read from that file, when it turns up.
-- G-02 and G-05 can't be Done until then.
+**Slicer settings,** read from the sliced cube file the printer ran
+(`g01_calibration_cube_30mm.gcode.3mf`, exported 2026-11-10):
+- A1 mini 0.4 nozzle, 0.20mm Standard @BBL A1M, Bambu PLA Basic @BBL A1M, Textured PEI Plate.
+- 0.2 mm layers, 2 walls, 5 top and 3 bottom shell layers, 15% grid infill.
+- Bambu Studio 02.09.01.70, with an estimate of 27 min 33 s and 10.00 g per cube.
+- G-02 and G-05 print on exactly these.
 
 **Result:** this PR sets G-01 to `State: Done`, 7 h actual (est 3). `check_story_states.py` is
 clean.
 
-**Next:**
-- Find the sliced cube project and add its slicer values to G-01. Look on the owner's Mac, or on
-  the A1 mini's microSD card at the lab.
-- G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in G-05.
+**Next:** G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in
+G-05.
