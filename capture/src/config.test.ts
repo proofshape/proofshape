@@ -13,15 +13,11 @@ describe("resolveBaseUrl", () => {
   });
 
   it("passes a bare base URL through unchanged", () => {
-    expect(resolveBaseUrl("https://example.lightning.ai")).toBe(
-      "https://example.lightning.ai",
-    );
+    expect(resolveBaseUrl("https://example.lightning.ai")).toBe("https://example.lightning.ai");
   });
 
   it("strips exactly one trailing slash", () => {
-    expect(resolveBaseUrl("https://example.lightning.ai/")).toBe(
-      "https://example.lightning.ai",
-    );
+    expect(resolveBaseUrl("https://example.lightning.ai/")).toBe("https://example.lightning.ai");
   });
 });
 
@@ -43,9 +39,7 @@ describe("resolveAuthToken", () => {
 describe("hostedReconUnavailable", () => {
   it("fails closed in production when O-005 leaves the public backend disconnected", () => {
     expect(hostedReconUnavailable("", false)).toBe(true);
-    expect(HOSTED_RECON_UNAVAILABLE_MESSAGE).toMatch(
-      /reconstruction service is not configured/i,
-    );
+    expect(HOSTED_RECON_UNAVAILABLE_MESSAGE).toMatch(/reconstruction service is not configured/i);
   });
 
   it("keeps the local development stub available with an empty base URL", () => {
@@ -53,9 +47,7 @@ describe("hostedReconUnavailable", () => {
   });
 
   it("allows a configured production backend", () => {
-    expect(hostedReconUnavailable("https://example.lightning.ai", false)).toBe(
-      false,
-    );
+    expect(hostedReconUnavailable("https://example.lightning.ai", false)).toBe(false);
   });
 });
 
