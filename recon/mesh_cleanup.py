@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -541,6 +542,35 @@ def read_glb(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
         ).reshape(-1, 3)
 
     return vertices, faces.astype(np.int32), colors
+
+
+def read_glb_extra_attributes(
+    path: Path, names: Sequence[str]
+) -> dict[str, np.ndarray]:
+    """Read back write_glb's optional scalar float32 extra_vertex_attributes by name (I-06).
+
+    Additive sibling to read_glb, not a change to it: read_glb's 3-tuple return is unpacked
+    positionally by six existing callers, so a fourth element there would be a silent breaking
+    change for every one of them. A name read_glb's document never wrote (the mesh carries no
+    such semantic) is simply absent from the returned dict, the same way read_glb reports no
+    COLOR_0 as None rather than raising -- D-062's own "a GLB without these attributes stays
+    valid" applies here too.
+    """
+    document = pygltflib.GLTF2().load_binary(str(path))
+    blob = document.binary_blob()
+    attributes = document.meshes[0].primitives[0].attributes
+
+    found: dict[str, np.ndarray] = {}
+    for name in names:
+        accessor_index = getattr(attributes, name, None)
+        if accessor_index is None:
+            continue
+        accessor = document.accessors[accessor_index]
+        view = document.bufferViews[accessor.bufferView]
+        found[name] = np.frombuffer(
+            blob, dtype=np.float32, count=accessor.count, offset=view.byteOffset
+        ).copy()
+    return found
 
 
 def check_file_size(path: Path, max_bytes: int = DEFAULT_MAX_FILE_SIZE_BYTES) -> bool:
