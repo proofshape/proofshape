@@ -12,11 +12,18 @@ I-05's `check_ambiguity` already decided which CAD pose to measure against (`Amb
 a CAD -> model rigid transform); this module takes that pose as given rather than re-deriving it.
 
 Review on #309: "measures Observed vertices only" isn't just "every Observed vertex" -- D-062's
-own wording excludes "surface outside the registered part" too, so board skin (sometimes about
-half a model's Observed surface, #292) isn't painted as a deviation and handed to I-07 as
-something that could Fail a part. `compute_deviation` takes the real, already-resolved
-`recon.part_segmentation.BoardSurface` fusion fit the model came from, rather than guessing a
-second threshold.
+own wording excludes "surface outside the registered part" too. `compute_deviation` gates on
+two things, re-reviewed against real golden data rather than assumed correct from the logic
+alone: `board_surface`'s own, already-resolved `height_threshold_mm` (fusion's real cut for that
+board), and the posed CAD's own xy footprint plus a declared margin. On real served meshes
+(s-04, s-05), the height gate excludes essentially nothing -- fusion's own cut already removed
+that surface before I-06 ever sees the mesh, so its real job is defending against degenerate
+inputs (a vertex somehow surviving below the cut), not filtering real board skin. The footprint
+margin is what actually does that: it excludes stray surface beyond the CAD's hull plus the
+margin, but board skin sitting *within* that ring (#292's own measured case, s-02) is still
+measured today -- a declared, recorded limitation (see `DEFAULT_FOOTPRINT_MARGIN_MM` and
+`stories/I/I-06.md`'s notes for the real-data numbers), not something either gate actually
+closes. Whether to close that ring, and how, is #292's or I-07's call, not re-decided here.
 
 Scope, per the story's own notes: this is a library function (the computation) and a GLB writer.
 `publish_deviation_glb` does the atomic "which file does glb_path point at" flip against a real
@@ -45,13 +52,15 @@ from recon.provenance import LABEL_OBSERVED, _mesh_is_watertight, colors_to_labe
 DEVIATION_MM_ATTRIBUTE = "_DEVIATION_MM"
 DEVIATION_MEASURED_ATTRIBUTE = "_DEVIATION_MEASURED"
 
-# Review on #309: a plain "every Observed vertex" measures board skin too -- on a real golden
-# object, about half the Observed surface can be board skin (#292), which would then be painted
-# as a deviation and could Fail a part on geometry the CAD never claimed to cover. This margin
-# bounds the posed CAD's own xy footprint before a vertex counts as "within the registered
-# part." Declared, not measured: generous enough that G-05's largest planted defect (8 mm bumps)
-# can't push a vertex outside the footprint and get wrongly excluded, while still meaningfully
-# narrower than board-sized stray geometry.
+# Review on #309, second round: G-05's bumps grow upward from the top face (G-05.md: "8mm tall
+# (top 28mm up)"), not outward in xy, so they can't justify this number -- the first version of
+# this comment's reasoning didn't hold. This bounds the posed CAD's own xy footprint before a
+# vertex counts as "within the registered part." Declared, not derived from a specific defect
+# or measured source: on real golden data (s-04, s-05) the real part's own base flare reaches
+# about 10 mm beyond the CAD's hull, so this isn't obviously too tight for legitimate geometry,
+# but it also isn't validated to be the right number for anything in particular -- a plain
+# declared parameter, same as R-06's height threshold or R-07's voxel size before they were
+# measured.
 DEFAULT_FOOTPRINT_MARGIN_MM = 10.0
 
 
@@ -73,10 +82,15 @@ def compute_deviation(
     as surface outside the registered part"):
 
     - labelled Observed;
-    - above `board_surface`'s own `height_threshold_mm` (review on #309: this is fusion's real,
-      already-resolved board-vs-part cut for this board, D-063's whole formula -- not a second,
-      independently guessed threshold), so board skin is never measured as part deviation;
+    - above `board_surface`'s own `height_threshold_mm` (fusion's real, already-resolved
+      board-vs-part cut for this board, D-063's whole formula -- not a second, independently
+      guessed threshold). Review on #309, second round: on real served meshes this excludes
+      essentially nothing, since fusion's own cut already removed that surface before this
+      function ever sees the mesh -- it defends against a degenerate input, not real skin;
     - within the posed CAD's own xy footprint, expanded by `footprint_margin_mm` on every side.
+      This is what actually excludes real stray/board surface, but only beyond the margin --
+      board skin within `footprint_margin_mm` of the CAD's hull is still measured today (#292's
+      own measured case). Not closed here; #292/I-07 decide whether and how to close that ring.
 
     Sign convention: positive where the part has extra material, negative where material is
     missing. This is Open3D's own signed-distance convention for a closed mesh (negative inside,

@@ -92,14 +92,23 @@ the signed point-to-mesh distance from each Observed model vertex to the CAD (D-
 - **Observed, above the board cut, inside the registered footprint.** `deviation_measured` is
   1.0 only where all three hold, 0.0 everywhere else; `deviation_mm` is 0.0 wherever
   `deviation_measured` is 0.0 (D-062: "I-06 measures Observed vertices only" — "that excludes any
-  it leaves out, such as surface outside the registered part"). Review on #309: a plain "every
-  Observed vertex" measures board skin too — on real golden data, about half a model's Observed
-  surface can be board skin (#292), which would then be painted as a deviation and could Fail a
-  part on geometry the CAD never claimed to cover. The board cut reuses `board_surface`'s own
-  already-resolved `height_threshold_mm` (fusion's real D-063 cut for that board, not a second,
-  independently guessed threshold); the footprint is the posed CAD's own xy bounding box plus
-  `DEFAULT_FOOTPRINT_MARGIN_MM` (10 mm, declared — generous enough that G-05's largest planted
-  defect, an 8 mm bump, can't push a vertex outside the footprint and get wrongly excluded).
+  it leaves out, such as surface outside the registered part"). **What the two gates actually do
+  on real data, re-reviewed on #309's second round rather than assumed from the logic alone:**
+  on real golden s-04/s-05, neither gate excluded anything (100% of Observed vertices measured
+  on both). The board cut reuses `board_surface`'s own already-resolved `height_threshold_mm`
+  (fusion's real D-063 cut for that board), but on a real served mesh this excludes essentially
+  nothing — fusion's own cut already removed that surface before this function ever sees it, so
+  its real job is defending against a degenerate input, not filtering real board skin. The
+  footprint gate (the posed CAD's own xy bounding box plus `DEFAULT_FOOTPRINT_MARGIN_MM`, 10 mm)
+  is what does real work, but only beyond the margin — 31% of s-04's measured vertices and 15%
+  of s-05's sit outside the CAD's own hull but within the margin (mostly base flare), so the
+  margin is doing real work keeping legitimate geometry in, but board skin sitting within that
+  same margin of the hull (#292's s-02 case) would also still be measured today. A declared,
+  recorded gap (`stories/I/I-06.md`'s notes), not something either gate actually closes — #292's
+  or I-07's call. The margin itself is a declared parameter: G-05's defects grow upward on the
+  top face, not outward in xy, so they can't justify this number the way an earlier version of
+  this note claimed; real data just shows 10 mm isn't obviously too tight for s-04's own base
+  flare.
 - **Sign convention.** Positive means the part has extra material there, negative means material
   is missing. This is Open3D's own `RaycastingScene.compute_signed_distance` convention
   (negative inside a closed mesh, positive outside) applied directly once the CAD is posed into
