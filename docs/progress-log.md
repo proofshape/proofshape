@@ -2239,3 +2239,81 @@ waiting rather than active, so this claim is within the cap.
 **Result:** merged to `main`. CI (pytest, ruff, typescript) green on the merged head.
 **Next:** implement A-07's core tool-calling loop against a mock model, then its fallback to
 A-08's deterministic policy.
+
+## 2026-11-11 — P-32 Done: the WIP cap counts active stories only (D-064, PR #307); A-05 claimed (#308)
+
+**Who:** @TabeenRaoof. #307 approved by @mbj1994 and @dalwalyk, #308 by @dalwalyk.
+
+**What changed:** working agreement 5 now caps *active* stories at two per person (D-064), in both
+`docs/sprint-plan.md` and `docs/sprint-plan.html`, with the old wording kept and marked
+superseded.
+- A claimed story waiting only on something outside its owner's hands (a review, a boundary merge,
+  lab or GPU access, a teammate's input) doesn't count, provided its notes say what it waits on
+  and since when.
+- When the wait ends it counts again, and an owner then at three takes no new claim until one is
+  Done or released.
+- Why: the old cap was waived by named exception four times in five days (G-01, G-05, P-30,
+  R-32), each time because the other claims were waiting, not being worked.
+
+A-05 (disagreement map) was claimed the same evening as @TabeenRaoof's fifth open claim, said
+openly in #308. The other four were each waiting: G-01 on the slicer values (#303), G-05 on lab
+printing, A-11 on the Nov 13 boundary (#217), R-32 on @mbj1994's hours (#280). @dalwalyk checked
+each. Under D-064 A-05 is the only active one.
+
+**Result:** #307 merged at `b8bac97`, with both approvals on its final head as D-064 requires.
+#308 merged at `6bfeb54`. P-32 `State: Done`, 0.1 h actual (est `—`), measured from the session's
+timestamps. `check_story_states.py` is consistent and `--fix` changes nothing. No code.
+
+**Next:** plan A-05 before any code. That means its first pass on A-12-style prepared fixtures, the
+hand-off to C-08's next-view scorer, and a recorded decision on what spread counts as "high",
+which the story says nobody has made yet. Feature freeze (M5) is Fri Nov 13.
+
+## 2026-11-11 — A-05 Done: the disagreement map, and next-view ranking by it (D-066, PR #314)
+
+**Who:** @TabeenRaoof (PR #314, claim #308), approved by @dalwalyk, who also ran the full suite on
+their machine (1138 passed).
+
+**What changed:** `recon/disagreement.py` builds the map inline, straight after the completion
+stage, and writes `completion/disagreement/`. D-066 has the rule. In short:
+- **Spread.** Per sample point, the median over the other samples of the point-to-triangle
+  distance to their meshes. That is A-12's measure, per point.
+- **Weight.** Points within 2 mm of the partial are seen. An unseen point weighs its spread above
+  the session's own seen-surface median, times its area; the board band never counts. That was the
+  owner's choice: no fixed threshold.
+- **The scorer.** `recon.next_view` takes the map as an optional input, and each candidate gains
+  `disagreement_visible_weight` and `disagreement_rank`.
+  - Only the served mesh blocks a ray, as C-08's rule requires.
+  - `ranked` and `best` keep C-08's meaning; `agent_tools.score_next_view` adds
+    `best_by_disagreement`.
+- **Guidance only** (D-005, D-006). A test keeps `inspect/` from importing the map. The served GLB
+  and every upstream file are byte-identical with it on or off, and there is no contract change.
+
+**Result:** checked on A-12's prepared folders (K = 3, M2 Max, CPU):
+- **s-04:** the per-pair U came out at 0.78 / 1.67 / 2.15 mm against A-12's 0.77 / 1.58 / 2.08,
+  and O at 0.24–0.25 mm, identical.
+- **s-02:** U 0.88 / 1.07 / 2.56 against 0.87 / 1.08 / 2.48, and O identical.
+- **Speed:** each map takes about a second.
+- **Next views on s-04:** C-08's best is straight down from 400 mm, and the map's is straight down
+  from 250 mm, seeing 118 of 316 total weight.
+  - 58% of the weight is 3–10 mm above the board, the completed base flare P-29 described.
+  - 17% is the raised patch above the observed top.
+
+A-05 closed at 1.5 h actual (est 8), the owner's figure; the session's timestamps alone give 1.2 h.
+`check_story_states.py` is consistent and `--fix` changes nothing.
+
+**Record correction, same PR as this entry:** A-03's index row went back to `Ready` /
+`_unclaimed_` on `main` with #314. #314's last merge of `main` (`794171b`) resolved a conflict
+over that row and the one below it with the branch's older line, after @dalwalyk's claim
+(`84dd8a5`) had landed. A-03's row is restored to `Claimed` / `@dalwalyk`. Nothing else in that
+merge differed from #314's own changes.
+
+**Concluded:** the per-point spread reproduces A-12's per-pair figures, so the map measures what
+A-12 validated. It does not yet tell a guess over seen surface from unseen surface: s-04's top
+patch is one.
+
+**Next:**
+- **The phone's arrow.** It still follows C-07's fixed orbit, and getting any next-view ranking to
+  the phone needs a contract field (D-031). No story owns it.
+- **Telling the two cases apart,** and deciding what weight makes a view worth a photo. Both are
+  open.
+- **Real per-session maps** come with the completion-on-a-supplier-host story.
