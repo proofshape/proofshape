@@ -1319,6 +1319,22 @@ so D-064 was the first free number.
 *Agreement:* it changes a working agreement for all three, so its pull request asks both
 @mbj1994 and @dalwalyk to agree, and merges only with both approving.
 
+**D-067 · A-03's prose-to-spec parser pins Gemini Flash-Lite, the same snapshot name A-01
+pins, as its own independent decision.** (2026-11-12)
+Proposal §9's component table names "Gemini Flash-Lite API, structured output" for this row,
+the same model row A-01's VLM supervision uses. `recon/spec_parser.py` pins it as its own
+constant (`MODEL`, not imported from `recon.vlm_check`), following A-01's own precedent (a
+stable snapshot, never `-latest`) rather than assuming A-01's pin covers this unrelated
+component too.
+
+*Why:* each generative component names its own model, even when the answer happens to agree
+with another component's — the same pattern A-10/A-12 already set for shape completion. A-03
+and A-01 are unrelated capture-time/buyer-time components that could diverge in the future
+(a cheaper or better model for one without touching the other); treating them as one pin now
+would make that split harder later for no reason today.
+*Checked against D-028:* fetched every origin branch on 2026-11-12. D-066 is the highest
+anywhere (`generative-ai/A-05-disagreement-map`), so D-067 was the first free number.
+
 ---
 
 ## Open — not yet decided
