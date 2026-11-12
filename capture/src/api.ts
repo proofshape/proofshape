@@ -155,15 +155,16 @@ export async function getAgentMessage(
     controller.abort();
   }, timeoutMs);
   let response: Response;
+  let body: unknown;
   try {
     response = await fetch(
       `${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/agent-message`,
       { headers: authHeaders(authToken), signal: controller.signal },
     );
+    body = await readJsonBody(response, "getAgentMessage");
   } finally {
     clearTimeout(timeout);
   }
-  const body = await readJsonBody(response, "getAgentMessage");
   if (response.status === 200) {
     return { ok: true, status: response.status, body: body as AgentMessageResult };
   }
