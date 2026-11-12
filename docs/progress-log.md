@@ -2221,3 +2221,31 @@ looks like a separate reflectivity/lighting problem, not a sigma-floor one.
 
 **Next:** s-02's residual board-skin share is unclaimed, tracked by #292. R-30's note that it's the
 reflective padlock under a different lighting condition from its twin s-01 is the lead to follow.
+
+## 2026-11-11 — P-32 Done: the WIP cap counts active stories only (D-064, PR #307); A-05 claimed (#308)
+
+**Who:** @TabeenRaoof. #307 approved by @mbj1994 and @dalwalyk, #308 by @dalwalyk.
+
+**What changed:** working agreement 5 now caps *active* stories at two per person (D-064), in both
+`docs/sprint-plan.md` and `docs/sprint-plan.html`, with the old wording kept and marked
+superseded.
+- A claimed story waiting only on something outside its owner's hands (a review, a boundary merge,
+  lab or GPU access, a teammate's input) doesn't count, provided its notes say what it waits on
+  and since when.
+- When the wait ends it counts again, and an owner then at three takes no new claim until one is
+  Done or released.
+- Why: the old cap was waived by named exception four times in five days (G-01, G-05, P-30,
+  R-32), each time because the other claims were waiting, not being worked.
+
+A-05 (disagreement map) was claimed the same evening as @TabeenRaoof's fifth open claim, said
+openly in #308. The other four were each waiting: G-01 on the slicer values (#303), G-05 on lab
+printing, A-11 on the Nov 13 boundary (#217), R-32 on @mbj1994's hours (#280). @dalwalyk checked
+each. Under D-064 A-05 is the only active one.
+
+**Result:** #307 merged at `b8bac97`, with both approvals on its final head as D-064 requires.
+#308 merged at `6bfeb54`. P-32 `State: Done`, 0.1 h actual (est `—`), measured from the session's
+timestamps. `check_story_states.py` is consistent and `--fix` changes nothing. No code.
+
+**Next:** plan A-05 before any code. That means its first pass on A-12-style prepared fixtures, the
+hand-off to C-08's next-view scorer, and a recorded decision on what spread counts as "high",
+which the story says nobody has made yet. Feature freeze (M5) is Fri Nov 13.
