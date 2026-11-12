@@ -90,6 +90,29 @@ def test_an_empty_feature_table_is_unparsed_not_a_silently_valid_empty_spec():
     assert result.spec is None
 
 
+def test_a_null_tolerance_with_no_assumptions_at_all_is_unparsed():
+    # Caught on review (@TabeenRaoof, #320): the acceptance criteria say a null tolerance is
+    # recorded with a matching assumption, but nothing enforced that -- a null with
+    # assumptions: [] would otherwise still parse, which is never the instruction followed
+    # correctly.
+    result = parse_spec_response(
+        reply(
+            features=[
+                {
+                    "name": "sealing face",
+                    "kind": "face",
+                    "tolerance_mm": None,
+                    "critical": True,
+                }
+            ],
+            assumptions=[],
+        )
+    )
+    assert result.status == "unparsed"
+    assert result.reason == "missing_assumption_for_null_tolerance"
+    assert result.spec is None
+
+
 def test_assumptions_pass_through_as_plain_strings():
     result = parse_spec_response(
         reply(assumptions=["Assumed the part is rigid, not a thin sheet."])

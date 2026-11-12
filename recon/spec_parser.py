@@ -113,6 +113,17 @@ def parse_spec_response(response: Any) -> SpecParseResult:
         # names nothing measurable), but it is a different outcome from a parsed spec -- naming
         # it tells the buyer something an empty table alone would not.
         return unparsed("no_features")
+    if (
+        any(feature.tolerance_mm is None for feature in spec.features)
+        and not spec.assumptions
+    ):
+        # Caught on review (@TabeenRaoof, #320): the acceptance criteria say a null tolerance
+        # "is recorded with a matching plain-language assumption", but nothing checked that --
+        # a null with assumptions: [] would still parse. Matching a specific assumption to a
+        # specific feature can't really be checked in code (it's free text), but a null with
+        # *no* assumptions at all is cheap to catch and is never a model following the
+        # instruction correctly.
+        return unparsed("missing_assumption_for_null_tolerance")
     return SpecParseResult(status="parsed", spec=spec)
 
 
@@ -149,13 +160,15 @@ class GeminiSpecParser:
                     system_instruction=(
                         "Convert a buyer's free-text description of part tolerances into a "
                         "structured inspection spec. Each feature needs a short name, a kind "
-                        "(hole, face, edge or overall), and whether it is critical. Never "
-                        "invent a tolerance in millimetres the buyer did not state or clearly "
-                        "imply a number for: leave tolerance_mm null and add a plain-language "
-                        "assumption naming that feature and saying no number was given. Record "
-                        "anything else you assumed because the buyer didn't state it, as a "
-                        "plain-language assumption too. Do not issue a Pass/Fail verdict or "
-                        "invent a feature the buyer did not describe."
+                        "(hole, face, edge or overall), and whether it is critical. Only put a "
+                        "number in tolerance_mm if the buyer actually wrote that number "
+                        "(e.g. 'about 2 mm'); never put in a number based on what is usual or "
+                        "implied for that kind of feature. If no number was written, leave "
+                        "tolerance_mm null and add a plain-language assumption naming that "
+                        "feature and saying no number was given. Record anything else you "
+                        "assumed because the buyer didn't state it, as a plain-language "
+                        "assumption too. Do not issue a Pass/Fail verdict or invent a feature "
+                        "the buyer did not describe."
                     ),
                     response_mime_type="application/json",
                     response_json_schema=InspectionSpec.model_json_schema(),
