@@ -10,6 +10,7 @@ separate *runner* process through files in one folder (D-058):
       input/view.png           one capture photo, cropped to the part
       runner/result.json       written by the runner, rewritten after every sample
       runner/sample_<k>_mesh_zup.ply   one completed mesh per sample, z up
+      disagreement/            the service's own A-05 map (recon/disagreement.py); no runner reads it
 
 Everything in the folder is relative to `request.json`, so the folder can be copied to a CUDA host
 (A-12's Colab check), run there, and copied back to be ingested.

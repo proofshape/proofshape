@@ -1319,6 +1319,61 @@ so D-064 was the first free number.
 *Agreement:* it changes a working agreement for all three, so its pull request asks both
 @mbj1994 and @dalwalyk to agree, and merges only with both approving.
 
+**D-066 · The disagreement map weighs each unseen point by its spread above the session's own
+seen-surface spread; it ranks next views alongside C-08 and never blocks one.** (2026-11-11)
+A-05 builds the map from A-04's K completion samples (`recon/disagreement.py`). It has five parts.
+- **Spread.** For each point of each accepted sample, the spread is the median, over the other
+  samples, of its point-to-triangle distance to their meshes. That is A-12's measure, applied per
+  point. The median keeps one outlier seed from raising every other sample's spread.
+- **Seen.** A point is seen within 2 mm of the partial cloud: A-12's split, unchanged.
+- **Weight.** The noise level is the median spread over this session's seen points: what the model
+  does with surface it was shown. An unseen point weighs max(0, spread − noise level) times the
+  area it stands for, in mm·mm².
+  - Points below fusion's board cut never count. No camera above the board sees the board-contact
+    face, and the cut band is never in the partial, so no photo helps there.
+  - Counted points are pooled into 2 mm voxels (R-07's TSDF voxel).
+- **Ranking.** Every candidate view gains the weight it would see and a `disagreement_rank`.
+  - `ranked` keeps C-08's order and `best` stays C-08's first, because `agent_policy` reads
+    `best`'s count as what is left under-observed. The map's own choice is `best_by_disagreement`.
+  - Only the served mesh blocks a ray, so guessed surface never hides anything (C-08's rule).
+  - A target up to 2 mm behind served Unobserved surface still counts, as the same surface, and
+    0.5 mm applies behind Observed surface.
+  - A target facing away from the camera doesn't count, but only when every sample's mesh is
+    consistently wound (each shared edge walked once each way). Its signed volume then says which
+    way is out.
+- **Where it runs.** Inline, straight after the completion stage. It never raises, never adds a
+  warning, and records `unavailable` with fewer than 2 samples. That is every host without a runner
+  today (D-058).
+
+*Why:* the owner chose this weighting on 2026-11-11. A fixed "high spread" threshold would turn one
+part's measurement into a constant for every part. A raw sum would let large, low-spread areas
+outvote one small, uncertain feature. Measuring against the session's own seen surface needs no
+number from anywhere else, so the threshold moves with the part, the lighting and the model.
+*Measured on A-12's prepared folders (2026-11-11, M2 Max, CPU):*
+- **s-04:** the per-pair figures came out at U 0.78 / 1.67 / 2.15 mm and O 0.24 / 0.24 / 0.25 mm,
+  against A-12's U 0.77 / 1.58 / 2.08 and O 0.24 / 0.24 / 0.25. The difference is a different point
+  sampling.
+- **s-02:** U 0.88 / 1.07 / 2.56 and O 0.26 / 0.24 / 0.20 mm, against A-12's 0.87 / 1.08 / 2.48 and
+  0.26 / 0.24 / 0.20.
+- The noise levels were 0.26 and 0.24 mm. The maps took 0.6 and 1.0 s, and all six LaS-Comp
+  meshes were consistently wound.
+*Limits, stated plainly:*
+- **A guess over seen surface still counts.** On s-04, 17% of the weight is the raised patch above
+  the observed top that P-29 saw change with the seed. A photo from above re-observes that top but
+  can't stop the model guessing there. Telling such a guess apart from unseen surface isn't done
+  here.
+- **The weight's absolute size is new.** Whether a view that sees N mm·mm² is worth a photo is not
+  decided.
+- **At K = 3 the median of two is a mean.** The median's protection against an outlier starts at
+  K = 4.
+*Does not change:* D-005 and D-006, since nothing in `inspect/` may import the map (a test checks);
+A-04's files; and the contract (D-031). The only new response key is
+`stage_timings_s["disagreement"]`, and that object is open-keyed. **Nothing the scorer ranks
+reaches the phone's arrow yet**, with or without the map. That needs a contract field, at a
+boundary.
+*Checked against D-028:* fetched every origin branch on 2026-11-11. D-064 is the highest on `main`
+and D-065 is held on `planning/P-33-android-parked` (#310), so D-066 was the first free number.
+
 ---
 
 ## Open — not yet decided

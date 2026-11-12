@@ -343,6 +343,10 @@ count are broken by how square-on the view is. Open3D is a pinned `requirements.
 for this (D-047). The reasoning for each of these choices is in `stories/C/C-08.md`. The scorer
 isn't wired into C-07's arrow yet; that's a separate step no story owns.
 
+`--disagreement-dir <run>/completion/disagreement` adds A-05's map (below): every candidate also
+gets the disagreement weight it would see and a `disagreement_rank`, and the report adds
+`best_by_disagreement`. The list's own order stays C-08's.
+
 ## A-01 · sampled VLM observations
 
 Install the pinned `requirements.txt`. For local use, copy `.env.example` to `.env.local`,
@@ -481,3 +485,49 @@ docstring.
   them once R-26 and R-27 change segmentation and cleanup.
 - Once a runner is configured, the served model waits for the budget, which is longer than capture
   polls (10 min). Read D-058 before configuring one for suppliers.
+
+## A-05 · disagreement map
+
+Right after the completion stage, `run_reconstruction_pipeline` builds the disagreement map
+(`recon/disagreement.py`), timed as `stage_timings_s["disagreement"]`. It reads only
+`completion/` and the fusion record, and writes only `completion/disagreement/`. It is capture
+guidance and nothing else (D-005, D-006, D-066): no verdict reads it, and nothing in `inspect/` may
+import it (a test checks).
+
+**What it measures.** A-12's seed-to-seed spread, per point:
+- For each point of each accepted `sample_<k>.ply`, the distance to every other sample's mesh
+  (`runner/sample_<j>_mesh_zup.ply`, point-to-triangle); its spread is the median over the others.
+- A point within 2 mm of the partial is seen surface (A-12's split). The session's noise level is
+  the median spread there.
+- An unseen point counts by its spread *above* that noise level, times the area it stands for
+  (mm·mm²). Points below fusion's board cut are never counted: no camera above the board sees the
+  board-contact face, and no photo puts the cut band into the partial.
+- Counted points are pooled into 2 mm voxels, so the scorer casts about as many rays as it does for
+  the served mesh.
+
+**How the scorer uses it.** The served mesh alone blocks a view, so guessed surface never hides
+anything. A target just behind served *Unobserved* surface (within 2 mm) still counts, as the same
+surface. When every sample's mesh is consistently wound, a target facing away from the camera
+doesn't count. `recon.agent_tools.score_next_view` picks the map up beside the served GLB and adds
+`best_by_disagreement`; `best` stays C-08's.
+
+**Outcomes** (`disagreement.json`, never a warning):
+
+| Situation | Status |
+|---|---|
+| Completion `unavailable` or `failed`, or fewer than 2 accepted samples (every host without a runner today) | `unavailable` |
+| A map was built (it can hold no targets, if the samples agree) | `complete`, plus `targets.npz` |
+| Unreadable inputs, or no seen points to set the noise level | `failed`, with the reason |
+
+**A folder ingested later** (A-12's route) can be mapped in place, because an `unavailable` record is
+the one thing the stage will replace:
+```
+python -m recon.completion ingest <session>/artifacts
+python -m recon.disagreement <session>/artifacts/completion --fusion-dir <session>/artifacts/fusion
+python -m recon.next_view <session>/artifacts/uncertainty --disagreement-dir <session>/artifacts/completion/disagreement
+```
+Without `--fusion-dir` (a completion folder copied on its own) the board cut falls back to a level
+plane through the partial's lowest point, and the record says which was used.
+
+**Not done.** The phone's arrow still follows C-07's fixed orbit. Nothing the scorer ranks reaches
+the phone yet, with or without the map, because that needs a contract field (D-031).

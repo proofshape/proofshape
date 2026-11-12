@@ -346,8 +346,10 @@ Full detail in each story file.
   - **The runner's environment in the image.** It needs a second Python and torch 2.4 beside the
     image's torch 2.8, which `tests/test_container.py` forbids today.
 
-  A-05 is the first story that needs real per-session samples. Whoever writes it up settles this
-  first, or makes A-05 depend on the story that does.
+  A-05 is the first story that needs real per-session samples. Its first pass (D-066) builds the
+  map inline whenever samples exist and records `unavailable` otherwise, so it waits on neither
+  item. It was checked on A-12's prepared s-04 and s-02 folders. Real per-session maps arrive with
+  the story that settles both.
 
 ---
 
