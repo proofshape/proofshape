@@ -2239,3 +2239,37 @@ waiting rather than active, so this claim is within the cap.
 **Result:** merged to `main`. CI (pytest, ruff, typescript) green on the merged head.
 **Next:** implement A-07's core tool-calling loop against a mock model, then its fallback to
 A-08's deterministic policy.
+
+## 2026-11-11 — G-01 cube readings recorded; story closed with the slicer values deferred (PR #303)
+
+**Who:** @TabeenRaoof (PR #303). The lab facts and protocol came earlier, in #260.
+
+**What changed:**
+- `fixtures/caliper_g-01.json` holds 90 caliper readings: 3 cubes × 3 axes × 10, measured 2026-11-11
+  with the G-06 caliper.
+  - They were copied by script from the lab-day checklist, not retyped.
+  - One typing slip was fixed before commit. Cube 1's tenth X reading had gone in as 30.3; the
+    owner checked it, and it is 30.0.
+- `stories/G/G-01.md` gets the 2026-11-10 visit (the lab's only A1 mini, grey Bambu PLA Basic, one
+  spool, about 9:20 am to 12:45 pm), the per-axis deviation table and the completion record.
+
+**Measured, with no tolerance (G-04 judges):**
+- The mean − 30 mm over the three cubes: X −0.027, Y −0.073, Z +0.010.
+- The range of the three cube means: X 0.11, Y 0.01, Z 0.05.
+- Y read short on all three prints, by close to the same amount. Every deviation is under one
+  0.1 mm caliper step.
+
+**Deferred:** the slicer values, which are layer height, walls, infill and the Bambu Studio
+version.
+- The owner amended G-01's second acceptance criterion at close. The sliced cube project hadn't
+  been found, and the `.3mf` sent in was the geometry-only file.
+- The values are added to G-01, read from that file, when it turns up.
+- G-02 and G-05 can't be Done until then.
+
+**Result:** this PR sets G-01 to `State: Done`, 7 h actual (est 3). `check_story_states.py` is
+clean.
+
+**Next:**
+- Find the sliced cube project and add its slicer values to G-01. Look on the owner's Mac, or on
+  the A1 mini's microSD card at the lab.
+- G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in G-05.
