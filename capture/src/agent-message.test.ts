@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, getAgentMessage } from "./api.js";
 import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
 
@@ -20,28 +20,48 @@ describe("C-22 mock agent message route", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     await close();
   });
 
-  it("returns a supplier-facing mock message", async () => {
+  it("returns a supplier-facing mock message using A-07's result shape", async () => {
     const result = await getAgentMessage(baseUrl, sessionId);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.body).toEqual({
+      finished: false,
+      fallback_reason: null,
       message: "Capture your first guided frame.",
-      fallback: false,
     });
   });
 
-  it("returns deterministic fallback state when the agent is unavailable", async () => {
-    stub.setAgentFallback(true, "model_timeout");
+  it("returns A-07 deterministic fallback narration and reason", async () => {
+    stub.setAgentFallback(true, "timeout");
     const result = await getAgentMessage(baseUrl, sessionId);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.body).toEqual({
-      message: null,
-      fallback: true,
-      fallback_reason: "model_timeout",
+      finished: false,
+      fallback_reason: "timeout",
+      message: "Keep going -- more of the part still needs to be photographed.",
+    });
+  });
+
+  it("aborts a stalled agent request at the configured deadline", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        });
+      }),
+    );
+
+    await expect(getAgentMessage(baseUrl, sessionId, undefined, 5)).rejects.toMatchObject({
+      name: "AbortError",
     });
   });
 });
