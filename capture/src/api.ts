@@ -1,4 +1,5 @@
 import type {
+  AgentMessageResult,
   ErrorDetail,
   Gyro,
   ReconstructionResult,
@@ -137,4 +138,28 @@ export async function getVerdict(
     return { ok: false, status: response.status, error: body as ErrorDetail };
   }
   unexpectedStatus("getVerdict", response, body);
+}
+
+
+/**
+ * C-22 mock-only route. A-07 explicitly leaves the real phone-facing D-031 contract for a
+ * boundary decision; keeping this isolated makes replacing the mock route mechanical later.
+ */
+export async function getAgentMessage(
+  baseUrl: string,
+  sessionId: string,
+  authToken?: string,
+): Promise<ApiResult<AgentMessageResult>> {
+  const response = await fetch(
+    `${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/agent-message`,
+    { headers: authHeaders(authToken) },
+  );
+  const body = await readJsonBody(response, "getAgentMessage");
+  if (response.status === 200) {
+    return { ok: true, status: response.status, body: body as AgentMessageResult };
+  }
+  if (response.status === 404) {
+    return { ok: false, status: response.status, error: body as ErrorDetail };
+  }
+  unexpectedStatus("getAgentMessage", response, body);
 }
