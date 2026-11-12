@@ -116,7 +116,10 @@ export interface ContractStub {
   failReconstruction: () => void;
   useNoReferenceReconstruction: () => void;
   setVerdictScenario: (scenario: VerdictScenario, sessionId?: string) => void;
-  setAgentFallback: (fallback: boolean, reason?: string) => void;
+  setAgentFallback: (
+    fallback: boolean,
+    reason?: "model_error" | "timeout" | "loop_detected",
+  ) => void;
 }
 
 export function createContractStub(): ContractStub {
@@ -129,7 +132,7 @@ export function createContractStub(): ContractStub {
   let latestSessionId: string | null = null;
   const verdictScenarios = new Map<string, VerdictScenario>();
   let agentFallback = false;
-  let agentFallbackReason = "model_unavailable";
+  let agentFallbackReason: "model_error" | "timeout" | "loop_detected" = "model_error";
 
   function sendJson(res: ServerResponse, status: number, body: unknown): void {
     const text = JSON.stringify(body);
@@ -377,13 +380,18 @@ export function createContractStub(): ContractStub {
       return;
     }
     const body: AgentMessageResult = agentFallback
-      ? { message: null, fallback: true, fallback_reason: agentFallbackReason }
+      ? {
+          finished: false,
+          fallback_reason: agentFallbackReason,
+          message: "Keep going -- more of the part still needs to be photographed.",
+        }
       : {
+          finished: false,
+          fallback_reason: null,
           message:
             session.acceptedFrameCount === 0
               ? "Capture your first guided frame."
               : "Frame accepted. Continue to the next guided view.",
-          fallback: false,
         };
     sendJson(res, 200, body);
   }
@@ -515,7 +523,7 @@ export function createContractStub(): ContractStub {
       }
       verdictScenarios.set(targetSessionId, scenario);
     },
-    setAgentFallback: (fallback: boolean, reason = "model_unavailable") => {
+    setAgentFallback: (fallback: boolean, reason = "model_error") => {
       agentFallback = fallback;
       agentFallbackReason = reason;
     },
