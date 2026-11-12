@@ -2288,4 +2288,6 @@ failures; the skips include four generator-script tests without `scripts/node_mo
 macOS OpenMP integration test without optional `torch`.
 **Concluded:** only unresolved tools are offered on each step, and A-07 now demonstrates different
 supplier-facing answers on identical synthetic state.
+**Close-out:** owner-confirmed 5 h actual against 4 h estimated; this matches A-13's completion
+record and supersedes the earlier interim 8 h note.
 **Next:** final D-038 review and approval on this close-out head; no commits should follow approval.
