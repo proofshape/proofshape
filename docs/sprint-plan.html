@@ -1018,7 +1018,7 @@ footer{margin-top:56px; padding-top:18px; border-top:1px solid var(--rule); font
         <li><b>Nobody blocks for more than one day.</b> If a teammate's real component is not ready, use the stub and keep moving. Raise it at the next standup, not by waiting.</li>
         <li><b>The interface contract changes only at a sprint boundary,</b> with all three present. Mid-sprint contract drift is what turns three independent lanes back into one tangled one.</li>
         <li><b>No story crosses a gate.</b> Anything unfinished at a sprint boundary is either cut or explicitly carried, never silently rolled forward.</li>
-        <li><b>Work in progress is capped at two stories per person.</b> Three half-finished features at a milestone is worse than one finished one.</li>
+        <li><b>Work in progress is capped at two <i>active</i> stories per person (D-064).</b> Three half-finished features at a milestone is worse than one finished one. A claimed story waiting only on something outside its owner's hands (a review, a boundary merge, lab or GPU access, a teammate's input) doesn't count, provided its notes say what it is waiting on and since when. When the wait ends it counts again; an owner who is then at three takes no new claim until one is Done or released. This supersedes the original &ldquo;two stories per person&rdquo; (to 2026-11-11), which counted every claim.</li>
       </ol>
     </div>
     <div class="blk">

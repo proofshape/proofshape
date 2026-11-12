@@ -452,6 +452,46 @@ class EdgeMeasurement:
     )
 
 
+# R-32's sign convention, stated once and copied into every report that carries a wall profile.
+# Each offset is measured along the wall's *inward* normal, found from the fitted footprint itself
+# (towards its centre), never from the edge's direction: _fit_rigid_2d tries both handednesses,
+# so a mirrored fit reverses the edges' winding, and a direction-based normal would then flip the
+# sign of every offset on a run-by-run basis. A positive offset is surface inside the CAD wall (the
+# part reads small there); a positive lean is a wall moving inward as it rises. Checked, mirrored
+# and not, by test_wall_offset_sign_is_positive_inside_the_cad_wall.
+WALL_OFFSET_CONVENTION = (
+    "offset_mm is the surface's signed distance from the CAD wall: positive means inside the CAD "
+    "footprint (the part reads small there), negative means outside. lean_mm and lean_deg are "
+    "positive when the wall moves inward as height increases."
+)
+
+
+@dataclass(frozen=True)
+class WallHeightBin:
+    height_mm: float
+    offset_mm: float
+    thickness_mm: float
+    point_count: int
+
+
+@dataclass(frozen=True)
+class WallProfileMeasurement:
+    edge_index: int
+    cad_length_mm: float
+    point_count: int
+    height_min_mm: float
+    height_max_mm: float
+    lean_mm: float
+    lean_deg: float
+    thickness_median_mm: float
+    bins: list[WallHeightBin]
+    # Where the wall is, in board-frame mm, and which way is inside. A mirror-symmetric footprint
+    # (s-05's square) can fit with any of its edges on any physical wall, so edge_index alone
+    # doesn't name the same wall in two runs; these do.
+    midpoint_xy_mm: tuple[float, float]
+    inward_normal_xy: tuple[float, float]
+
+
 @dataclass(frozen=True)
 class PrismMeasurement:
     height_mm: float
@@ -460,6 +500,215 @@ class PrismMeasurement:
     alignment_residual_mm: float
     rotation_deg: float
     edges: list[EdgeMeasurement]
+    wall_profiles: list[WallProfileMeasurement]
+    transformed_edges: list[tuple[np.ndarray, np.ndarray]]
+
+
+def measure_wall_profiles(
+    points_board_frame_mm: np.ndarray,
+    transformed_edges: list[tuple[np.ndarray, np.ndarray]],
+    board_plane: tuple[float, float, float],
+    part_height_mm: float,
+    alignment_residual_mm: float,
+    *,
+    bin_count: int = 5,
+    min_points_per_bin: int = 5,
+) -> list[WallProfileMeasurement]:
+    """Measure each flat wall's signed offset, lean and thickness as a function of height.
+
+    R-32 needs to distinguish a depth error already present in the raw reconstruction from a
+    shape error introduced later by fusion. The CAD pose is fixed by the same rigid 2-D fit used
+    for the size measurement. For each CAD edge, wall points are assigned to their nearest edge
+    line, split into equal height bands from 10% to 90% of the measured part height, and reported
+    as the median signed normal offset plus the p10-p90 spread (thickness) in each band.
+
+    lean_mm is the fitted change in signed wall offset from the first valid height bin to the
+    last; lean_deg is atan(d offset / d height). Signs follow WALL_OFFSET_CONVENTION: a positive
+    offset is inside the CAD wall, and a positive lean moves inward going up. No tolerance or accuracy judgement is made.
+    An edge with too little surface evidence is omitted instead of fabricating a zero measurement.
+    """
+    points = np.asarray(points_board_frame_mm, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError(
+            f"points_board_frame_mm must have shape (N,3), got {points.shape}"
+        )
+    if part_height_mm <= 0:
+        raise ValueError("part_height_mm must be positive.")
+    if bin_count < 2:
+        raise ValueError("bin_count must be at least 2.")
+    if min_points_per_bin < 1:
+        raise ValueError("min_points_per_bin must be positive.")
+
+    heights = compute_height_above_board(points, board_plane)
+    wall_band = (heights >= 0.10 * part_height_mm) & (heights <= 0.90 * part_height_mm)
+    points = points[wall_band]
+    heights = heights[wall_band]
+    if len(points) == 0:
+        return []
+
+    points_xy = points[:, :2]
+    distances = _edge_line_distances(points_xy, transformed_edges)
+    assignment = distances.argmin(axis=1)
+    distance_limit_mm = max(8.0, 4.0 * alignment_residual_mm)
+    height_edges = np.linspace(
+        0.10 * part_height_mm, 0.90 * part_height_mm, bin_count + 1
+    )
+
+    footprint_centre = np.mean(
+        [np.asarray(p0, dtype=np.float64) for p0, _ in transformed_edges], axis=0
+    )
+    profiles: list[WallProfileMeasurement] = []
+    for edge_index, (p0, p1) in enumerate(transformed_edges):
+        direction = p1 - p0
+        cad_length_mm = float(np.linalg.norm(direction))
+        unit_direction = direction / cad_length_mm
+        normal = np.array([-unit_direction[1], unit_direction[0]])
+        midpoint = (p0 + p1) / 2.0
+        if float(np.dot(footprint_centre - midpoint, normal)) < 0.0:
+            # Point inward whatever the edges' winding (see WALL_OFFSET_CONVENTION).
+            normal = -normal
+        selected = (assignment == edge_index) & (
+            distances[:, edge_index] <= distance_limit_mm
+        )
+        if int(np.count_nonzero(selected)) < 2 * min_points_per_bin:
+            continue
+
+        edge_heights = heights[selected]
+        signed_offsets = (points_xy[selected] - p0) @ normal
+        raw_bins: list[tuple[float, float, int, np.ndarray, np.ndarray]] = []
+        for bin_index in range(bin_count):
+            lo = height_edges[bin_index]
+            hi = height_edges[bin_index + 1]
+            if bin_index == bin_count - 1:
+                in_bin = (edge_heights >= lo) & (edge_heights <= hi)
+            else:
+                in_bin = (edge_heights >= lo) & (edge_heights < hi)
+            count = int(np.count_nonzero(in_bin))
+            if count < min_points_per_bin:
+                continue
+            heights_in_bin = edge_heights[in_bin]
+            offsets_in_bin = signed_offsets[in_bin]
+            raw_bins.append(
+                (
+                    float(np.median(heights_in_bin)),
+                    float(np.median(offsets_in_bin)),
+                    count,
+                    heights_in_bin,
+                    offsets_in_bin,
+                )
+            )
+
+        if len(raw_bins) < 2:
+            continue
+        bin_heights = np.asarray([item[0] for item in raw_bins], dtype=np.float64)
+        bin_offsets = np.asarray([item[1] for item in raw_bins], dtype=np.float64)
+        slope, _intercept = np.polyfit(bin_heights, bin_offsets, 1)
+
+        bins: list[WallHeightBin] = []
+        for height_mm, _offset_mm, count, heights_in_bin, offsets_in_bin in raw_bins:
+            # Remove the fitted lean within this height band before measuring thickness.
+            # Otherwise a genuinely leaning but razor-thin wall looks artificially thick simply
+            # because its centre moves sideways from the bottom to the top of the bin.
+            detrended_offsets = offsets_in_bin - slope * (heights_in_bin - height_mm)
+            p10, p90 = np.percentile(detrended_offsets, [10, 90])
+            bins.append(
+                WallHeightBin(
+                    height_mm=height_mm,
+                    offset_mm=float(np.median(detrended_offsets)),
+                    thickness_mm=float(p90 - p10),
+                    point_count=count,
+                )
+            )
+
+        height_span = float(bin_heights[-1] - bin_heights[0])
+        profiles.append(
+            WallProfileMeasurement(
+                edge_index=edge_index,
+                cad_length_mm=cad_length_mm,
+                point_count=int(np.count_nonzero(selected)),
+                height_min_mm=float(bin_heights[0]),
+                height_max_mm=float(bin_heights[-1]),
+                lean_mm=float(slope * height_span),
+                lean_deg=float(math.degrees(math.atan(float(slope)))),
+                thickness_median_mm=float(
+                    np.median([item.thickness_mm for item in bins])
+                ),
+                bins=bins,
+                midpoint_xy_mm=(float(midpoint[0]), float(midpoint[1])),
+                inward_normal_xy=(float(normal[0]), float(normal[1])),
+            )
+        )
+    return profiles
+
+
+def _wall_profiles_report(
+    profiles: list[WallProfileMeasurement],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "edge_index": profile.edge_index,
+            "midpoint_xy_mm": list(profile.midpoint_xy_mm),
+            "inward_normal_xy": list(profile.inward_normal_xy),
+            "cad_length_mm": profile.cad_length_mm,
+            "point_count": profile.point_count,
+            "height_min_mm": profile.height_min_mm,
+            "height_max_mm": profile.height_max_mm,
+            "lean_mm": profile.lean_mm,
+            "lean_deg": profile.lean_deg,
+            "thickness_median_mm": profile.thickness_median_mm,
+            "height_bins": [
+                {
+                    "height_mm": item.height_mm,
+                    "offset_mm": item.offset_mm,
+                    "thickness_mm": item.thickness_mm,
+                    "point_count": item.point_count,
+                }
+                for item in profile.bins
+            ],
+        }
+        for profile in profiles
+    ]
+
+
+def observed_glb_labels(glb_path: Path) -> str:
+    """Which labels a fused GLB carries, named in the report so the two can never be confused.
+
+    R-32 measures the fused surface on the *served* labels, `uncertainty/mesh_uncertainty.glb`:
+    R-10 has already downgraded noisy-depth vertices to Unobserved there, so it is the surface
+    that can pass or fail a part. `provenance/mesh_provenance.glb` holds R-09's labels from before
+    that downgrade, and so keeps the noisiest wall vertices; a run on it is labelled as such
+    rather than refused, so the two can be compared deliberately.
+    """
+    name = Path(glb_path).name
+    if name == "mesh_uncertainty.glb":
+        return "served: R-10's labels, after the sigma downgrade (uncertainty/mesh_uncertainty.glb)"
+    if name == "mesh_provenance.glb":
+        return (
+            "not served: R-09's labels, before R-10's sigma downgrade "
+            "(provenance/mesh_provenance.glb)"
+        )
+    return f"unrecognised file name {name!r}: labels as given"
+
+
+def load_observed_surface_points(provenance_glb: Path) -> np.ndarray:
+    """Return vertices participating in fully Observed faces of a provenance GLB.
+
+    Imports provenance lazily so the normal raw-cloud CAD check keeps its lightweight import
+    surface. R-09's conservative rule is preserved: a face counts only when all three vertices
+    are Observed.
+    """
+    from recon import mesh_cleanup, provenance
+
+    vertices, faces, colors = mesh_cleanup.read_glb(Path(provenance_glb))
+    if colors is None:
+        raise ValueError(f"{provenance_glb} has no provenance vertex colors.")
+    vertex_labels = provenance.colors_to_labels(colors)
+    face_labels = provenance.label_faces(faces, vertex_labels)
+    observed_faces = faces[face_labels == provenance.LABEL_OBSERVED]
+    if len(observed_faces) == 0:
+        raise ValueError(f"{provenance_glb} has no fully Observed faces.")
+    observed_vertex_indices = np.unique(observed_faces.reshape(-1))
+    return vertices[observed_vertex_indices].astype(np.float64)
 
 
 def measure_prism(
@@ -491,9 +740,11 @@ def measure_prism(
             "Too few candidate points above the board to measure the part."
         )
 
-    candidate_xy = points[region, :2]
+    candidate_points = points[region]
+    candidate_xy = candidate_points[:, :2]
     candidate_height = height[region]
     blob_mask = _largest_connected_blob(candidate_xy)
+    candidate_points = candidate_points[blob_mask]
     candidate_xy = candidate_xy[blob_mask]
     candidate_height = candidate_height[blob_mask]
 
@@ -582,6 +833,14 @@ def measure_prism(
             )
         )
 
+    wall_profiles = measure_wall_profiles(
+        candidate_points,
+        transformed_edges,
+        board_plane,
+        height_mm,
+        residual,
+    )
+
     return PrismMeasurement(
         height_mm=height_mm,
         cad_height_mm=prism.height_mm,
@@ -589,6 +848,8 @@ def measure_prism(
         alignment_residual_mm=residual,
         rotation_deg=float(math.degrees(math.atan2(transform[1, 0], transform[0, 0]))),
         edges=edge_measurements,
+        wall_profiles=wall_profiles,
+        transformed_edges=transformed_edges,
     )
 
 
@@ -864,6 +1125,7 @@ def build_report(
     board_pose_dir: Path,
     cad_path: Path | None = None,
     min_confidence: float = 0.0,
+    observed_glb: Path | None = None,
 ) -> dict[str, Any]:
     """Run the board-ruler check, and the CAD check if a CAD path is given.
 
@@ -958,13 +1220,38 @@ def build_report(
                 }
                 for edge in measurement.edges
             ],
+            "raw_wall_profiles": _wall_profiles_report(measurement.wall_profiles),
+            "wall_offset_convention": WALL_OFFSET_CONVENTION,
             "note": (
                 "Measurements only; no tolerance or pass/fail claim is made here (D-003) -- "
                 "that is R-16's job once a real tolerance exists. *_ratio_over_board_scale "
                 "divides out the board-ruler's measured scale error, isolating whatever error "
-                "is specific to this part rather than shared with the whole scene."
+                "is specific to this part rather than shared with the whole scene. R-32 wall "
+                "profiles report signed CAD-wall offset by height, lean and p10-p90 thickness."
             ),
         }
+
+        if observed_glb is not None:
+            observed_points = load_observed_surface_points(Path(observed_glb))
+            observed_profiles = measure_wall_profiles(
+                observed_points,
+                measurement.transformed_edges,
+                board_plane,
+                measurement.height_mm,
+                measurement.alignment_residual_mm,
+            )
+            report["prism"]["fused_observed"] = {
+                "observed_glb": str(observed_glb),
+                "labels": observed_glb_labels(Path(observed_glb)),
+                "wall_offset_convention": WALL_OFFSET_CONVENTION,
+                "wall_profiles": _wall_profiles_report(observed_profiles),
+                "note": (
+                    "Only vertices participating in fully Observed provenance faces are used. "
+                    "The same CAD wall pose fitted on the raw cloud is reused here, so raw and "
+                    "fused offsets are directly comparable and a lean introduced by fusion is "
+                    "not absorbed by a second independent alignment."
+                ),
+            }
 
     return report
 
@@ -1011,16 +1298,33 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="drop points.ply points whose depth confidence is below this before the CAD check "
         "(default keeps all; does not affect the board-ruler check)",
     )
+    parser.add_argument(
+        "--observed-glb",
+        type=Path,
+        default=None,
+        help="optional fused, provenance-coloured GLB: repeat R-32's wall lean/thickness "
+        "measurement on its fully Observed surface. Use the run's served "
+        "uncertainty/mesh_uncertainty.glb (R-10's labels); the report names which labels it got",
+    )
     parser.add_argument("--out", type=Path, default=None)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_argument_parser().parse_args(argv)
+    parser = build_argument_parser()
+    args = parser.parse_args(argv)
     out = args.out or args.recon_run_dir / "cad_size_check.json"
+    if args.observed_glb is not None and args.cad is None:
+        parser.error(
+            "--observed-glb requires --cad so the fused wall profiles have a CAD wall pose."
+        )
     try:
         report = build_report(
-            args.recon_run_dir, args.board_pose_dir, args.cad, args.min_confidence
+            args.recon_run_dir,
+            args.board_pose_dir,
+            args.cad,
+            args.min_confidence,
+            args.observed_glb,
         )
         write_report(out, report)
     except (FileNotFoundError, FileExistsError, ValueError, CalibrationFailure) as exc:
