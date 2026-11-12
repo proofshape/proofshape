@@ -151,7 +151,9 @@ export async function getAgentMessage(
   timeoutMs = 2000,
 ): Promise<ApiResult<AgentMessageResult>> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
   let response: Response;
   try {
     response = await fetch(
