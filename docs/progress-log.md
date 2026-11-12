@@ -2238,7 +2238,8 @@ reflective padlock under a different lighting condition from its twin s-01 is th
   Safari. The sprint plan's S6 line and the capture section point at D-065.
 
 **Result:** the proposal's §12 rule ("Tier 1 must pass on both") is unmet while D-065 stands,
-stated as its cost. `check_story_states.py` is consistent. No code.
+stated as its cost. `check_story_states.py` is consistent. P-33 closed at 0.5 h actual, the
+owner's figure. No code.
 
 **Next:** the Nov 13 boundary call confirms the carry. Confirm the expo date and update O-006.
 Revisit C-23 at the Dec 2 boundary if someone has an Android phone.
