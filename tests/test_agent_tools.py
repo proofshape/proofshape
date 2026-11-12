@@ -180,6 +180,57 @@ def test_score_next_view_wraps_the_real_mesh_after_reconstruction(tmp_path):
     assert len(result.data["ranked"]) > 0
     assert result.data["best"] == result.data["ranked"][0]
     assert result.data["best"]["under_observed_visible_count"] >= 0
+    # A GLB outside a session's uncertainty/ folder has no disagreement map to look for (A-05).
+    assert result.data["disagreement_used"] is False
+    assert "best_by_disagreement" not in result.data
+
+
+def _session_with_disagreement_map(tmp_path: Path, status: str = "complete") -> Path:
+    """A served GLB where the service puts it, with an A-05 map beside it: one target just past
+    the tetrahedron's +x tip."""
+    from recon import disagreement
+
+    artifacts = tmp_path / "artifacts"
+    glb_path = artifacts / "uncertainty" / "mesh_uncertainty.glb"
+    glb_path.parent.mkdir(parents=True)
+    _tetrahedron_glb(glb_path)
+    map_dir = artifacts / "completion" / disagreement.DISAGREEMENT_DIR_NAME
+    map_dir.mkdir(parents=True)
+    (map_dir / disagreement.REPORT_FILE).write_text(
+        json.dumps({"status": status}), encoding="utf-8"
+    )
+    np.savez(
+        map_dir / disagreement.TARGETS_FILE,
+        points_mm=np.array([[14.0, 1.0, -1.0]]),
+        normals=np.zeros((1, 3)),
+        weights=np.array([1.0]),
+        cull_back_faces=np.array(False),
+    )
+    return glb_path
+
+
+def test_score_next_view_uses_the_sessions_disagreement_map_and_keeps_c08s_best(
+    tmp_path,
+):
+    glb_path = _session_with_disagreement_map(tmp_path)
+    record = {"reconstruction": {"status": "complete", "glb_path": str(glb_path)}}
+
+    result = agent_tools.score_next_view(record)
+
+    assert result.data["disagreement_used"] is True
+    assert result.data["best_by_disagreement"]["disagreement_rank"] == 1
+    assert result.data["best_by_disagreement"]["disagreement_visible_weight"] == 1.0
+    # `best` is still C-08's first, so the policy's "what is left" count keeps its meaning.
+    assert result.data["best"] == result.data["ranked"][0]
+
+
+def test_score_next_view_ignores_a_map_that_is_not_complete(tmp_path):
+    glb_path = _session_with_disagreement_map(tmp_path, status="unavailable")
+    record = {"reconstruction": {"status": "complete", "glb_path": str(glb_path)}}
+
+    result = agent_tools.score_next_view(record)
+
+    assert result.data["disagreement_used"] is False
 
 
 # --- check_frame ---------------------------------------------------------------------------

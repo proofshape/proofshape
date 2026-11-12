@@ -291,7 +291,7 @@ Calendar events, not intentions. All other work stops.
 2. **Nobody blocks for more than one day.** If a teammate's real component is not ready, use the stub and keep moving. Raise it at the next standup, not by waiting.
 3. **The interface contract changes only at a sprint boundary,** with all three present. Mid-sprint contract drift turns three independent lanes back into one tangled one.
 4. **No story crosses a gate.** Anything unfinished at a boundary is either cut or explicitly carried, never silently rolled forward.
-5. **WIP capped at two stories per person.** Three half-finished features at a milestone is worse than one finished one.
+5. **WIP capped at two *active* stories per person (D-064).** Three half-finished features at a milestone is worse than one finished one. A claimed story waiting only on something outside its owner's hands (a review, a boundary merge, lab or GPU access, a teammate's input) doesn't count, provided its notes say what it is waiting on and since when. When the wait ends it counts again; an owner who is then at three takes no new claim until one is Done or released. This supersedes the original "WIP capped at two stories per person" (to 2026-11-11), which counted every claim.
 
 ### Cadence
 

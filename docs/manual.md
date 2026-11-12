@@ -174,6 +174,12 @@ real board surface from the board points *around* the part (R-21), and in the fi
 sessions most failures happened exactly there (§9). A part that hides most of the pattern makes
 that more likely.
 
+**Don't shoot so close that only a few squares fill the frame.** C-18's own device check hit this
+directly: a session shot close and steep enough that only 2 of 16 frames had enough of the board's
+corners for the service to use (it needs at least 3), even though the board was in every frame.
+Pull back enough that most of the sheet stays in shot around the part, rather than filling the
+frame with a close-up of the part and a handful of squares.
+
 **If the part is dramatically larger than the whole sheet, ProofShape is the wrong tool for it.**
 The stated scope is hand-sized parts. Supporting genuinely large parts would need a physically
 larger board (bigger paper, or larger squares at the cost of marker headroom), which is not a
@@ -255,7 +261,9 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
 - **Next-view scoring** — ranking where one more photo would see the most unobserved surface —
   exists on `main` (C-08, `recon/next_view.py`), but only as a command-line tool run on a
   finished model. Nothing calls it yet: not the service, and not the arrow, which follows the
-  fixed orbit.
+  fixed orbit. Given A-05's disagreement map, it also ranks where a photo would settle the most
+  guessing by the shape-completion model. That map is built on the server whenever completion
+  samples exist, which no supplier's session has yet (D-058, D-066).
 
 **Planned, and part of what makes this more than a photo app:**
 - **An LLM agent runs the session** (A-06, A-07, with A-08's deterministic fallback) — it decides
@@ -330,13 +338,19 @@ you can orbit with one finger and zoom with two. A **Download GLB** link is alwa
 raw model stays retrievable even if the viewer can't render it. If the result is not metric, the
 summary says "No dimensional claims".
 
+**The viewer's orbit has no keyboard alternative today** (C-18). It's mouse/touch only; there's no
+tab stop or arrow-key control on the 3D canvas. The rest of the capture page's controls — the
+order-code field, Start, Capture frame, Finish, the model's "Colour by" selector and Download
+GLB — are native inputs, buttons, a select and a link, and work with Tab and Enter (Space too, on
+the buttons).
+
 The model is coloured by **what was actually seen**:
 
 | Colour | Label | Meaning |
 |---|---|---|
 | **Blue** | **Observed** | Seen in at least two frames whose viewpoints are at least 2° apart, through pixels the reconstruction model is confident about (R-24, D-045), with the mesh surface facing each camera, and not hidden behind other surface in those frames: its position agrees with the depth each frame actually measured (R-09/R-25). The spread of that depth across the frames (σ) must also be 3 mm or less, or it is downgraded to Unobserved (R-10). This is the only geometry that can produce a Pass or a Fail. |
 | **Slate grey** | **Unobserved** | Not properly seen. Can only ever trigger a Rescan. |
-| **Orange** | **Inferred** | Reserved: surface filled in by generative shape completion. The service-side stage exists (A-04), but completion samples stay on the server for the disagreement map (A-05) and are never part of the model you see. The model itself runs only on a CUDA host, through A-12's runner (measured on a Colab T4), and no host that serves suppliers has one configured yet, so on the M2 Max nothing is produced (D-058). Inferred surface is excluded from every deviation calculation and **never** contributes to a verdict. |
+| **Orange** | **Inferred** | Reserved: surface filled in by generative shape completion. The service-side stage exists (A-04), but completion samples stay on the server for the disagreement map (A-05: where the samples disagree, used only to suggest the next photo) and are never part of the model you see. The model itself runs only on a CUDA host, through A-12's runner (measured on a Colab T4), and no host that serves suppliers has one configured yet, so on the M2 Max nothing is produced (D-058). Inferred surface is excluded from every deviation calculation and **never** contributes to a verdict. |
 | **Magenta** | **Unknown** | A colour the viewer did not expect. Should never appear; if it does, the viewer also shows a warning. |
 
 If the model carries no provenance colours at all (C-19), it's shown in a single flat colour and
@@ -432,6 +446,12 @@ C-15 does not generate one.
 | `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
 | `vlm_veto` | **Today this means a malformed upload, not a semantic check** — A-01 records asynchronous observations, but A-02's veto policy is not built. The contract has no dedicated code for a malformed request yet, and adding one goes through the contract-change process (D-031). Once the VLM exists, this will mean the semantic check rejected the session: wrong part, hands in shot, a photo of a screen. | Reshoot; if it repeats, tell the team, since it points at an app bug. |
+
+**Not a contract code — the phone never reached the service at all (works now, C-18):**
+
+| What you see | What happened | What to do |
+|---|---|---|
+| "No connection to the service — check your network and try again." | Starting, uploading, finishing or polling a session all go over the network; this covers any of them failing before a response came back at all (Wi-Fi dropped, the dev server stopped). The browser's own wording for this ("Load failed" on Safari, "Failed to fetch" on Chrome) is deliberately replaced, since it names no next step. | Check the connection and try again. |
 
 **From the reconstruction, after you finish (works now):**
 

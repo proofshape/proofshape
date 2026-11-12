@@ -493,6 +493,19 @@ def _report(out_dir: Path) -> dict:
     )
 
 
+def _disagreement_report(artifact_dir: Path) -> dict:
+    from recon import disagreement
+
+    return json.loads(
+        (
+            artifact_dir
+            / "completion"
+            / disagreement.DISAGREEMENT_DIR_NAME
+            / disagreement.REPORT_FILE
+        ).read_text(encoding="utf-8")
+    )
+
+
 # --- the stage, with no runner (every session on the Mac) ----------------------------------------
 
 
@@ -807,6 +820,33 @@ def test_cli_prepare_then_ingest_a_run_made_elsewhere(tmp_path, capsys):
     assert report["k_produced"] == completion.DEFAULT_PARAMETERS.max_samples
 
 
+def test_a_folder_ingested_after_the_pipeline_can_then_be_mapped(tmp_path, capsys):
+    """A-12's route, then A-05: the pipeline prepares completion with no runner and records the map
+    as unavailable; the run happens elsewhere and is ingested; the map is then built in place."""
+    import subprocess
+
+    from recon import disagreement
+
+    artifacts = _write_artifacts(tmp_path)
+    out_dir = tmp_path / "artifacts" / "completion"
+    completion.run_completion_stage(artifacts, out_dir, None, _small_params())
+    assert disagreement.disagreement_stage(out_dir).status == "unavailable"
+
+    subprocess.run(
+        [*_stub(), "--request", str(out_dir / contract.REQUEST_FILE)], check=True
+    )
+    assert completion.ingest_existing(out_dir, _small_params()).status == "complete"
+
+    assert (
+        disagreement.main([str(out_dir), "--fusion-dir", str(artifacts.fusion_dir)])
+        == 0
+    )
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "complete"
+    assert report["board"]["method"] == "board_surface"
+    assert report["k_used"] == [0, 1, 2]
+
+
 def test_cli_refuses_to_prepare_over_or_ingest_into_a_finished_folder(tmp_path, capsys):
     import subprocess
 
@@ -916,6 +956,9 @@ def test_pipeline_without_a_runner_times_the_stage_and_warns_nobody(
     assert "completion" in result["stage_timings_s"]
     assert result["warnings"] == []
     assert _report(tmp_path / "artifacts" / "completion")["status"] == "unavailable"
+    # A-05 runs after it, finds no samples, and says so without a warning either.
+    assert "disagreement" in result["stage_timings_s"]
+    assert _disagreement_report(tmp_path / "artifacts")["status"] == "unavailable"
 
 
 def test_pipeline_upstream_files_and_served_glb_are_identical_with_completion_on_or_off(
@@ -934,6 +977,9 @@ def test_pipeline_upstream_files_and_served_glb_are_identical_with_completion_on
     on = service.run_reconstruction_pipeline(source.capture_dir, tmp_path / "on")
 
     assert _report(tmp_path / "on" / "completion")["status"] == "complete"
+    # A-05's map is built from the stub's samples, inside completion/, which the hashes below skip
+    # along with the samples themselves.
+    assert _disagreement_report(tmp_path / "on")["status"] == "complete"
     assert on["warnings"] == off["warnings"] == []
     # Every upstream file -- mesh_uncertainty.glb and sigma_mm.npz included -- byte for byte.
     assert _upstream_hashes(tmp_path / "on") == _upstream_hashes(tmp_path / "off")

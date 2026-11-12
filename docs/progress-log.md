@@ -2222,6 +2222,57 @@ looks like a separate reflectivity/lighting problem, not a sigma-floor one.
 **Next:** s-02's residual board-skin share is unclaimed, tracked by #292. R-30's note that it's the
 reflective padlock under a different lighting condition from its twin s-01 is the lead to follow.
 
+## 2026-11-11 — A-07 claimed: agent loop (core + fallback) (PR #316)
+
+**Who:** @dalwalyk (PR #316); reviewed and approved by @TabeenRaoof.
+**What changed:** claim-only (D-037) — `State: Claimed`, `Owner: @dalwalyk` set on
+`stories/A/A-07.md` and its `stories/README.md` row, in one commit. No implementation in this
+PR. A-06 and A-08 are both Done, so A-07's structural blockers are clear; it was Ready and
+unclaimed with no other open PR claiming it. `check_story_states.py` consistent on the head
+merged.
+**Review notes for the implementation (not blocking this PR):** A-07 is 16h claimed the day
+before M5 — fine to start, but needs an explicit carry at the Nov 13 call (working agreement 4).
+Its criteria also name a D-031 request for getting agent messages to the phone; the mock-model
+core loop doesn't need it, but if that request should ride a contract round, raise it before the
+Dec 2 boundary (R-34's or A-03's round). Under D-064, @dalwalyk's other claims (G-02, I-06) are
+waiting rather than active, so this claim is within the cap.
+**Result:** merged to `main`. CI (pytest, ruff, typescript) green on the merged head.
+**Next:** implement A-07's core tool-calling loop against a mock model, then its fallback to
+A-08's deterministic policy.
+
+## 2026-11-11 — G-01 cube readings and slicer settings recorded; story closed (PR #303)
+
+**Who:** @TabeenRaoof (PR #303). The lab facts and protocol came earlier, in #260.
+
+**What changed:**
+- `fixtures/caliper_g-01.json` holds 90 caliper readings: 3 cubes × 3 axes × 10, measured 2026-11-11
+  with the G-06 caliper.
+  - They were copied by script from the lab-day checklist, not retyped.
+  - One typing slip was fixed before commit. Cube 1's tenth X reading had gone in as 30.3; the
+    owner checked it, and it is 30.0.
+- `stories/G/G-01.md` gets the 2026-11-10 visit (the lab's only A1 mini, grey Bambu PLA Basic, one
+  spool, about 9:20 am to 12:45 pm), the slicer settings, the per-axis deviation table and the
+  completion record.
+
+**Measured, with no tolerance (G-04 judges):**
+- The mean − 30 mm over the three cubes: X −0.027, Y −0.073, Z +0.010.
+- The range of the three cube means: X 0.11, Y 0.01, Z 0.05.
+- Y read short on all three prints, by close to the same amount. Every deviation is under one
+  0.1 mm caliper step.
+
+**Slicer settings,** read from the sliced cube file the printer ran
+(`g01_calibration_cube_30mm.gcode.3mf`, exported 2026-11-10):
+- A1 mini 0.4 nozzle, 0.20mm Standard @BBL A1M, Bambu PLA Basic @BBL A1M, Textured PEI Plate.
+- 0.2 mm layers, 2 walls, 5 top and 3 bottom shell layers, 15% grid infill.
+- Bambu Studio 02.09.01.70, with an estimate of 27 min 33 s and 10.00 g per cube.
+- G-02 and G-05 print on exactly these.
+
+**Result:** this PR sets G-01 to `State: Done`, 7 h actual (est 3). `check_story_states.py` is
+clean.
+
+**Next:** G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in
+G-05.
+
 ## 2026-11-11 — P-33 Android device testing parked until the expo (D-065, O-006)
 
 **Who:** @TabeenRaoof (PR #nn). The claim was #310.

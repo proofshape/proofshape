@@ -24,3 +24,15 @@ export function describeFinishSession(result: ApiResult<Session>): string {
   }
   return `Could not finish session — ${result.error.message}`;
 }
+
+// C-18: `fetch` rejects with a `TypeError` for a genuine network failure (no connection, the
+// service unreachable) -- distinct from the `Error`s api.ts itself throws for a malformed or
+// undefined-by-the-contract response, whose own messages are already specific. Without this, the
+// supplier saw the browser's own wording verbatim ("Load failed" on Safari, "Failed to fetch" on
+// Chrome), which names no next step (caught on review, @TabeenRaoof, #306).
+export function describeNetworkError(error: unknown): string {
+  if (error instanceof TypeError) {
+    return "No connection to the service — check your network and try again.";
+  }
+  return error instanceof Error ? error.message : String(error);
+}
