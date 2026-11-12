@@ -568,6 +568,7 @@ Full detail in each story file.
 | [P-29](P/P-29.md) | Accuracy check after A-12; open issues reconciled with the stories | — | nothing | Done | @TabeenRaoof |
 | [P-30](P/P-30.md) | Write up the capture-app stories | — | nothing | Done | @TabeenRaoof |
 | [P-31](P/P-31.md) | Write up the remaining inspection, ground-truth, generative-AI and cross-cutting stories | — | nothing | Done | @dalwalyk |
+| [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Claimed | @TabeenRaoof |
 
 ---
 
