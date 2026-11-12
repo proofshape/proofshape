@@ -66,6 +66,9 @@ def test_service_imports_runtime_guard_before_agent_tools():
     reason="R-31 reproduces only with the macOS Open3D/torch wheels and their two libomp runtimes",
 )
 def test_real_pipeline_import_order_does_not_deadlock_on_macos():
+    pytest.importorskip(
+        "torch", reason="the real pipeline check needs the optional torch dependency"
+    )
     # Import the real service first: today that reaches agent_tools -> provenance -> Open3D before
     # run_reconstruction_pipeline later imports the rest of the pipeline and reaches torch/VGGT.
     # Then exercise the exact two library directions that reproduced #261. The timeout turns a

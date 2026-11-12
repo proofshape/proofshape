@@ -1374,6 +1374,47 @@ boundary.
 *Checked against D-028:* fetched every origin branch on 2026-11-11. D-064 is the highest on `main`
 and D-065 is held on `planning/P-33-android-parked` (#310), so D-066 was the first free number.
 
+**D-067 · A-03's prose-to-spec parser pins Gemini Flash-Lite, the same snapshot name A-01
+pins, as its own independent decision.** (2026-11-12)
+Proposal §9's component table names "Gemini Flash-Lite API, structured output" for this row,
+the same model row A-01's VLM supervision uses. `recon/spec_parser.py` pins it as its own
+constant (`MODEL`, not imported from `recon.vlm_check`), following A-01's own precedent (a
+stable snapshot, never `-latest`) rather than assuming A-01's pin covers this unrelated
+component too.
+
+*Why:* each generative component names its own model, even when the answer happens to agree
+with another component's — the same pattern A-10/A-12 already set for shape completion. A-03
+and A-01 are unrelated capture-time/buyer-time components that could diverge in the future
+(a cheaper or better model for one without touching the other); treating them as one pin now
+would make that split harder later for no reason today.
+*Checked against D-028:* fetched every origin branch on 2026-11-12. D-066 is the highest
+anywhere (`generative-ai/A-05-disagreement-map`), so D-067 was the first free number.
+
+**D-068 · A-13 independently pins Gemini Flash-Lite and invokes agent tools on demand.**
+(2026-11-12)
+`recon.agent_model` pins `gemini-3.5-flash-lite` through the already-pinned
+`google-genai==2.33.0` Developer API client, as a separate A-13 constant rather than importing
+A-01/A-03's pin. The provider returns one structured `action` (one A-06 tool or `done`), whose
+enum is built from the current turn's unresolved tools; `check_frame` is omitted while D-054
+holds, and `finish_session` is offered only after coverage reports every orbit slot covered.
+A-13 validates and maps the action into A-07's provider-neutral `ToolCallDecision`. Coverage code,
+not the model, determines whether the session continues or may finish: with uncovered slots the
+model can only end its current turn with `done`; only full coverage permits `finish_session`. The
+model chooses whether to consult `vlm_inspect` before coverage is read and how to phrase its
+supplier-facing message. A-07 runs only the requested read tool and caches its result; on model
+error, timeout or loop, its existing A-08 fallback still gathers the full snapshot it needs. No
+HTTP or phone wiring is added.
+
+*Why:* the project already has a stable Gemini pin, SDK and key handling, so this avoids a second
+provider/credential path while keeping each generative component independently changeable. Lazy
+tool execution makes the agent's decision about when to invoke the mesh scorer real instead of
+paying that cost before the model asks. The live check uses only synthetic gyro state; free-tier
+API use stays within D-055's non-confidential test-data limit. No cost, latency or accuracy claim
+is made. The Gemini SDK request timeout is 10 seconds, equal to A-07's default turn budget; if
+A-07 falls back first, its bounded worker may remain alive until that SDK request times out.
+*Checked against D-028:* fetched all origin branches on 2026-11-12; D-067 was highest anywhere,
+so D-068 was free.
+
 ---
 
 ## Open — not yet decided
