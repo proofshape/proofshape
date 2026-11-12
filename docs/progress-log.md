@@ -2291,3 +2291,15 @@ supplier-facing answers on identical synthetic state.
 **Close-out:** owner-confirmed 5 h actual against 4 h estimated; this matches A-13's completion
 record and supersedes the earlier interim 8 h note.
 **Next:** final D-038 review and approval on this close-out head; no commits should follow approval.
+
+## 2026-11-12 — A-13 merged (PR #326)
+
+**Who:** @dalwalyk; reviewed and approved by @mbj1994.
+**What changed:** PR #326 merged at `eb1582a`, including A-13's Gemini pin, live-check evidence,
+the 5 h actual completion record, and the manual clarification that coverage controls
+continue-or-finish while the model may consult VLM and phrase guidance.
+**Result:** merge requirements were met: final head approved, CI green, and A-13 plus its index row
+are Done.
+**Concluded:** A-13's live synthetic runs produced different model-authored supplier messages; the
+agent loop is not yet wired into supplier sessions pending the D-031 route.
+**Next:** the D-031 agent-message route is part of A-07's noted follow-up; no A-13 work remains.
