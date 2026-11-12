@@ -13,11 +13,15 @@ describe("resolveBaseUrl", () => {
   });
 
   it("passes a bare base URL through unchanged", () => {
-    expect(resolveBaseUrl("https://example.lightning.ai")).toBe("https://example.lightning.ai");
+    expect(resolveBaseUrl("https://example.lightning.ai")).toBe(
+      "https://example.lightning.ai",
+    );
   });
 
   it("strips exactly one trailing slash", () => {
-    expect(resolveBaseUrl("https://example.lightning.ai/")).toBe("https://example.lightning.ai");
+    expect(resolveBaseUrl("https://example.lightning.ai/")).toBe(
+      "https://example.lightning.ai",
+    );
   });
 });
 
@@ -49,7 +53,9 @@ describe("hostedReconUnavailable", () => {
   });
 
   it("allows a configured production backend", () => {
-    expect(hostedReconUnavailable("https://example.lightning.ai", false)).toBe(false);
+    expect(
+      hostedReconUnavailable("https://example.lightning.ai", false),
+    ).toBe(false);
   });
 });
 

@@ -42,7 +42,8 @@ if (viewerDemo === "unavailable") {
   const baseUrl = resolveBaseUrl(import.meta.env.VITE_RECON_BASE_URL);
 
   if (hostedReconUnavailable(baseUrl, import.meta.env.DEV)) {
-    shellRoot.innerHTML = `<p role="status">${HOSTED_RECON_UNAVAILABLE_MESSAGE}</p>`;
+    shellRoot.innerHTML =
+      `<p role="status">${HOSTED_RECON_UNAVAILABLE_MESSAGE}</p>`;
   } else {
     const authToken = resolveAuthToken(import.meta.env.VITE_RECON_TOKEN);
     // A capture link pre-fills the order code so a supplier is not typing one in. This remains
