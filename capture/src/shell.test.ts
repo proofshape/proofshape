@@ -1451,18 +1451,19 @@ describe("mountAppShell", () => {
       }
     });
 
-    agentResolvers[0]?.(
-      new Response(
-        JSON.stringify({
-          finished: false,
-          fallback_reason: null,
-          message: "Older guidance.",
-        }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      ),
+    const olderResponse = new Response(
+      JSON.stringify({
+        finished: false,
+        fallback_reason: null,
+        message: "Older guidance.",
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
     );
-    await Promise.resolve();
-    await Promise.resolve();
+    agentResolvers[0]?.(olderResponse);
+    await vi.waitFor(() => {
+      if (!olderResponse.bodyUsed) throw new Error("older response body not read yet");
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(document.body.textContent).toContain("Newer guidance.");
     expect(document.body.textContent).not.toContain("Older guidance.");
