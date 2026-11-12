@@ -508,7 +508,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Ready | _unclaimed_ |
+| [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Claimed | @dalwalyk |
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Blocked | _unclaimed_ |
 | [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Blocked | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, C-23, X-03 | Blocked | _unclaimed_ |
