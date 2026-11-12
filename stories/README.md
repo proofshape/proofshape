@@ -437,7 +437,8 @@ COLOR_0's provenance, and the viewer colours only measured, Observed vertices.
   - the disagreement-map arrow (A-05).
 - The agent conversation view, split out of A-07 on review (P-31/#302), is its own story in this
   section: C-22.
-- The Android half of device testing, split out of C-18 on claiming (2026-11-12): C-23.
+- The Android half of device testing, split out of C-18 on claiming (2026-11-12): C-23, parked
+  until before the expo if time allows (D-065).
 - The whole system on both phones, and the backup demo, are X-04 and X-05.
 
 These nine total 39 h, planning estimates. That is 33 h of capture stories against S6's 11
@@ -511,7 +512,7 @@ Full detail in each story file.
 | [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Ready | _unclaimed_ |
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Blocked | _unclaimed_ |
 | [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Blocked | _unclaimed_ |
-| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, C-23, X-03 | Blocked | _unclaimed_ |
+| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
 ---

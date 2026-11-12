@@ -2221,3 +2221,24 @@ looks like a separate reflectivity/lighting problem, not a sigma-floor one.
 
 **Next:** s-02's residual board-skin share is unclaimed, tracked by #292. R-30's note that it's the
 reflective padlock under a different lighting condition from its twin s-01 is the lead to follow.
+
+## 2026-11-11 — P-33 Android device testing parked until the expo (D-065, O-006)
+
+**Who:** @TabeenRaoof (PR #nn). The claim was #310.
+
+**What changed:**
+- **D-065 parks the Android check (C-23)** rather than cutting it. It stays written, `Ready` and
+  unclaimed, and is revisited before the expo if time allows: decided at the Dec 2 boundary at
+  the latest, with any fix landing before M7's code freeze on Dec 4.
+- **O-006 records the expo date** as the team's unconfirmed working assumption, most likely Fri
+  2026-12-05, the day after the freeze.
+- **X-04 (I4) no longer depends on C-23.** It runs on the iPhone, adding Android only if C-23 has
+  run. As written, it could never have started, and the backup demo (X-05) waits on it.
+- **The manual's §2** now says Android is untested and parked, so suppliers use an iPhone in
+  Safari. The sprint plan's S6 line and the capture section point at D-065.
+
+**Result:** the proposal's §12 rule ("Tier 1 must pass on both") is unmet while D-065 stands,
+stated as its cost. `check_story_states.py` is consistent. No code.
+
+**Next:** the Nov 13 boundary call confirms the carry. Confirm the expo date and update O-006.
+Revisit C-23 at the Dec 2 boundary if someone has an Android phone.

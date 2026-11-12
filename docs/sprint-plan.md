@@ -268,7 +268,7 @@ Calendar events, not intentions. All other work stops.
 - **Gate M5 — FEATURE FREEZE.** Nothing new is started after this date. The 6 h stretch pool is the only route to Tier 3 work.
 
 ### S6 · Harden — Nov 16 – Dec 2 — 46 h
-- **Capture (11 h):** test on one iPhone and one Android; UI bugs; keyboard access; error messages.
+- **Capture (11 h):** test on one iPhone and one Android (the Android check, C-23, is parked until before the expo if time allows: D-065); UI bugs; keyboard access; error messages.
 - **Reconstruction (11 h):** reliability and error handling; K tuning against the timing budget; rehearse losing the pod and bringing it back.
 - **Inspection (20 h):** accuracy and planted-defect runs; **does the agent actually beat the deterministic policy?**;; robustness set (glossy, dark, thin, screen photo, wrong part). The informal usability run is cut to fund the completion model.
 - **Gate M6 · I4:** Thanksgiving week is bug-fixing only. The recorded backup demo is produced here, not in December.
