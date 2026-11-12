@@ -1467,5 +1467,4 @@ describe("mountAppShell", () => {
     expect(document.body.textContent).toContain("Newer guidance.");
     expect(document.body.textContent).not.toContain("Older guidance.");
   });
-
 });
