@@ -1332,4 +1332,67 @@ describe("mountAppShell", () => {
 
     expect(overlayStatusText()).toBe(statusAfterFinish);
   });
+  it("releases Capture and Finish while the optional agent request is still pending", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const { fetchSpy, resolve } = pendingFetchMatching("/agent-message");
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      const agentCalls = fetchSpy.mock.calls.filter(([url]) => {
+        const value = typeof url === "string" ? url : String(url);
+        return value.includes("/agent-message");
+      });
+      if (agentCalls.length === 0) throw new Error("agent request not started");
+    });
+
+    expect(mounted.captureButton.disabled).toBe(false);
+    expect(mounted.finishButton.disabled).toBe(false);
+
+    resolve(200, {
+      finished: false,
+      fallback_reason: null,
+      message: "Frame accepted. Continue to the next guided view.",
+    });
+  });
+
+  it("keeps the assistant panel hidden when today's real-style service has no agent route", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/agent-message")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ code: "session_not_found", message: "Not Found" }), {
+              status: 404,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const panel = document.getElementById("shell-agent-conversation");
+    expect(panel?.hidden).toBe(true);
+  });
+
 });
