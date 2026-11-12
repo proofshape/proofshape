@@ -401,12 +401,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         agentConversation.transportUnavailable();
         return;
       }
+      // C-22 mirrors A-07's finished field for the future D-031 wire, but does not make that
+      // mock-only field drive session lifecycle yet. The real phone contract must define whether
+      // the service has already finished the session and how reconstruction should be resumed.
       agentConversation.show(result.body);
-      if (result.body.finished) {
-        sessionFinishing = true;
-        updateCaptureAvailability();
-        updateFinishAvailability();
-      }
     } catch {
       if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
         return;
