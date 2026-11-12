@@ -297,9 +297,9 @@ deterministic fallback (A-08), which the proposal says is built first. A-02 (vet
 parser), A-05 (disagreement map), A-07 (agent loop), A-13 (agent model pin) and A-09 (narrative)
 stayed titles-only until the verdict, A-04 or A-06/A-08 existed (P-26); written up below now that
 two of those three have (P-31). A-07's core loop is Done, which clears A-13 and the split-out
-C-22 (agent conversation view), both now Ready; A-05's fixture-scoped first pass is Claimed;
-A-03's parser core is Done, with its table-wiring follow-up waiting on C-16; A-02 and A-09 are
-still correctly Blocked on I-07.
+C-22 (agent conversation view), both now Ready; A-05's fixture-scoped first pass is Done; A-03's
+parser core is Done, with the table-wiring criterion moved to C-16's own acceptance criteria;
+A-02 and A-09 are still correctly Blocked on I-07.
 
 **What counts.** The test is "if you run it twice, can it give two different answers?"
 (AGENTS.md). A VLM's reply and sampled completions both can; the reconstruction backbone can't
@@ -331,7 +331,7 @@ Full detail in each story file.
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
 | [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
 | [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Done | @dalwalyk |
-| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Claimed | @TabeenRaoof |
+| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
 | [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Ready | _unclaimed_ |
 | [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
@@ -347,8 +347,10 @@ Full detail in each story file.
   - **The runner's environment in the image.** It needs a second Python and torch 2.4 beside the
     image's torch 2.8, which `tests/test_container.py` forbids today.
 
-  A-05 is the first story that needs real per-session samples. Whoever writes it up settles this
-  first, or makes A-05 depend on the story that does.
+  A-05 is the first story that needs real per-session samples. Its first pass (D-066) builds the
+  map inline whenever samples exist and records `unavailable` otherwise, so it waits on neither
+  item. It was checked on A-12's prepared s-04 and s-02 folders. Real per-session maps arrive with
+  the story that settles both.
 
 ---
 
@@ -570,6 +572,7 @@ Full detail in each story file.
 | [P-30](P/P-30.md) | Write up the capture-app stories | — | nothing | Done | @TabeenRaoof |
 | [P-31](P/P-31.md) | Write up the remaining inspection, ground-truth, generative-AI and cross-cutting stories | — | nothing | Done | @dalwalyk |
 | [P-32](P/P-32.md) | The WIP cap counts active stories only (D-064) | — | nothing | Done | @TabeenRaoof |
+| [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Claimed | @TabeenRaoof |
 
 ---
 
