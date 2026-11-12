@@ -2275,7 +2275,7 @@ G-05.
 
 ## 2026-11-11 — P-33 Android device testing parked until the expo (D-065, O-006)
 
-**Who:** @TabeenRaoof (PR #nn). The claim was #310.
+**Who:** @TabeenRaoof (PR #324). The claim was #310.
 
 **What changed:**
 - **D-065 parks the Android check (C-23)** rather than cutting it. It stays written, `Ready` and
