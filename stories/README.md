@@ -226,7 +226,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Claimed | @TabeenRaoof |
+| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Done | @TabeenRaoof |
 | [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | nothing | Claimed | @dalwalyk |
 | [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
@@ -330,7 +330,7 @@ Full detail in each story file.
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
 | [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
-| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Ready | _unclaimed_ |
+| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Claimed | @dalwalyk |
 | [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
 | [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Ready | _unclaimed_ |
