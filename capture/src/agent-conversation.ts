@@ -1,3 +1,4 @@
+import { requireElement, requireTyped } from "./dom.js";
 import type { AgentMessageResult } from "./types.js";
 
 export interface AgentConversationHandle {
@@ -14,11 +15,13 @@ export function mountAgentConversation(container: HTMLElement): AgentConversatio
     </section>
   `;
 
-  const status = container.querySelector("#agent-conversation-status");
-  const list = container.querySelector("#agent-conversation-messages");
-  if (!(status instanceof HTMLElement) || !(list instanceof HTMLOListElement)) {
-    throw new Error("agent conversation: mounted elements missing");
-  }
+  const status = requireElement(container, "#agent-conversation-status");
+  const list = requireTyped(
+    container,
+    "#agent-conversation-messages",
+    HTMLOListElement,
+    "<ol>",
+  );
 
   function clear(): void {
     list.replaceChildren();
