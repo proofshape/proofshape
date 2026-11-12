@@ -19,13 +19,16 @@ def reply(**spec_changes) -> SimpleNamespace:
                 "critical": True,
             },
             {
+                # "has to be flat" names no number -- tolerance_mm is honestly null, not
+                # invented, with the gap recorded as an assumption (caught on review,
+                # @TabeenRaoof, #320: an earlier version of this fixture invented 0.1mm here).
                 "name": "sealing face",
                 "kind": "face",
-                "tolerance_mm": 0.1,
+                "tolerance_mm": None,
                 "critical": True,
             },
         ],
-        "assumptions": [],
+        "assumptions": ["No tolerance was stated for the sealing face."],
     }
     spec.update(spec_changes)
     return SimpleNamespace(
@@ -41,6 +44,7 @@ def reply(**spec_changes) -> SimpleNamespace:
 def test_parses_the_proposals_own_example():
     # "the four mounting holes need to line up within about 2 mm, and the sealing face has to
     # be flat" (proposal §7.4) -- this is the plausible structured reply a model would give it.
+    # "Flat" names no number, so tolerance_mm is null, not invented -- see reply()'s own comment.
     result = parse_spec_response(reply())
     assert result.status == "parsed"
     assert result.reason is None
@@ -50,11 +54,40 @@ def test_parses_the_proposals_own_example():
                 name="mounting holes", kind="hole", tolerance_mm=2.0, critical=True
             ),
             SpecFeature(
-                name="sealing face", kind="face", tolerance_mm=0.1, critical=True
+                name="sealing face", kind="face", tolerance_mm=None, critical=True
             ),
         ],
-        assumptions=[],
+        assumptions=["No tolerance was stated for the sealing face."],
     )
+
+
+def test_a_feature_with_no_stated_tolerance_is_null_not_invented():
+    # The hard rule this guards (AGENTS.md): "a model's guess must never approve or condemn a
+    # component." A required positive tolerance would force the model to invent one whenever
+    # the buyer's prose gives no number -- null plus an assumption is the honest alternative.
+    result = parse_spec_response(
+        reply(
+            features=[
+                {
+                    "name": "sealing face",
+                    "kind": "face",
+                    "tolerance_mm": None,
+                    "critical": True,
+                }
+            ],
+            assumptions=["No tolerance was stated for the sealing face."],
+        )
+    )
+    assert result.status == "parsed"
+    assert result.spec.features[0].tolerance_mm is None
+    assert result.spec.assumptions == ["No tolerance was stated for the sealing face."]
+
+
+def test_an_empty_feature_table_is_unparsed_not_a_silently_valid_empty_spec():
+    result = parse_spec_response(reply(features=[]))
+    assert result.status == "unparsed"
+    assert result.reason == "no_features"
+    assert result.spec is None
 
 
 def test_assumptions_pass_through_as_plain_strings():

@@ -34,7 +34,13 @@ class SpecFeature(BaseModel):
 
     name: str = Field(min_length=1)
     kind: Literal["hole", "face", "edge", "overall"]
-    tolerance_mm: float = Field(gt=0)
+    # None, not a required positive number (caught on review, @TabeenRaoof, #320): a required
+    # tolerance_mm forced the model to invent one whenever the buyer's prose gave no figure --
+    # "the sealing face has to be flat" names no number -- and that invented figure would have
+    # flowed straight into I-09/I-07's Pass/Fail decision. AGENTS.md's hard rule: "a model's
+    # guess must never approve or condemn a component." None plus a stated assumption is the
+    # honest encoding of "the buyer didn't give a number here."
+    tolerance_mm: float | None = Field(gt=0)
     critical: bool
 
 
@@ -102,6 +108,11 @@ def parse_spec_response(response: Any) -> SpecParseResult:
         spec = InspectionSpec.model_validate(json.loads(text))
     except (ValueError, TypeError):
         return unparsed("invalid_reply")
+    if not spec.features:
+        # Caught on review (@TabeenRaoof, #320): an empty table is a real outcome (prose that
+        # names nothing measurable), but it is a different outcome from a parsed spec -- naming
+        # it tells the buyer something an empty table alone would not.
+        return unparsed("no_features")
     return SpecParseResult(status="parsed", spec=spec)
 
 
@@ -138,10 +149,13 @@ class GeminiSpecParser:
                     system_instruction=(
                         "Convert a buyer's free-text description of part tolerances into a "
                         "structured inspection spec. Each feature needs a short name, a kind "
-                        "(hole, face, edge or overall), a positive tolerance in millimetres, "
-                        "and whether it is critical. Record anything you assumed because the "
-                        "buyer didn't state it as a plain-language assumption. Do not issue a "
-                        "Pass/Fail verdict or invent a feature the buyer did not describe."
+                        "(hole, face, edge or overall), and whether it is critical. Never "
+                        "invent a tolerance in millimetres the buyer did not state or clearly "
+                        "imply a number for: leave tolerance_mm null and add a plain-language "
+                        "assumption naming that feature and saying no number was given. Record "
+                        "anything else you assumed because the buyer didn't state it, as a "
+                        "plain-language assumption too. Do not issue a Pass/Fail verdict or "
+                        "invent a feature the buyer did not describe."
                     ),
                     response_mime_type="application/json",
                     response_json_schema=InspectionSpec.model_json_schema(),
