@@ -11,7 +11,14 @@ import {
   stopCameraStream,
   type CapturedFrame,
 } from "./camera.js";
-import { createSession, finishSession, getReconstruction, uploadFrame } from "./api.js";
+import {
+  createSession,
+  finishSession,
+  getAgentMessage,
+  getReconstruction,
+  uploadFrame,
+} from "./api.js";
+import { mountAgentConversation } from "./agent-conversation.js";
 import { requireElement, requireTyped } from "./dom.js";
 import { checkBlur, checkDuplicate, checkExposure, type FramePixels } from "./frame_gate.js";
 import { requestGyroPermission } from "./gyro.js";
@@ -78,6 +85,9 @@ export const APP_SHELL_HTML = `
     <div id="shell-gyro-overlay"></div>
   </section>
   <section>
+    <div id="shell-agent-conversation"></div>
+  </section>
+  <section>
     <h2>Finish and reconstruct (C-10)</h2>
     <button id="shell-finish-button" type="button" disabled>Finish session</button>
     <button id="shell-retry-reconstruction-button" type="button" hidden>
@@ -111,6 +121,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
   const captureStatus = requireElement(root, "#shell-capture-status");
   const gyroOverlayContainer = requireElement(root, "#shell-gyro-overlay");
+  const agentConversationContainer = requireElement(root, "#shell-agent-conversation");
   const finishButton = requireTyped(root, "#shell-finish-button", HTMLButtonElement, "<button>");
   const retryReconstructionButton = requireTyped(
     root,
@@ -122,6 +133,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const reconstructionStatus = requireElement(root, "#shell-reconstruction-status");
   const reportLink = requireTyped(root, "#shell-report-link", HTMLAnchorElement, "<a>");
   const modelViewer = requireElement(root, "#shell-model-viewer");
+
+  const agentConversation = mountAgentConversation(agentConversationContainer);
 
   const state: AppState = {
     sessionId: null,
@@ -246,6 +259,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // still anchor duplicate-detection and orbit coverage for the next, real session
     // (overlay.ts's own comment anticipates this exact remount).
     gyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
+    agentConversation.clear();
     lastAcceptedForGate = null;
     // A previous session's finish (success or in-flight-then-abandoned) must not carry over and
     // leave Capture/Finish permanently disabled for this new attempt.
@@ -371,6 +385,19 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     })();
   });
 
+  async function refreshAgentConversation(sessionId: string): Promise<void> {
+    try {
+      const result = await getAgentMessage(options.baseUrl, sessionId, options.authToken);
+      if (result.ok) {
+        agentConversation.show(result.body);
+      }
+    } catch {
+      // C-22 is built against a temporary mock route until A-07's D-031 phone-facing contract
+      // lands. A missing/unreachable mock must never break capture; the deterministic arrow
+      // remains the shipping fallback.
+    }
+  }
+
   captureButton.addEventListener("click", () => {
     // Layers of defense beyond the disabled attribute itself (fails loudly rather than silently
     // misbehaving if this handler is ever reached in a state the button shouldn't allow):
@@ -478,6 +505,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
           gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
+          await refreshAgentConversation(sessionId);
         } else {
           lastAcceptedForGate = previousAcceptedForGate;
         }
