@@ -16,12 +16,7 @@ export function mountAgentConversation(container: HTMLElement): AgentConversatio
   `;
 
   const status = requireElement(container, "#agent-conversation-status");
-  const list = requireTyped(
-    container,
-    "#agent-conversation-messages",
-    HTMLOListElement,
-    "<ol>",
-  );
+  const list = requireTyped(container, "#agent-conversation-messages", HTMLOListElement, "<ol>");
 
   function clear(): void {
     list.replaceChildren();
