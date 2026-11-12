@@ -417,7 +417,8 @@ capture hours, for device testing and its fixes. So these go to the Nov 13 bound
 carried or cut, never silently rolled forward (working agreement 4). Each story says what it
 waits for and where it sits on the cut list (§10).
 
-**Claimed: C-18** (@dalwalyk).
+**Claimed: C-18** (@dalwalyk, iPhone half only — the Android half is split out to C-23, Ready
+and unclaimed; see both files for why).
 - C-14 and C-15 are built against the mock (sprint plan §5, D4). The real deviations come from
   I-06 (written up, Ready) and the real verdict from I-07 (written up, Blocked). Both are
   checked end to end at X-03 or X-04.
@@ -436,9 +437,10 @@ COLOR_0's provenance, and the viewer colours only measured, Observed vertices.
   - the disagreement-map arrow (A-05).
 - The agent conversation view, split out of A-07 on review (P-31/#302), is its own story in this
   section: C-22.
+- The Android half of device testing, split out of C-18 on claiming (2026-11-12): C-23.
 - The whole system on both phones, and the backup demo, are X-04 and X-05.
 
-These eight total 38 h, planning estimates. That is 32 h of capture stories against S6's 11
+These nine total 39 h, planning estimates. That is 33 h of capture stories against S6's 11
 capture hours, and R-34's 6 h in the recon lane.
 
 Full detail in each story file.
@@ -451,9 +453,10 @@ Full detail in each story file.
 | [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Done | @dalwalyk |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Blocked | _unclaimed_ |
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
-| [C-18](C/C-18.md) | Device testing: the capture path on one iPhone and one Android phone | 4 h | C-13, C-20 | Claimed | @dalwalyk |
+| [C-18](C/C-18.md) | Device testing: the capture path on one iPhone | 3 h | C-13, C-20 | Claimed | @dalwalyk |
 | [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
 | [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Blocked | _unclaimed_ |
+| [C-23](C/C-23.md) | Device testing: the capture path on an Android phone | 2 h | C-13, C-20 | Ready | _unclaimed_ |
 
 ---
 
@@ -508,7 +511,7 @@ Full detail in each story file.
 | [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Ready | _unclaimed_ |
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Blocked | _unclaimed_ |
 | [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Blocked | _unclaimed_ |
-| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
+| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, C-23, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
 ---
