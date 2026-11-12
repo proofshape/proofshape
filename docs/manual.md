@@ -82,7 +82,7 @@ heatmap, so gross defects are caught before the part ships.
 |---|---|
 | **Printed ChArUco reference sheet** | One sheet of A4 or US Letter. See §3 — printing it correctly matters more than it sounds. |
 | **The part** | Rigid and opaque. Roughly hand-sized — comparable to, or a little larger than, the printed pattern. See §3.4 on parts larger than the board, and §10 on transparent parts. |
-| **A smartphone** | With a working camera and gyroscope. No app install — capture runs in the browser over HTTPS. So far it has been checked on iPhones in Safari only; Android is untested (**Planned**, C-18). |
+| **A smartphone** | With a working camera and gyroscope. No app install — capture runs in the browser over HTTPS. So far it has been checked on iPhones in Safari only; Android is untested (**Planned**, C-23). |
 | **Digital calipers** *(recommended)* | For verifying the printed square size, and for the optional typed scale check (§7). Roughly $25. |
 | **The CAD file** *(buyer, optional)* | STL/OBJ/GLB. Required only if you want a verdict rather than just a model. |
 | **A flat, evenly lit surface** | Enough room to walk around the part, or to turn the sheet. |
@@ -173,6 +173,12 @@ the phone only checks blur, exposure and duplicates (§5).
 real board surface from the board points *around* the part (R-21), and in the first real phone
 sessions most failures happened exactly there (§9). A part that hides most of the pattern makes
 that more likely.
+
+**Don't shoot so close that only a few squares fill the frame.** C-18's own device check hit this
+directly: a session shot close and steep enough that only 2 of 16 frames had enough of the board's
+corners for the service to use (it needs at least 3), even though the board was in every frame.
+Pull back enough that most of the sheet stays in shot around the part, rather than filling the
+frame with a close-up of the part and a handful of squares.
 
 **If the part is dramatically larger than the whole sheet, ProofShape is the wrong tool for it.**
 The stated scope is hand-sized parts. Supporting genuinely large parts would need a physically
@@ -330,6 +336,12 @@ you can orbit with one finger and zoom with two. A **Download GLB** link is alwa
 raw model stays retrievable even if the viewer can't render it. If the result is not metric, the
 summary says "No dimensional claims".
 
+**The viewer's orbit has no keyboard alternative today** (C-18). It's mouse/touch only; there's no
+tab stop or arrow-key control on the 3D canvas. The rest of the capture page's controls — the
+order-code field, Start, Capture frame, Finish, the model's "Colour by" selector and Download
+GLB — are native inputs, buttons, a select and a link, and work with Tab and Enter (Space too, on
+the buttons).
+
 The model is coloured by **what was actually seen**:
 
 | Colour | Label | Meaning |
@@ -432,6 +444,12 @@ C-15 does not generate one.
 | `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
 | `vlm_veto` | **Today this means a malformed upload, not a semantic check** — A-01 records asynchronous observations, but A-02's veto policy is not built. The contract has no dedicated code for a malformed request yet, and adding one goes through the contract-change process (D-031). Once the VLM exists, this will mean the semantic check rejected the session: wrong part, hands in shot, a photo of a screen. | Reshoot; if it repeats, tell the team, since it points at an app bug. |
+
+**Not a contract code — the phone never reached the service at all (works now, C-18):**
+
+| What you see | What happened | What to do |
+|---|---|---|
+| "No connection to the service — check your network and try again." | Starting, uploading, finishing or polling a session all go over the network; this covers any of them failing before a response came back at all (Wi-Fi dropped, the dev server stopped). The browser's own wording for this ("Load failed" on Safari, "Failed to fetch" on Chrome) is deliberately replaced, since it names no next step. | Check the connection and try again. |
 
 **From the reconstruction, after you finish (works now):**
 

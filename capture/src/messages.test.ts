@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { describeCreateSession, describeFinishSession, describeUploadFrame } from "./messages.js";
+import {
+  describeCreateSession,
+  describeFinishSession,
+  describeNetworkError,
+  describeUploadFrame,
+} from "./messages.js";
 
 describe("describeCreateSession", () => {
   it("shows the session id on success", () => {
@@ -64,5 +69,26 @@ describe("describeFinishSession", () => {
         error: { code: "too_few_frames", message: "Not enough frames were captured yet." },
       }),
     ).toBe("Could not finish session — Not enough frames were captured yet.");
+  });
+});
+
+describe("describeNetworkError", () => {
+  it("gives an actionable message for a fetch TypeError, regardless of the browser's own wording", () => {
+    expect(describeNetworkError(new TypeError("Load failed"))).toBe(
+      "No connection to the service — check your network and try again.",
+    );
+    expect(describeNetworkError(new TypeError("Failed to fetch"))).toBe(
+      "No connection to the service — check your network and try again.",
+    );
+  });
+
+  it("passes through a non-network Error's own message unchanged", () => {
+    expect(describeNetworkError(new Error("createSession: response body was not valid JSON"))).toBe(
+      "createSession: response body was not valid JSON",
+    );
+  });
+
+  it("stringifies a non-Error throw", () => {
+    expect(describeNetworkError("plain string throw")).toBe("plain string throw");
   });
 });

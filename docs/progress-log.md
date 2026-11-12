@@ -2221,3 +2221,21 @@ looks like a separate reflectivity/lighting problem, not a sigma-floor one.
 
 **Next:** s-02's residual board-skin share is unclaimed, tracked by #292. R-30's note that it's the
 reflective padlock under a different lighting condition from its twin s-01 is the lead to follow.
+
+## 2026-11-11 — A-07 claimed: agent loop (core + fallback) (PR #316)
+
+**Who:** @dalwalyk (PR #316); reviewed and approved by @TabeenRaoof.
+**What changed:** claim-only (D-037) — `State: Claimed`, `Owner: @dalwalyk` set on
+`stories/A/A-07.md` and its `stories/README.md` row, in one commit. No implementation in this
+PR. A-06 and A-08 are both Done, so A-07's structural blockers are clear; it was Ready and
+unclaimed with no other open PR claiming it. `check_story_states.py` consistent on the head
+merged.
+**Review notes for the implementation (not blocking this PR):** A-07 is 16h claimed the day
+before M5 — fine to start, but needs an explicit carry at the Nov 13 call (working agreement 4).
+Its criteria also name a D-031 request for getting agent messages to the phone; the mock-model
+core loop doesn't need it, but if that request should ride a contract round, raise it before the
+Dec 2 boundary (R-34's or A-03's round). Under D-064, @dalwalyk's other claims (G-02, I-06) are
+waiting rather than active, so this claim is within the cap.
+**Result:** merged to `main`. CI (pytest, ruff, typescript) green on the merged head.
+**Next:** implement A-07's core tool-calling loop against a mock model, then its fallback to
+A-08's deterministic policy.
