@@ -801,6 +801,22 @@ def test_build_report_measures_the_fused_surface_with_the_raw_clouds_pose(
             assert item["offset_mm"] == pytest.approx(-1.0, abs=0.3)
 
 
+def test_cli_rejects_observed_glb_without_cad(tmp_path: Path) -> None:
+    run_dir, board_dir = tmp_path / "run", tmp_path / "board"
+    run_dir.mkdir()
+    board_dir.mkdir()
+    with pytest.raises(SystemExit) as excinfo:
+        main(
+            [
+                str(run_dir),
+                str(board_dir),
+                "--observed-glb",
+                str(tmp_path / "mesh_uncertainty.glb"),
+            ]
+        )
+    assert excinfo.value.code == 2
+
+
 def test_write_report_refuses_overwrite(tmp_path: Path) -> None:
     out_path = tmp_path / "report.json"
     write_report(out_path, {"a": 1})
