@@ -266,13 +266,21 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
   samples exist, which no supplier's session has yet (D-058, D-066).
 
 **Planned, and part of what makes this more than a photo app:**
-- **An LLM agent guides the session** (A-06, A-07, A-13, with A-08's deterministic fallback).
-   Coverage code, not the model, decides whether the session continues or may finish: the model
-   cannot finish while orbit slots remain uncovered. The model can choose whether to consult the
-   VLM before coverage is read and how to phrase its supplier-facing guidance; it never computes
-   geometry or decides Pass/Fail. If it errors, times out, or loops, capture falls back to the
-   deterministic policy. The agent loop is built and checked live, but the service does not yet
-   invoke it for supplier sessions.
+- **The LLM agent core and phone conversation view are built** (A-06, A-07, A-13, C-22, with
+   A-08's deterministic fallback). Coverage code, not the model, decides whether the session
+   continues or may finish: the model cannot finish while orbit slots remain uncovered. The
+   model may choose whether to consult VLM before coverage is read and how to phrase its
+   supplier-facing guidance; it never computes geometry or decides Pass/Fail. If it errors, times
+   out, or loops, capture falls back to the deterministic policy.
+
+   C-22 adds a Capture assistant panel built against a mock of A-07's phone-facing result. The
+   panel is deliberately hidden against today's real service because that service does not yet
+   expose the D-031 agent-message route; the real route waits for A-07's D-031 round, no earlier
+   than Dec 2. A missing route never blocks Capture or Finish. When the route does answer,
+   transport failure is shown as plain language rather than a raw code, repeated identical lines
+   are not appended, and stale replies are ignored. The mock `finished` field is display-only
+   until the real D-031 phone contract defines lifecycle behavior, including the end-of-session
+   summary. The service does not yet invoke the agent loop for supplier sessions.
 - **A vision-language model checks sampled frames** (A-01, A-02) — roughly seven calls a session,
   not one per frame. It catches things geometry cannot: the wrong part, hands in shot, a
   photograph of a screen. **It can veto a Pass**, downgrading the session to Rescan, and the
