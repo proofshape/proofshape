@@ -333,7 +333,7 @@ Full detail in each story file.
 | [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Done | @dalwalyk |
 | [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
-| [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Claimed | @dalwalyk |
+| [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Done | @dalwalyk |
 | [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
 
 **Waiting on a decision, no story yet:**

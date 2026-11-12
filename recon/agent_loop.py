@@ -35,7 +35,7 @@ import json
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
@@ -52,6 +52,7 @@ from recon.agent_policy import (
     next_action,
 )
 from recon.agent_tools import (
+    ToolResult,
     check_frame,
     coverage_report,
     finish_session,
@@ -112,8 +113,7 @@ class LoopStep:
 
 @dataclass(frozen=True)
 class AgentLoopState:
-    """What a `ModelCaller` sees each step: the session record, every tool's result (already
-    gathered once, since nothing changes mid-turn), and the steps already taken this turn."""
+    """What a `ModelCaller` sees each step: session state, requested tool results, and history."""
 
     record: dict[str, Any]
     tools: ToolResults
@@ -132,12 +132,47 @@ class AgentLoopResult:
 
 
 def _gather_tool_results(record: dict[str, Any], session_dir: Any) -> ToolResults:
+    """Gather a complete snapshot for A-08 when the model path has fallen back."""
     return ToolResults(
         check_frame=check_frame(record),
         vlm_inspect=vlm_inspect(record, session_dir),
         coverage_report=coverage_report(session_dir, record),
         score_next_view=score_next_view(record),
     )
+
+
+def _unrequested_tool_results() -> ToolResults:
+    unavailable = ToolResult(available=False, reason="not_requested")
+    return ToolResults(
+        check_frame=unavailable,
+        vlm_inspect=unavailable,
+        coverage_report=unavailable,
+        score_next_view=unavailable,
+    )
+
+
+def _run_requested_tool(
+    tool: str,
+    record: dict[str, Any],
+    session_dir: Any,
+    tools: ToolResults,
+) -> ToolResults:
+    """Run the selected read tool on demand and cache its result for later model steps."""
+    current = getattr(tools, tool)
+    if current.reason != "not_requested":
+        return tools
+
+    if tool == "score_next_view":
+        result = score_next_view(record)
+    elif tool == "check_frame":
+        result = check_frame(record)
+    elif tool == "vlm_inspect":
+        result = vlm_inspect(record, session_dir)
+    elif tool == "coverage_report":
+        result = coverage_report(session_dir, record)
+    else:
+        raise ValueError(f"unsupported read tool: {tool}")
+    return replace(tools, **{tool: result})
 
 
 def describe_action_for_supplier(action: Action) -> str:
@@ -196,12 +231,13 @@ def run_agent_turn(
     module docstring notes this), but this function returns promptly regardless, so the turn --
     and the session -- still completes."""
     session_dir = store.session_dir(session_id)
-    tools = _gather_tool_results(record, session_dir)
+    tools = _unrequested_tool_results()
     started = now()
     history: list[LoopStep] = []
 
     def fall_back(reason: FallbackReason) -> AgentLoopResult:
-        action = next_action(record, tools)
+        fallback_tools = _gather_tool_results(record, session_dir)
+        action = next_action(record, fallback_tools)
         message = describe_action_for_supplier(action)
         finished = False
         if isinstance(action, Finish):
@@ -267,9 +303,10 @@ def run_agent_turn(
                     transcript=tuple(history),
                 )
 
-            # decision.tool names one of the four read tools; its result is already in `tools`
-            # (gathered once, static for the whole turn) -- loop back and let the model see it
-            # recorded in history, then decide its next step.
+            # Only the selected tool runs. Its result is cached and made available on the next
+            # model step; unrelated tools, especially the mesh scorer, stay untouched.
+            if decision.tool is not None:
+                tools = _run_requested_tool(decision.tool, record, session_dir, tools)
 
         return fall_back("loop_detected")
     finally:

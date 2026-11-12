@@ -2272,3 +2272,22 @@ clean.
 
 **Next:** G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in
 G-05.
+
+## 2026-11-12 — A-13 Gemini model pin and live agent check
+
+**Who:** @dalwalyk
+**What changed:** added A-13's Gemini adapter, structured action mapping, lazy A-07 read-tool
+execution, offline tests and a synthetic-only live-check script. D-068 records the independent
+model pin and on-demand tool choice.
+**Result:** initial full suite passed 1,205 tests with 4 deprecation warnings. After review, the
+per-turn action enum was tightened and `check_agent_model.py` passed twice without fallback, with
+different model-authored supplier messages; all responses used the pinned model. The revised full
+suite passed 1,206 tests with 4 deprecation warnings; Ruff, formatting and story-state checks pass.
+The second-member run on `56fe551` passed 1,201 tests, skipped 5 optional tests, and had no
+failures; the skips include four generator-script tests without `scripts/node_modules` and the
+macOS OpenMP integration test without optional `torch`.
+**Concluded:** only unresolved tools are offered on each step, and A-07 now demonstrates different
+supplier-facing answers on identical synthetic state.
+**Close-out:** owner-confirmed 5 h actual against 4 h estimated; this matches A-13's completion
+record and supersedes the earlier interim 8 h note.
+**Next:** final D-038 review and approval on this close-out head; no commits should follow approval.
