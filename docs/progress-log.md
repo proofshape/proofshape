@@ -2272,3 +2272,18 @@ clean.
 
 **Next:** G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in
 G-05.
+
+## 2026-11-12 — A-13 Gemini model pin and live agent check
+
+**Who:** @dalwalyk
+**What changed:** added A-13's Gemini adapter, structured action mapping, lazy A-07 read-tool
+execution, offline tests and a synthetic-only live-check script. D-068 records the independent
+model pin and on-demand tool choice.
+**Result:** 1,205 Python tests passed with 4 deprecation warnings; Ruff, formatting and
+story-state checks passed.
+Two live runs returned the pinned model and different model-authored tool/message traces; both
+then triggered A-07's loop fallback after repeating unavailable VLM inspection.
+**Concluded:** the pinned model is live and variable on identical synthetic state; fallback is
+working, while repeated unavailable-tool requests remain visible for follow-up.
+**Next:** second-member clean-checkout run, owner-measured actual hours and review before A-13 can
+close under the definition of done.
