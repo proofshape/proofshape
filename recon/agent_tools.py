@@ -213,8 +213,36 @@ def score_next_view(record: dict[str, Any]) -> ToolResult:
     glb_path = Path(reconstruction["glb_path"])
     vertices_mm, faces, colors = read_glb(glb_path)
     labels = colors_to_labels(colors)
-    ranked = score_next_views(vertices_mm, faces, labels)
-    return ToolResult(available=True, data={"ranked": ranked, "best": ranked[0]})
+    disagreement = _disagreement_targets_beside(glb_path)
+    ranked = score_next_views(vertices_mm, faces, labels, disagreement=disagreement)
+    data: dict[str, Any] = {"ranked": ranked, "best": ranked[0]}
+    # A-05: with a complete disagreement map, the view that would settle the most guessing too.
+    # `best` stays C-08's, since the policy reads its count as what is left under-observed.
+    data["disagreement_used"] = disagreement is not None
+    if disagreement is not None:
+        from recon.next_view import best_by_disagreement
+
+        data["best_by_disagreement"] = best_by_disagreement(ranked)
+    return ToolResult(available=True, data=data)
+
+
+def _disagreement_targets_beside(glb_path: Path):
+    """A-05's map for the session that served `glb_path`, or None.
+
+    The service serves `<artifacts>/uncertainty/mesh_uncertainty.glb` and writes the map to
+    `<artifacts>/completion/disagreement/`. A GLB anywhere else has no session folder to look in.
+    A missing or unreadable map only means guidance without it, never a failed tool call.
+    """
+    if glb_path.parent.name != "uncertainty":
+        return None
+    from recon.disagreement import DISAGREEMENT_DIR_NAME, load_targets
+
+    try:
+        return load_targets(
+            glb_path.parent.parent / "completion" / DISAGREEMENT_DIR_NAME
+        )
+    except (OSError, ValueError, KeyError):
+        return None
 
 
 # --- check_frame ---------------------------------------------------------------------------

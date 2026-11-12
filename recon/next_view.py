@@ -42,6 +42,14 @@ Known, deliberate omissions (neither threshold has been measured, so neither is 
 the camera's field of view is not modelled -- a candidate is scored as if it sees every unoccluded
 vertex -- and a vertex seen at a grazing angle still counts toward the score (the head-on
 tie-break only orders views that already tie).
+
+**A-05's disagreement map is an optional second input** (`recon/disagreement.py`, D-066): points on
+the completion samples where the seeds disagree, each weighted by its excess spread. When it is
+given, every candidate also gets the weight it would see, and `disagreement_rank` orders the
+candidates by that weight first. `ranked`'s own order stays C-08's, because the agent policy reads
+the best candidate's under-observed count as "what is left" (`recon/agent_policy.py`). The map's
+points are only ever aimed *at*: the scene is still the served mesh alone, so guessed surface never
+blocks a view.
 """
 
 from __future__ import annotations
@@ -51,13 +59,21 @@ import json
 import math
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import open3d as o3d
 
 from recon.mesh_cleanup import read_glb
-from recon.provenance import LABEL_OBSERVED, LABEL_UNOBSERVED, colors_to_labels
+from recon.provenance import (
+    LABEL_OBSERVED,
+    LABEL_UNOBSERVED,
+    colors_to_labels,
+    label_faces,
+)
+
+if TYPE_CHECKING:
+    from recon.disagreement import DisagreementTargets
 
 # Proposal §6.2's design parameters, not measurements: "candidate views on a hemisphere of 25-40 cm
 # radius, up to 60 degrees from vertical". Board-frame millimetres, like every other recon module.
@@ -80,6 +96,14 @@ DEFAULT_AZIMUTH_STEP_DEG = 30.0
 # above float32 rounding at 40 cm (~0.0001 mm), far below any real occluding feature on a mesh that
 # coarse. Unmeasured, configurable, like every other recon default.
 DEFAULT_SELF_HIT_TOLERANCE_MM = 0.5
+
+# A disagreement target (A-05) sits on a completion sample, not on the served mesh, so the ray to it
+# never hits "itself". Where it lies just behind served *Unobserved* surface, the two are estimates
+# of the same surface, and that surface must not hide it. A-12's 2 mm is the distance within which
+# a sample point counts as the surface the camera saw (recon/disagreement.UNSEEN_BEYOND_MM; a test
+# keeps the two equal), so it is the same-surface allowance here. Behind *Observed* surface the
+# ordinary self-hit tolerance applies: a target is already more than 2 mm from any observed point.
+DISAGREEMENT_SAME_SURFACE_TOLERANCE_MM = 2.0
 
 
 def part_hemisphere_centre_and_target(
@@ -331,6 +355,7 @@ def score_candidate_views(
     labels: np.ndarray,
     candidates: dict[str, np.ndarray],
     self_hit_tolerance_mm: float = DEFAULT_SELF_HIT_TOLERANCE_MM,
+    disagreement: DisagreementTargets | None = None,
 ) -> dict[str, np.ndarray]:
     """For each candidate, how many under-observed vertices it would see unoccluded, plus the
     head-on tie-break score. Returns per-candidate arrays (K rows each):
@@ -338,6 +363,11 @@ def score_candidate_views(
     - `under_observed_visible_count`: the story's score.
     - `head_on_sum`: sum of |normal . ray direction| over those same visible vertices; 1 per vertex
       seen square-on, toward 0 at grazing angles.
+    - Only when `disagreement` (A-05's targets) is given: `disagreement_visible_weight`, the summed
+      weight of the targets the candidate would see, and `disagreement_visible_count`, how many.
+      A target is seen when nothing on the served mesh is hit before it (allowing
+      `DISAGREEMENT_SAME_SURFACE_TOLERANCE_MM` when the face hit is Unobserved) and, when the map's
+      normals can be trusted, when it faces the camera.
 
     `labels` must already carry R-10's sigma downgrade (`uncertainty.downgrade_high_sigma_vertices`
     or R-10's `mesh_uncertainty.glb`); "under-observed" is `labels == LABEL_UNOBSERVED` and nothing
@@ -362,13 +392,22 @@ def score_candidate_views(
     head_on_sum = np.zeros(candidate_count, dtype=np.float64)
 
     under_observed_indices = np.flatnonzero(labels == LABEL_UNOBSERVED)
-    if len(under_observed_indices) == 0:
+    has_targets = disagreement is not None and len(disagreement.weights) > 0
+    if disagreement is not None:
+        disagreement_weight = np.zeros(candidate_count, dtype=np.float64)
+        disagreement_count = np.zeros(candidate_count, dtype=np.int64)
+    if len(under_observed_indices) == 0 and not has_targets:
         # Fully observed: every score is genuinely zero. No scene is built -- there is nothing to
-        # aim a ray at.
-        return {
+        # aim a ray at. (Disagreement targets can exist even then: they lie where the served mesh
+        # has no surface at all.)
+        scores = {
             "under_observed_visible_count": visible_count,
             "head_on_sum": head_on_sum,
         }
+        if disagreement is not None:
+            scores["disagreement_visible_weight"] = disagreement_weight
+            scores["disagreement_visible_count"] = disagreement_count
+        return scores
 
     scene = o3d.t.geometry.RaycastingScene()
     scene.add_triangles(
@@ -377,9 +416,23 @@ def score_candidate_views(
     )
     target_vertices_mm = vertices_mm[under_observed_indices]
     target_normals = vertex_normals(vertices_mm, faces)[under_observed_indices]
+    if has_targets:
+        face_is_unobserved = label_faces(faces, labels) == LABEL_UNOBSERVED
 
     for candidate_index in range(candidate_count):
         camera_mm = positions_mm[candidate_index]
+        if has_targets:
+            weight, count = _score_disagreement_targets(
+                scene,
+                camera_mm,
+                disagreement,
+                face_is_unobserved,
+                self_hit_tolerance_mm,
+            )
+            disagreement_weight[candidate_index] = weight
+            disagreement_count[candidate_index] = count
+        if len(under_observed_indices) == 0:
+            continue
         to_targets = target_vertices_mm - camera_mm
         target_distance_mm = np.linalg.norm(to_targets, axis=1)
         if np.any(target_distance_mm == 0.0):
@@ -408,7 +461,45 @@ def score_candidate_views(
         )
         head_on_sum[candidate_index] = float(np.sum(incidence_cosines))
 
-    return {"under_observed_visible_count": visible_count, "head_on_sum": head_on_sum}
+    scores = {"under_observed_visible_count": visible_count, "head_on_sum": head_on_sum}
+    if disagreement is not None:
+        scores["disagreement_visible_weight"] = disagreement_weight
+        scores["disagreement_visible_count"] = disagreement_count
+    return scores
+
+
+def _score_disagreement_targets(
+    scene: o3d.t.geometry.RaycastingScene,
+    camera_mm: np.ndarray,
+    disagreement: DisagreementTargets,
+    face_is_unobserved: np.ndarray,
+    self_hit_tolerance_mm: float,
+) -> tuple[float, int]:
+    """The summed weight and count of A-05's targets one camera would see. The scene is the served
+    mesh only: completion surface is aimed at, never in the way."""
+    to_targets = disagreement.points_mm - camera_mm
+    target_distance_mm = np.linalg.norm(to_targets, axis=1)
+    if np.any(target_distance_mm == 0.0):
+        raise ValueError("A candidate sits exactly on a disagreement target.")
+    ray_directions = to_targets / target_distance_mm[:, None]
+    rays = np.hstack(
+        [np.repeat(camera_mm[None, :], len(ray_directions), axis=0), ray_directions]
+    )
+    hits = scene.cast_rays(o3d.core.Tensor(rays.astype(np.float32)))
+    first_hit_mm = hits["t_hit"].numpy().astype(np.float64)
+    hit_face = hits["primitive_ids"].numpy().astype(np.int64)
+    hit_something = hit_face != o3d.t.geometry.RaycastingScene.INVALID_ID
+    tolerance_mm = np.full(len(first_hit_mm), self_hit_tolerance_mm)
+    hit_unobserved = np.zeros(len(first_hit_mm), dtype=bool)
+    hit_unobserved[hit_something] = face_is_unobserved[hit_face[hit_something]]
+    tolerance_mm[hit_unobserved] = DISAGREEMENT_SAME_SURFACE_TOLERANCE_MM
+    is_visible = first_hit_mm >= target_distance_mm - tolerance_mm
+    if disagreement.cull_back_faces:
+        # Facing the camera: the outward normal points back along the ray.
+        is_visible &= np.sum(disagreement.normals * ray_directions, axis=1) < 0.0
+    return float(np.sum(disagreement.weights[is_visible])), int(
+        np.count_nonzero(is_visible)
+    )
 
 
 # Mirror-image candidates (say 30 and 330 degrees azimuth either side of an unobserved face) produce
@@ -434,6 +525,25 @@ def rank_candidate_views(scores: dict[str, np.ndarray]) -> list[int]:
     return sorted(range(len(visible_count)), key=ranking_key)
 
 
+def rank_candidate_views_by_disagreement(scores: dict[str, np.ndarray]) -> list[int]:
+    """Candidate indices, best first, by the disagreement weight each would see (A-05, D-066);
+    then C-08's own order, so with no weight anywhere this is exactly `rank_candidate_views`."""
+    weight = np.round(
+        np.asarray(scores["disagreement_visible_weight"]), _HEAD_ON_SUM_DECIMALS
+    )
+    c08_position = {
+        candidate_index: position
+        for position, candidate_index in enumerate(rank_candidate_views(scores))
+    }
+    return sorted(
+        range(len(weight)),
+        key=lambda candidate_index: (
+            -float(weight[candidate_index]),
+            c08_position[candidate_index],
+        ),
+    )
+
+
 def score_next_views(
     vertices_mm: np.ndarray,
     faces: np.ndarray,
@@ -448,12 +558,17 @@ def score_next_views(
     polar_step_deg: float = DEFAULT_POLAR_STEP_DEG,
     azimuth_step_deg: float = DEFAULT_AZIMUTH_STEP_DEG,
     self_hit_tolerance_mm: float = DEFAULT_SELF_HIT_TOLERANCE_MM,
+    disagreement: DisagreementTargets | None = None,
 ) -> list[dict[str, Any]]:
     """The story's pure core: a board-frame mesh plus per-vertex labels in, every candidate view
     out, ranked best first, as plain JSON-ready dicts.
 
     `hemisphere_centre_mm` and `look_at_mm` default to `part_hemisphere_centre_and_target`'s
     footprint-centred values; pass either to override it.
+
+    With A-05's `disagreement` targets, each candidate also carries
+    `disagreement_visible_weight`, `disagreement_visible_count` and `disagreement_rank` (1 is the
+    view that would settle the most guessing). The list's own order is still C-08's.
     """
     vertices_mm, faces = _validate_mesh(vertices_mm, faces)
     # Only work out the defaults when a caller actually needs one (PR #144 review): next_view_run
@@ -478,8 +593,16 @@ def score_next_views(
         azimuth_step_deg=azimuth_step_deg,
     )
     scores = score_candidate_views(
-        vertices_mm, faces, labels, candidates, self_hit_tolerance_mm
+        vertices_mm, faces, labels, candidates, self_hit_tolerance_mm, disagreement
     )
+    disagreement_rank = {}
+    if disagreement is not None:
+        disagreement_rank = {
+            candidate_index: rank
+            for rank, candidate_index in enumerate(
+                rank_candidate_views_by_disagreement(scores), start=1
+            )
+        }
 
     ranked: list[dict[str, Any]] = []
     for rank, candidate_index in enumerate(rank_candidate_views(scores), start=1):
@@ -501,7 +624,23 @@ def score_next_views(
                 "head_on_sum": float(scores["head_on_sum"][candidate_index]),
             }
         )
+        if disagreement is not None:
+            ranked[-1]["disagreement_visible_weight"] = float(
+                scores["disagreement_visible_weight"][candidate_index]
+            )
+            ranked[-1]["disagreement_visible_count"] = int(
+                scores["disagreement_visible_count"][candidate_index]
+            )
+            ranked[-1]["disagreement_rank"] = disagreement_rank[candidate_index]
     return ranked
+
+
+def best_by_disagreement(ranked: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The candidate A-05's map ranks first, or None when the candidates carry no map."""
+    return next(
+        (candidate for candidate in ranked if candidate.get("disagreement_rank") == 1),
+        None,
+    )
 
 
 def next_view_run(
@@ -515,12 +654,16 @@ def next_view_run(
     polar_step_deg: float = DEFAULT_POLAR_STEP_DEG,
     azimuth_step_deg: float = DEFAULT_AZIMUTH_STEP_DEG,
     self_hit_tolerance_mm: float = DEFAULT_SELF_HIT_TOLERANCE_MM,
+    disagreement_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Score next views for R-10's output and write `next_view.json`.
 
     Reads `mesh_uncertainty.glb` -- R-10's mesh, whose vertex colours already carry the sigma
     downgrade -- and decodes the labels with R-09's own `colors_to_labels`, so this CLI applies
     exactly the definition of "under-observed" the pure function does, with no re-derivation.
+
+    `disagreement_dir` is A-05's output folder (`completion/disagreement/`). Its map is used only
+    when its record is `complete`; the report says either way.
     """
     uncertainty_dir = Path(uncertainty_dir)
     out_dir = Path(out_dir)
@@ -535,6 +678,21 @@ def next_view_run(
     if colors is None:
         raise ValueError(f"{mesh_path} has no vertex colors to decode labels from")
     labels = colors_to_labels(colors)
+
+    disagreement = None
+    disagreement_summary = None
+    if disagreement_dir is not None:
+        from recon.disagreement import load_targets  # A-05; only when asked for
+
+        disagreement = load_targets(disagreement_dir)
+        disagreement_summary = {
+            "source": str(disagreement_dir),
+            "used": disagreement is not None,
+        }
+        if disagreement is not None:
+            disagreement_summary["target_count"] = len(disagreement.weights)
+            disagreement_summary["total_weight"] = float(disagreement.weights.sum())
+            disagreement_summary["cull_back_faces"] = disagreement.cull_back_faces
 
     hemisphere_centre_mm, look_at_mm = part_hemisphere_centre_and_target(vertices_mm)
     parameters = {
@@ -552,6 +710,7 @@ def next_view_run(
         labels,
         hemisphere_centre_mm=hemisphere_centre_mm,
         look_at_mm=look_at_mm,
+        disagreement=disagreement,
         **parameters,
     )
 
@@ -568,6 +727,9 @@ def next_view_run(
         "candidate_count": len(ranked),
         "ranked_candidates": ranked,
     }
+    if disagreement_summary is not None:
+        report["disagreement"] = disagreement_summary
+        report["best_by_disagreement"] = best_by_disagreement(ranked)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "next_view.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -601,6 +763,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--self-hit-tolerance-mm", type=float, default=DEFAULT_SELF_HIT_TOLERANCE_MM
     )
+    parser.add_argument(
+        "--disagreement-dir",
+        type=Path,
+        default=None,
+        help="A-05's completion/disagreement/ folder; its map ranks the views too when complete",
+    )
     return parser
 
 
@@ -618,6 +786,7 @@ def main(argv: list[str] | None = None) -> int:
             polar_step_deg=args.polar_step_deg,
             azimuth_step_deg=args.azimuth_step_deg,
             self_hit_tolerance_mm=args.self_hit_tolerance_mm,
+            disagreement_dir=args.disagreement_dir,
         )
     except FileExistsError as exc:
         print(f"C-08 NEXT VIEW: FAIL - {exc}", file=sys.stderr)
@@ -636,6 +805,20 @@ def main(argv: list[str] | None = None) -> int:
             f"{best['under_observed_visible_count']}/{under_observed} under-observed vertices "
             f"(azimuth {best['azimuth_deg']:.0f} deg, {best['angle_from_vertical_deg']:.0f} deg "
             f"from vertical, {best['radius_mm']:.0f} mm)"
+        )
+    disagreement_best = report.get("best_by_disagreement")
+    if disagreement_best is not None:
+        print(
+            f"A-05 DISAGREEMENT: best view sees weight "
+            f"{disagreement_best['disagreement_visible_weight']:.3f} of "
+            f"{report['disagreement']['total_weight']:.3f} "
+            f"(azimuth {disagreement_best['azimuth_deg']:.0f} deg, "
+            f"{disagreement_best['angle_from_vertical_deg']:.0f} deg from vertical, "
+            f"{disagreement_best['radius_mm']:.0f} mm)"
+        )
+    elif "disagreement" in report:
+        print(
+            "A-05 DISAGREEMENT: no complete map in the folder given; C-08's ranking only"
         )
     print(f"Outputs written to {out_dir}")
     return 0

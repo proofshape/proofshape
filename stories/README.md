@@ -278,7 +278,7 @@ Full detail in each story file.
 | [I-04](I/I-04.md) | Robust point-to-plane ICP with a Tukey loss | 4 h | I-03 | Done | @TabeenRaoof |
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Done | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
-| [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Ready | _unclaimed_ |
+| [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Done | @dalwalyk |
 | [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Blocked | _unclaimed_ |
 | [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Blocked | _unclaimed_ |
 | [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34 | Blocked | _unclaimed_ |
@@ -330,8 +330,8 @@ Full detail in each story file.
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
 | [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
-| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Claimed | @dalwalyk |
-| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Claimed | @TabeenRaoof |
+| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Ready | _unclaimed_ |
+| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
 | [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Ready | _unclaimed_ |
 | [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
@@ -347,8 +347,10 @@ Full detail in each story file.
   - **The runner's environment in the image.** It needs a second Python and torch 2.4 beside the
     image's torch 2.8, which `tests/test_container.py` forbids today.
 
-  A-05 is the first story that needs real per-session samples. Whoever writes it up settles this
-  first, or makes A-05 depend on the story that does.
+  A-05 is the first story that needs real per-session samples. Its first pass (D-066) builds the
+  map inline whenever samples exist and records `unavailable` otherwise, so it waits on neither
+  item. It was checked on A-12's prepared s-04 and s-02 folders. Real per-session maps arrive with
+  the story that settles both.
 
 ---
 
@@ -570,6 +572,7 @@ Full detail in each story file.
 | [P-30](P/P-30.md) | Write up the capture-app stories | — | nothing | Done | @TabeenRaoof |
 | [P-31](P/P-31.md) | Write up the remaining inspection, ground-truth, generative-AI and cross-cutting stories | — | nothing | Done | @dalwalyk |
 | [P-32](P/P-32.md) | The WIP cap counts active stories only (D-064) | — | nothing | Done | @TabeenRaoof |
+| [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Claimed | @TabeenRaoof |
 
 ---
 
