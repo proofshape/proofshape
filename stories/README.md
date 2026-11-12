@@ -226,7 +226,7 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Claimed | @TabeenRaoof |
+| [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Done | @TabeenRaoof |
 | [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | nothing | Claimed | @dalwalyk |
 | [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
@@ -458,7 +458,7 @@ Full detail in each story file.
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone | 3 h | C-13, C-20 | Done | @dalwalyk |
 | [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
-| [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Ready | _unclaimed_ |
+| [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Claimed | @mbj1994 |
 | [C-23](C/C-23.md) | Device testing: the capture path on an Android phone | 2 h | C-13, C-20 | Ready | _unclaimed_ |
 
 ---
