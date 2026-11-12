@@ -1397,9 +1397,13 @@ anywhere (`generative-ai/A-05-disagreement-map`), so D-067 was the first free nu
 A-01/A-03's pin. The provider returns one structured `action` (one A-06 tool or `done`), whose
 enum is built from the current turn's unresolved tools; `check_frame` is omitted while D-054
 holds, and `finish_session` is offered only after coverage reports every orbit slot covered.
-A-13 validates and maps the action into A-07's provider-neutral `ToolCallDecision`. A-07 runs
-only the requested read tool and caches its result; on model error, timeout or loop, its existing
-A-08 fallback still gathers the full snapshot it needs. No HTTP or phone wiring is added.
+A-13 validates and maps the action into A-07's provider-neutral `ToolCallDecision`. Coverage code,
+not the model, determines whether the session continues or may finish: with uncovered slots the
+model can only end its current turn with `done`; only full coverage permits `finish_session`. The
+model chooses whether to consult `vlm_inspect` before coverage is read and how to phrase its
+supplier-facing message. A-07 runs only the requested read tool and caches its result; on model
+error, timeout or loop, its existing A-08 fallback still gathers the full snapshot it needs. No
+HTTP or phone wiring is added.
 
 *Why:* the project already has a stable Gemini pin, SDK and key handling, so this avoids a second
 provider/credential path while keeping each generative component independently changeable. Lazy

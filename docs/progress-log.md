@@ -2283,10 +2283,9 @@ model pin and on-demand tool choice.
 per-turn action enum was tightened and `check_agent_model.py` passed twice without fallback, with
 different model-authored supplier messages; all responses used the pinned model. The revised full
 suite passed 1,206 tests with 4 deprecation warnings; Ruff, formatting and story-state checks pass.
-The second-member run on the prior head found one unrelated clean-Mac failure because
-`tests/test_macos_openmp.py` assumed optional `torch`; this PR now skips that integration test when
-torch is absent. A rerun on the revised head is requested.
+The second-member run on `56fe551` passed 1,201 tests, skipped 5 optional tests, and had no
+failures; the skips include four generator-script tests without `scripts/node_modules` and the
+macOS OpenMP integration test without optional `torch`.
 **Concluded:** only unresolved tools are offered on each step, and A-07 now demonstrates different
 supplier-facing answers on identical synthetic state.
-**Next:** second-member clean-checkout rerun on the revised head, then final D-038 close-out and
-approval with the owner's reported 8 h actual.
+**Next:** final D-038 review and approval on this close-out head; no commits should follow approval.
