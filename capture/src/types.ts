@@ -83,8 +83,10 @@ export interface VerdictResult {
  * phone-facing field/route is agreed. This is deliberately not added to the frozen OpenAPI
  * contract yet.
  */
+export type AgentFallbackReason = "model_error" | "timeout" | "loop_detected";
+
 export interface AgentMessageResult {
+  finished: boolean;
+  fallback_reason: AgentFallbackReason | null;
   message: string | null;
-  fallback: boolean;
-  fallback_reason?: string;
 }
