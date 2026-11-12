@@ -1332,6 +1332,7 @@ describe("mountAppShell", () => {
 
     expect(overlayStatusText()).toBe(statusAfterFinish);
   });
+
   it("releases Capture and Finish while the optional agent request is still pending", async () => {
     const mounted = await startSuccessfulSession();
     stubCanvasContext();
@@ -1374,7 +1375,8 @@ describe("mountAppShell", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
         if (url.includes("/agent-message")) {
           return Promise.resolve(
             new Response(JSON.stringify({ code: "session_not_found", message: "Not Found" }), {
@@ -1394,5 +1396,4 @@ describe("mountAppShell", () => {
     const panel = document.getElementById("shell-agent-conversation");
     expect(panel?.hidden).toBe(true);
   });
-
 });
