@@ -330,6 +330,11 @@ you can orbit with one finger and zoom with two. A **Download GLB** link is alwa
 raw model stays retrievable even if the viewer can't render it. If the result is not metric, the
 summary says "No dimensional claims".
 
+**The viewer's orbit has no keyboard alternative today** (C-18). It's mouse/touch only; there's no
+tab stop or arrow-key control on the 3D canvas. The rest of the capture page's controls (Start,
+Capture frame, Finish, Download GLB) are native buttons and links and work with Tab, Enter and
+Space.
+
 The model is coloured by **what was actually seen**:
 
 | Colour | Label | Meaning |
