@@ -330,8 +330,8 @@ Full detail in each story file.
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
 | [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
-| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Claimed | @dalwalyk |
-| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Claimed | @TabeenRaoof |
+| [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Ready | _unclaimed_ |
+| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
 | [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Ready | _unclaimed_ |
 | [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
@@ -347,8 +347,10 @@ Full detail in each story file.
   - **The runner's environment in the image.** It needs a second Python and torch 2.4 beside the
     image's torch 2.8, which `tests/test_container.py` forbids today.
 
-  A-05 is the first story that needs real per-session samples. Whoever writes it up settles this
-  first, or makes A-05 depend on the story that does.
+  A-05 is the first story that needs real per-session samples. Its first pass (D-066) builds the
+  map inline whenever samples exist and records `unavailable` otherwise, so it waits on neither
+  item. It was checked on A-12's prepared s-04 and s-02 folders. Real per-session maps arrive with
+  the story that settles both.
 
 ---
 

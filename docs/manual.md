@@ -261,7 +261,9 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
 - **Next-view scoring** — ranking where one more photo would see the most unobserved surface —
   exists on `main` (C-08, `recon/next_view.py`), but only as a command-line tool run on a
   finished model. Nothing calls it yet: not the service, and not the arrow, which follows the
-  fixed orbit.
+  fixed orbit. Given A-05's disagreement map, it also ranks where a photo would settle the most
+  guessing by the shape-completion model. That map is built on the server whenever completion
+  samples exist, which no supplier's session has yet (D-058, D-066).
 
 **Planned, and part of what makes this more than a photo app:**
 - **An LLM agent runs the session** (A-06, A-07, with A-08's deterministic fallback) — it decides
@@ -348,7 +350,7 @@ The model is coloured by **what was actually seen**:
 |---|---|---|
 | **Blue** | **Observed** | Seen in at least two frames whose viewpoints are at least 2° apart, through pixels the reconstruction model is confident about (R-24, D-045), with the mesh surface facing each camera, and not hidden behind other surface in those frames: its position agrees with the depth each frame actually measured (R-09/R-25). The spread of that depth across the frames (σ) must also be 3 mm or less, or it is downgraded to Unobserved (R-10). This is the only geometry that can produce a Pass or a Fail. |
 | **Slate grey** | **Unobserved** | Not properly seen. Can only ever trigger a Rescan. |
-| **Orange** | **Inferred** | Reserved: surface filled in by generative shape completion. The service-side stage exists (A-04), but completion samples stay on the server for the disagreement map (A-05) and are never part of the model you see. The model itself runs only on a CUDA host, through A-12's runner (measured on a Colab T4), and no host that serves suppliers has one configured yet, so on the M2 Max nothing is produced (D-058). Inferred surface is excluded from every deviation calculation and **never** contributes to a verdict. |
+| **Orange** | **Inferred** | Reserved: surface filled in by generative shape completion. The service-side stage exists (A-04), but completion samples stay on the server for the disagreement map (A-05: where the samples disagree, used only to suggest the next photo) and are never part of the model you see. The model itself runs only on a CUDA host, through A-12's runner (measured on a Colab T4), and no host that serves suppliers has one configured yet, so on the M2 Max nothing is produced (D-058). Inferred surface is excluded from every deviation calculation and **never** contributes to a verdict. |
 | **Magenta** | **Unknown** | A colour the viewer did not expect. Should never appear; if it does, the viewer also shows a warning. |
 
 If the model carries no provenance colours at all (C-19), it's shown in a single flat colour and

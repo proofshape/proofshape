@@ -79,6 +79,7 @@ assert os.environ["OMP_NUM_THREADS"] == "1"
 from recon import (
     board_pose,
     completion,
+    disagreement,
     mesh_cleanup,
     metric_alignment,
     provenance,

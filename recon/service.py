@@ -362,6 +362,7 @@ def run_reconstruction_pipeline(
     from recon import (
         board_pose,
         completion,
+        disagreement,
         mesh_cleanup,
         metric_alignment,
         provenance,
@@ -479,6 +480,15 @@ def run_reconstruction_pipeline(
         stage_timings_s["completion"] = time.perf_counter() - started
         if outcome.warning is not None:
             warnings.append(outcome.warning)
+
+        # A-05: the disagreement map, from the samples just written. Guidance only (D-005, D-006):
+        # it writes inside completion/disagreement/ and nothing here reads it back. It never
+        # raises and adds no warning; with no runner it just records `unavailable`.
+        started = time.perf_counter()
+        disagreement.disagreement_stage(
+            artifact_dir / "completion", fusion_dir=fusion_dir
+        )
+        stage_timings_s["disagreement"] = time.perf_counter() - started
 
     return {
         "glb_path": str(final_model_path),
