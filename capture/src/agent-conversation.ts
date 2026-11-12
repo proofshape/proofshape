@@ -42,8 +42,7 @@ export function mountAgentConversation(container: HTMLElement): AgentConversatio
     const fallbackReason = result.fallback_reason;
     if (fallbackReason !== null) {
       status.dataset.agentFallbackReason = fallbackReason;
-      status.textContent =
-        "Automatic guidance is active. Continue following the capture arrows.";
+      status.textContent = "Automatic guidance is active. Continue following the capture arrows.";
     } else {
       delete status.dataset.agentFallbackReason;
       status.textContent = result.finished
