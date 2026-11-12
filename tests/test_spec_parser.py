@@ -1,0 +1,231 @@
+"""A-03: deterministic fake-reply checks, no credentials or network -- same harness style as
+tests/test_vlm_check.py."""
+
+import json
+from types import SimpleNamespace
+
+import pytest
+
+from recon.spec_parser import InspectionSpec, SpecFeature, parse_spec_response
+
+
+def reply(**spec_changes) -> SimpleNamespace:
+    spec = {
+        "features": [
+            {
+                "name": "mounting holes",
+                "kind": "hole",
+                "tolerance_mm": 2.0,
+                "critical": True,
+            },
+            {
+                # "has to be flat" names no number -- tolerance_mm is honestly null, not
+                # invented, with the gap recorded as an assumption (caught on review,
+                # @TabeenRaoof, #320: an earlier version of this fixture invented 0.1mm here).
+                "name": "sealing face",
+                "kind": "face",
+                "tolerance_mm": None,
+                "critical": True,
+            },
+        ],
+        "assumptions": ["No tolerance was stated for the sealing face."],
+    }
+    spec.update(spec_changes)
+    return SimpleNamespace(
+        text=json.dumps(spec),
+        candidates=[SimpleNamespace(finish_reason="STOP")],
+        prompt_feedback=None,
+    )
+
+
+# --- the proposal's own example sentence, parsed correctly --------------------------------------
+
+
+def test_parses_the_proposals_own_example():
+    # "the four mounting holes need to line up within about 2 mm, and the sealing face has to
+    # be flat" (proposal §7.4) -- this is the plausible structured reply a model would give it.
+    # "Flat" names no number, so tolerance_mm is null, not invented -- see reply()'s own comment.
+    result = parse_spec_response(reply())
+    assert result.status == "parsed"
+    assert result.reason is None
+    assert result.spec == InspectionSpec(
+        features=[
+            SpecFeature(
+                name="mounting holes", kind="hole", tolerance_mm=2.0, critical=True
+            ),
+            SpecFeature(
+                name="sealing face", kind="face", tolerance_mm=None, critical=True
+            ),
+        ],
+        assumptions=["No tolerance was stated for the sealing face."],
+    )
+
+
+def test_a_feature_with_no_stated_tolerance_is_null_not_invented():
+    # The hard rule this guards (AGENTS.md): "a model's guess must never approve or condemn a
+    # component." A required positive tolerance would force the model to invent one whenever
+    # the buyer's prose gives no number -- null plus an assumption is the honest alternative.
+    result = parse_spec_response(
+        reply(
+            features=[
+                {
+                    "name": "sealing face",
+                    "kind": "face",
+                    "tolerance_mm": None,
+                    "critical": True,
+                }
+            ],
+            assumptions=["No tolerance was stated for the sealing face."],
+        )
+    )
+    assert result.status == "parsed"
+    assert result.spec.features[0].tolerance_mm is None
+    assert result.spec.assumptions == ["No tolerance was stated for the sealing face."]
+
+
+def test_an_empty_feature_table_is_unparsed_not_a_silently_valid_empty_spec():
+    result = parse_spec_response(reply(features=[]))
+    assert result.status == "unparsed"
+    assert result.reason == "no_features"
+    assert result.spec is None
+
+
+def test_a_null_tolerance_with_no_assumptions_at_all_is_unparsed():
+    # Caught on review (@TabeenRaoof, #320): the acceptance criteria say a null tolerance is
+    # recorded with a matching assumption, but nothing enforced that -- a null with
+    # assumptions: [] would otherwise still parse, which is never the instruction followed
+    # correctly.
+    result = parse_spec_response(
+        reply(
+            features=[
+                {
+                    "name": "sealing face",
+                    "kind": "face",
+                    "tolerance_mm": None,
+                    "critical": True,
+                }
+            ],
+            assumptions=[],
+        )
+    )
+    assert result.status == "unparsed"
+    assert result.reason == "missing_assumption_for_null_tolerance"
+    assert result.spec is None
+
+
+def test_assumptions_pass_through_as_plain_strings():
+    result = parse_spec_response(
+        reply(assumptions=["Assumed the part is rigid, not a thin sheet."])
+    )
+    assert result.status == "parsed"
+    assert result.spec.assumptions == ["Assumed the part is rigid, not a thin sheet."]
+
+
+def test_an_overall_feature_with_no_named_part_is_valid():
+    # Not every spec names discrete features -- "the whole part needs to be within 1mm" is a
+    # single `overall`-kind feature, per the proposal's four-value `kind` enum.
+    result = parse_spec_response(
+        reply(
+            features=[
+                {
+                    "name": "overall",
+                    "kind": "overall",
+                    "tolerance_mm": 1.0,
+                    "critical": True,
+                }
+            ]
+        )
+    )
+    assert result.status == "parsed"
+    assert result.spec.features[0].kind == "overall"
+
+
+# --- a structurally invalid reply is rejected, not silently coerced ----------------------------
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {
+            "features": [
+                {"name": "hole A", "kind": "hole", "tolerance_mm": 0, "critical": True}
+            ]
+        },
+        {
+            "features": [
+                {
+                    "name": "hole A",
+                    "kind": "hole",
+                    "tolerance_mm": -1.0,
+                    "critical": True,
+                }
+            ]
+        },
+        {
+            "features": [
+                {
+                    "name": "hole A",
+                    "kind": "slot",
+                    "tolerance_mm": 1.0,
+                    "critical": True,
+                }
+            ]
+        },
+        {
+            "features": [
+                {"name": "", "kind": "hole", "tolerance_mm": 1.0, "critical": True}
+            ]
+        },
+        {
+            "features": [
+                {
+                    "name": "hole A",
+                    "kind": "hole",
+                    "tolerance_mm": "loose",
+                    "critical": True,
+                }
+            ]
+        },
+        {
+            "features": [{"name": "hole A", "kind": "hole", "tolerance_mm": 1.0}]
+        },  # missing `critical`
+        {
+            "features": [
+                {
+                    "name": "hole A",
+                    "kind": "hole",
+                    "tolerance_mm": 1.0,
+                    "critical": True,
+                }
+            ],
+            "extra_field": "not in the schema",
+        },
+    ],
+)
+def test_invalid_spec_is_unparsed_not_coerced(changes):
+    result = parse_spec_response(reply(**changes))
+    assert result.status == "unparsed"
+    assert result.reason == "invalid_reply"
+    assert result.spec is None
+
+
+def test_empty_blocked_incomplete_and_malformed_replies():
+    response = reply()
+    response.candidates = []
+    assert parse_spec_response(response).reason == "empty_reply"
+
+    response = reply()
+    response.prompt_feedback = SimpleNamespace(block_reason="SAFETY")
+    assert parse_spec_response(response).reason == "blocked_reply"
+
+    response = reply()
+    response.candidates[0].finish_reason = "MAX_TOKENS"
+    assert parse_spec_response(response).reason == "incomplete_reply"
+
+    response = reply()
+    response.text = ""
+    assert parse_spec_response(response).reason == "empty_reply"
+
+    response = reply()
+    response.text = "not json"
+    assert parse_spec_response(response).reason == "invalid_reply"

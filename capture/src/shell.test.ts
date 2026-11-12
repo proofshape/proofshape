@@ -1332,4 +1332,140 @@ describe("mountAppShell", () => {
 
     expect(overlayStatusText()).toBe(statusAfterFinish);
   });
+
+  it("releases Capture and Finish while the optional agent request is still pending", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const { fetchSpy, resolve } = pendingFetchMatching("/agent-message");
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      const agentCalls = fetchSpy.mock.calls.filter(([url]) => {
+        const value = typeof url === "string" ? url : String(url);
+        return value.includes("/agent-message");
+      });
+      if (agentCalls.length === 0) throw new Error("agent request not started");
+    });
+
+    expect(mounted.captureButton.disabled).toBe(false);
+    expect(mounted.finishButton.disabled).toBe(false);
+
+    resolve(200, {
+      finished: false,
+      fallback_reason: null,
+      message: "Frame accepted. Continue to the next guided view.",
+    });
+  });
+
+  it("keeps the assistant panel hidden when today's real-style service has no agent route", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/agent-message")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ code: "session_not_found", message: "Not Found" }), {
+              status: 404,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const panel = document.getElementById("shell-agent-conversation");
+    expect(panel?.hidden).toBe(true);
+  });
+  it("drops an older agent reply that arrives after a newer reply for the same session", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    const agentResolvers: Array<(response: Response) => void> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/agent-message")) {
+          return new Promise<Response>((resolve) => {
+            agentResolvers.push(resolve);
+          });
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (agentResolvers.length < 1) throw new Error("first agent request not started");
+    });
+
+    dispatchOrientation(90, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (agentResolvers.length < 2) throw new Error("second agent request not started");
+    });
+
+    agentResolvers[1]?.(
+      new Response(
+        JSON.stringify({
+          finished: false,
+          fallback_reason: null,
+          message: "Newer guidance.",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    await vi.waitFor(() => {
+      if (!document.body.textContent.includes("Newer guidance.")) {
+        throw new Error("newer guidance not shown");
+      }
+    });
+
+    const olderResponse = new Response(
+      JSON.stringify({
+        finished: false,
+        fallback_reason: null,
+        message: "Older guidance.",
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+    agentResolvers[0]?.(olderResponse);
+    await vi.waitFor(() => {
+      if (!olderResponse.bodyUsed) throw new Error("older response body not read yet");
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(document.body.textContent).toContain("Newer guidance.");
+    expect(document.body.textContent).not.toContain("Older guidance.");
+  });
 });

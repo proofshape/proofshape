@@ -266,11 +266,17 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
   samples exist, which no supplier's session has yet (D-058, D-066).
 
 **Planned, and part of what makes this more than a photo app:**
-- **An LLM agent runs the session** (A-06, A-07, with A-08's deterministic fallback) — it decides
-  what happens next, interprets why a frame failed, rephrases it for a non-expert, and adapts if
-  you are clearly struggling. It calls the geometric scorer as a tool; it never computes geometry
-  itself. If it errors, times out, or loops, capture falls straight back to the deterministic
-  fixed orbit. The session always completes.
+- **The LLM agent core and its phone conversation view are built** (A-06, A-07, C-22, with
+  A-08's deterministic fallback). C-22 adds a Capture assistant panel built against a mock of
+  A-07's phone-facing result. The panel is deliberately hidden against today's real service
+  because that service does not yet expose the D-031 agent-message route; the real route waits
+  for A-07's D-031 round, no earlier than Dec 2. A missing route never blocks Capture or Finish.
+  When the route does answer, transport failure is shown as plain language rather than a raw
+  code, repeated identical lines are not appended, and stale replies are ignored. The mock
+  `finished` field is display-only until the real D-031 phone contract defines lifecycle
+  behavior, including the end-of-session summary. The agent calls the geometric scorer as a
+  tool; it never computes geometry itself. If it errors, times out, or loops, capture falls
+  straight back to the deterministic fixed orbit. The session always completes.
 - **A vision-language model checks sampled frames** (A-01, A-02) — roughly seven calls a session,
   not one per frame. It catches things geometry cannot: the wrong part, hands in shot, a
   photograph of a screen. **It can veto a Pass**, downgrading the session to Rescan, and the
