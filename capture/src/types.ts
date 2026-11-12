@@ -77,3 +77,15 @@ export interface VerdictResult {
   regions: Region[];
   reason_codes?: string[];
 }
+
+
+/**
+ * C-22 temporary capture-side shape used only by the contract stub until A-07's D-031
+ * phone-facing field/route is agreed. This is deliberately not added to the frozen OpenAPI
+ * contract yet.
+ */
+export interface AgentMessageResult {
+  message: string | null;
+  fallback: boolean;
+  fallback_reason?: string;
+}
