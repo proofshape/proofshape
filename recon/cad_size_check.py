@@ -1315,7 +1315,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     out = args.out or args.recon_run_dir / "cad_size_check.json"
     if args.observed_glb is not None and args.cad is None:
-        parser.error("--observed-glb requires --cad so the fused wall profiles have a CAD wall pose.")
+        parser.error(
+            "--observed-glb requires --cad so the fused wall profiles have a CAD wall pose."
+        )
     try:
         report = build_report(
             args.recon_run_dir,
