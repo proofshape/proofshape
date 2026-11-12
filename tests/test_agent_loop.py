@@ -5,6 +5,8 @@ test_agent_tools.py's real `service.SessionStore` for the finish_session integra
 from __future__ import annotations
 
 import json
+import time
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
@@ -143,6 +145,35 @@ def test_falls_back_on_timeout(tmp_path):
         now=clock,
     )
     assert result.fallback_reason == "timeout"
+
+
+def test_falls_back_on_timeout_even_when_the_call_itself_never_returns_in_time(
+    tmp_path,
+):
+    # Real clock, on purpose (caught on review, @TabeenRaoof, #318): the fake-clock test above
+    # only proves the budget is checked *between* calls. This proves the call itself is bounded
+    # -- a synchronous model_caller that blocks past the deadline must still come back as
+    # "timeout" promptly, not after however long the call actually takes (or never, if it never
+    # returns at all). Bounded to 1s, not unbounded, so the worker thread (which Python cannot
+    # kill once started) still finishes and this process can exit cleanly after the suite ends.
+    store = service.SessionStore(tmp_path)
+
+    def hangs_past_the_deadline(state):
+        Event().wait(timeout=1.0)
+
+    started = time.monotonic()
+    result = run_agent_turn(
+        _capturing_record(),
+        store,
+        "sess_x",
+        lambda sid: None,
+        hangs_past_the_deadline,
+        min_frames=3,
+        timeout_s=0.2,
+    )
+    elapsed = time.monotonic() - started
+    assert result.fallback_reason == "timeout"
+    assert elapsed < 0.5  # a small bound well under the call's own 1s internal wait
 
 
 def test_falls_back_on_a_repeated_tool_call(tmp_path):

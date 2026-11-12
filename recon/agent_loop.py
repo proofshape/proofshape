@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -159,8 +160,8 @@ def describe_action_for_supplier(action: Action) -> str:
         if action.under_observed_vertex_count is None:
             return "Capture complete. Everything needed was seen."
         return (
-            f"Capture complete. {action.under_observed_vertex_count} vertices were not "
-            "fully observed."
+            f"Capture complete. {action.under_observed_vertex_count} small spots on the "
+            "part weren't seen clearly."
         )
     raise TypeError(f"unhandled action: {action!r}")  # exhaustive by construction
 
@@ -182,7 +183,18 @@ def run_agent_turn(
     one asks for, until it is done, asks to finish the session, or falls back (see module
     docstring for the three fallback triggers). `store`/`session_id`/`schedule_reconstruction`/
     `min_frames` are exactly `agent_tools.finish_session`'s own parameters -- this function is
-    the one place that actually calls it, on both the normal and the fallback path."""
+    the one place that actually calls it, on both the normal and the fallback path.
+
+    **`timeout_s` bounds each `model_caller` call itself, not just the time between calls**
+    (caught on review, @TabeenRaoof, #318): a synchronous call that stalls or never returns
+    would otherwise block this function forever, or until it happens to raise on its own --
+    the exact "capture never completes" failure the proposal's fallback guarantee exists to
+    rule out. Each call runs on a single-worker executor with the *remaining* budget as its
+    deadline (the same `future.result(timeout=...)` shape A-01's own join already uses, D-055);
+    a `TimeoutError` there is reported as `"timeout"`, same as running out of budget between
+    calls. A worker stuck on a call that never returns can't be killed in Python (A-01's own
+    module docstring notes this), but this function returns promptly regardless, so the turn --
+    and the session -- still completes."""
     session_dir = store.session_dir(session_id)
     tools = _gather_tool_results(record, session_dir)
     started = now()
@@ -206,55 +218,63 @@ def run_agent_turn(
             transcript=tuple(history),
         )
 
-    for _ in range(max_steps):
-        if now() - started > timeout_s:
-            return fall_back("timeout")
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agent-loop")
+    try:
+        for _ in range(max_steps):
+            remaining_s = timeout_s - (now() - started)
+            if remaining_s <= 0:
+                return fall_back("timeout")
 
-        try:
-            raw = model_caller(
-                AgentLoopState(record=record, tools=tools, history=tuple(history))
-            )
-            decision = parse_model_decision(raw)
-        except Exception:  # noqa: BLE001 - an injected model_caller can fail any way at all
-            return fall_back("model_error")
+            state = AgentLoopState(record=record, tools=tools, history=tuple(history))
+            future = executor.submit(model_caller, state)
+            try:
+                raw = future.result(timeout=remaining_s)
+                decision = parse_model_decision(raw)
+            except TimeoutError:
+                return fall_back("timeout")
+            except Exception:  # noqa: BLE001 - an injected model_caller can fail any way at all
+                return fall_back("model_error")
 
-        if now() - started > timeout_s:
-            return fall_back("timeout")
+            recent = history[-max_repeated_calls:] if max_repeated_calls > 0 else []
+            if (
+                decision.tool is not None
+                and len(recent) == max_repeated_calls
+                and all(step.tool == decision.tool for step in recent)
+            ):
+                return fall_back("loop_detected")
 
-        recent = history[-max_repeated_calls:] if max_repeated_calls > 0 else []
-        if (
-            decision.tool is not None
-            and len(recent) == max_repeated_calls
-            and all(step.tool == decision.tool for step in recent)
-        ):
-            return fall_back("loop_detected")
+            history.append(LoopStep(tool=decision.tool, message=decision.message))
 
-        history.append(LoopStep(tool=decision.tool, message=decision.message))
+            if decision.tool == "finish_session":
+                result = finish_session(
+                    store, session_id, schedule_reconstruction, min_frames=min_frames
+                )
+                message = decision.message
+                if not result.ok:
+                    message = result.error_message or message
+                return AgentLoopResult(
+                    finished=result.ok,
+                    fallback_reason=None,
+                    message=message,
+                    transcript=tuple(history),
+                )
 
-        if decision.tool == "finish_session":
-            result = finish_session(
-                store, session_id, schedule_reconstruction, min_frames=min_frames
-            )
-            message = decision.message
-            if not result.ok:
-                message = result.error_message or message
-            return AgentLoopResult(
-                finished=result.ok,
-                fallback_reason=None,
-                message=message,
-                transcript=tuple(history),
-            )
+            if decision.done:
+                return AgentLoopResult(
+                    finished=False,
+                    fallback_reason=None,
+                    message=decision.message,
+                    transcript=tuple(history),
+                )
 
-        if decision.done:
-            return AgentLoopResult(
-                finished=False,
-                fallback_reason=None,
-                message=decision.message,
-                transcript=tuple(history),
-            )
+            # decision.tool names one of the four read tools; its result is already in `tools`
+            # (gathered once, static for the whole turn) -- loop back and let the model see it
+            # recorded in history, then decide its next step.
 
-        # decision.tool names one of the four read tools; its result is already in `tools`
-        # (gathered once, static for the whole turn) -- loop back and let the model see it
-        # recorded in history, then decide its next step.
+        return fall_back("loop_detected")
+    finally:
+        # wait=False: a stuck worker can't be killed, but this function must still return
+        # promptly rather than block here waiting for it (same reasoning as the timeout itself).
+        executor.shutdown(wait=False)
 
     return fall_back("loop_detected")

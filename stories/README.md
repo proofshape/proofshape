@@ -296,9 +296,10 @@ first stories that could start without the verdict, including the agent's tools 
 deterministic fallback (A-08), which the proposal says is built first. A-02 (veto), A-03 (spec
 parser), A-05 (disagreement map), A-07 (agent loop), A-13 (agent model pin) and A-09 (narrative)
 stayed titles-only until the verdict, A-04 or A-06/A-08 existed (P-26); written up below now that
-two of those three have (P-31). A-07's core loop is Done, which clears A-13 and the split-out C-22 (agent conversation view), both
-now Ready; A-05's fixture-scoped first pass is Claimed; A-03's parser core is Ready, with its
-table-wiring follow-up waiting on C-16; A-02 and A-09 are still correctly Blocked on I-07.
+two of those three have (P-31). A-07's core loop is Done, which clears A-13 and the split-out
+C-22 (agent conversation view), both now Ready; A-05's fixture-scoped first pass is Claimed;
+A-03's parser core is Ready, with its table-wiring follow-up waiting on C-16; A-02 and A-09 are
+still correctly Blocked on I-07.
 
 **What counts.** The test is "if you run it twice, can it give two different answers?"
 (AGENTS.md). A VLM's reply and sampled completions both can; the reconstruction backbone can't
