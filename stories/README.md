@@ -417,7 +417,7 @@ capture hours, for device testing and its fixes. So these go to the Nov 13 bound
 carried or cut, never silently rolled forward (working agreement 4). Each story says what it
 waits for and where it sits on the cut list (§10).
 
-**Ready now: C-18.**
+**Claimed: C-18** (@dalwalyk).
 - C-14 and C-15 are built against the mock (sprint plan §5, D4). The real deviations come from
   I-06 (written up, Ready) and the real verdict from I-07 (written up, Blocked). Both are
   checked end to end at X-03 or X-04.
@@ -451,7 +451,7 @@ Full detail in each story file.
 | [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Done | @dalwalyk |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Blocked | _unclaimed_ |
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
-| [C-18](C/C-18.md) | Device testing: the capture path on one iPhone and one Android phone | 4 h | C-13, C-20 | Ready | _unclaimed_ |
+| [C-18](C/C-18.md) | Device testing: the capture path on one iPhone and one Android phone | 4 h | C-13, C-20 | Claimed | @dalwalyk |
 | [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
 | [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Blocked | _unclaimed_ |
 
