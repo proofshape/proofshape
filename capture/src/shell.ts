@@ -172,6 +172,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // only if finishSession itself fails (so a retry is possible); left `true` forever once it
   // actually succeeds, since there's nothing left in this session to capture into or finish again.
   let sessionFinishing = false;
+  // C-22: only the newest assistant request may update the panel. Accepted frames can trigger
+  // overlapping optional guidance calls, so an older reply must never land after a newer one.
+  let latestAgentRequestId = 0;
   // C-13: the deployed service's glb_url is behind the same bearer-token gate as every other
   // route (D-042/D-048) -- the model viewer needs authToken too, not just the session calls.
   const modelViewerOptions: ModelViewerOptions = {
@@ -386,32 +389,31 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   });
 
   async function refreshAgentConversation(sessionId: string): Promise<void> {
+    const requestId = ++latestAgentRequestId;
     try {
       const result = await getAgentMessage(options.baseUrl, sessionId, options.authToken);
-      if (state.sessionId !== sessionId) {
+      if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
         return;
       }
-      if (result.ok) {
-        agentConversation.show(result.body);
-      } else {
-        agentConversation.show({
-          message: null,
-          fallback: true,
-          fallback_reason: "assistant_unavailable",
-        });
+      if (!result.ok) {
+        // Today's real service has no agent route yet. Keep the panel hidden until a real 200 has
+        // existed; after one has existed, transportUnavailable changes only the status line.
+        agentConversation.transportUnavailable();
+        return;
+      }
+      agentConversation.show(result.body);
+      if (result.body.finished) {
+        sessionFinishing = true;
+        updateCaptureAvailability();
+        updateFinishAvailability();
       }
     } catch {
-      if (state.sessionId !== sessionId) {
+      if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
         return;
       }
-      // The assistant route is optional until the D-031 phone contract lands, but failure must
-      // be visible rather than leaving stale model guidance on screen. Capture itself continues
-      // with A-08's deterministic orbit/arrow fallback.
-      agentConversation.show({
-        message: null,
-        fallback: true,
-        fallback_reason: "assistant_unavailable",
-      });
+      // Transport failure is not an A-07 fallback reason. The view keeps that client-side state
+      // separate and leaves deterministic capture guidance usable.
+      agentConversation.transportUnavailable();
     }
   }
 
