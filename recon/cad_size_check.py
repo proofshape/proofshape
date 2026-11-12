@@ -1311,7 +1311,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_argument_parser().parse_args(argv)
+    parser = build_argument_parser()
+    args = parser.parse_args(argv)
     out = args.out or args.recon_run_dir / "cad_size_check.json"
     if args.observed_glb is not None and args.cad is None:
         parser.error("--observed-glb requires --cad so the fused wall profiles have a CAD wall pose.")
