@@ -67,6 +67,18 @@ describe("mountAgentConversation", () => {
     expect(status?.getAttribute("data-agent-fallback-reason")).toBe("timeout");
   });
 
+  it("shows finished status ahead of fallback guidance", () => {
+    const { root, handle } = mount();
+    handle.show({
+      finished: true,
+      fallback_reason: "timeout",
+      message: "That's enough photos. Finishing up.",
+    });
+
+    expect(root.textContent).toMatch(/session is finished/i);
+    expect(root.textContent).not.toMatch(/continue following the capture arrows/i);
+  });
+
   it("shows transport failure only in the status line once the panel has appeared", () => {
     const { root, handle } = mount();
     handle.show({
