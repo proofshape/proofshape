@@ -1396,4 +1396,76 @@ describe("mountAppShell", () => {
     const panel = document.getElementById("shell-agent-conversation");
     expect(panel?.hidden).toBe(true);
   });
+  it("drops an older agent reply that arrives after a newer reply for the same session", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    const agentResolvers: Array<(response: Response) => void> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/agent-message")) {
+          return new Promise<Response>((resolve) => {
+            agentResolvers.push(resolve);
+          });
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (agentResolvers.length < 1) throw new Error("first agent request not started");
+    });
+
+    dispatchOrientation(90, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (agentResolvers.length < 2) throw new Error("second agent request not started");
+    });
+
+    agentResolvers[1]?.(
+      new Response(
+        JSON.stringify({
+          finished: false,
+          fallback_reason: null,
+          message: "Newer guidance.",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    await vi.waitFor(() => {
+      if (!document.body.textContent?.includes("Newer guidance.")) {
+        throw new Error("newer guidance not shown");
+      }
+    });
+
+    agentResolvers[0]?.(
+      new Response(
+        JSON.stringify({
+          finished: false,
+          fallback_reason: null,
+          message: "Older guidance.",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.body.textContent).toContain("Newer guidance.");
+    expect(document.body.textContent).not.toContain("Older guidance.");
+  });
+
 });
