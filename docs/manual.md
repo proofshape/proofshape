@@ -450,11 +450,11 @@ C-15 does not generate one.
 
 | Code | What happened | What to do |
 |---|---|---|
-| `order_code_unknown` | The order code was not recognised, **or the request body itself was malformed** (R-29): the service has no dedicated code for that yet (D-031 covers adding one). Today the mock service accepts only `PO-48213-A`, and the real service rejects only an empty or blank code, because there is no buyer database to check against yet (§4). A malformed body is a client/app bug, not something the supplier can fix by rechecking the code. | Check the code. If the code is already right, tell the team — it points at an app bug. |
+| `order_code_unknown` | The order code was not recognised. Today the mock service accepts only `PO-48213-A`, and the real service rejects only an empty or blank code, because there is no buyer database to check against yet (§4). Until v1.1 a malformed request body also came back with this code (R-29); it now gets `malformed_request` (D-056). | Check the code. |
 | `too_few_frames` | Not enough accepted frames to reconstruct. The real service needs at least 3. | Keep going around the part. |
 | `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
-| `malformed_request` | The request itself was broken: an upload with an empty photo, a missing part or an unreadable gyro reading (D-056). It is not about what the photo shows. | Retry; if it repeats, tell the team, since it points at an app bug. |
+| `malformed_request` | The request itself was broken: a session request whose body can't be read, or an upload with an empty photo, a missing part or an unreadable gyro reading (D-056). It is not about the order code or what the photo shows. | Retry; if it repeats, tell the team, since it points at an app bug. |
 
 **Not a contract code — the phone never reached the service at all (works now, C-18):**
 

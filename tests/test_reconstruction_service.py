@@ -228,13 +228,14 @@ def test_contract_error_paths_are_structured(tmp_path):
 
 def test_create_session_malformed_body_is_contract_shaped(tmp_path):
     """R-29 (#186's validation half): a malformed createSession body used to fall through to
-    FastAPI's default 422 {"detail": [...]} envelope instead of the contract's 400 ErrorDetail."""
+    FastAPI's default 422 {"detail": [...]} envelope instead of the contract's 400 ErrorDetail.
+    Since v1.1 (D-056) its code is malformed_request, not order_code_unknown."""
     app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         empty_body = client.post("/v1/sessions", json={})
         assert empty_body.status_code == 400
         _validate_contract_response("createSession", "400", empty_body.json())
-        assert empty_body.json()["code"] == "order_code_unknown"
+        assert empty_body.json()["code"] == "malformed_request"
 
         invalid_json = client.post(
             "/v1/sessions",
@@ -243,7 +244,7 @@ def test_create_session_malformed_body_is_contract_shaped(tmp_path):
         )
         assert invalid_json.status_code == 400
         _validate_contract_response("createSession", "400", invalid_json.json())
-        assert invalid_json.json()["code"] == "order_code_unknown"
+        assert invalid_json.json()["code"] == "malformed_request"
 
 
 def test_r02_failure_is_preserved_without_breaking_frozen_schema(tmp_path):
