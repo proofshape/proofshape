@@ -388,13 +388,30 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   async function refreshAgentConversation(sessionId: string): Promise<void> {
     try {
       const result = await getAgentMessage(options.baseUrl, sessionId, options.authToken);
+      if (state.sessionId !== sessionId) {
+        return;
+      }
       if (result.ok) {
         agentConversation.show(result.body);
+      } else {
+        agentConversation.show({
+          message: null,
+          fallback: true,
+          fallback_reason: "assistant_unavailable",
+        });
       }
     } catch {
-      // C-22 is built against a temporary mock route until A-07's D-031 phone-facing contract
-      // lands. A missing/unreachable mock must never break capture; the deterministic arrow
-      // remains the shipping fallback.
+      if (state.sessionId !== sessionId) {
+        return;
+      }
+      // The assistant route is optional until the D-031 phone contract lands, but failure must
+      // be visible rather than leaving stale model guidance on screen. Capture itself continues
+      // with A-08's deterministic orbit/arrow fallback.
+      agentConversation.show({
+        message: null,
+        fallback: true,
+        fallback_reason: "assistant_unavailable",
+      });
     }
   }
 
@@ -505,7 +522,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
           gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
-          await refreshAgentConversation(sessionId);
+          // Guidance is optional and must never hold the capture/finish lock. Run it separately;
+          // getAgentMessage also bounds the request so a stalled route cannot linger forever.
+          void refreshAgentConversation(sessionId);
         } else {
           lastAcceptedForGate = previousAcceptedForGate;
         }
