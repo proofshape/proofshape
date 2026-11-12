@@ -15,7 +15,12 @@ import { createSession, finishSession, getReconstruction, uploadFrame } from "./
 import { requireElement, requireTyped } from "./dom.js";
 import { checkBlur, checkDuplicate, checkExposure, type FramePixels } from "./frame_gate.js";
 import { requestGyroPermission } from "./gyro.js";
-import { describeCreateSession, describeFinishSession, describeUploadFrame } from "./messages.js";
+import {
+  describeCreateSession,
+  describeFinishSession,
+  describeNetworkError,
+  describeUploadFrame,
+} from "./messages.js";
 import {
   mountModelViewer,
   type ModelViewerOptions,
@@ -277,7 +282,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       } catch (error) {
         setStatus(
           sessionStatus,
-          `Could not start session — ${error instanceof Error ? error.message : String(error)}`,
+          `Could not start session — ${describeNetworkError(error)}`,
           "error",
         );
       }
@@ -480,7 +485,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         lastAcceptedForGate = previousAcceptedForGate;
         setStatus(
           captureStatus,
-          `Could not upload frame — ${error instanceof Error ? error.message : String(error)}`,
+          `Could not upload frame — ${describeNetworkError(error)}`,
           "error",
         );
       } finally {
@@ -563,7 +568,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       } catch (error) {
         setStatus(
           finishStatus,
-          `Could not finish session — ${error instanceof Error ? error.message : String(error)}`,
+          `Could not finish session — ${describeNetworkError(error)}`,
           "error",
         );
       }
@@ -592,7 +597,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       } catch (error) {
         setStatus(
           reconstructionStatus,
-          `Could not load the reconstruction — ${error instanceof Error ? error.message : String(error)}`,
+          `Could not load the reconstruction — ${describeNetworkError(error)}`,
           "error",
         );
       }
@@ -620,13 +625,7 @@ async function pollReconstruction(
     try {
       result = await getReconstruction(baseUrl, sessionId, authToken);
     } catch (error) {
-      setStatus(
-        target,
-        `Could not fetch reconstruction — ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        "error",
-      );
+      setStatus(target, `Could not fetch reconstruction — ${describeNetworkError(error)}`, "error");
       return "error";
     }
 
