@@ -1446,7 +1446,7 @@ describe("mountAppShell", () => {
       ),
     );
     await vi.waitFor(() => {
-      if (!document.body.textContent?.includes("Newer guidance.")) {
+      if (!document.body.textContent.includes("Newer guidance.")) {
         throw new Error("newer guidance not shown");
       }
     });
