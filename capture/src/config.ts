@@ -16,6 +16,17 @@ export function resolveAuthToken(raw: string | undefined): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
+export const HOSTED_RECON_UNAVAILABLE_MESSAGE =
+  "Reconstruction service is not configured for this hosted build yet. Capture is unavailable until the project team enables the public service.";
+
+// C-21: a local development build with no base URL intentionally talks to Vite's contract stub.
+// A production Pages build with no base URL is different: O-005 deliberately leaves the paid
+// service disconnected, so mounting the shell would POST /v1/sessions back to GitHub Pages and
+// expose a raw 405. Stop before any request instead.
+export function hostedReconUnavailable(baseUrl: string, isDevelopment: boolean): boolean {
+  return !isDevelopment && baseUrl === "";
+}
+
 export type ViewerDemo = "1" | "c12" | "c14";
 export type ViewerDemoMode = ViewerDemo | "unavailable" | undefined;
 

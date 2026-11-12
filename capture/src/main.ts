@@ -1,4 +1,10 @@
-import { resolveAuthToken, resolveBaseUrl, resolveViewerDemo } from "./config.js";
+import {
+  HOSTED_RECON_UNAVAILABLE_MESSAGE,
+  hostedReconUnavailable,
+  resolveAuthToken,
+  resolveBaseUrl,
+  resolveViewerDemo,
+} from "./config.js";
 import { mountModelViewer } from "./model-viewer.js";
 import { mountAppShell } from "./shell.js";
 
@@ -34,15 +40,20 @@ if (viewerDemo === "unavailable") {
   // of the local contract stub. C-21's Pages workflow leaves both blank until O-005 is settled,
   // so publishing the static app cannot accidentally expose a token or start paid GPU work.
   const baseUrl = resolveBaseUrl(import.meta.env.VITE_RECON_BASE_URL);
-  const authToken = resolveAuthToken(import.meta.env.VITE_RECON_TOKEN);
-  // A capture link pre-fills the order code so a supplier is not typing one in. This remains
-  // relative to the current page, so the same ?order= link works at / locally and under the
-  // /proofshape/ GitHub Pages base path.
-  const initialOrderCode = new URLSearchParams(window.location.search).get("order") ?? undefined;
 
-  mountAppShell(shellRoot, {
-    baseUrl,
-    ...(authToken !== undefined ? { authToken } : {}),
-    ...(initialOrderCode !== undefined ? { initialOrderCode } : {}),
-  });
+  if (hostedReconUnavailable(baseUrl, import.meta.env.DEV)) {
+    shellRoot.innerHTML = `<p role="status">${HOSTED_RECON_UNAVAILABLE_MESSAGE}</p>`;
+  } else {
+    const authToken = resolveAuthToken(import.meta.env.VITE_RECON_TOKEN);
+    // A capture link pre-fills the order code so a supplier is not typing one in. This remains
+    // relative to the current page, so the same ?order= link works at / locally and under the
+    // /proofshape/ GitHub Pages base path.
+    const initialOrderCode = new URLSearchParams(window.location.search).get("order") ?? undefined;
+
+    mountAppShell(shellRoot, {
+      baseUrl,
+      ...(authToken !== undefined ? { authToken } : {}),
+      ...(initialOrderCode !== undefined ? { initialOrderCode } : {}),
+    });
+  }
 }

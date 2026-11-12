@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { resolveAuthToken, resolveBaseUrl, resolveViewerDemo } from "./config.js";
+import {
+  HOSTED_RECON_UNAVAILABLE_MESSAGE,
+  hostedReconUnavailable,
+  resolveAuthToken,
+  resolveBaseUrl,
+  resolveViewerDemo,
+} from "./config.js";
 
 describe("resolveBaseUrl", () => {
   it("falls back to empty string when unset", () => {
@@ -27,6 +33,21 @@ describe("resolveAuthToken", () => {
 
   it("trims surrounding whitespace from a real token", () => {
     expect(resolveAuthToken("  secret-token  ")).toBe("secret-token");
+  });
+});
+
+describe("hostedReconUnavailable", () => {
+  it("fails closed in production when O-005 leaves the public backend disconnected", () => {
+    expect(hostedReconUnavailable("", false)).toBe(true);
+    expect(HOSTED_RECON_UNAVAILABLE_MESSAGE).toMatch(/reconstruction service is not configured/i);
+  });
+
+  it("keeps the local development stub available with an empty base URL", () => {
+    expect(hostedReconUnavailable("", true)).toBe(false);
+  });
+
+  it("allows a configured production backend", () => {
+    expect(hostedReconUnavailable("https://example.lightning.ai", false)).toBe(false);
   });
 });
 
