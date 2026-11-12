@@ -1683,3 +1683,592 @@ completion reaches below about 6 mm.
 board, across the whole board, and the fusion mesh has walls the size of the volume. Noted in
 A-04 for the reconstruction lane.
 **Next:** A-04 (8 h, Ready) builds the stage under D-057's conditions.
+
+## 2026-11-03 — P-28 process tooling: checker exit codes, decision-number sort, portable deck build (PR #229)
+
+**Who:** @dalwalyk. Claimed in #228 (merged separately per D-037).
+
+**What changed:** `check_story_states.py --fix` no longer false-passes: it exits 1 when any
+problem remains unfixed, and no longer claims an index edit it didn't make. `AGENTS.md`'s
+decision-number snippet sorts `**D-NNN` headers numerically before taking the highest, instead
+of trusting `docs/decisions.md`'s file order, which is genuinely out of order in at least one
+place. `build_midterm_deck.js`'s theme pass no longer depends on a file under one developer's
+home directory; it builds end-to-end for every team member. A new
+`tests/test_generator_scripts.py` smoke-tests all three generator scripts, with real coverage in
+`python-ci.yml` (Node 24 + `npm ci` added to the `pytest` job), not just a local-only skip.
+
+**Review (@mbj1994, @TabeenRaoof):** two rounds surfaced three real bugs beyond the original
+three issues, each reproduced before being fixed: the post-`--fix` exit code double-counted a
+no-op fix (index row already at the fix's target value) as a second, separate failure; the
+post-`--fix` recheck never re-ran the unparsed-index-row check, so such a row stayed invisible
+right after a fix even though a plain run straight after still caught it; and the hardcoded
+personal theme path made the build (and the new tests) behave differently depending on whose
+machine ran it. All three fixed and mutation-tested — each fix's revert fails exactly the test(s)
+written for it, nothing else. The theme path is now an opt-in `PPTX_APPLY_THEME` environment
+variable instead of a path baked into the repository.
+
+**Close-out:** owner reported 3 h actual against 3 h estimated, including both review-response
+rounds. P-28 and its index row are marked Done on this final close-out head before final
+approval, per D-038.
+
+## 2026-11-04 — A-04 shape-completion stage, service side (PRs #235 and #237, D-058)
+
+**Who:** @TabeenRaoof. Claimed in #232.
+- The split, #235, was approved by @dalwalyk, with @mbj1994 agreeing in review, and merged at
+  `b37bf26`.
+- The code, #237, was approved by @dalwalyk and merged at `3dccd1d`. @mbj1994 reviewed with
+  comments.
+
+**Split first (D-058).** A-04's criteria predated D-057. LaS-Comp is CUDA-only and needs Python
+3.10, while the service runs on the M2 Max (D-049) and the image's torch is 2.8. So:
+- A-04 became the service side;
+- the new **A-12** takes the real runner, its CUDA setup script, and the Colab run that sets K and
+  the budget;
+- the image is unchanged, and adding the environment to it is a later follow-up with no story yet.
+
+The original criteria are kept in A-04's notes, marked as superseded.
+
+**What changed (#237):**
+- `recon/completion.py` runs after R-10 inside the pipeline and only writes in
+  `artifacts/completion/`. It:
+  - isolates the part from the board skin: a core above fusion's own cut, its largest cluster, and
+    lower walls inside a 60° cone;
+  - samples a partial cloud and picks and crops one photo;
+  - talks to an out-of-process runner through a strict file contract, `recon/completion_contract.py`,
+    which A-12's Python 3.10 runner can import.
+- `recon/provenance.py` gains `LABEL_INFERRED` and `INFERRED_COLOR`, and nothing served carries
+  them. `labels_to_colors` now raises on an unknown label; before, it returned uninitialised
+  colours.
+- With no runner configured (every Mac session), the stage records `unavailable` and warns
+  nobody. A configured runner that fails adds one fixed warning. Runner output never reaches a
+  warning or `session.json`, and secrets are stripped from its environment.
+
+**Result:**
+- **Tests.** 86 new tests against a stub runner run as a real subprocess. Six deliberate defects,
+  introduced by hand, each failed a test, and @dalwalyk repeated the secret-stripping one.
+- **Golden set.** All five objects reconstructed on the M2 Max with the stage inline, at about
+  0.2 s each.
+- **Against CAD.** Heights match CAD on s-04 and s-05, and so do footprints above about 11.5 mm.
+  **The base of each partial carries a 2–6 mm skirt of board skin, recorded rather than tuned
+  away.** Re-check it after R-26 and R-27.
+- **Hours.** 4 h actual against 8 h estimated.
+
+**Process note:** after #235 merged, GitHub marked #237 as conflicting and `gh pr update-branch`
+refused. #237 still carried the split commit from before #235's own syncs, so the two had
+criss-cross merge bases; both of git's strategies merged cleanly locally. A merge of `main` with
+content identical to the approved head (`git diff` empty) cleared it, at the cost of one
+dismissed approval. Lesson: when a PR is built on another PR's branch, merge that branch's later
+syncs into it as well, or the two end up with criss-cross merge bases.
+
+**Next:** A-12 (Ready; @dalwalyk flagged its 5 h as light, so re-estimate on claiming). Once A-12
+produces real samples, A-05 can be written up and built.
+
+## 2026-11-05 — R-29 contract-shaped createSession errors and an Inferred-aware hard rule (PR #242)
+
+**Who:** @dalwalyk. Claimed in #238 (merged separately per D-037).
+
+**What changed:** `recon/service.py`'s `RequestValidationError` handler only special-cased
+`POST .../frames`; every other route, specifically `createSession`, fell through to FastAPI's
+default `{"detail": [...]}` 422 instead of the contract's own `ErrorDetail` shape. Fixed by
+reusing the existing `order_code_unknown` code, which the contract's own 400 description already
+covers for a malformed body — a dedicated `malformed_request` code is #217/D-031's job, out of
+scope here. `tests/test_contract.py`'s structural hard-rule test only checked
+`provenance == "unobserved"`; broadened to `!= "observed"` now that A-04 (#237) produces
+`inferred` regions too, with a planted-in-memory regression rather than a committed bad example.
+
+**Review (@mbj1994):** two small fixes before approval — the path match uses
+`endswith("/v1/sessions")`, not an exact match, so it still catches the route behind a
+`root_path` prefix; `docs/manual.md`'s `order_code_unknown` row now says a malformed body is a
+client bug, not something the supplier can fix by rechecking the order code.
+
+**Close-out:** owner reported 2 h actual against 2 h estimated. R-29 and its index row are
+marked Done on this final close-out head before final approval, per D-038.
+
+## 2026-11-04 — I-03 global CAD registration candidates (PR #233)
+
+**Who:** @mbj1994; repeated clean-checkout validation and review by @TabeenRaoof and
+@dalwalyk.
+
+**What changed:** added rigid CAD-to-model global registration with the fixed CAD/board frame
+rotation, FPFH + RANSAC, board-compatible yaw/xy enumeration, distinct-candidate preservation and
+multiple orientation basins for downstream I-05 refinement. Every returned pose remains scale 1.
+
+**Scale diagnostic review fixes:** the first implementation's support/extreme-point estimator
+depended on vertex ordering; similarity ICP removed that. Final review then found a second,
+occlusion-specific bias: fitting whole CAD -> partial Observed model shrank the CAD into hidden
+patches. The final diagnostic therefore uses fully Observed model samples as source and a dense
+CAD surface as target, performs rigid ICP before the scaling pass, and reports
+`1 / model_to_cad_scale - 1` so D-039's sign convention remains unchanged. Missing provenance,
+too few correspondences, or planar-only Observed evidence returns `None`. Regressions cover
+multiple noisy s-04 seeds at true size and +3%, an Unobserved board-contact face, vertex-order
+invariance, hidden-geometry perturbation and planar-only evidence.
+
+**Close-out:** owner reported 3 h actual against 5 h estimated. I-03 and its index row are Done
+and I-04 is Ready on the final review head.
+
+## 2026-11-04 — R-27 mesh cleanup and Poisson fallback fixes (PR #250; review history #236/#248)
+
+**Who:** @mbj1994; independent golden-object rerun and review by @TabeenRaoof in #236, carried forward to replacement PR #250 after the post-#233 branch sync.
+
+**What changed:** fixed inward hole-fill winding, retained legitimate secondary components through
+a declared relative-size threshold, enforced the GLB byte limit with re-decimation/failure, and
+made provenance normal signing operate per winding group so bowtie-connected pieces and nested
+cavity surfaces cannot silently acquire the wrong trusted normal. The Poisson fallback now
+orients normals coherently, handles exact planar clouds without Open3D's coplanar Qhull path, and
+pins a decisive global normal field toward board-frame up (-z) so real objects cannot randomly
+come out inside-out.
+
+**Golden rerun:** @TabeenRaoof reran Poisson on all five R-23-aligned golden objects. Relative to
+main, median distance to the same run's marching-cubes mesh improved s-01 5.8->1.9 mm,
+s-03 2.3->1.8 mm and s-04 3.4->2.4 mm; s-02 remained 5.1 mm but improved visually. s-01,
+s-03 and s-04 became recognisable shapes. s-05 produced no mesh in 0/6 oriented-normal attempts
+because Open3D can terminate with exit code 0 after `Failed to close loop`; that pre-existing
+silent-failure path is #246. Cleaned Poisson meshes also remain non-manifold enough for provenance
+to reject them; that pre-existing end-to-end limitation is #247.
+
+**Close-out:** owner reported 2 h actual against 5 h estimated. R-27 and its index row are marked
+Done on the final review head, with the rerun evidence and remaining limitations recorded rather
+than silently passed.
+
+## 2026-11-05 — I-04 robust point-to-plane refinement with a Tukey loss (PR #251)
+
+**Who:** @TabeenRaoof.
+
+**What changed:** added `inspection.registration.refine(candidate, model, cad)`. It tightens one
+I-03 candidate with Open3D point-to-plane ICP under a Tukey loss (D-008), from fully Observed model
+geometry to the sampled CAD surface and its own triangle normals, and recomputes the free-scale
+residual from the refined pose with I-03's two-stage similarity ICP. Without provenance, without
+a fully Observed face, or without correspondences it raises rather than refine on guessed
+geometry or report Open3D's "perfect" `inlier_rmse = 0`.
+
+**Measured on I-01 output (σ 0.3 mm, 20% Unobserved patch):** refinement took I-03's best pose
+from 0.57–2.13 mm to 0.04–0.09 mm surface error on s-04/s-05. A 4 mm Observed bump or dent over
+10% of the surface left Tukey at 0.03–0.08 mm while the same code with least squares was dragged
+to 1.1–1.6 mm. On a test-built plate whose hole sits 3 mm from the CAD's, Tukey stayed at
+0.02–0.07 mm against least squares' 0.21–0.74 mm. Moving the Unobserved patch 8 mm left the pose
+unchanged, and the refined free-scale residual read about 0 / +0.03 / +0.05 at true
+size / +3% / +5%. All synthetic; no real-capture registration has been run yet.
+
+**Close-out:** owner reported 2 h actual against 4 h estimated. I-04 and its index row are Done,
+and I-05 is Ready, on the close-out head before approval, per D-038.
+
+## 2026-11-06 — R-26 closed small; the real fix filed as R-30 (D-060, PR #241)
+
+**Who:** @dalwalyk. Claimed in #240.
+
+**What happened:** five rounds. Round 1 restricted the board-layer-top search to a margin band
+near the footprint's edge; review found a part could still reach into the margin, and the
+smaller sample broke R-17's own raised-layer detection on real data. Round 2 replaced it with a
+per-cell median across the whole footprint; review found the kept-share floor it needed
+hard-failed s-01/s-02 at a correct cut, and the median itself couldn't tell a part from a raised
+layer covering up to about half the board's cells. Round 3 added side-wall connectivity; its own
+added test (meant to demonstrate a residual wall-less-part risk) had a sign bug, and once fixed,
+reviewer-run golden data showed round 3 itself cut worse than `main` -- s-01 failed outright,
+s-02 through s-05 all cut lower, admitting board as "part".
+
+**The actual cause (D-060):** @TabeenRaoof traced the 3-6 mm "raised layer" R-17 found to
+per-frame VGGT pose misalignment, not a second physical layer -- confirmed three ways (board
+pixel colour, checker-square parity, and directly re-fitting a plane per frame, which showed
+individual frames 2.3-4.7 mm off on every golden object). On the merged point cloud this
+artifact and a genuine flat part's own top are the same shape, which is why three independent
+segmentation-only designs each traded one failure for another. @mbj1994 independently reviewed
+and agreed.
+
+**Decision:** stop iterating segmentation heuristics in R-26. `measure_board_surface` reverts to
+`main`'s original plain, whole-footprint search (confirmed byte-identical to `main` on all five
+golden objects by @TabeenRaoof's rerun); the explicit `height_threshold_mm` override and a
+simple kept-points floor are kept, both proven across every round. D-059 is marked superseded by
+D-060, not deleted. **R-30** (per-frame board re-anchoring before fusion) is filed as the actual
+fix, out of this story's scope -- D-060's own prototype found it removes the ghost layer and
+sharpens the part geometry too.
+
+**Close-out:** owner reported 7 h actual against 3 h estimated. R-26 and its index row are
+marked Done on this final head, which is also the head the golden rerun confirmed.
+
+## 2026-11-06 — I-05 orientation ambiguity: refine every candidate, flag a near-tie runner-up (D-061, PR #257)
+
+**Who:** @TabeenRaoof.
+
+**What changed:** added `inspection.registration.check_ambiguity(candidates, model, cad)`. It
+refines every I-03 candidate with I-04's `refine` on the same samples, merges only poses whose
+transforms agree (symmetric alternatives stay separate), ranks them fitness first then RMSE, and
+marks the session ambiguous when the runner-up's inlier RMSE is within 20% of the best's. It
+returns the best pose, the runner-up, their ratio, every refined pose, any candidate that couldn't
+be refined with its reason, and the contract's `registration_orientation_ambiguous` reason code.
+
+**Decision proposed:** D-061 raises D-008's threshold from 10% to 20%. On I-01 output with its 20%
+hidden patch, a plate whose one symmetry-breaking hole is missing (D-008's own case) was flagged
+9/12 at 10% and 12/12 at 20%, while the disambiguated cases (hole in place, hole shifted 3 mm, and
+s-04) were flagged 0/12 at either. s-05 was flagged 12/12. The margins are narrow (1.15 against
+1.22), which D-061 records. It needs both other members' agreement in the PR.
+
+**Also closed, from #233's review:** a ±25% sanity bound on the free-scale residual (with the
+bottom and half of s-04 hidden, 5 of 24 seeds had read +0.29 to +6.36), the s-05 basin test now
+measuring yaw relative to the truth, `ransac:0` failures recorded rather than fatal, and two
+mutations that I-03's scale tests missed. Refining every candidate also fixes a wrong I-03 pick:
+on #251's shifted-hole seed, the best pose went from 11 mm off to 0.05 mm.
+
+**Close-out:** 2.5 h actual against 3 h estimated, the owner's measured figure (D-033), updated
+from the 1 h recorded before review. I-05 and its index row are Done on the close-out head before
+approval, per D-038. All synthetic; no real-capture registration has been run yet.
+
+## 2026-11-07 — A-12 LaS-Comp runner, CUDA setup and the T4 measurement (PR #259)
+
+**Who:** @TabeenRaoof.
+
+**What changed:**
+- `scripts/lascomp_runner.py` is the real model behind A-04's completion contract. It runs in
+  LaS-Comp's own Python 3.10 environment, checks the pins before importing torch, loads the
+  pipeline once and samples under the contract's budget rule.
+- `scripts/setup_completion_env.sh` builds that environment on a CUDA host at D-057's pins.
+- A-04's `budget_s` and `overrun_allowance_s` are now measured values, and nothing is listed as
+  provisional any more.
+
+**The measurement** (Colab T4, one session; the method was fixed in the story before any run):
+- s-04 took 312.0–316.4 s a sample and s-02 322.1–328.0 s. About 95% of that is the
+  sparse-structure stage. Loading took 63.3–70.0 s from process start.
+- Every observed point lay within 1 mm of its completion in 99.5–100% of cases.
+- Seed-to-seed spread on the unseen surface was 0.77–2.48 mm. Running the same seed twice gave a
+  noise floor of 0.18 mm.
+- `budget_s` is now 2850 and `overrun_allowance_s` 90, against the provisional 2460 and 360. K
+  stays 8.
+- Blocking launches off gave no speed-up (314.2 s), so it isn't adopted.
+- 50 sparse-structure steps halved the time but collapsed the unseen-surface spread from a median
+  of 1.58 mm to 0.40 mm, so it isn't adopted either. Fewer steps don't keep the spread that A-05
+  needs.
+
+**Found on the way:**
+- Two setup bugs, both fixed before anything was measured: an opencv pin that can't coexist with
+  numpy 1.26.4, and LaS-Comp's committed bytecode caches. A first Colab attempt lost all four runs
+  to the second bug, 0.2 s after each launch.
+- DINOv2's hub code was unpinned during the run. It is now pinned at the commit the run used
+  (`7764ea0f`, main since 2026-06-03), and every run checks it.
+- D-058's ~49 min wait and the image environment wait for the first story that configures a
+  runner for suppliers. The index records them as waiting on a decision.
+
+**Close-out:** owner reported 5.5 h actual against 5 h estimated. A-12 and its index row are Done on
+the final review head. The raw results hold golden photos, so they stay outside the repository.
+
+## 2026-11-07 — s-04 from 30 vs 15 photos, a macOS reconstruction hang (#261, R-31), open issues checked
+
+**Who:** @TabeenRaoof. A follow-up to A-12, recorded as P-29 (4 h actual, the owner's figure).
+
+**Measurement: does the photo count change accuracy?** Golden s-04 was reconstructed on the M2 Max
+three ways: from all 30 photos, and from two 15-photo subsets (every other photo, starting from the
+first and from the second). Each was compared with the s-04 CAD using `recon/cad_size_check.py`, as
+a ratio to CAD:
+
+| Photos | Board scale | Height | 60 / 65 / 26 mm edges | Fit residual | Observed |
+|---|---|---|---|---|---|
+| 30 | 0.999 | 0.990 | 0.989 / 0.886 / 1.047 | 1.52 mm | 0.169 |
+| 15 (first set) | 0.999 | 1.001 | 0.926 / 0.942 / 1.023 | 1.50 mm | 0.124 |
+| 15 (second set) | 0.999 | 0.997 | 0.978 / 0.963 / 1.003 | 0.68 mm | 0.082 |
+
+- Scale and height are right whatever the count.
+- The edge errors change more with *which* 15 photos are used than between 15 and 30.
+- More photos buy coverage, roughly twice the observed surface. They don't buy shape accuracy.
+- The narrow walls and uneven edges are R-22's second finding (per-pixel depth). They're now
+  written up as the R-32 spike.
+- **Shape, not just size.** Drawn to scale against s-04's observed shell and measured, A-12's
+  completions show three kinds of shape error:
+  - **Invented by the model.** A raised patch, 86–180 mm² and 1.6–3.2 mm above the top face,
+    appears in 5 of 6 samples. The same seed gives the same patch (172 vs 166 mm²), so it comes
+    from the seed, not the photos. The padlock's shackle is the same kind of guess. Both are
+    Inferred surface, which never passes or fails a part, and flagging them is A-05's job.
+  - **Copied from bad input.** Every sample has a base flange 8–9 mm outside the walls
+    (397–870 mm²), because the observed shell itself flares at the base. That goes to R-30
+    and #231.
+  - **In the observed surface itself.** The long 60 mm wall leans about 3 mm over its height,
+    and its lower half is about 5 mm thick. The short wall stands straight. This surface can
+    pass or fail a part, so R-32 now measures lean and thickness too.
+- Caveats: one part, one capture, nominal CAD rather than calipers. This is a quick test, not an
+  accuracy result.
+
+**Found on the way: #261.** Every reconstruction on the Mac hangs forever. Open3D and torch each
+ship their own `libomp`, and `recon/provenance.py` has imported Open3D at module level since
+`4237642`, R-27's PR #250. `OMP_NUM_THREADS=1` is the verified workaround, and all three runs above
+used it. Filed as #261 and written up as R-31 (Ready, 2 h).
+
+**Open issues checked against the stories:**
+- P-27's ten follow-up stories cover all 24 of its issues, and 18 of those are closed.
+- #183 and #184 were fixed by R-27 and #108 by C-09, but none had been closed. All three are now
+  closed, each with a comment linking the code that fixed it.
+- #189–#191 stay with C-20 (@mbj1994). #181 and #200 still wait on a team decision.
+- #231 is still present: on today's s-04 run, 70% of the served model's faces are walls and 56% of
+  its Observed faces are board skin. R-30 covers the skin. The walls have no story, so the
+  question went to @dalwalyk on #258.
+
+## 2026-11-08 — C-20 phone-orientation fixes and real-device check (PR #264)
+
+**Who:** @mbj1994.
+
+**What changed:**
+- Duplicate-frame heading differences now wrap correctly across 0/360 degrees.
+- Orbit heading/elevation use the full device rotation, including roll, and the Python server replay
+  uses the same maths as the browser.
+- Exposure is checked before blur so black/white frames report the lighting problem first.
+- The capture manual now allows portrait, roll and upright landscape guidance.
+
+**Real-device check:** iPhone 13, iOS 26.5.2, Safari 26.5.
+Using the local HTTPS capture server and contract stub, accepted frames advanced orbit coverage,
+guidance remained stable with roll, upright landscape stayed level rather than falsely marking the
+straight-down slot, and the arrow changed sensibly while moving around the object until it reported
+**On target**. Normal gate rejections also appeared between accepted frames.
+
+**Close-out:** owner reported 4 h actual against 3 h estimated. C-20 and its index row are Done on
+this final review head.
+
+## 2026-11-09 — R-30 per-frame board re-anchoring closed (D-060's fix, PR #270)
+
+**Who:** @dalwalyk. Claimed in #258.
+
+**What changed:** `fit_board_plane_robust` was pulled out of `measure_board_surface` (R-21) so
+the identical robust fit runs per frame, not a second, possibly-drifted copy of it.
+`reanchor_frames_to_board` (`recon/tsdf_fusion.py`) fits each frame's own board plane from its
+own candidate points, rotates its normal onto the global plane's normal, then shifts purely in z
+at that frame's own candidate centroid -- the full rotation-plus-translation correction, applied
+consistently to both `board_frame_points` and `board_extrinsic`.
+
+**Golden rerun (@TabeenRaoof):** every frame lands within 0.23 mm of the shared plane (was up to
+4.4 mm), board sigma tightens 2-4x on all five objects, every object's height cut drops to the
+2.0 mm floor as D-060's prototype predicted, and the first-density-gap rule agrees with the
+threshold cut once the ghost layer is gone (criterion 4 holds).
+
+**Two real issues review found, both fixed before merge, neither guessed at:**
+- `provenance_run` independently rebuilt every frame's pose from `poses.npz` and the one global
+  alignment, blind to this story's per-frame correction -- the corrected mesh was being checked
+  against the drifted cameras it was corrected away from. Fixed: `fuse_run` now persists its
+  corrected extrinsic to `corrected_extrinsic.npz`; `provenance_run`/`service.py`/the CLI prefer
+  it when given.
+- Re-anchoring left 6 edges shared by 3 faces on s-03 (0 on `main`), tripping the same
+  non-manifold refusal #247 already describes for the Poisson path. @TabeenRaoof measured it on
+  the real mesh first (17 of 43,043 faces, one part/board seam) rather than leaving the scoping
+  call blind, and ruled out Open3D's `remove_non_manifold_edges()` (it deleted 14,751 faces on
+  the same mesh). `mesh_cleanup.drop_non_manifold_faces` drops just those 17 faces before the
+  component filter; `fill_small_holes` closes the gap normally. s-03 completes again.
+
+**Also addresses #231's board-skin half** (a frame straddling the segmentation cut surviving
+into fusion as skin on the part) -- the walls half stays with R-33.
+
+**Close-out:** owner reported 6 h actual against 5 h estimated. `offset_shift_mm`'s diagnostic
+still conflates the real per-frame offset with a rotate-about-origin artifact (confirmed not a
+correctness issue); left for a later story. s-02's board-band coverage rose rather than fell
+because its cut moved to the fixed 2.0 mm floor while its own post-correction sigma (0.58 mm) is
+still the highest of the five -- a sigma-relative cut is a candidate for R-33 or later, not this
+story.
+
+## 2026-11-09 — G-05 defect ladder designed, checked by registration and fusion before printing (PR #276)
+
+**Who:** @TabeenRaoof. Claimed in #273.
+
+**What changed:**
+- `scripts/make_g05_defect_ladder.py` writes ten ASCII STL parts into `fixtures/reference_cad/`.
+  - The control is a 50 × 32 × 20 mm L-plate with a 12 mm square through-hole.
+  - The nine variants each add one 2 / 4 / 8 mm defect: the hole moved along +x, a 10 × 10 mm
+    pocket in the top, or a bump on the same spot.
+- `tests/test_make_g05_defect_ladder.py` checks that the committed files:
+  - are exactly the generator's output;
+  - are closed, outward-wound solids of the designed volume;
+  - differ from the plate only by their own defect;
+  - register to the control.
+
+**Measured before printing (synthetic, with the board-contact face hidden):**
+- None of the ten parts is flagged orientation-ambiguous over seeds 0–7, and the best pose is
+  always the true one.
+- The narrowest margin is the 8 mm shift's 1.22, against D-061's 1.20.
+- Without its corner notch, the same plate with its hole missing is flagged on every seed. That is
+  what the notch is for.
+- Ideal-depth fusion through R-07's `fuse_tsdf` keeps the 12 mm hole open. On the 4 mm part it
+  moves the hole's centre by exactly 4.0 mm.
+
+**Not done here:** printing (from G-01's first lab visit, 2026-11-10), calipering, and the
+readings file's new `kind`s. Those land in the printing PR, which also closes the story (D-038).
+
+## 2026-11-09 — P-30 capture-app stories written up (C-14..C-18, C-21, R-34)
+
+**Who:** @TabeenRaoof (PR #283). The claim was #282.
+
+**What changed:** the capture app's five remaining titles, plus two stories nobody had, in a new
+"Capture app" section of `stories/README.md`. The two new ones are hosting, which D-048 deferred to
+its own story, and the order store the buyer page needs.
+- C-14: heatmap rendering in the viewer, built against a canned sample in the mock.
+- C-15: the report page, built against the contract's verdict examples, printing to PDF.
+- R-34: the order store and the order-code check, a D-031 contract change.
+- C-16: the buyer page: CAD, the editable tolerance table, the placement note and the capture link.
+- C-17: the board PDF with the order code, a QR code and an orientation arrow, with the board
+  unchanged.
+- C-18: device testing on one iPhone and one Android phone, keyboard access and error messages.
+- C-21: CI builds the app, GitHub Pages deploys it from `main`, and O-005 is answered first.
+
+D-062 records how I-06's deviation reaches the viewer: as numbers in the served GLB, beside the
+provenance colours. The manual's §0, §3.4, §4, §8.2 and §8.3 now name the story that builds each
+part.
+
+**Result:** C-14, C-18 and C-21 Ready; C-15, R-34, C-16 and C-17 Blocked; none claimed. The checker
+is consistent and `--fix` changes nothing. P-30 closed at 1 h actual, the owner's figure. No code.
+
+**Next:** the Nov 13 boundary call carries or cuts each story. That is 26 h of capture stories
+against S6's 11 capture hours, plus R-34's 6 h. R-34 is a D-031 request, realistically for the Dec 2
+boundary, which puts C-16 and C-17 just before M7's code freeze.
+
+## 2026-11-10 — R-33 criterion 2 recorded: golden-set measurement (PR #285)
+
+**Who:** @dalwalyk (author); reviewed and approved by @mbj1994.
+
+**What changed:** recorded @TabeenRaoof's criterion-2 measurement from #231's comment thread into
+`R-33.md`: `scripts/measure_frame_vote_consensus.py` run on all five golden objects. R-33's own
+"Why this exists" hypothesis — a single noisy frame voting a near-zero crossing — turns out only
+half right. At 90–98% of sampled wall points, no frame contributes any vote at all, while real part
+surface gets broad multi-frame agreement (median 11.5–17.5 contributing frames). Also recorded the
+likely mechanism, shown synthetically by @TabeenRaoof: `fuse_tsdf` initialises every voxel's TSDF to
+`0.0`, exactly `extract_mesh_marching_cubes`'s own `level=0.0`; scikit-image 0.24 doesn't guarantee
+its `mask=weight>0` keeps a mask boundary from fabricating a surface, and a synthetic grid with no
+real surface still built 541 faces along an observed/unobserved boundary. Two further notes for
+whoever designs criterion 3: a naive `+truncation_mm` initialisation only partly fixes it, and a
+no-crossing volume would newly crash `extract_mesh_marching_cubes` with an uncaught `ValueError`.
+Docs only, no code.
+
+**Result:** merged to `main` at `cbac8a8`. R-33 stays `Claimed` — no fix is claimed here.
+`check_story_states.py` clean; ruff, typescript and pytest all green on the merged head.
+
+**Concluded:** criterion 2's real driver is zero-vote wall points at the mask boundary, not an
+occasional false near-surface vote from a single frame.
+
+**Next:** PR #287, "stop marching cubes fabricating walls at the mask boundary," is already open
+against this finding as the criterion-3 fix.
+
+## 2026-11-11 — R-33 Done: fourth and fifth criteria, real golden rerun (PR #290)
+
+**Who:** @dalwalyk (PR #290); reviewed by @mbj1994 and @TabeenRaoof.
+
+**What changed:** closed R-33's remaining two acceptance criteria with an independent rerun, not
+a transcription of prior review figures: fresh `gdown` of all five golden captures, VGGT on `mps`,
+R-02 through R-10 run end to end with #287's merged exact-filter fix. Wall share (face count) came
+back 0.2–2.6% on all five, down from criterion 1's own 34–79% "after R-30" baseline, with every
+wall-classified face Observed-0% except s-02. Reran criterion 2's own frame-vote-consensus tool
+against the fixed mesh to explain that exception: s-02's residual wall sample gets a median of 28
+contributing frames (broader agreement than its own part sample's 17), so it is real, well-agreed
+geometry a simple height/footprint classifier mislabels, not a recurrence of the fusion bug.
+Confirmed A-04 isolation and C-08 next-view scoring complete on all five fixed meshes with no code
+changes, and the I-03/I-04/I-05 inspection registration lane completes on the two objects with a
+reference CAD (s-04, s-05). `docs/manual.md` §8.1 updated — it still quoted the pre-fix 10–40%
+observed-fraction range.
+
+**Review found two real gaps**, both fixed before merge: the record mixed area-share and
+face-share figures across two different measurements, and conflated R-33's four-bullet-looking
+list with its actual five acceptance criteria (this PR covers criteria 4 and 5, not just one).
+`@TabeenRaoof` also caught that `Fixes #231` would have been premature — #231 has two halves, and
+only the wall half is actually resolved; s-02 still serves 54.4% of its faces as board skin, a
+problem R-30 already flagged and punted. Filed as #292; #231 got a plain comment and PR #290 was
+intended not to close it.
+
+**It closed anyway.** GitHub's closing-keyword parser doesn't parse negation — one of #290's own
+commit messages explained a design choice as "Stop short of `Fixes #231`", and the parser matched
+the literal substring regardless of the surrounding sentence, auto-closing #231 the moment that
+commit reached `main` in #290's merge. Caught by `@mbj1994` reviewing this very log entry (PR
+#294), since the log's own "#231 stays open" no longer matched GitHub's actual state. Reopened
+with an explanatory comment rather than rewriting the record to match the accident. **Lesson:**
+a commit message discussing why an issue isn't being closed still can't contain that issue's
+closing-keyword phrase verbatim, even negated — GitHub's parser only pattern-matches text, once
+that commit reaches the default branch.
+
+**Result:** merged to `main` at `2ef99e1`. R-33 `State: Done`, `8 h actual` (est 5, a real measured
+figure, not the estimate copied over). `check_story_states.py` clean; ruff, typescript and pytest
+all green on the merged head.
+
+**Concluded:** all five of R-33's acceptance criteria are done across #278, #285, #287 and #290.
+The wall-fabrication bug #231 named is fixed and independently confirmed twice (TabeenRaoof's
+stored runs, this PR's fresh ones). #231 is reopened and stays open for its other half, tracked
+by #292.
+
+**Next:** #292 (s-02's board-skin regression under R-30's fixed 2.0 mm cut) is unclaimed. R-30's
+own notes suggest a sigma-relative cut as the starting point.
+
+## 2026-11-11 — R-35 Done: sigma-relative board-clearance floor (PR #299)
+
+**Who:** @dalwalyk (PR #299, claimed via #297); reviewed by @mbj1994 and @TabeenRaoof.
+
+**What changed:** `measure_board_surface`'s measured-path height threshold is now
+`max(min_clearance_mm, clearance_sigma_k * residual_sigma_mm, board_layer_top_mm)` rather than
+`max(min_clearance_mm, board_layer_top_mm)` -- `residual_sigma_mm` was already computed in the
+same function and already a `BoardSurface` field, so no new plumbing was needed. The explicit
+`height_threshold_mm` override path is untouched by design (R-26/D-060). `k` is a measured value
+(D-003): swept 4.0 and 4.5 against all five golden objects' real fused data. 4.5 helped s-02/s-03
+more but left s-01 only 0.03 mm of headroom before its own sigma floor would start moving it too;
+**k=4.0** keeps s-01 at about 12% real headroom while still dropping s-02's board-skin face share
+8.4 points (54.4% -> 46.0%) and s-03's 2.0 points (5.3% -> 3.3%), with s-01/s-04/s-05 byte-identical
+at either value. Recorded as D-063.
+
+**Review found two real gaps**, both fixed before merge: the override path could silently leak the
+sigma floor (a mutated version returning `max(float(height_threshold_mm), clearance_sigma_k *
+residual_sigma_mm)` still passed all 92 existing tests, since the old override test's board was too
+quiet for the leak to show) -- closed with a new test on a noisy board with a low explicit
+override, verified to fail under that exact mutation. And the raised cut has a real cost, not just
+a benefit: `@TabeenRaoof`'s independent rerun on her own stored golden data found it also trims some
+real part base (1.8 cm² on s-03, 0.7 cm² on s-02), which the record now states plainly alongside the
+improvement. She also caught that `Fixes #292` would have auto-closed an issue this PR doesn't
+fully resolve -- switched to "Part of #292", same pattern as #231.
+
+**Result:** merged to `main` at `1d27c57`. R-35 `State: Done`, `3 h actual` (est 3). Two independent
+golden reruns agree to within 0.004 mm (2.299/2.262 here, 2.303/2.264 on TabeenRaoof's stored
+runs). `check_story_states.py` clean; ruff, typescript and pytest all green on the merged head.
+#292 stays open -- the fix helps but doesn't fully close s-02's board-skin problem.
+
+**Concluded:** a single fixed clearance floor can't account for every golden object's own board
+noise; making it sigma-relative measurably helps the two noisiest objects without touching the
+other three, but s-02's remaining board-skin share (46.0%, against 0.6-4.9% on the other four)
+looks like a separate reflectivity/lighting problem, not a sigma-floor one.
+
+**Next:** s-02's residual board-skin share is unclaimed, tracked by #292. R-30's note that it's the
+reflective padlock under a different lighting condition from its twin s-01 is the lead to follow.
+
+## 2026-11-11 — A-07 claimed: agent loop (core + fallback) (PR #316)
+
+**Who:** @dalwalyk (PR #316); reviewed and approved by @TabeenRaoof.
+**What changed:** claim-only (D-037) — `State: Claimed`, `Owner: @dalwalyk` set on
+`stories/A/A-07.md` and its `stories/README.md` row, in one commit. No implementation in this
+PR. A-06 and A-08 are both Done, so A-07's structural blockers are clear; it was Ready and
+unclaimed with no other open PR claiming it. `check_story_states.py` consistent on the head
+merged.
+**Review notes for the implementation (not blocking this PR):** A-07 is 16h claimed the day
+before M5 — fine to start, but needs an explicit carry at the Nov 13 call (working agreement 4).
+Its criteria also name a D-031 request for getting agent messages to the phone; the mock-model
+core loop doesn't need it, but if that request should ride a contract round, raise it before the
+Dec 2 boundary (R-34's or A-03's round). Under D-064, @dalwalyk's other claims (G-02, I-06) are
+waiting rather than active, so this claim is within the cap.
+**Result:** merged to `main`. CI (pytest, ruff, typescript) green on the merged head.
+**Next:** implement A-07's core tool-calling loop against a mock model, then its fallback to
+A-08's deterministic policy.
+
+## 2026-11-11 — G-01 cube readings and slicer settings recorded; story closed (PR #303)
+
+**Who:** @TabeenRaoof (PR #303). The lab facts and protocol came earlier, in #260.
+
+**What changed:**
+- `fixtures/caliper_g-01.json` holds 90 caliper readings: 3 cubes × 3 axes × 10, measured 2026-11-11
+  with the G-06 caliper.
+  - They were copied by script from the lab-day checklist, not retyped.
+  - One typing slip was fixed before commit. Cube 1's tenth X reading had gone in as 30.3; the
+    owner checked it, and it is 30.0.
+- `stories/G/G-01.md` gets the 2026-11-10 visit (the lab's only A1 mini, grey Bambu PLA Basic, one
+  spool, about 9:20 am to 12:45 pm), the slicer settings, the per-axis deviation table and the
+  completion record.
+
+**Measured, with no tolerance (G-04 judges):**
+- The mean − 30 mm over the three cubes: X −0.027, Y −0.073, Z +0.010.
+- The range of the three cube means: X 0.11, Y 0.01, Z 0.05.
+- Y read short on all three prints, by close to the same amount. Every deviation is under one
+  0.1 mm caliper step.
+
+**Slicer settings,** read from the sliced cube file the printer ran
+(`g01_calibration_cube_30mm.gcode.3mf`, exported 2026-11-10):
+- A1 mini 0.4 nozzle, 0.20mm Standard @BBL A1M, Bambu PLA Basic @BBL A1M, Textured PEI Plate.
+- 0.2 mm layers, 2 walls, 5 top and 3 bottom shell layers, 15% grid infill.
+- Bambu Studio 02.09.01.70, with an estimate of 27 min 33 s and 10.00 g per cube.
+- G-02 and G-05 print on exactly these.
+
+**Result:** this PR sets G-01 to `State: Done`, 7 h actual (est 3). `check_story_states.py` is
+clean.
+
+**Next:** G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in
+G-05.

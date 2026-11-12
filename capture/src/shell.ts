@@ -18,6 +18,7 @@ import { requestGyroPermission } from "./gyro.js";
 import {
   describeCreateSession,
   describeFinishSession,
+  describeNetworkError,
   describeUploadFrame,
   describeVlmFeedback,
 } from "./messages.js";
@@ -86,6 +87,7 @@ export const APP_SHELL_HTML = `
     </button>
     <p id="shell-finish-status"></p>
     <p id="shell-reconstruction-status"></p>
+    <a id="shell-report-link" hidden>Open condition report</a>
   </section>
   <section>
     <h2>3D model (C-11)</h2>
@@ -121,6 +123,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   );
   const finishStatus = requireElement(root, "#shell-finish-status");
   const reconstructionStatus = requireElement(root, "#shell-reconstruction-status");
+  const reportLink = requireTyped(root, "#shell-report-link", HTMLAnchorElement, "<a>");
   const modelViewer = requireElement(root, "#shell-model-viewer");
 
   const state: AppState = {
@@ -241,6 +244,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // A-11: a previous session's tip is about a different part. Start stays disabled once a
     // session exists, so today this only guards a future flow that re-enables it.
     setStatus(vlmHint, "", "info");
+    reportLink.hidden = true;
+    reportLink.removeAttribute("href");
     startButton.disabled = true;
     // Fresh coverage tracking and gate-dedup state for this attempt -- without this, a frame
     // locally accepted under an abandoned session (e.g. a bad order code, then retried) would
@@ -283,7 +288,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       } catch (error) {
         setStatus(
           sessionStatus,
-          `Could not start session — ${error instanceof Error ? error.message : String(error)}`,
+          `Could not start session — ${describeNetworkError(error)}`,
           "error",
         );
       }
@@ -398,8 +403,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     }
     state.lastCapturedFrame = captured;
 
-    // C-06's three checks, in the story's own stated order (sharp, well-exposed, not a
-    // duplicate), first failure wins -- nothing is uploaded on a gate rejection. The code is
+    // C-20: exposure runs before blur so a uniformly black/white frame reports the lighting
+    // problem instead of being mislabelled as blur. Duplicate stays last; first failure wins and
+    // nothing is uploaded on a gate rejection. The code is
     // shown alongside the message, not just the message alone -- checkDuplicate's own message
     // ("Gyro delta ... are both below their thresholds") never actually says "duplicate," so the
     // code is what makes the specific reason identifiable (this story's own acceptance criteria
@@ -407,20 +413,20 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // rejection, on a dimension mismatch (frame_gate.ts's own frozen behavior), and nothing here
     // caught that (TabeenRaoof's PR #139 review).
     try {
-      const blurResult = checkBlur(captured.pixels);
-      if (!blurResult.ok) {
-        setStatus(
-          captureStatus,
-          `Frame rejected (${blurResult.code}) — ${blurResult.message}`,
-          "error",
-        );
-        return;
-      }
       const exposureResult = checkExposure(captured.pixels);
       if (!exposureResult.ok) {
         setStatus(
           captureStatus,
           `Frame rejected (${exposureResult.code}) — ${exposureResult.message}`,
+          "error",
+        );
+        return;
+      }
+      const blurResult = checkBlur(captured.pixels);
+      if (!blurResult.ok) {
+        setStatus(
+          captureStatus,
+          `Frame rejected (${blurResult.code}) — ${blurResult.message}`,
           "error",
         );
         return;
@@ -492,7 +498,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         lastAcceptedForGate = previousAcceptedForGate;
         setStatus(
           captureStatus,
-          `Could not upload frame — ${error instanceof Error ? error.message : String(error)}`,
+          `Could not upload frame — ${describeNetworkError(error)}`,
           "error",
         );
       } finally {
@@ -507,11 +513,14 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     if (state.sessionId === null) {
       return;
     }
+    const sessionId = state.sessionId;
+    reportLink.hidden = true;
+    reportLink.removeAttribute("href");
     retryReconstructionButton.hidden = true;
     remountModelViewer({ status: "pending" });
     const outcome = await pollReconstruction(
       options.baseUrl,
-      state.sessionId,
+      sessionId,
       reconstructionStatus,
       options.reconstructionMaxAttempts ?? DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS,
       options.reconstructionPollIntervalMs ?? DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS,
@@ -521,6 +530,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       options.authToken,
     );
     retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
+    if (outcome === "complete") {
+      reportLink.href = `report.html?session=${encodeURIComponent(sessionId)}`;
+      reportLink.hidden = false;
+    }
     if (outcome === "timeout") {
       remountModelViewer({
         status: "unavailable",
@@ -568,7 +581,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       } catch (error) {
         setStatus(
           finishStatus,
-          `Could not finish session — ${error instanceof Error ? error.message : String(error)}`,
+          `Could not finish session — ${describeNetworkError(error)}`,
           "error",
         );
       }
@@ -597,7 +610,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       } catch (error) {
         setStatus(
           reconstructionStatus,
-          `Could not load the reconstruction — ${error instanceof Error ? error.message : String(error)}`,
+          `Could not load the reconstruction — ${describeNetworkError(error)}`,
           "error",
         );
       }
@@ -625,13 +638,7 @@ async function pollReconstruction(
     try {
       result = await getReconstruction(baseUrl, sessionId, authToken);
     } catch (error) {
-      setStatus(
-        target,
-        `Could not fetch reconstruction — ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        "error",
-      );
+      setStatus(target, `Could not fetch reconstruction — ${describeNetworkError(error)}`, "error");
       return "error";
     }
 

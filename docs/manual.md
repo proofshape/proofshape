@@ -24,8 +24,9 @@ deployed on a cloud GPU (§0). A phone can also run a whole session against the 
 the service running on a Mac and the capture dev server forwarding its requests (§0, C-13, D-049).
 That path works, but in its first test, after the D-050 fix, only 2 of 7 finished phone sessions
 produced a model (§5). Pointing the phone at the cloud deployment has never been tried (O-005).
-Nothing on the buyer side — CAD upload, tolerances, verdicts, the report — is built yet (§4, §8.2,
-§8.3).
+Buyer CAD upload, tolerances and the real verdict backend are not built yet (§4, §8.2). The
+report page itself is now built (C-15): it works against the contract mock today and will consume
+I-07's real verdict once that backend exists (§8.3).
 
 ---
 
@@ -41,7 +42,7 @@ README; this is only which one to reach for.
 | The capture app on a real phone | `npm run dev:device` in `capture/`, then open the printed `https://<LAN-IP>:<port>` on a phone on the same Wi-Fi and accept the self-signed certificate once. It answers from a **mock service** with a canned model; enter the order code `PO-48213-A`. | [`capture/README.md`](../capture/README.md) |
 | Real photos through the real reconstruction service | `uvicorn recon.service:app` on a machine with a CUDA GPU, then drive a capture folder through it with `scripts/smoke_r14.py`. | [`recon/README.md`](../recon/README.md), R-14 |
 | The service on the shared cloud GPU | R-15's runbook: start, check TLS and the token, smoke-test, **stop**. Stopping is the only thing that ends billing. | [`recon/README.md`](../recon/README.md), R-15 |
-| A real phone session against the real service | **Works now**, on a Mac (D-049). Terminal 1: `PROOFSHAPE_RECON_DEVICE=mps uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1`. Terminal 2, in `capture/`: `PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device`. Then open `https://<LAN-IP>:5173/?order=<code>` on the phone. The cloud deployment is not used for this and has never served a phone (O-005). | [`capture/README.md`](../capture/README.md), C-13 |
+| A real phone session against the real service | **Works now**, on a Mac (D-049). Terminal 1: `PROOFSHAPE_RECON_DEVICE=mps uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1`. Terminal 2, in `capture/`: `PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device`. Then open `https://<LAN-IP>:5173/?order=<code>` on the phone. The cloud deployment is not used for this and has never served a phone (O-005; hosting the app is C-21). | [`capture/README.md`](../capture/README.md), C-13 |
 
 ---
 
@@ -81,7 +82,7 @@ heatmap, so gross defects are caught before the part ships.
 |---|---|
 | **Printed ChArUco reference sheet** | One sheet of A4 or US Letter. See §3 — printing it correctly matters more than it sounds. |
 | **The part** | Rigid and opaque. Roughly hand-sized — comparable to, or a little larger than, the printed pattern. See §3.4 on parts larger than the board, and §10 on transparent parts. |
-| **A smartphone** | With a working camera and gyroscope. No app install — capture runs in the browser over HTTPS. So far it has been checked on iPhones in Safari only; Android is untested (**Planned**, C-18). |
+| **A smartphone** | With a working camera and gyroscope. No app install — capture runs in the browser over HTTPS. So far it has been checked on iPhones in Safari only; Android is untested (**Planned**, C-23). |
 | **Digital calipers** *(recommended)* | For verifying the printed square size, and for the optional typed scale check (§7). Roughly $25. |
 | **The CAD file** *(buyer, optional)* | STL/OBJ/GLB. Required only if you want a verdict rather than just a model. |
 | **A flat, evenly lit surface** | Enough room to walk around the part, or to turn the sheet. |
@@ -158,7 +159,7 @@ is deliberate, and the margins are doing three jobs:
 
 1. Keeping the paper's outline clearly separated from the pattern, so the outline scale check
    works.
-2. Reserving space for the per-order QR code and orientation arrow (**Planned** — see §4).
+2. Reserving space for the per-order QR code and orientation arrow (**Planned**, C-17 — see §4).
 3. Giving a part that is larger than the pattern somewhere to sit without hanging off the sheet.
 
 **If the part is larger than the pattern but still roughly sheet-sized, that is fine for pose.**
@@ -173,6 +174,12 @@ real board surface from the board points *around* the part (R-21), and in the fi
 sessions most failures happened exactly there (§9). A part that hides most of the pattern makes
 that more likely.
 
+**Don't shoot so close that only a few squares fill the frame.** C-18's own device check hit this
+directly: a session shot close and steep enough that only 2 of 16 frames had enough of the board's
+corners for the service to use (it needs at least 3), even though the board was in every frame.
+Pull back enough that most of the sheet stays in shot around the part, rather than filling the
+frame with a close-up of the part and a handful of squares.
+
 **If the part is dramatically larger than the whole sheet, ProofShape is the wrong tool for it.**
 The stated scope is hand-sized parts. Supporting genuinely large parts would need a physically
 larger board (bigger paper, or larger squares at the cost of marker headroom), which is not a
@@ -182,8 +189,9 @@ decision the team has made. **Undecided.**
 
 ## 4 · Setting up an order — the buyer
 
-**Status: Planned.** Built by the capture-lane stories (C-16 buyer setup, C-17 board PDF with
-order code) and the inspection stories (I-01 through I-10).
+**Status: Planned.** Built by C-16 (the buyer page), R-34 (the order store it saves to, and the
+service checking order codes against it), C-17 (the printable sheet with the order code) and the
+inspection stories (I-01 through I-10).
 
 The intended flow:
 
@@ -202,11 +210,12 @@ The intended flow:
 **What exists today instead.** There is no buyer side and no order storage. The supplier types an
 order code by hand (§5). The mock service accepts only `PO-48213-A`; the real reconstruction
 service accepts **any** non-empty code, because there is no buyer database to check it against
-(`recon/README.md`, R-14). A capture link can pre-fill the order code with `?order=<code>` (C-13).
+(`recon/README.md`, R-14; R-34 is the planned store). A capture link can pre-fill the order code with `?order=<code>` (C-13).
 
-**Undecided:** when the per-order QR code and orientation arrow actually get added to the printed
-sheet. Margin space is reserved for them; the golden-capture set does not need them, since there
-is no real purchase order to bind to yet (D-034).
+**Planned** (C-17): the order code, a QR code and an orientation arrow in the sheet's margin, with
+the board itself unchanged. Where they sit is recorded as a decision when C-17 is built (D-034 left
+it open). The golden-capture set does not need them, since there is no real purchase order to bind
+to yet.
 
 ---
 
@@ -221,8 +230,8 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    one and change your mind, iOS remembers the answer per site: clear the site's data in
    Settings → Safari → Advanced → Website Data, then reload.
 2. **Place the part on the printed sheet**, near the middle of the pattern, with as much of the
-   board still visible around it as the part allows (§3.4). Hold the phone in **portrait**; the
-   guidance assumes it.
+   board still visible around it as the part allows (§3.4). Portrait is the easiest way to hold the
+   phone, but the guidance also handles roll and upright landscape orientation (C-20).
 3. **Shoot the guided orbit.** The camera preview stays live (C-05). Tap **Capture frame** for
    each shot. The guaranteed path is **batch mode** (D-002): a fixed orbit of **13 positions** —
    eight around the part at 45°, four higher at 70°, and one straight down (C-07). Your first
@@ -261,7 +270,9 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
 - **Next-view scoring** — ranking where one more photo would see the most unobserved surface —
   exists on `main` (C-08, `recon/next_view.py`), but only as a command-line tool run on a
   finished model. Nothing calls it yet: not the service, and not the arrow, which follows the
-  fixed orbit.
+  fixed orbit. Given A-05's disagreement map, it also ranks where a photo would settle the most
+  guessing by the shape-completion model. That map is built on the server whenever completion
+  samples exist, which no supplier's session has yet (D-058, D-066).
 
 **Planned, and part of what makes this more than a photo app:**
 - **An LLM agent runs the session** (A-06, A-07, with A-08's deterministic fallback) — it decides
@@ -336,14 +347,23 @@ you can orbit with one finger and zoom with two. A **Download GLB** link is alwa
 raw model stays retrievable even if the viewer can't render it. If the result is not metric, the
 summary says "No dimensional claims".
 
+**The viewer's orbit has no keyboard alternative today** (C-18). It's mouse/touch only; there's no
+tab stop or arrow-key control on the 3D canvas. The rest of the capture page's controls — the
+order-code field, Start, Capture frame, Finish, the model's "Colour by" selector and Download
+GLB — are native inputs, buttons, a select and a link, and work with Tab and Enter (Space too, on
+the buttons).
+
 The model is coloured by **what was actually seen**:
 
 | Colour | Label | Meaning |
 |---|---|---|
 | **Blue** | **Observed** | Seen in at least two frames whose viewpoints are at least 2° apart, through pixels the reconstruction model is confident about (R-24, D-045), with the mesh surface facing each camera, and not hidden behind other surface in those frames: its position agrees with the depth each frame actually measured (R-09/R-25). The spread of that depth across the frames (σ) must also be 3 mm or less, or it is downgraded to Unobserved (R-10). This is the only geometry that can produce a Pass or a Fail. |
 | **Slate grey** | **Unobserved** | Not properly seen. Can only ever trigger a Rescan. |
-| **Orange** | **Inferred** | Reserved: filled in by generative shape completion (**Planned**, A-04). Will be excluded from every deviation calculation and will **never** contribute to a verdict. Nothing produces it yet. |
+| **Orange** | **Inferred** | Reserved: surface filled in by generative shape completion. The service-side stage exists (A-04), but completion samples stay on the server for the disagreement map (A-05: where the samples disagree, used only to suggest the next photo) and are never part of the model you see. The model itself runs only on a CUDA host, through A-12's runner (measured on a Colab T4), and no host that serves suppliers has one configured yet, so on the M2 Max nothing is produced (D-058). Inferred surface is excluded from every deviation calculation and **never** contributes to a verdict. |
 | **Magenta** | **Unknown** | A colour the viewer did not expect. Should never appear; if it does, the viewer also shows a warning. |
+
+If the model carries no provenance colours at all (C-19), it's shown in a single flat colour and
+the viewer warns that observed and unobserved surface can't be told apart in it.
 
 The 2° and 3 mm limits are the code's current defaults, chosen by the team, not measured values —
 the calibration study will set real ones. The provenance depth-agreement gate also defaults to
@@ -351,16 +371,26 @@ the calibration study will set real ones. The provenance depth-agreement gate al
 from sigma, but R-25 records the rejected count so this truncation is visible in the uncertainty
 evidence instead of silently disappearing.
 
-**Expect a lot of slate grey on today's models.** Fusion still leaves wall-like artifact surfaces
-around the part (R-18, R-20). They come out Unobserved, which is the hard rule working, but they
-make the observed fraction low: about 10–40% on the golden objects (R-24). The part itself is
-usually the blue region.
+A warning beginning `completion_failed` or `completion_partial` means the server's shape-completion
+step (A-04) didn't finish. The model, its colours and its observed fraction are exactly the same
+either way, so there's nothing to redo. On the M2 Max this warning never appears, because
+completion isn't set up there (D-058).
+
+**Most of today's models should read mostly blue.** Fusion used to leave wall-like artifact
+surfaces around the part spanning the whole board area (R-18, R-20); R-33 found and fixed the
+cause (marching cubes could fabricate a face from a single unobserved corner's stored `0.0`) and
+confirmed on a fresh rerun of all five golden objects that the walls are gone, 0.2–2.6% of served
+faces by face count against 34–79% before the fix (same measure, criterion 1's own "after R-30"
+row): observed fraction on the golden objects now runs about 75–92%, not 10–40%. A little slate grey
+at the true observed/unobserved
+boundary is still expected and is the hard rule working, not a defect.
 
 ### 8.2 The four verdicts
 
-**Status: Planned** (I-07 verdict logic, I-08 unobserved-geometry rule, I-10 Unverifiable path).
-The four values are frozen in the contract; today a verdict request always answers
-`no_cad_uploaded`, because there is no way to upload a CAD yet.
+**Status: Planned in the real service** (I-07 verdict logic, I-08 unobserved-geometry rule,
+I-10 Unverifiable path). The C-15 report page is built against the frozen contract examples, but
+today a real verdict request still answers `no_cad_uploaded`, because there is no way to upload a
+CAD yet (R-34).
 
 There are exactly four. No fifth value can be added without a recorded decision, because the hard
 rule's guarantees are stated in terms of this closed set.
@@ -378,12 +408,28 @@ unobserved region into either a Pass or a Fail — if it could not see it, it sa
 
 ### 8.3 The report
 
-**Status: Planned** (C-14 heatmap rendering, C-15 report page).
+**Status: Works now against the contract mock** (C-14 heatmap rendering, C-15 report page).
+The real deviation/verdict backend is still Planned (I-06/I-07), so today's real service normally
+shows the model-only path described in §8.2.
 
-One page, shareable with the buyer: the verdict, the deviation heatmap, the model, **which
-reference sheet was used**, which regions were observed, and any limits declared at intake.
+After a reconstruction completes, choose **Open condition report**. You can also open
+`report.html?session=<id>` directly for a known session. The page shows the contract verdict and
+"What to do" text, every reason code, the critical-region table, orientation status, the reference
+used, metric/no-dimensional-claims status, observed fraction, scale-agreement status and the
+session id. If the order has no CAD, it says **"No CAD on this order: model only"** rather than
+treating that as a report error.
 
-**Planned:** an LLM writes the narrative summary (A-09).
+The C-14 deviation heatmap opens by default. Only surface that is both Observed and measured is
+coloured by deviation; everything else stays grey (D-005). A region that is not Observed shows
+"—" for deviation, never zero.
+
+Choose **Print / Save as PDF** to use the browser's print dialog. Before printing, the page
+snapshots the WebGL heatmap and copies its active legend so the exported page keeps both the image
+and the signed-mm scale. The one-page mobile print layout still needs the whole-system mobile
+check at X-04.
+
+The narrative section is a marked placeholder only. **Planned:** A-09 supplies the LLM narrative;
+C-15 does not generate one.
 
 ---
 
@@ -404,11 +450,17 @@ reference sheet was used**, which regions were observed, and any limits declared
 
 | Code | What happened | What to do |
 |---|---|---|
-| `order_code_unknown` | The order code was not recognised. Today the mock service accepts only `PO-48213-A`, and the real service rejects only an empty or blank code, because there is no buyer database to check against yet (§4). | Check the code. |
+| `order_code_unknown` | The order code was not recognised, **or the request body itself was malformed** (R-29): the service has no dedicated code for that yet (D-031 covers adding one). Today the mock service accepts only `PO-48213-A`, and the real service rejects only an empty or blank code, because there is no buyer database to check against yet (§4). A malformed body is a client/app bug, not something the supplier can fix by rechecking the code. | Check the code. If the code is already right, tell the team — it points at an app bug. |
 | `too_few_frames` | Not enough accepted frames to reconstruct. The real service needs at least 3. | Keep going around the part. |
 | `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
 | `malformed_request` | The request itself was broken: an upload with an empty photo, a missing part or an unreadable gyro reading (D-056). It is not about what the photo shows. | Retry; if it repeats, tell the team, since it points at an app bug. |
+
+**Not a contract code — the phone never reached the service at all (works now, C-18):**
+
+| What you see | What happened | What to do |
+|---|---|---|
+| "No connection to the service — check your network and try again." | Starting, uploading, finishing or polling a session all go over the network; this covers any of them failing before a response came back at all (Wi-Fi dropped, the dev server stopped). The browser's own wording for this ("Load failed" on Safari, "Failed to fetch" on Chrome) is deliberately replaced, since it names no next step. | Check the connection and try again. |
 
 **From the reconstruction, after you finish (works now):**
 

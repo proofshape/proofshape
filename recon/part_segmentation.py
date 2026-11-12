@@ -24,9 +24,11 @@ R-21: R-04 aligns camera centres, not the board plane, so the real board does no
 z = 0 -- R-17 measured it 1.6-5.4 mm below z = 0 on the golden set, with tilt up to 0.9 degrees.
 `measure_board_surface` fits a robust plane to the board points actually seen around the part, and
 `segment_part`'s height check is relative to that plane, not to z = 0. The threshold itself is
-measured from the fitted plane's own board layer (see `measure_board_surface`'s docstring), not a
-fixed 2 mm, so a reconstruction with a thicker or noisier board layer (R-17 found a weak second
-layer 4-6 mm up on two of the five golden objects) still gets a threshold that clears it.
+measured from the fitted plane's own board layer and its own residual noise (see
+`measure_board_surface`'s docstring), not a fixed 2 mm, so a reconstruction with a thicker board
+layer (R-17 found a weak second layer 4-6 mm up on two of the five golden objects) or a noisier
+one (R-30 found residual board sigma up to 0.58 mm on the golden set, #292) still gets a threshold
+that clears it.
 """
 
 from __future__ import annotations
@@ -94,8 +96,40 @@ DEFAULT_MAX_BOARD_LAYER_MM = 10.0
 DEFAULT_BOARD_LAYER_DENSITY_FRACTION = 0.05
 
 # The height threshold never goes below this, even if the fitted board layer is thinner --
-# R-06's original fixed margin, kept as a floor once the board is this clean.
+# R-06's original fixed margin, kept as a floor once the board is this clean and this quiet --
+# see DEFAULT_BOARD_CLEARANCE_SIGMA_K just below for the floor that scales with noise instead.
 DEFAULT_MIN_BOARD_CLEARANCE_MM = 2.0
+
+# A board this noisy needs a floor that scales with its own noise, not only a fixed one: R-30's
+# golden rerun left s-02's residual_sigma_mm at 0.58mm (s-03 close behind at 0.57mm), only about
+# 3.4 sigma under the fixed 2.0mm floor above -- real above-plane noise can cross that floor and
+# get kept as "part" when it's actually board skin (#292). Swept k=4.0 and 4.5 against all five
+# golden objects (R-35's notes, D-063): 4.5 helps s-02/s-03 more but leaves s-01 only 0.03mm of
+# headroom before its own sigma floor would start moving it too; 4.0 keeps s-01 about 12%
+# headroom while still measurably helping s-02 and s-03. Not the smallest k that moves them at
+# all (that's closer to 3.5) -- chosen for the headroom margin, not for the smallest effect.
+DEFAULT_BOARD_CLEARANCE_SIGMA_K = 4.0
+
+# R-26 rounds 2-3 (#180, review on #241) tried telling a part's own flat top apart from a
+# legitimate raised board layer (R-17) first with a per-cell median, then with a side-wall
+# connectivity check, each catching the previous round's real-golden-data failures but
+# introducing new ones (round 3 lowered the cut and let board back in as "part" on several
+# golden objects, failing s-01 outright). D-060 traces this to its actual cause: VGGT's
+# per-frame pose is misaligned by a few mm on some frames, so the "raised layer" is the real
+# board seen through a few drifted frames, not a second physical layer or a part -- on the
+# merged cloud a part's flat top and this misalignment artifact are genuinely indistinguishable
+# from height data alone, which is why three different heuristics each traded one failure for
+# another. `measure_board_surface` therefore goes back to `main`'s plain, whole-footprint
+# histogram below, proven correct on all five golden objects; closing the gap needs per-frame
+# correction before this fit, not a cleverer post-hoc classifier (tracked separately, D-060).
+
+# A kept segmentation with fewer points than this can't describe a hand-sized part (the same
+# floor A-04's min_core_vertices uses, by analogy -- restated here as this function's own
+# assumption). Below it, segment_run/fuse_run raise rather than returning a near-empty result
+# silently. segment_part's own default is 0 (disabled): it's a general-purpose masking
+# primitive, used at every scale including small synthetic tests that aren't about this check;
+# the real pipeline entry points opt into the floor explicitly.
+DEFAULT_MIN_KEPT_POINTS = 50
 
 
 @dataclass(frozen=True)
@@ -105,6 +139,10 @@ class BoardSurface:
     The plane is z = slope_x*x + slope_y*y + z_at_origin_mm. `height_above_board_mm` measures a
     point's height above *this* plane, not above z = 0, using the same -z-is-up convention as the
     rest of this module.
+
+    `board_layer_top_mm` is `None` when the layer-top search was skipped because the caller
+    passed an explicit `height_threshold_mm` to `measure_board_surface` (R-26): there is then
+    nothing measured to report, not a measured zero.
     """
 
     slope_x: float
@@ -115,7 +153,7 @@ class BoardSurface:
     residual_sigma_mm: float
     inlier_count: int
     candidate_count: int
-    board_layer_top_mm: float
+    board_layer_top_mm: float | None
     height_threshold_mm: float
 
     def plane_z_mm(self, x_mm: np.ndarray, y_mm: np.ndarray) -> np.ndarray:
@@ -143,71 +181,27 @@ class BoardSurface:
         }
 
 
-def measure_board_surface(
-    points_board_frame_mm: np.ndarray,
-    footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
-    search_band_mm: float = DEFAULT_BOARD_SEARCH_BAND_MM,
+def fit_board_plane_robust(
+    cx_mm: np.ndarray,
+    cy_mm: np.ndarray,
+    cz_mm: np.ndarray,
     sigma_clip: float = DEFAULT_BOARD_FIT_SIGMA_CLIP,
     max_fit_iterations: int = DEFAULT_BOARD_FIT_MAX_ITERATIONS,
-    min_board_points: int = DEFAULT_MIN_BOARD_POINTS,
-    max_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
-    layer_bin_mm: float = DEFAULT_BOARD_LAYER_BIN_MM,
-    max_board_layer_mm: float = DEFAULT_MAX_BOARD_LAYER_MM,
-    layer_density_fraction: float = DEFAULT_BOARD_LAYER_DENSITY_FRACTION,
-    min_clearance_mm: float = DEFAULT_MIN_BOARD_CLEARANCE_MM,
-) -> BoardSurface:
-    """Fit the real board surface from the board points around the part, and size the height cut.
+    min_inlier_points: int = DEFAULT_MIN_BOARD_POINTS,
+) -> tuple[float, float, float, float, int]:
+    """Robust plane fit (median start, then least-squares with iterative MAD-sigma clipping,
+    deterministic -- no RANSAC, no random state) over already-selected candidate points.
 
-    Two things happen here, both against the *same* candidate points (everything inside the
-    footprint within `search_band_mm` of the assumed z=0 -- wide enough for the board's offset,
-    narrow enough to exclude any hand-sized part):
+    Pulled out of `measure_board_surface` (R-21) so R-30's per-frame re-anchoring can fit the
+    identical plane to one frame's own candidate points, not a second, drifted copy of the fit.
 
-    1. A robust plane fit (median start, then least-squares with iterative MAD-sigma clipping,
-       deterministic -- no RANSAC, no random state) gives the board's offset and tilt.
-    2. A histogram of height-above-that-plane finds where the board's own point layer actually
-       ends -- not just the fitted plane's noise, but any secondary layer sitting above it (R-17
-       found VGGT reconstructing a weak second board layer 4-6 mm up on two of the five golden
-       objects). The height threshold is set to clear the *top* of the highest dense bin, so a
-       raised layer separated from the main board by a sparser gap doesn't slip through the cut.
+    Returns `(slope_x, slope_y, z_at_origin_mm, residual_sigma_mm, inlier_count)` for the plane
+    `z = slope_x*x + slope_y*y + z_at_origin_mm`.
 
     Raises:
-        ValueError: too few candidate or inlier board points, a degenerate (collinear) point
-            spread, a tilt beyond `max_tilt_deg`, or a dense point layer that still reaches
-            `max_board_layer_mm` without thinning out (the search didn't find where it ends --
-            this also catches a part that is itself thin and flat across the whole footprint).
+        ValueError: fewer than 3 inlier points at any point during fitting, a degenerate
+            (collinear) point spread, or fewer than `min_inlier_points` inliers at convergence.
     """
-    points_board_frame_mm = np.asarray(points_board_frame_mm, dtype=np.float64)
-    if points_board_frame_mm.ndim != 2 or points_board_frame_mm.shape[1] != 3:
-        raise ValueError(
-            f"points_board_frame_mm must have shape (N,3), got {points_board_frame_mm.shape}"
-        )
-    if not np.isfinite(points_board_frame_mm).all():
-        raise ValueError("points_board_frame_mm must be finite.")
-
-    x_mm = points_board_frame_mm[:, 0]
-    y_mm = points_board_frame_mm[:, 1]
-    z_mm = points_board_frame_mm[:, 2]
-    footprint_width_mm, footprint_height_mm = footprint_mm
-
-    in_footprint = (
-        (x_mm >= 0.0)
-        & (x_mm <= footprint_width_mm)
-        & (y_mm >= 0.0)
-        & (y_mm <= footprint_height_mm)
-    )
-    candidates = in_footprint & (np.abs(z_mm) <= search_band_mm)
-    candidate_count = int(np.count_nonzero(candidates))
-    if candidate_count < min_board_points:
-        raise ValueError(
-            f"only {candidate_count} candidate board points within {search_band_mm} mm of z=0 "
-            f"inside the footprint; need at least {min_board_points}. Too little of the board is "
-            "visible around the part to fit a surface -- never falling back to z=0 silently."
-        )
-
-    cx_mm = x_mm[candidates]
-    cy_mm = y_mm[candidates]
-    cz_mm = z_mm[candidates]
-
     median_z_mm = float(np.median(cz_mm))
     start_sigma_mm = 1.4826 * float(np.median(np.abs(cz_mm - median_z_mm)))
     if start_sigma_mm > 0:
@@ -244,13 +238,105 @@ def measure_board_surface(
         inlier = new_inlier
 
     inlier_count = int(np.count_nonzero(inlier))
-    if inlier_count < min_board_points:
+    if inlier_count < min_inlier_points:
         raise ValueError(
             f"only {inlier_count} inlier board points after robust fitting; need at least "
-            f"{min_board_points}. Not falling back to z=0 silently."
+            f"{min_inlier_points}. Not falling back to z=0 silently."
         )
 
     slope_x, slope_y, z_at_origin_mm = (float(c) for c in coefficients)
+    return slope_x, slope_y, z_at_origin_mm, residual_sigma_mm, inlier_count
+
+
+def measure_board_surface(
+    points_board_frame_mm: np.ndarray,
+    footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
+    search_band_mm: float = DEFAULT_BOARD_SEARCH_BAND_MM,
+    sigma_clip: float = DEFAULT_BOARD_FIT_SIGMA_CLIP,
+    max_fit_iterations: int = DEFAULT_BOARD_FIT_MAX_ITERATIONS,
+    min_board_points: int = DEFAULT_MIN_BOARD_POINTS,
+    max_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
+    layer_bin_mm: float = DEFAULT_BOARD_LAYER_BIN_MM,
+    max_board_layer_mm: float = DEFAULT_MAX_BOARD_LAYER_MM,
+    layer_density_fraction: float = DEFAULT_BOARD_LAYER_DENSITY_FRACTION,
+    min_clearance_mm: float = DEFAULT_MIN_BOARD_CLEARANCE_MM,
+    clearance_sigma_k: float = DEFAULT_BOARD_CLEARANCE_SIGMA_K,
+    height_threshold_mm: float | None = None,
+) -> BoardSurface:
+    """Fit the real board surface from the board points around the part, and size the height cut.
+
+    Two things happen here, both against the *same* candidate points (everything inside the
+    footprint within `search_band_mm` of the assumed z=0 -- wide enough for the board's offset,
+    narrow enough to exclude any hand-sized part):
+
+    1. A robust plane fit (median start, then least-squares with iterative MAD-sigma clipping,
+       deterministic -- no RANSAC, no random state) gives the board's offset and tilt.
+    2. A histogram of height-above-that-plane finds where the board's own point layer actually
+       ends -- not just the fitted plane's noise, but any secondary layer sitting above it (R-17
+       found VGGT reconstructing a weak second board layer 4-6 mm up on two of the five golden
+       objects; D-060 traces this to per-frame pose misalignment, not a second physical layer).
+       The height threshold is set to clear the *top* of the highest dense bin, so a raised
+       layer separated from the main board by a sparser gap doesn't slip through the cut.
+
+    The resolved threshold is also never allowed below `clearance_sigma_k` times the plane fit's
+    own `residual_sigma_mm` -- a board that is itself noisier than `min_clearance_mm`'s fixed
+    floor accounts for (R-30 measured 0.58 mm residual sigma on one golden object, only about 3.4
+    sigma under the old fixed 2.0 mm floor, #292) still gets a threshold that clears its own
+    noise, not just whatever the layer search happened to find. D-063.
+
+    `height_threshold_mm`, when given, skips this search entirely: the returned
+    `BoardSurface.height_threshold_mm` is this value as-is (no `min_clearance_mm` floor or
+    `clearance_sigma_k` sigma floor, since it's explicit) and `board_layer_top_mm` is `None`.
+    This is the override's whole point (R-26):
+    a caller already working around a layer-search failure must not still run into it here. Per
+    D-060, this is currently the only reliable way to segment a flat part under
+    `DEFAULT_MAX_BOARD_LAYER_MM` -- the search below cannot yet tell such a part's own flat top
+    apart from the per-frame misalignment artifact R-17 found.
+
+    Raises:
+        ValueError: too few candidate or inlier board points, a degenerate (collinear) point
+            spread, a tilt beyond `max_tilt_deg`, or a dense point layer that still reaches
+            `max_board_layer_mm` without thinning out (the search didn't find where it ends --
+            this also catches a part that is itself thin and flat across the whole footprint,
+            D-060).
+    """
+    points_board_frame_mm = np.asarray(points_board_frame_mm, dtype=np.float64)
+    if points_board_frame_mm.ndim != 2 or points_board_frame_mm.shape[1] != 3:
+        raise ValueError(
+            f"points_board_frame_mm must have shape (N,3), got {points_board_frame_mm.shape}"
+        )
+    if not np.isfinite(points_board_frame_mm).all():
+        raise ValueError("points_board_frame_mm must be finite.")
+
+    x_mm = points_board_frame_mm[:, 0]
+    y_mm = points_board_frame_mm[:, 1]
+    z_mm = points_board_frame_mm[:, 2]
+    footprint_width_mm, footprint_height_mm = footprint_mm
+
+    in_footprint = (
+        (x_mm >= 0.0)
+        & (x_mm <= footprint_width_mm)
+        & (y_mm >= 0.0)
+        & (y_mm <= footprint_height_mm)
+    )
+    candidates = in_footprint & (np.abs(z_mm) <= search_band_mm)
+    candidate_count = int(np.count_nonzero(candidates))
+    if candidate_count < min_board_points:
+        raise ValueError(
+            f"only {candidate_count} candidate board points within {search_band_mm} mm of z=0 "
+            f"inside the footprint; need at least {min_board_points}. Too little of the board is "
+            "visible around the part to fit a surface -- never falling back to z=0 silently."
+        )
+
+    cx_mm = x_mm[candidates]
+    cy_mm = y_mm[candidates]
+    cz_mm = z_mm[candidates]
+
+    slope_x, slope_y, z_at_origin_mm, residual_sigma_mm, inlier_count = (
+        fit_board_plane_robust(
+            cx_mm, cy_mm, cz_mm, sigma_clip, max_fit_iterations, min_board_points
+        )
+    )
     tilt_deg = float(np.degrees(np.arctan(np.hypot(slope_x, slope_y))))
     if tilt_deg > max_tilt_deg:
         raise ValueError(
@@ -265,8 +351,27 @@ def measure_board_surface(
         + z_at_origin_mm
     )
 
+    if height_threshold_mm is not None:
+        # R-26: the caller already knows it wants this threshold, typically to work around a
+        # layer-search failure -- so that search must not run here either.
+        return BoardSurface(
+            slope_x=slope_x,
+            slope_y=slope_y,
+            z_at_origin_mm=z_at_origin_mm,
+            offset_mm=offset_mm,
+            tilt_deg=tilt_deg,
+            residual_sigma_mm=residual_sigma_mm,
+            inlier_count=inlier_count,
+            candidate_count=candidate_count,
+            board_layer_top_mm=None,
+            height_threshold_mm=float(height_threshold_mm),
+        )
+
     # Board-layer top: histogram height-above-plane for *every* candidate (not just inliers --
-    # a raised second layer is exactly what sigma-clipping just excluded as an outlier).
+    # a raised second layer is exactly what sigma-clipping just excluded as an outlier). D-060:
+    # this is `main`'s original plain, whole-footprint search, restored after R-26 rounds 2-3's
+    # per-cell/connectivity attempts each regressed on real golden data -- see the module-level
+    # comment above and D-060 for why.
     plane_z_at_candidates_mm = slope_x * cx_mm + slope_y * cy_mm + z_at_origin_mm
     height_above_board_mm = plane_z_at_candidates_mm - cz_mm
     bin_edges_mm = np.arange(
@@ -284,7 +389,15 @@ def measure_board_surface(
             "this thick."
         )
     board_layer_top_mm = float(bin_edges_mm[top_bin_index + 1])
-    height_threshold_mm = max(min_clearance_mm, board_layer_top_mm)
+    # #292/D-063: a fixed floor alone isn't safe on a noisy board -- s-02's post-R-30
+    # residual_sigma_mm (0.58mm) left only about 3.4 sigma under the old fixed 2.0mm floor,
+    # letting real above-plane noise survive as "part". Taking the max against
+    # clearance_sigma_k * residual_sigma_mm as well means the floor rises with the board's own
+    # measured noise instead of staying fixed. board_layer_top_mm still wins outright whenever
+    # the layer search finds real structure (R-21/D-060) above either floor.
+    resolved_height_threshold_mm = max(
+        min_clearance_mm, clearance_sigma_k * residual_sigma_mm, board_layer_top_mm
+    )
 
     return BoardSurface(
         slope_x=slope_x,
@@ -296,7 +409,7 @@ def measure_board_surface(
         inlier_count=inlier_count,
         candidate_count=candidate_count,
         board_layer_top_mm=board_layer_top_mm,
-        height_threshold_mm=height_threshold_mm,
+        height_threshold_mm=resolved_height_threshold_mm,
     )
 
 
@@ -305,6 +418,7 @@ def segment_part(
     board_surface: BoardSurface,
     height_threshold_mm: float | None = None,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
+    min_kept_points: int = 0,
 ) -> np.ndarray:
     """Return a boolean keep-mask: True where a point is part geometry, not board/background.
 
@@ -318,9 +432,19 @@ def segment_part(
             explicit value here still applies above the measured plane, not above z=0.
         footprint_mm: (width_mm, height_mm) of the keep rectangle, anchored at the board origin
             (x in [0, width_mm], y in [0, height_mm]). Defaults to the printed pattern's own size.
+        min_kept_points: a kept result smaller than this can't describe a hand-sized part (R-26,
+            #180) -- below it, this raises instead of returning a near-empty mask silently.
+            0 (the default) disables the check: this is a general-purpose masking primitive used
+            at every scale, including small synthetic inputs that aren't about this check. The
+            real pipeline entry points (`segment_run`, `fuse_run`) pass
+            `DEFAULT_MIN_KEPT_POINTS` explicitly. A plain count, not a share of anything
+            measured -- D-060 found the two share-based designs tried here each depended on a
+            denominator (a generic height-only pool, then a connectivity classification) that
+            either hard-failed correct real golden cuts or carried no information on real data.
 
     Raises:
-        ValueError: on a malformed shape, non-finite input, or a non-positive threshold/footprint.
+        ValueError: on a malformed shape, non-finite input, a non-positive threshold/footprint,
+            or a kept result smaller than `min_kept_points`.
         TypeError: if `board_surface` isn't a `BoardSurface`.
     """
     points_board_frame_mm = np.asarray(points_board_frame_mm, dtype=np.float64)
@@ -362,7 +486,15 @@ def segment_part(
         & (y_mm >= 0.0)
         & (y_mm <= footprint_height_mm)
     )
-    return keep_height & keep_footprint
+    keep = keep_height & keep_footprint
+    kept_count = int(np.count_nonzero(keep))
+    if kept_count < min_kept_points:
+        raise ValueError(
+            f"segmentation kept only {kept_count} point(s) above {resolved_threshold_mm} mm; "
+            f"need at least {min_kept_points} to describe a hand-sized part, not returning a "
+            "near-empty result silently."
+        )
+    return keep
 
 
 def load_alignment(alignment_json_path: Path) -> dict[str, Any]:
@@ -420,6 +552,7 @@ def segment_run(
     height_threshold_mm: float | None = None,
     footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
     max_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
+    min_kept_points: int = DEFAULT_MIN_KEPT_POINTS,
 ) -> dict[str, Any]:
     """Load an R-01 point cloud and an R-04 alignment, segment, and write the outputs.
 
@@ -444,7 +577,10 @@ def segment_run(
         points, alignment["scale"], alignment["rotation"], alignment["translation"]
     )
     board_surface = measure_board_surface(
-        points_board_frame_mm, footprint_mm, max_tilt_deg=max_tilt_deg
+        points_board_frame_mm,
+        footprint_mm,
+        max_tilt_deg=max_tilt_deg,
+        height_threshold_mm=height_threshold_mm,
     )
     height_threshold_source = "measured"
     resolved_threshold_mm = board_surface.height_threshold_mm
@@ -452,7 +588,11 @@ def segment_run(
         height_threshold_source = "override"
         resolved_threshold_mm = height_threshold_mm
     keep = segment_part(
-        points_board_frame_mm, board_surface, height_threshold_mm, footprint_mm
+        points_board_frame_mm,
+        board_surface,
+        height_threshold_mm,
+        footprint_mm,
+        min_kept_points=min_kept_points,
     )
 
     out_dir.mkdir(parents=True, exist_ok=True)

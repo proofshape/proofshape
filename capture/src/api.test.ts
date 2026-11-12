@@ -1,8 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSession, finishSession, getReconstruction, uploadFrame } from "./api.js";
-import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
+import { createSession, finishSession, getReconstruction, getVerdict, uploadFrame } from "./api.js";
+import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 
 const FAKE_JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
+// C-19: finishSession now requires MIN_FINISH_FRAMES accepted frames, matching
+// recon/service.py -- used wherever a test needs a session that can actually finish.
+async function uploadMinimumFrames(baseUrl: string, sessionId: string): Promise<void> {
+  const frame = new Blob([FAKE_JPEG_BYTES], { type: "image/jpeg" });
+  for (let i = 0; i < MIN_FINISH_FRAMES; i += 1) {
+    await uploadFrame(baseUrl, sessionId, frame, { alpha: 1, beta: 2, gamma: 3 });
+  }
+}
 
 describe("api against the contract stub", () => {
   let baseUrl: string;
@@ -88,11 +97,25 @@ describe("api against the contract stub", () => {
     }
   });
 
-  it("finishes successfully after at least one accepted frame", async () => {
+  // C-19 (#193): the mock used to finish after just one accepted frame; the real service
+  // (recon/service.py's MIN_FINISH_FRAMES) needs three.
+  it("returns the contract's 409 message when finishing below the minimum frame count", async () => {
     const session = await createSession(baseUrl, "PO-48213-A");
     if (!session.ok) throw new Error("setup: createSession failed");
     const frame = new Blob([FAKE_JPEG_BYTES], { type: "image/jpeg" });
     await uploadFrame(baseUrl, session.body.session_id, frame, { alpha: 1, beta: 2, gamma: 3 });
+
+    const result = await finishSession(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("too_few_frames");
+    }
+  });
+
+  it("finishes successfully after the minimum accepted frames", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+    await uploadMinimumFrames(baseUrl, session.body.session_id);
 
     const result = await finishSession(baseUrl, session.body.session_id);
     expect(result.ok).toBe(true);
@@ -102,8 +125,7 @@ describe("api against the contract stub", () => {
   it("returns a 409 for finishing an already-finished session", async () => {
     const session = await createSession(baseUrl, "PO-48213-A");
     if (!session.ok) throw new Error("setup: createSession failed");
-    const frame = new Blob([FAKE_JPEG_BYTES], { type: "image/jpeg" });
-    await uploadFrame(baseUrl, session.body.session_id, frame, { alpha: 1, beta: 2, gamma: 3 });
+    await uploadMinimumFrames(baseUrl, session.body.session_id);
     await finishSession(baseUrl, session.body.session_id);
 
     const result = await finishSession(baseUrl, session.body.session_id);
@@ -116,8 +138,7 @@ describe("api against the contract stub", () => {
   it("polls reconstruction from pending to complete after finish", async () => {
     const session = await createSession(baseUrl, "PO-48213-A");
     if (!session.ok) throw new Error("setup: createSession failed");
-    const frame = new Blob([FAKE_JPEG_BYTES], { type: "image/jpeg" });
-    await uploadFrame(baseUrl, session.body.session_id, frame, { alpha: 1, beta: 2, gamma: 3 });
+    await uploadMinimumFrames(baseUrl, session.body.session_id);
     await finishSession(baseUrl, session.body.session_id);
 
     const pending = await getReconstruction(baseUrl, session.body.session_id);
@@ -142,6 +163,52 @@ describe("api against the contract stub", () => {
     if (!result.ok) {
       expect(result.status).toBe(404);
       expect(result.error.code).toBe("session_not_found");
+    }
+  });
+
+  // C-19 (#193): no typed api.ts wrapper exists for model.glb -- model-viewer.ts fetches it
+  // directly too, through GLTFLoader/fetch, not through api.ts.
+  it("returns the contract's session_not_found fetching model.glb for a session that isn't ready", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+
+    const response = await fetch(`${baseUrl}/v1/sessions/${session.body.session_id}/model.glb`);
+
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).toBe("session_not_found");
+  });
+
+  it("returns the contract's session_not_found fetching model.glb for an unknown session_id", async () => {
+    const response = await fetch(`${baseUrl}/v1/sessions/does-not-exist/model.glb`);
+
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).toBe("session_not_found");
+  });
+
+  it("returns the contract Pass verdict from getVerdict", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+    stub.setVerdictScenario("pass");
+
+    const result = await getVerdict(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.verdict).toBe("Pass");
+      expect(result.body.regions.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("returns no_cad_uploaded as the contract 404 from getVerdict", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+
+    const result = await getVerdict(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(404);
+      expect(result.error.code).toBe("no_cad_uploaded");
     }
   });
 
@@ -181,9 +248,10 @@ describe("api against the contract stub", () => {
         "the-token",
       );
       await getReconstruction(baseUrl, session.body.session_id, "the-token");
+      await getVerdict(baseUrl, session.body.session_id, "the-token");
       await finishSession(baseUrl, session.body.session_id, "the-token");
 
-      expect(fetchSpy).toHaveBeenCalledTimes(4);
+      expect(fetchSpy).toHaveBeenCalledTimes(5);
       for (const call of fetchSpy.mock.calls) {
         expect(authorizationHeaderOf(call[1])).toBe("Bearer the-token");
       }

@@ -4,6 +4,7 @@ import type {
   ReconstructionResult,
   Session,
   UploadFrameResult,
+  VerdictResult,
 } from "./types.js";
 
 export type ApiResult<TBody> =
@@ -118,4 +119,22 @@ export async function getReconstruction(
     return { ok: false, status: response.status, error: body as ErrorDetail };
   }
   unexpectedStatus("getReconstruction", response, body);
+}
+
+export async function getVerdict(
+  baseUrl: string,
+  sessionId: string,
+  authToken?: string,
+): Promise<ApiResult<VerdictResult>> {
+  const response = await fetch(`${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/verdict`, {
+    headers: authHeaders(authToken),
+  });
+  const body = await readJsonBody(response, "getVerdict");
+  if (response.status === 200) {
+    return { ok: true, status: response.status, body: body as VerdictResult };
+  }
+  if (response.status === 404) {
+    return { ok: false, status: response.status, error: body as ErrorDetail };
+  }
+  unexpectedStatus("getVerdict", response, body);
 }

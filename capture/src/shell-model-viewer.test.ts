@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { uploadFrame } from "./api.js";
 import { mountAppShell, type AppState } from "./shell.js";
-import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
+import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 
 describe("C-11 model viewer shell wiring", () => {
@@ -47,6 +47,7 @@ describe("C-11 model viewer shell wiring", () => {
     finishButton: HTMLButtonElement;
     reconstructionStatus: HTMLElement;
     modelViewer: HTMLElement;
+    reportLink: HTMLAnchorElement;
     retryButton: HTMLButtonElement;
   } {
     document.body.innerHTML = '<main id="shell-app"></main>';
@@ -65,6 +66,7 @@ describe("C-11 model viewer shell wiring", () => {
     const finishButton = document.getElementById("shell-finish-button");
     const reconstructionStatus = document.getElementById("shell-reconstruction-status");
     const modelViewer = document.getElementById("shell-model-viewer");
+    const reportLink = document.getElementById("shell-report-link");
     const retryButton = document.getElementById("shell-retry-reconstruction-button");
 
     if (
@@ -72,6 +74,7 @@ describe("C-11 model viewer shell wiring", () => {
       !(startButton instanceof HTMLButtonElement) ||
       !(finishButton instanceof HTMLButtonElement) ||
       !(retryButton instanceof HTMLButtonElement) ||
+      !(reportLink instanceof HTMLAnchorElement) ||
       !reconstructionStatus ||
       !modelViewer
     ) {
@@ -85,6 +88,7 @@ describe("C-11 model viewer shell wiring", () => {
       finishButton,
       reconstructionStatus,
       modelViewer,
+      reportLink,
       retryButton,
     };
   }
@@ -106,16 +110,20 @@ describe("C-11 model viewer shell wiring", () => {
       throw new Error("test setup: session id missing after wait");
     }
 
+    // C-19 (#193): finishSession now requires MIN_FINISH_FRAMES accepted frames, matching
+    // recon/service.py.
     const frame = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], {
       type: "image/jpeg",
     });
-    const uploaded = await uploadFrame(baseUrl, sessionId, frame, {
-      alpha: 1,
-      beta: 2,
-      gamma: 3,
-    });
-    if (!uploaded.ok) {
-      throw new Error("test setup: upload failed");
+    for (let i = 0; i < MIN_FINISH_FRAMES; i += 1) {
+      const uploaded = await uploadFrame(baseUrl, sessionId, frame, {
+        alpha: 1,
+        beta: 2,
+        gamma: 3,
+      });
+      if (!uploaded.ok) {
+        throw new Error("test setup: upload failed");
+      }
     }
 
     return mounted;
@@ -134,6 +142,10 @@ describe("C-11 model viewer shell wiring", () => {
 
     expect(mounted.modelViewer.textContent).toContain("Loading 3D model");
     expect(mounted.modelViewer.querySelector("a")?.getAttribute("href")).toMatch(/model\.glb$/);
+    expect(mounted.reportLink.hidden).toBe(false);
+    expect(mounted.reportLink.getAttribute("href")).toBe(
+      `report.html?session=${encodeURIComponent(mounted.state.sessionId ?? "")}`,
+    );
   });
 
   it("remounts the viewer with the backend failed state", async () => {

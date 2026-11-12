@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import sys
 
@@ -9,6 +10,12 @@ import numpy as np
 import pytest
 
 from recon import tsdf_fusion
+from recon.metric_alignment import project_points_to_camera
+from recon.part_segmentation import (
+    DEFAULT_FOOTPRINT_MM,
+    BoardSurface,
+    fit_board_plane_robust,
+)
 from recon.vggt_runner import confidence_keep_mask
 
 # --- build_voxel_grid ------------------------------------------------------------------------
@@ -177,6 +184,108 @@ def test_fuse_tsdf_rejects_bad_shapes():
         )
 
 
+# --- measure_voxel_vote_consensus (R-33 criterion 2) -----------------------------------------
+# Same single-pixel-ray fixtures as fuse_tsdf's own tests above.
+
+
+def test_measure_voxel_vote_consensus_classifies_near_in_front_and_behind():
+    # z=30: 20mm in front (in_front); z=50: exactly on the measured surface (near_surface);
+    # z=70: 20mm behind, within the 25mm truncation band (behind).
+    voxel_centers = np.array([[0.0, 0.0, 30.0], [0.0, 0.0, 50.0], [0.0, 0.0, 70.0]])
+    depth_mm = _ray_depth(50.0)
+
+    reports = tsdf_fusion.measure_voxel_vote_consensus(
+        depth_mm,
+        _RAY_EXTRINSIC,
+        _RAY_INTRINSIC,
+        voxel_centers,
+        truncation_mm=25.0,
+        near_surface_mm=5.0,
+    )
+
+    assert [r.contributing_frame_count for r in reports] == [1, 1, 1]
+    assert [r.near_surface_frame_count for r in reports] == [0, 1, 0]
+    assert [r.in_front_frame_count for r in reports] == [1, 0, 0]
+    assert [r.behind_frame_count for r in reports] == [0, 0, 1]
+
+
+def test_measure_voxel_vote_consensus_far_behind_contributes_nothing():
+    voxel_centers = np.array(
+        [[0.0, 0.0, 75.0]]
+    )  # 25mm behind, outside a 10mm truncation band
+    depth_mm = _ray_depth(50.0)
+
+    (report,) = tsdf_fusion.measure_voxel_vote_consensus(
+        depth_mm, _RAY_EXTRINSIC, _RAY_INTRINSIC, voxel_centers, truncation_mm=10.0
+    )
+
+    assert report.as_report() == {
+        "contributing_frame_count": 0,
+        "near_surface_frame_count": 0,
+        "in_front_frame_count": 0,
+        "behind_frame_count": 0,
+    }
+
+
+def test_measure_voxel_vote_consensus_tallies_one_vote_per_contributing_frame():
+    # Same voxel, two frames: frame 0 reads it as on the surface, frame 1 reads it 4mm in front
+    # -- with near_surface_mm=2, frame 1's vote is just outside the near band.
+    voxel_centers = np.array([[0.0, 0.0, 50.0]])
+    depth_mm = np.concatenate([_ray_depth(50.0), _ray_depth(54.0)], axis=0)
+    extrinsic = np.concatenate([_RAY_EXTRINSIC, _RAY_EXTRINSIC], axis=0)
+    intrinsic = np.concatenate([_RAY_INTRINSIC, _RAY_INTRINSIC], axis=0)
+
+    (report,) = tsdf_fusion.measure_voxel_vote_consensus(
+        depth_mm,
+        extrinsic,
+        intrinsic,
+        voxel_centers,
+        truncation_mm=25.0,
+        near_surface_mm=2.0,
+    )
+
+    assert report.contributing_frame_count == 2
+    assert report.near_surface_frame_count == 1
+    assert report.in_front_frame_count == 1
+    assert report.behind_frame_count == 0
+
+
+def test_measure_voxel_vote_consensus_keep_mask_excludes_masked_pixels():
+    voxel_centers = np.array([[0.0, 0.0, 50.0]])
+    depth_mm = _ray_depth(50.0)
+    keep_mask = np.zeros((1, 3, 3), dtype=bool)
+
+    (report,) = tsdf_fusion.measure_voxel_vote_consensus(
+        depth_mm,
+        _RAY_EXTRINSIC,
+        _RAY_INTRINSIC,
+        voxel_centers,
+        truncation_mm=25.0,
+        keep_mask=keep_mask,
+    )
+
+    assert report.contributing_frame_count == 0
+
+
+def test_measure_voxel_vote_consensus_rejects_bad_shape():
+    with pytest.raises(ValueError, match="depth_mm"):
+        tsdf_fusion.measure_voxel_vote_consensus(
+            np.zeros((3, 3)), _RAY_EXTRINSIC, _RAY_INTRINSIC, np.zeros((1, 3)), 1.0
+        )
+
+
+def test_measure_voxel_vote_consensus_rejects_near_surface_mm_past_truncation():
+    with pytest.raises(ValueError, match="near_surface_mm"):
+        tsdf_fusion.measure_voxel_vote_consensus(
+            _ray_depth(50.0),
+            _RAY_EXTRINSIC,
+            _RAY_INTRINSIC,
+            np.zeros((1, 3)),
+            truncation_mm=5.0,
+            near_surface_mm=10.0,
+        )
+
+
 # --- extract_mesh_marching_cubes ---------------------------------------------------------------
 
 
@@ -217,6 +326,194 @@ def test_extract_mesh_marching_cubes_returns_empty_when_nothing_observed():
 
     assert len(vertices_mm) == 0
     assert len(faces) == 0
+
+
+def test_extract_mesh_marching_cubes_filters_a_thin_free_space_sliver_at_the_edge():
+    # R-33 (review on #231): a thin sliver of observed free space (tsdf=+8) reaching right up to
+    # never-observed voxels (tsdf stays at fuse_tsdf's own 0.0 default). A plain weight>0 mask
+    # alone still lets skimage build a face here, using the never-observed voxels' raw 0.0 value
+    # even though they're individually masked False -- this reproduces TabeenRaoof's own finding
+    # that an observed-free-space/never-observed boundary fabricates walls. Confirmed empirically
+    # (not every observed/unobserved boundary triggers skimage's mask quirk -- a full-width flat
+    # slab doesn't, matching skimage's own corner-count-dependent activation rule; a thin sliver,
+    # closer to the ragged edge of real multi-view camera coverage, does). The fix's per-cube
+    # filter (review on #287) catches every face skimage builds here: only two voxels in the
+    # whole volume are observed, so no cube can ever have all 8 corners observed.
+    shape = (4, 3, 3)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    tsdf[0:2, 1:2, 1:2] = 8.0
+    weight[0:2, 1:2, 1:2] = 1.0
+
+    _vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=10.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(faces) == 0
+
+    # Not a vacuous test: skimage itself, given the raw unfiltered mask, does fabricate faces at
+    # this exact boundary -- confirming this is a real fix, not a no-op on an already-safe case.
+    from skimage.measure import marching_cubes
+
+    old_mask = weight > 0.0
+    _old_vertices, old_faces, _normals, _values = marching_cubes(
+        tsdf, level=0.0, spacing=(10.0, 10.0, 10.0), mask=old_mask
+    )
+    assert len(old_faces) > 0
+
+
+def test_extract_mesh_marching_cubes_returns_empty_when_nothing_crosses_zero():
+    # Review on #231: skimage's own level-range check runs over the entire raw volume, ignoring
+    # mask, and raises ValueError when nothing in the array ever crosses zero -- reachable even
+    # before this fix, just rare in practice (a real grid almost always has an untouched 0.0
+    # voxel somewhere). A fully-observed, all-positive volume hits it directly.
+    shape = (2, 2, 2)
+    tsdf = np.full(shape, 5.0)
+    weight = np.ones(shape)
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=10.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(vertices_mm) == 0
+    assert len(faces) == 0
+
+
+def test_extract_mesh_marching_cubes_keeps_the_real_plane_and_drops_the_sliver():
+    # Review on #287: the sliver test above never reaches `marching_cubes` with a mask that
+    # would have found anything to interpolate, so nothing pins which mask actually reaches
+    # skimage, or that a real surface right next to a sliver survives the filter intact. This
+    # scene does reach skimage for real: a fully observed block holding a genuine surface
+    # (the x=2.5 voxel plane), plus a thin observed free-space sliver beside it that the raw,
+    # unfiltered mask fabricates extra faces from -- reproduced directly below.
+    shape = (12, 8, 8)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[0:6] = x[0:6] - 2.5  # real surface at x = 2.5 voxels
+    weight[0:6] = 1.0
+    tsdf[6:9, 3:4, 3:4] = 8.0  # thin observed free-space sliver
+    weight[6:9, 3:4, 3:4] = 1.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - 2.5) < 0.6)
+
+    # Not a vacuous test: skimage itself, given the raw unfiltered mask, builds extra faces that
+    # reach out to the sliver, well past the real plane -- confirming the filter is doing real
+    # work on this scene, not passing it through untouched.
+    from skimage.measure import marching_cubes
+
+    old_mask = weight > 0.0
+    _old_vertices, old_faces, _normals, _values = marching_cubes(
+        tsdf, level=0.0, spacing=(1.0, 1.0, 1.0), mask=old_mask
+    )
+    assert len(old_faces) > len(faces)
+
+
+def test_extract_mesh_marching_cubes_filter_at_the_real_voxel_size_and_an_offset_origin():
+    # Review on #287: the plane-plus-sliver test above uses voxel_size_mm=1.0, where dividing a
+    # vertex's mm position by voxel_size_mm to recover its voxel index is a no-op -- so it can't
+    # tell a correct division from a dropped one. Real fusion runs use ~2 mm voxels and a
+    # non-zero origin_mm; this repeats the same scene at voxel_size_mm=2.0 with an offset origin,
+    # so the real plane only lands at the expected mm location if the voxel-index recovery (and
+    # thus the cube lookup built from it) is actually correct.
+    shape = (12, 8, 8)
+    tsdf = np.zeros(shape)
+    weight = np.zeros(shape)
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[0:6] = x[0:6] - 2.5
+    weight[0:6] = 1.0
+    tsdf[6:9, 3:4, 3:4] = 8.0
+    weight[6:9, 3:4, 3:4] = 1.0
+    origin = np.array([10.0, -4.0, -30.0])
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=2.0,
+        origin_mm=origin,
+    )
+
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - (origin[0] + 2.5 * 2.0)) < 1.2)
+
+
+@pytest.mark.parametrize("corner", list(itertools.product((0, 1), repeat=3)))
+def test_extract_mesh_marching_cubes_drops_a_cube_missing_any_one_corner(corner):
+    # Review on #287: two cubes along x -- A (x 0..1), fully observed, and B (x 1..2), missing
+    # exactly one of its 8 corners (parametrized over which one). The surface crosses both
+    # (x=0.5 in A, x=1.5 in B), so if the filter checked fewer than all 8 corners (an `&`
+    # weakened to `|` on any one of them, say), B would wrongly keep its face too. Only A's
+    # surface may survive, whichever corner of B is the one missing.
+    shape = (3, 2, 2)
+    tsdf = np.zeros(shape)
+    weight = np.ones(shape)
+    tsdf[0] = 1.0
+    tsdf[1] = -1.0
+    tsdf[2] = 1.0
+    weight[1 + corner[0], corner[1], corner[2]] = 0.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0] if len(faces) else np.array([])
+    assert np.all(centroid_x < 1.0)
+    if corner[0] == 1:
+        # The missing corner sits at x=2, not shared with cube A, so A still keeps its surface.
+        assert np.any(centroid_x < 1.0)
+
+
+def test_extract_mesh_marching_cubes_floors_the_cube_index_rather_than_rounding():
+    # Review on #287: np.round instead of np.floor passed both tests above. Each puts its surface
+    # at a centroid of x.5 in voxel units, where np.round's round-half-to-even either agrees with
+    # floor outright (round(2.5) == floor(2.5) == 2) or disagrees but only by pointing past the
+    # grid's last cube, which np.clip then pulls back to the same cube floor would have picked.
+    # Three cubes along x (indices 0, 1, 2) puts the x=1.5 crossing's two candidate cubes --
+    # floor's 1 and round's 2 -- both in bounds, so clipping can't paper over the difference.
+    # Cube 1 (x in [1, 2]) is fully observed; cube 2 (x in [2, 3]) is missing one corner. The
+    # correct (floor) cube keeps the face; the wrong (round) cube would drop it as unobserved.
+    shape = (4, 2, 2)
+    tsdf = np.zeros(shape)
+    weight = np.ones(shape)
+    x = np.arange(shape[0])[:, None, None] * np.ones(shape)
+    tsdf[:] = np.where(x < 1.5, -1.0, 1.0)
+    weight[3, 0, 0] = 0.0
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_marching_cubes(
+        tsdf.reshape(-1),
+        weight.reshape(-1),
+        shape,
+        voxel_size_mm=1.0,
+        origin_mm=np.zeros(3),
+    )
+
+    assert len(faces) > 0
+    centroid_x = vertices_mm[faces].mean(axis=1)[:, 0]
+    assert np.all(np.abs(centroid_x - 1.5) < 0.5)
 
 
 # --- write_mesh_ply / read_mesh_ply --------------------------------------------------------------
@@ -269,6 +566,252 @@ def test_extract_mesh_poisson_on_a_synthetic_point_cloud():
     assert faces.shape[1] == 3
     assert len(vertices_mm) > 0
     assert len(faces) > 0
+
+    reconstructed_radius = np.linalg.norm(vertices_mm, axis=1)
+    absolute_error = np.abs(reconstructed_radius - 50.0)
+    assert np.median(absolute_error) < 3.0
+    assert np.quantile(absolute_error, 0.90) < 8.0
+
+    centre = vertices_mm.mean(axis=0)
+    centred = vertices_mm - centre
+    a = centred[faces[:, 0]]
+    b = centred[faces[:, 1]]
+    c = centred[faces[:, 2]]
+    signed_volume = float(np.sum(np.einsum("ij,ij->i", a, np.cross(b, c))) / 6.0)
+    assert signed_volume > 0.0
+
+
+def test_poisson_normal_orientation_pins_open_part_toward_board_up():
+    """R-27 final-review regression: a real open-bottomed part must not get the opposite
+    global normal sign from another object after tangent-plane consistency."""
+    o3d = pytest.importorskip("open3d")
+    axis = np.linspace(-20.0, 20.0, 13)
+    height = np.linspace(-20.0, 0.0, 9)
+    xx, yy = np.meshgrid(axis, axis)
+    top = np.column_stack([xx.ravel(), yy.ravel(), np.full(xx.size, -20.0)])
+    side_points = []
+    for z in height:
+        side_points.extend(
+            [
+                np.column_stack(
+                    [axis, np.full_like(axis, -20.0), np.full_like(axis, z)]
+                ),
+                np.column_stack(
+                    [axis, np.full_like(axis, 20.0), np.full_like(axis, z)]
+                ),
+                np.column_stack(
+                    [np.full_like(axis, -20.0), axis, np.full_like(axis, z)]
+                ),
+                np.column_stack(
+                    [np.full_like(axis, 20.0), axis, np.full_like(axis, z)]
+                ),
+            ]
+        )
+    points = np.vstack([top, *side_points])
+    cloud = o3d.geometry.PointCloud()
+    cloud.points = o3d.utility.Vector3dVector(points)
+    cloud.estimate_normals()
+
+    mode = tsdf_fusion._orient_poisson_normals(cloud, points)
+
+    assert mode == "tangent_plane"
+    normals = np.asarray(cloud.normals)
+    strong_up = np.count_nonzero(normals[:, 2] < -0.2)
+    strong_down = np.count_nonzero(normals[:, 2] > 0.2)
+    assert strong_up > 1.25 * strong_down
+
+
+def test_extract_mesh_poisson_handles_an_exactly_planar_grid():
+    pytest.importorskip("open3d")
+    axis = np.linspace(-20.0, 20.0, 15)
+    xx, yy = np.meshgrid(axis, axis)
+    points_mm = np.column_stack(
+        [xx.ravel(), yy.ravel(), np.zeros(xx.size, dtype=np.float64)]
+    )
+
+    vertices_mm, faces = tsdf_fusion.extract_mesh_poisson(points_mm, poisson_depth=5)
+
+    assert len(vertices_mm) > 0
+    assert len(faces) > 0
+    assert np.isfinite(vertices_mm).all()
+
+
+def test_extract_mesh_poisson_rejects_line_like_input_clearly():
+    pytest.importorskip("open3d")
+    points_mm = np.column_stack(
+        [
+            np.linspace(0.0, 20.0, 20),
+            np.zeros(20),
+            np.zeros(20),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="rank-deficient"):
+        tsdf_fusion.extract_mesh_poisson(points_mm, poisson_depth=5)
+
+
+# --- reanchor_frames_to_board (R-30) -----------------------------------------------------------
+
+
+def _flat_board_surface(
+    slope_x: float = 0.0, slope_y: float = 0.0, z_at_origin_mm: float = -2.0
+) -> BoardSurface:
+    """A BoardSurface with a known plane, for tests that need a fixed correction target --
+    nothing in production code constructs one this way; measure_board_surface always fits one."""
+    return BoardSurface(
+        slope_x=slope_x,
+        slope_y=slope_y,
+        z_at_origin_mm=z_at_origin_mm,
+        offset_mm=z_at_origin_mm,
+        tilt_deg=0.0,
+        residual_sigma_mm=0.0,
+        inlier_count=1,
+        candidate_count=1,
+        board_layer_top_mm=None,
+        height_threshold_mm=2.0,
+    )
+
+
+def _board_grid_points(
+    slope_x: float, slope_y: float, z_at_origin_mm: float, count: int = 400
+) -> np.ndarray:
+    """A dense grid of board points (board-frame mm) lying exactly on the given plane, spanning
+    the default footprint -- enough to satisfy DEFAULT_MIN_FRAME_BOARD_POINTS on its own."""
+    side = int(np.ceil(np.sqrt(count)))
+    footprint_width_mm, footprint_height_mm = DEFAULT_FOOTPRINT_MM
+    x = np.linspace(10.0, footprint_width_mm - 10.0, side)
+    y = np.linspace(10.0, footprint_height_mm - 10.0, side)
+    grid_x, grid_y = np.meshgrid(x, y)
+    grid_x, grid_y = grid_x.ravel(), grid_y.ravel()
+    grid_z = slope_x * grid_x + slope_y * grid_y + z_at_origin_mm
+    return np.column_stack([grid_x, grid_y, grid_z])
+
+
+def test_reanchor_frames_to_board_corrects_a_drifted_frame_and_its_part():
+    # Frame 0 already agrees with the consensus plane; frame 1's own board is tilted and offset
+    # by a few mm/degrees (D-060's actual finding), *and* carries a thin flat "part" cluster 6mm
+    # above its own (drifted) board -- the ghost-layer setup: before correction, frame 1's part
+    # sits at a different true height above the real board than frame 0's does, which is exactly
+    # what lets a pooled histogram mistake the drift for a second layer.
+    target = _flat_board_surface(slope_x=0.0, slope_y=0.0, z_at_origin_mm=-2.0)
+    frame0_board = _board_grid_points(0.0, 0.0, -2.0)
+    frame0_part = np.array(
+        [[80.0, 60.0, -8.0]]
+    )  # 6mm above frame 0's own board (-2 - 6 = -8)
+
+    drift_slope_x, drift_slope_y, drift_offset = 0.02, -0.015, -5.3
+    frame1_board = _board_grid_points(drift_slope_x, drift_slope_y, drift_offset)
+    frame1_part_z = drift_slope_x * 80.0 + drift_slope_y * 60.0 + drift_offset - 6.0
+    frame1_part = np.array(
+        [[80.0, 60.0, frame1_part_z]]
+    )  # 6mm above frame 1's *own* board
+
+    point_count = len(frame0_board) + 1
+    board_frame_points = np.stack(
+        [
+            np.vstack([frame0_board, frame0_part]),
+            np.vstack([frame1_board, frame1_part]),
+        ]
+    ).reshape(2, 1, point_count, 3)
+    valid_depth = np.ones((2, 1, point_count), dtype=bool)
+    board_extrinsic = np.tile(np.eye(3, 4), (2, 1, 1))
+
+    corrected_points, _corrected_extrinsic, reports = (
+        tsdf_fusion.reanchor_frames_to_board(
+            board_frame_points, board_extrinsic, valid_depth, target
+        )
+    )
+
+    # Candidate selection is the same coarse height band measure_board_surface itself uses --
+    # wide enough to admit the lone part point too (it's within +-15mm), same as production; the
+    # robust fit below is what actually has to reject that single outlier.
+    assert [r.candidate_count for r in reports] == [
+        len(frame0_board) + 1,
+        len(frame1_board) + 1,
+    ]
+
+    # Frame 1's own board, re-fit after correction, now agrees with the target plane.
+    corrected_frame1_board = corrected_points[1, 0, : len(frame1_board)]
+    slope_x, slope_y, z_at_origin_mm, _sigma, _n = fit_board_plane_robust(
+        corrected_frame1_board[:, 0],
+        corrected_frame1_board[:, 1],
+        corrected_frame1_board[:, 2],
+        min_inlier_points=3,
+    )
+    assert slope_x == pytest.approx(0.0, abs=1e-6)
+    assert slope_y == pytest.approx(0.0, abs=1e-6)
+    assert z_at_origin_mm == pytest.approx(-2.0, abs=1e-6)
+
+    # Both frames' parts now read the same true height above the target board -- no ghost layer.
+    corrected_frame0_part = corrected_points[0, 0, -1]
+    corrected_frame1_part = corrected_points[1, 0, -1]
+    height0 = target.height_above_board_mm(corrected_frame0_part[None, :])[0]
+    height1 = target.height_above_board_mm(corrected_frame1_part[None, :])[0]
+    # Loose enough to allow the single part point's own (tiny) share of influence on the robust
+    # fit it was swept into as a candidate -- see the comment above -- while still being two
+    # orders of magnitude tighter than the multi-mm ghost-layer drift this corrects.
+    assert height0 == pytest.approx(6.0, abs=0.01)
+    assert height1 == pytest.approx(6.0, abs=0.01)
+
+
+def test_reanchor_frames_to_board_raises_when_a_frame_has_too_few_candidates():
+    target = _flat_board_surface()
+    board_frame_points = np.zeros((1, 1, 5, 3))
+    board_frame_points[0, 0, :, 2] = -2.0  # on-plane, but only 5 points
+    valid_depth = np.ones((1, 1, 5), dtype=bool)
+    board_extrinsic = np.tile(np.eye(3, 4), (1, 1, 1))
+
+    with pytest.raises(ValueError, match="frame 0.*need at least"):
+        tsdf_fusion.reanchor_frames_to_board(
+            board_frame_points,
+            board_extrinsic,
+            valid_depth,
+            target,
+            min_frame_board_points=100,
+        )
+
+
+def test_reanchor_frames_to_board_extrinsic_round_trips_a_real_point():
+    # The correction's whole point: the *same* physical depth measurement must reproject
+    # identically whether expressed as (original point, original extrinsic) or (corrected point,
+    # corrected extrinsic) -- this is the algebra `reanchor_frames_to_board`'s docstring derives,
+    # checked directly rather than only by "the mesh looks right afterward".
+    target = _flat_board_surface(slope_x=0.0, slope_y=0.0, z_at_origin_mm=-2.0)
+    drifted_board = _board_grid_points(0.03, -0.02, -6.0)
+    test_point = np.array([[80.0, 60.0, -40.0]])  # some other point this frame also saw
+    all_points = np.vstack([drifted_board, test_point])
+    point_count = len(all_points)
+
+    board_frame_points = all_points.reshape(1, 1, point_count, 3)
+    valid_depth = np.ones((1, 1, point_count), dtype=bool)
+    rotation = np.array(
+        [[0.9950, -0.0998, 0.0], [0.0998, 0.9950, 0.0], [0.0, 0.0, 1.0]]
+    )  # an arbitrary ~5.7 deg rotation about z, not identity -- exercises R_board actually mattering
+    translation = np.array([5.0, -3.0, 120.0])
+    intrinsic = np.array([[800.0, 0.0, 320.0], [0.0, 800.0, 240.0], [0.0, 0.0, 1.0]])
+    board_extrinsic = np.concatenate([rotation, translation[:, None]], axis=1)[
+        None, :, :
+    ]
+
+    corrected_points, corrected_extrinsic, _reports = (
+        tsdf_fusion.reanchor_frames_to_board(
+            board_frame_points, board_extrinsic, valid_depth, target
+        )
+    )
+
+    original_u, original_v, original_z = project_points_to_camera(
+        test_point, rotation, translation, intrinsic
+    )
+    corrected_test_point = corrected_points[0, 0, -1][None, :]
+    corrected_u, corrected_v, corrected_z = project_points_to_camera(
+        corrected_test_point,
+        corrected_extrinsic[0, :, :3],
+        corrected_extrinsic[0, :, 3],
+        intrinsic,
+    )
+    assert corrected_u == pytest.approx(original_u, abs=1e-6)
+    assert corrected_v == pytest.approx(original_v, abs=1e-6)
+    assert corrected_z == pytest.approx(original_z, abs=1e-6)
 
 
 # --- fuse_run: end-to-end wiring on synthetic files ----------------------------------------------
@@ -381,6 +924,7 @@ def test_fuse_run_writes_mesh_and_report(tmp_path):
         voxel_size_mm=10.0,
         footprint_mm=(160.0, 120.0),
         max_part_height_mm=100.0,
+        min_kept_points=0,
     )
 
     assert report["frame_count"] == 1
@@ -413,10 +957,33 @@ def test_fuse_run_grid_top_follows_the_fitted_plane(tmp_path):
         voxel_size_mm=10.0,
         footprint_mm=(160.0, 120.0),
         max_part_height_mm=100.0,
+        min_kept_points=0,
     )
 
     assert report["bounds_max_mm"][2] == pytest.approx(-10.0, abs=0.5)
     assert report["bounds_min_mm"][2] == pytest.approx(-110.0, abs=0.5)
+
+
+def test_fuse_run_height_threshold_override_skips_the_layer_search(tmp_path):
+    # R-26: an explicit height_threshold_mm must reach measure_board_surface too, not just
+    # segment_part -- the whole point of the override is to work around a layer-search failure.
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth())
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        tmp_path / "mesh_out",
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+        height_threshold_mm=5.0,
+        min_kept_points=0,
+    )
+
+    assert report["board_surface"]["board_layer_top_mm"] is None
 
 
 def test_fuse_run_excludes_invalid_depth_pixels_from_the_board_fit(tmp_path):
@@ -437,6 +1004,7 @@ def test_fuse_run_excludes_invalid_depth_pixels_from_the_board_fit(tmp_path):
         voxel_size_mm=10.0,
         footprint_mm=(160.0, 120.0),
         max_part_height_mm=100.0,
+        min_kept_points=0,
     )
 
     assert report["board_surface"]["offset_mm"] == pytest.approx(-10.0, abs=0.5)
@@ -479,6 +1047,7 @@ def test_fuse_run_at_min_confidence_zero_still_excludes_non_finite_confidence(tm
         voxel_size_mm=10.0,
         footprint_mm=(160.0, 120.0),
         max_part_height_mm=100.0,
+        min_kept_points=0,
     )
 
     assert report["min_confidence"] == 0.0
@@ -494,7 +1063,9 @@ def test_fuse_run_refuses_to_overwrite_existing_output(tmp_path):
     _write_identity_alignment(alignment_json)
     out_dir = tmp_path / "mesh_out"
 
-    tsdf_fusion.fuse_run(run_dir, alignment_json, out_dir, voxel_size_mm=10.0)
+    tsdf_fusion.fuse_run(
+        run_dir, alignment_json, out_dir, voxel_size_mm=10.0, min_kept_points=0
+    )
 
     with pytest.raises(FileExistsError, match="already has files"):
         tsdf_fusion.fuse_run(run_dir, alignment_json, out_dir, voxel_size_mm=10.0)
@@ -515,6 +1086,47 @@ def test_fuse_run_rejects_unknown_method(tmp_path):
         )
 
 
+def test_fuse_run_writes_vote_consensus_when_sample_points_given(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth())
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+    out_dir = tmp_path / "mesh_out"
+    sample_points_mm = np.array([[80.0, 60.0, -40.0], [10.0, 10.0, -10.0]])
+
+    tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        out_dir,
+        voxel_size_mm=10.0,
+        min_kept_points=0,
+        vote_sample_points_mm=sample_points_mm,
+    )
+
+    vote_report = json.loads((out_dir / "vote_consensus.json").read_text())
+    assert len(vote_report["votes"]) == 2
+    assert vote_report["sample_points_mm"] == sample_points_mm.tolist()
+    # the part pixel's own unprojected point: this frame votes it on the surface.
+    assert vote_report["votes"][0]["near_surface_frame_count"] == 1
+
+
+def test_fuse_run_rejects_vote_sample_points_with_poisson(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_synthetic_run(run_dir, _board_and_part_depth())
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+
+    with pytest.raises(ValueError, match="marching_cubes"):
+        tsdf_fusion.fuse_run(
+            run_dir,
+            alignment_json,
+            tmp_path / "out",
+            method="poisson",
+            min_kept_points=0,
+            vote_sample_points_mm=np.array([[80.0, 60.0, -40.0]]),
+        )
+
+
 # --- R-20: fuse_run's own confidence-threshold wiring -------------------------------------------
 #
 # The fuse_tsdf-level test above already proves a confidence-derived mask keeps a spurious
@@ -528,6 +1140,9 @@ _CONFIDENCE_TEST_FUSE_KWARGS = {
     "voxel_size_mm": 10.0,
     "footprint_mm": (160.0, 120.0),
     "max_part_height_mm": 100.0,
+    # R-26 (#180): these scenes use a couple of hand-placed pixels, not a realistic point count --
+    # min_kept_points is about a real run's segmentation, not these confidence-wiring tests.
+    "min_kept_points": 0,
 }
 _CONFIDENCE_TEST_PIXEL_COUNT = 1 * 130 * 170  # _board_and_part_depth's image size
 

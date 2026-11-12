@@ -275,6 +275,54 @@ def test_colors_to_labels_rejects_unrecognised_colors():
         provenance.colors_to_labels(np.array([[1, 2, 3]], dtype=np.uint8))
 
 
+def test_labels_to_colors_maps_inferred_to_its_own_source_colour():
+    # A-04: Inferred has a colour of its own, distinct from both measured colours, so a sample
+    # coloured with it can never be read back as measured surface.
+    labels = np.array(
+        [
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_INFERRED,
+            provenance.LABEL_UNOBSERVED,
+        ]
+    )
+
+    colors = provenance.labels_to_colors(labels)
+
+    np.testing.assert_array_equal(
+        colors,
+        [
+            provenance.OBSERVED_COLOR,
+            provenance.INFERRED_COLOR,
+            provenance.UNOBSERVED_COLOR,
+        ],
+    )
+    assert provenance.INFERRED_COLOR not in (
+        provenance.OBSERVED_COLOR,
+        provenance.UNOBSERVED_COLOR,
+    )
+
+
+def test_labels_to_colors_rejects_an_unknown_label():
+    # Before A-04 an unknown label came back with uninitialised np.empty bytes, no error.
+    labels = np.array(
+        [provenance.LABEL_OBSERVED, "observed", provenance.LABEL_UNOBSERVED]
+    )
+
+    with pytest.raises(ValueError, match=r"1 label\(s\) are not .*'observed'"):
+        provenance.labels_to_colors(labels)
+
+
+def test_colors_to_labels_still_refuses_the_inferred_colour():
+    # Nothing served carries Inferred yet, and every reader of colors_to_labels (R-10,
+    # next-view, the agent tools) assumes measured surface, so the colour must fail loudly.
+    colors = np.array(
+        [provenance.OBSERVED_COLOR, provenance.INFERRED_COLOR], dtype=np.uint8
+    )
+
+    with pytest.raises(ValueError, match="1 color"):
+        provenance.colors_to_labels(colors)
+
+
 # --- observations.npz round trip ----------------------------------------------------------------
 
 
@@ -678,6 +726,97 @@ def test_main_reports_a_named_failure_when_run_json_predates_the_field(
     assert "min_confidence" in error_output
 
 
+# --- R-30: provenance_run prefers fuse_run's own per-frame corrected extrinsic -------------------
+
+
+def test_provenance_run_uses_fusion_dirs_corrected_extrinsic_over_the_drifted_global_rebuild(
+    tmp_path,
+):
+    """TabeenRaoof's review on #270: without `fusion_dir`, provenance rebuilds camera poses from
+    poses.npz + the one global alignment, blind to fuse_run's own per-frame re-anchoring -- so a
+    mesh fused from corrected frames gets checked against the *uncorrected*, still-drifted camera
+    it was corrected away from. Frame 1's raw pose here is drifted 5mm further out in x than the
+    pose its depth image was actually captured from; only corrected_extrinsic.npz holds the real
+    one."""
+    run_dir = tmp_path / "run"
+    extrinsic, intrinsic, depth, vertices, faces = _build_two_frame_scene()
+    drifted_extrinsic = extrinsic.copy()
+    drifted_extrinsic[
+        1, 0, 3
+    ] = -25.0  # true camera centre x=20mm; raw pose claims x=25mm
+    _write_synthetic_run(run_dir, depth, drifted_extrinsic, intrinsic)
+    alignment_json = run_dir / "metric_alignment.json"
+    _write_identity_alignment(alignment_json)
+    mesh_ply_path = run_dir / "mesh.ply"
+    tsdf_fusion.write_mesh_ply(mesh_ply_path, vertices, faces)
+
+    report_uncorrected = provenance.provenance_run(
+        mesh_ply_path, run_dir, alignment_json, tmp_path / "out_uncorrected"
+    )
+    assert report_uncorrected["extrinsic_source"] == "global_alignment"
+    assert (
+        report_uncorrected["observed_vertex_count"] == 0
+    )  # vertex 0 now seen by frame 0 only
+
+    fusion_dir = tmp_path / "fusion"
+    fusion_dir.mkdir()
+    np.savez_compressed(fusion_dir / "corrected_extrinsic.npz", extrinsic=extrinsic)
+    report_corrected = provenance.provenance_run(
+        mesh_ply_path,
+        run_dir,
+        alignment_json,
+        tmp_path / "out_corrected",
+        fusion_dir=fusion_dir,
+    )
+    assert report_corrected["extrinsic_source"] == "reanchored"
+    assert report_corrected["observed_vertex_count"] == 1  # both frames see it again
+
+
+def test_provenance_run_rejects_a_corrected_extrinsic_with_the_wrong_frame_count(
+    tmp_path,
+):
+    mesh_ply_path, run_dir, alignment_json = _write_two_frame_scene_run(tmp_path)
+    fusion_dir = tmp_path / "fusion"
+    fusion_dir.mkdir()
+    np.savez_compressed(  # 1 frame's worth, but this run has 2
+        fusion_dir / "corrected_extrinsic.npz", extrinsic=np.eye(3, 4)[None]
+    )
+
+    with pytest.raises(ValueError, match="expected"):
+        provenance.provenance_run(
+            mesh_ply_path,
+            run_dir,
+            alignment_json,
+            tmp_path / "out",
+            fusion_dir=fusion_dir,
+        )
+
+
+def test_main_passes_fusion_dir_through_and_reports_reanchored_source(tmp_path):
+    mesh_ply_path, run_dir, alignment_json = _write_two_frame_scene_run(tmp_path)
+    extrinsic, _intrinsic, _depth, _vertices, _faces = _build_two_frame_scene()
+    fusion_dir = tmp_path / "fusion"
+    fusion_dir.mkdir()
+    np.savez_compressed(fusion_dir / "corrected_extrinsic.npz", extrinsic=extrinsic)
+    out_dir = tmp_path / "out"
+
+    exit_code = provenance.main(
+        [
+            str(mesh_ply_path),
+            str(run_dir),
+            str(alignment_json),
+            "--out-dir",
+            str(out_dir),
+            "--fusion-dir",
+            str(fusion_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    report = json.loads((out_dir / "provenance.json").read_text())
+    assert report["extrinsic_source"] == "reanchored"
+
+
 # --- R-25: signed camera-facing gate and explicit depth-gate evidence -----------------------------
 
 
@@ -770,6 +909,306 @@ def test_oriented_vertex_normals_recovers_reversed_closed_mesh_winding():
     centre = vertices.mean(axis=0)
     outward_vectors = vertices - centre
     assert np.all(np.einsum("ij,ij->i", normals, outward_vectors) > 0.0)
+
+
+def test_oriented_vertex_normals_signs_disconnected_closed_components_independently():
+    first_vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    outward_faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+
+    second_vertices = first_vertices + np.array([4.0, 0.0, 0.0])
+    second_faces = outward_faces[:, [0, 2, 1]] + len(first_vertices)
+
+    vertices = np.vstack([first_vertices, second_vertices])
+    faces = np.vstack([outward_faces, second_faces])
+    cameras = np.array([[2.0, 2.0, 5.0]])
+
+    normals = provenance.oriented_vertex_normals(vertices, faces, cameras)
+
+    for start in (0, 4):
+        component_vertices = vertices[start : start + 4]
+        component_normals = normals[start : start + 4]
+        centre = component_vertices.mean(axis=0)
+        radial = component_vertices - centre
+        assert np.all(np.einsum("ij,ij->i", component_normals, radial) > 0.0)
+
+
+def test_oriented_vertex_normals_withholds_nested_closed_cavity_shell():
+    outer_vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 10.0],
+        ]
+    )
+    outward_faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+
+    inner_vertices = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [2.0, 1.0, 1.0],
+            [1.0, 2.0, 1.0],
+            [1.0, 1.0, 2.0],
+        ]
+    )
+    inner_cavity_faces = outward_faces[:, [0, 2, 1]] + len(outer_vertices)
+
+    vertices = np.vstack([outer_vertices, inner_vertices])
+    faces = np.vstack([outward_faces, inner_cavity_faces])
+    cameras = np.array([[20.0, 20.0, 20.0]])
+
+    normals = provenance.oriented_vertex_normals(vertices, faces, cameras)
+
+    outer_normals = normals[:4]
+    outer_centre = outer_vertices.mean(axis=0)
+    assert np.all(
+        np.einsum("ij,ij->i", outer_normals, outer_vertices - outer_centre) > 0.0
+    )
+    np.testing.assert_array_equal(normals[4:], np.zeros((4, 3)))
+
+
+def test_oriented_vertex_normals_withholds_nested_open_cavity_patch():
+    outer_vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 10.0],
+        ]
+    )
+    outward_faces = np.array([[0, 2, 1], [0, 1, 3], [0, 3, 2], [1, 2, 3]])
+
+    # An open patch fully inside the closed outer shell.  Give it strong camera evidence so this
+    # test fails if open groups are allowed to vote before enclosure is considered.
+    inner_vertices = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [2.0, 1.0, 1.0],
+            [1.0, 2.0, 1.0],
+        ]
+    )
+    inner_faces = np.array([[4, 5, 6]])
+    vertices = np.vstack([outer_vertices, inner_vertices])
+    faces = np.vstack([outward_faces, inner_faces])
+    cameras = np.array([[20.0, 20.0, 20.0]])
+    visible_vertex_index = np.array([4, 5, 6], dtype=np.int64)
+    visible_frame_index = np.zeros(3, dtype=np.int64)
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=visible_vertex_index,
+        visible_frame_index=visible_frame_index,
+    )
+
+    outer_normals = normals[:4]
+    outer_centre = outer_vertices.mean(axis=0)
+    assert np.all(
+        np.einsum("ij,ij->i", outer_normals, outer_vertices - outer_centre) > 0.0
+    )
+    np.testing.assert_array_equal(normals[4:], np.zeros((3, 3)))
+
+
+def test_hidden_rear_open_patch_stays_unobserved_with_noisy_depth_evidence():
+    """Geometry must veto a hidden rear sheet even when noisy depth admits its vote."""
+
+    def grid(size: int, z_mm: float, *, toward_camera: bool):
+        axis = np.linspace(-(size - 1) / 2.0, (size - 1) / 2.0, size)
+        vertices = np.array(
+            [[x, y, z_mm] for y in axis for x in axis], dtype=np.float64
+        )
+        faces = []
+        for row in range(size - 1):
+            for col in range(size - 1):
+                a = row * size + col
+                b = a + 1
+                d = (row + 1) * size + col
+                cc = d + 1
+                if toward_camera:
+                    faces.extend([[a, cc, b], [a, d, cc]])  # -z
+                else:
+                    faces.extend([[a, b, cc], [a, cc, d]])  # +z
+        return vertices, np.asarray(faces, dtype=np.int64)
+
+    front_vertices, front_faces = grid(5, 0.0, toward_camera=True)
+    rear_vertices, rear_faces = grid(4, 1.0, toward_camera=False)
+    rear_faces = rear_faces + len(front_vertices)
+    vertices = np.vstack([front_vertices, rear_vertices])
+    faces = np.vstack([front_faces, rear_faces])
+
+    cameras = np.array([[-5.0, 0.0, -100.0], [5.0, 0.0, -100.0]])
+    pair_vertices = np.repeat(np.arange(len(vertices), dtype=np.int64), 2)
+    pair_frames = np.tile(np.array([0, 1], dtype=np.int64), len(vertices))
+    pair_z_cam = np.where(pair_vertices < len(front_vertices), 100.0, 101.0)
+
+    # Simulate the real symmetric depth gate at about the measured board residual scale.
+    # Some rear pairs look spuriously in front of the noisy measured surface, which defeated the
+    # previous depth-sign guard. We deliberately pass *all* pairs to the orientation vote: the
+    # geometric occlusion test must still remove every hidden rear vote.
+    rng = np.random.default_rng(7)
+    measured_depth = 100.0 + rng.normal(0.0, 1.0, size=len(pair_vertices))
+    rear_pairs = pair_vertices >= len(front_vertices)
+    assert np.any(pair_z_cam[rear_pairs] <= measured_depth[rear_pairs])
+    assert np.all(np.abs(pair_z_cam[rear_pairs] - measured_depth[rear_pairs]) <= 5.0)
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=pair_vertices,
+        visible_frame_index=pair_frames,
+    )
+
+    assert np.all(normals[: len(front_vertices), 2] < 0.0)
+    np.testing.assert_array_equal(
+        normals[len(front_vertices) :],
+        np.zeros_like(rear_vertices),
+    )
+
+    to_camera = cameras[pair_frames] - vertices[pair_vertices]
+    facing = np.einsum("ij,ij->i", normals[pair_vertices], to_camera) > 0.0
+    observations = {
+        "vertex_index": pair_vertices[facing],
+        "frame_index": pair_frames[facing],
+        "z_cam_mm": pair_z_cam[facing],
+        "measured_depth_mm": measured_depth[facing],
+    }
+    labels = provenance.label_vertices(
+        len(vertices),
+        observations,
+        cameras,
+        vertices,
+    )["label"]
+
+    assert np.all(labels[: len(front_vertices)] == provenance.LABEL_OBSERVED)
+    assert np.all(labels[len(front_vertices) :] == provenance.LABEL_UNOBSERVED)
+
+
+def test_partially_occluded_rear_sheet_cannot_label_hidden_vertices_observed():
+    """Exposed rear vertices may orient a group, but covered vertices still fail final visibility."""
+
+    def grid(size: int, z_mm: float, x_shift_mm: float, *, toward_camera: bool):
+        axis = np.linspace(-(size - 1) / 2.0, (size - 1) / 2.0, size)
+        vertices = np.array(
+            [[x + x_shift_mm, y, z_mm] for y in axis for x in axis],
+            dtype=np.float64,
+        )
+        faces = []
+        for row in range(size - 1):
+            for col in range(size - 1):
+                a = row * size + col
+                b = a + 1
+                d = (row + 1) * size + col
+                cc = d + 1
+                if toward_camera:
+                    faces.extend([[a, cc, b], [a, d, cc]])  # -z
+                else:
+                    faces.extend([[a, b, cc], [a, cc, d]])  # +z
+        return vertices, np.asarray(faces, dtype=np.int64)
+
+    front_vertices, front_faces = grid(5, 0.0, 0.0, toward_camera=True)
+    rear_vertices, rear_faces = grid(5, 1.0, 2.0, toward_camera=False)
+    rear_faces = rear_faces + len(front_vertices)
+    vertices = np.vstack([front_vertices, rear_vertices])
+    faces = np.vstack([front_faces, rear_faces])
+
+    cameras = np.array([[-5.0, 0.0, -100.0], [5.0, 0.0, -100.0]])
+    pair_vertices = np.repeat(np.arange(len(vertices), dtype=np.int64), 2)
+    pair_frames = np.tile(np.array([0, 1], dtype=np.int64), len(vertices))
+
+    visibility_scene = provenance._build_visibility_scene(vertices, faces)
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=pair_vertices,
+        visible_frame_index=pair_frames,
+        visibility_scene=visibility_scene,
+    )
+
+    rear_normals = normals[len(front_vertices) :]
+    assert np.any(rear_normals[:, 2] < 0.0)
+
+    raw_observations = {
+        "vertex_index": pair_vertices,
+        "frame_index": pair_frames,
+        "z_cam_mm": np.where(pair_vertices < len(front_vertices), 100.0, 101.0),
+        "measured_depth_mm": np.full(len(pair_vertices), 100.0),
+        "depth_gate_rejected_count": np.zeros(len(vertices), dtype=np.int64),
+    }
+    facing = (
+        np.einsum(
+            "ij,ij->i",
+            normals[pair_vertices],
+            cameras[pair_frames] - vertices[pair_vertices],
+        )
+        > 0.0
+    )
+    facing_observations = dict(raw_observations)
+    for key in ("vertex_index", "frame_index", "z_cam_mm", "measured_depth_mm"):
+        facing_observations[key] = raw_observations[key][facing]
+
+    filtered = provenance._filter_observations_by_mesh_visibility(
+        facing_observations,
+        vertices,
+        cameras,
+        scene=visibility_scene,
+    )
+    labels = provenance.label_vertices(
+        len(vertices),
+        filtered,
+        cameras,
+        vertices,
+    )["label"]
+
+    rear_x = rear_vertices[:, 0]
+    hidden_rear = rear_x <= 2.0
+    exposed_rear = rear_x >= 3.0
+    rear_labels = labels[len(front_vertices) :]
+
+    assert np.all(rear_labels[hidden_rear] == provenance.LABEL_UNOBSERVED)
+    assert np.all(rear_labels[exposed_rear] == provenance.LABEL_OBSERVED)
+
+
+def test_oriented_vertex_normals_signs_bowtie_winding_groups_independently():
+    # Two open sheets share only vertex 0. They are separate winding groups because they share no
+    # edge. The second sheet starts reversed; both must still face the overhead camera.
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [-1.0, 0.0, 0.0],
+            [-1.0, -1.0, 0.0],
+            [0.0, -1.0, 0.0],
+        ]
+    )
+    first_faces = np.array([[0, 1, 2], [0, 2, 3]])
+    second_outward = np.array([[0, 4, 5], [0, 5, 6]])
+    second_reversed = second_outward[:, [0, 2, 1]]
+    faces = np.vstack([first_faces, second_reversed])
+    cameras = np.array([[0.0, 0.0, 10.0]])
+    visible_vertex_index = np.arange(len(vertices), dtype=np.int64)
+    visible_frame_index = np.zeros(len(vertices), dtype=np.int64)
+
+    normals = provenance.oriented_vertex_normals(
+        vertices,
+        faces,
+        cameras,
+        visible_vertex_index=visible_vertex_index,
+        visible_frame_index=visible_frame_index,
+    )
+
+    assert np.all(normals[:, 2] > 0.0)
 
 
 def test_orient_faces_consistently_fixes_one_reversed_neighbour():

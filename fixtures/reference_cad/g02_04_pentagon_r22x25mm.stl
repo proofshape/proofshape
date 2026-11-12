@@ -1,0 +1,114 @@
+solid g02_04_pentagon_r22x25mm
+  facet normal 0.000000e+00 0.000000e+00 -1.000000e+00
+    outer loop
+      vertex 0.000000 22.000000 0.000000
+      vertex -12.931276 -17.798374 0.000000
+      vertex -20.923243 6.798374 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 -1.000000e+00
+    outer loop
+      vertex 0.000000 22.000000 0.000000
+      vertex 12.931276 -17.798374 0.000000
+      vertex -12.931276 -17.798374 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 -1.000000e+00
+    outer loop
+      vertex 0.000000 22.000000 0.000000
+      vertex 20.923243 6.798374 0.000000
+      vertex 12.931276 -17.798374 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 1.000000e+00
+    outer loop
+      vertex 0.000000 22.000000 25.000000
+      vertex -20.923243 6.798374 25.000000
+      vertex -12.931276 -17.798374 25.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 1.000000e+00
+    outer loop
+      vertex 0.000000 22.000000 25.000000
+      vertex -12.931276 -17.798374 25.000000
+      vertex 12.931276 -17.798374 25.000000
+    endloop
+  endfacet
+  facet normal 0.000000e+00 0.000000e+00 1.000000e+00
+    outer loop
+      vertex 0.000000 22.000000 25.000000
+      vertex 12.931276 -17.798374 25.000000
+      vertex 20.923243 6.798374 25.000000
+    endloop
+  endfacet
+  facet normal -5.877853e-01 8.090170e-01 0.000000e+00
+    outer loop
+      vertex 0.000000 22.000000 0.000000
+      vertex -20.923243 6.798374 0.000000
+      vertex -20.923243 6.798374 25.000000
+    endloop
+  endfacet
+  facet normal -5.877853e-01 8.090170e-01 0.000000e+00
+    outer loop
+      vertex 0.000000 22.000000 0.000000
+      vertex -20.923243 6.798374 25.000000
+      vertex 0.000000 22.000000 25.000000
+    endloop
+  endfacet
+  facet normal -9.510565e-01 -3.090170e-01 0.000000e+00
+    outer loop
+      vertex -20.923243 6.798374 0.000000
+      vertex -12.931276 -17.798374 0.000000
+      vertex -12.931276 -17.798374 25.000000
+    endloop
+  endfacet
+  facet normal -9.510565e-01 -3.090170e-01 0.000000e+00
+    outer loop
+      vertex -20.923243 6.798374 0.000000
+      vertex -12.931276 -17.798374 25.000000
+      vertex -20.923243 6.798374 25.000000
+    endloop
+  endfacet
+  facet normal -1.373690e-16 -1.000000e+00 0.000000e+00
+    outer loop
+      vertex -12.931276 -17.798374 0.000000
+      vertex 12.931276 -17.798374 0.000000
+      vertex 12.931276 -17.798374 25.000000
+    endloop
+  endfacet
+  facet normal -1.373690e-16 -1.000000e+00 0.000000e+00
+    outer loop
+      vertex -12.931276 -17.798374 0.000000
+      vertex 12.931276 -17.798374 25.000000
+      vertex -12.931276 -17.798374 25.000000
+    endloop
+  endfacet
+  facet normal 9.510565e-01 -3.090170e-01 0.000000e+00
+    outer loop
+      vertex 12.931276 -17.798374 0.000000
+      vertex 20.923243 6.798374 0.000000
+      vertex 20.923243 6.798374 25.000000
+    endloop
+  endfacet
+  facet normal 9.510565e-01 -3.090170e-01 0.000000e+00
+    outer loop
+      vertex 12.931276 -17.798374 0.000000
+      vertex 20.923243 6.798374 25.000000
+      vertex 12.931276 -17.798374 25.000000
+    endloop
+  endfacet
+  facet normal 5.877853e-01 8.090170e-01 0.000000e+00
+    outer loop
+      vertex 20.923243 6.798374 0.000000
+      vertex 0.000000 22.000000 0.000000
+      vertex 0.000000 22.000000 25.000000
+    endloop
+  endfacet
+  facet normal 5.877853e-01 8.090170e-01 0.000000e+00
+    outer loop
+      vertex 20.923243 6.798374 0.000000
+      vertex 0.000000 22.000000 25.000000
+      vertex 20.923243 6.798374 25.000000
+    endloop
+  endfacet
+endsolid g02_04_pentagon_r22x25mm

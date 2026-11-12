@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { uploadFrame } from "./api.js";
 import { mountAppShell, type AppShellOptions, type AppState } from "./shell.js";
-import { startContractStub, type ContractStub } from "../stub/contract-stub.js";
+import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 
 // Same fixed-port reasoning as page.test.ts: happy-dom enforces same-origin, matching
@@ -221,14 +221,19 @@ describe("mountAppShell", () => {
     Object.defineProperty(video, "videoHeight", { value: height, configurable: true });
   }
 
+  // C-19 (#193): finishSession now requires MIN_FINISH_FRAMES accepted frames, matching
+  // recon/service.py -- every caller of this helper wants a session finish to actually
+  // succeed afterward.
   async function uploadAcceptedFrame(sessionId: string): Promise<void> {
     const frame = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
-    const result = await uploadFrame(baseUrl, sessionId, frame, {
-      alpha: 1,
-      beta: 2,
-      gamma: 3,
-    });
-    if (!result.ok) throw new Error("test setup: uploadFrame failed");
+    for (let i = 0; i < MIN_FINISH_FRAMES; i += 1) {
+      const result = await uploadFrame(baseUrl, sessionId, frame, {
+        alpha: 1,
+        beta: 2,
+        gamma: 3,
+      });
+      if (!result.ok) throw new Error("test setup: uploadFrame failed");
+    }
   }
 
   it("requests camera and gyro permission synchronously, inside the click handler -- the regression this story exists to prevent", async () => {
@@ -490,6 +495,28 @@ describe("mountAppShell", () => {
     expect(mounted.reconstructionStatus.textContent).toContain("Reference tier: charuco_board");
     expect(mounted.reconstructionStatus.textContent).toContain("Metric: yes");
     expect(mounted.reconstructionStatus.textContent).toContain("Observed fraction: 0.910");
+  });
+
+  it("hides the previous session report link immediately when a new Start begins", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stub.setReconstructionPendingPolls(0);
+
+    mounted.finishButton.click();
+    const reportLink = document.getElementById("shell-report-link");
+    expect(reportLink).toBeInstanceOf(HTMLAnchorElement);
+    await vi.waitFor(() => {
+      if ((reportLink as HTMLAnchorElement).hidden) throw new Error("report link not shown yet");
+    });
+    const firstHref = (reportLink as HTMLAnchorElement).getAttribute("href");
+    expect(firstHref).toMatch(/^report\.html\?session=/);
+
+    mounted.button.disabled = false;
+    mounted.button.click();
+
+    expect((reportLink as HTMLAnchorElement).hidden).toBe(true);
+    expect((reportLink as HTMLAnchorElement).hasAttribute("href")).toBe(false);
   });
 
   it("states that a non-metric result makes no dimensional claims", async () => {
@@ -943,18 +970,18 @@ describe("mountAppShell", () => {
     expect(coveredCountText()).toMatch(/^Covered: 0\//);
   });
 
-  it("a gate rejection for exposure never calls uploadFrame", async () => {
+  it("an all-black frame reports exposure before blur and never calls uploadFrame", async () => {
     const mounted = await startSuccessfulSession();
-    // Sharp (strong contrast -> clears the blur check) but every pixel is clipped (0 or 255).
-    const clipped = sharpWellExposedImageData();
-    for (let i = 0; i < clipped.data.length; i += 4) {
-      const value = (i / 4) % 2 === 0 ? 0 : 255;
-      clipped.data[i] = value;
-      clipped.data[i + 1] = value;
-      clipped.data[i + 2] = value;
-      clipped.data[i + 3] = 255;
+    // Uniform black fails both checks: it is fully clipped *and* has zero Laplacian variance.
+    // Exposure must run first so the user gets the actionable lighting error, not "hold steadier."
+    const black = sharpWellExposedImageData();
+    for (let i = 0; i < black.data.length; i += 4) {
+      black.data[i] = 0;
+      black.data[i + 1] = 0;
+      black.data[i + 2] = 0;
+      black.data[i + 3] = 255;
     }
-    stubCanvasContext(clipped);
+    stubCanvasContext(black);
     setVideoDimensions(mounted.cameraPreview, 640, 480);
     dispatchOrientation(1, 45, 0);
     await vi.waitFor(() => {
@@ -962,8 +989,9 @@ describe("mountAppShell", () => {
     });
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
-    await captureAndWaitForStatus(mounted, /clipped/i);
+    await captureAndWaitForStatus(mounted, /frame_rejected_exposure/i);
 
+    expect(mounted.captureStatus.textContent).not.toMatch(/frame_rejected_blur/i);
     expect(
       fetchSpy.mock.calls.some(([url]) => typeof url === "string" && url.includes("/frames")),
     ).toBe(false);
@@ -1023,7 +1051,7 @@ describe("mountAppShell", () => {
     expect(coveredCountText()).toMatch(/^Covered: 0\//);
   });
 
-  it("finishSession shows the too_few_frames message before any frame is accepted, and succeeds after one", async () => {
+  it("finishSession shows the too_few_frames message before enough frames are accepted, and succeeds after the minimum", async () => {
     const mounted = await startSuccessfulSession();
     stubCanvasContext();
     setVideoDimensions(mounted.cameraPreview, 640, 480);
@@ -1038,7 +1066,15 @@ describe("mountAppShell", () => {
     });
     expect(mounted.finishStatus.textContent).toMatch(/not enough frames/i);
 
-    await captureAndWaitForStatus(mounted, /accepted/i);
+    // Each capture needs a distinct orbit slot -- the coverage gate rejects a repeat at the
+    // same one as a duplicate (see "rolls back the gate's duplicate anchor..." below).
+    for (let slot = 0; slot < MIN_FINISH_FRAMES; slot += 1) {
+      dispatchOrientation(slot * 45, 45, 0);
+      await vi.waitFor(() => {
+        if (mounted.captureButton.disabled) throw new Error("still disabled");
+      });
+      await captureAndWaitForStatus(mounted, /accepted/i);
+    }
     mounted.finishButton.click();
     await vi.waitFor(() => {
       if (!mounted.finishStatus.textContent.startsWith("Session finished")) {

@@ -61,3 +61,8 @@ jobs:
         if: steps.detect.outputs.exists == 'true'
         working-directory: capture
         run: npm test
+
+      - name: Production build
+        if: steps.detect.outputs.exists == 'true'
+        working-directory: capture
+        run: npm run build

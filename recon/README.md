@@ -343,6 +343,10 @@ count are broken by how square-on the view is. Open3D is a pinned `requirements.
 for this (D-047). The reasoning for each of these choices is in `stories/C/C-08.md`. The scorer
 isn't wired into C-07's arrow yet; that's a separate step no story owns.
 
+`--disagreement-dir <run>/completion/disagreement` adds A-05's map (below): every candidate also
+gets the disagreement weight it would see and a `disagreement_rank`, and the report adds
+`best_by_disagreement`. The list's own order stays C-08's.
+
 ## A-01 · sampled VLM observations
 
 Install the pinned `requirements.txt`. For local use, copy `.env.example` to `.env.local`,
@@ -411,3 +415,120 @@ assumption, not a calibrated accuracy claim). Residuals rejected by that depth g
 per vertex and carried into `uncertainty.json`; sigma still uses only accepted residuals, so the
 truncation is explicit rather than hidden. Final `observed_fraction` is weighted by triangle area
 after R-10's sigma downgrade and therefore describes the GLB the service actually returns.
+
+## A-04 · shape completion stage (service side)
+
+After R-10, `run_reconstruction_pipeline` runs a completion stage (`recon/completion.py`), timed as
+`stage_timings_s["completion"]`. It only reads upstream artifacts and writes inside
+`artifacts/completion/`, so the served GLB and every upstream file are byte-identical with it on or
+off. Completed surface is **Inferred**: it steers capture guidance (A-05) and never touches a
+verdict (D-005, D-006). `recon/provenance.py` defines `LABEL_INFERRED` and `INFERRED_COLOR`, but no
+served file carries them yet.
+
+**What it does.**
+1. **Isolates the part** from the served mesh's Observed vertices. The cleaned mesh still carries a
+   thin board skin connected to the part (A-10), so the stage:
+   - starts from a *core* above fusion's own cut (`tsdf_fusion.json`'s `board_surface`) plus
+     `skin_allowance_mm`;
+   - keeps that core's largest spatial cluster;
+   - adds back lower wall vertices inside a cone under the core (`min_wall_angle_deg`).
+2. **Samples a partial cloud** (`input/partial_zup.ply`) and turns it z-up for the model.
+3. **Picks a photo** (`input/view.png`): the posed frame that observed the most kept vertices,
+   cropped in stored sensor pixels, then turned upright by its EXIF orientation.
+4. **Writes `request.json`** in the contract format (`recon/completion_contract.py`, D-058).
+
+**Environment.**
+
+| Variable | Default | Effect |
+|---|---|---|
+| `PROOFSHAPE_COMPLETION` | unset (stage on) | Only the literal `0` turns the stage off: no folder, no timing key, no warning |
+| `PROOFSHAPE_COMPLETION_RUNNER` | unset | Command for the out-of-process runner (shell-split; the stage appends `--request <path>`) |
+
+**Outcomes** (`completion.json`, always written last):
+
+| Situation | Status | Warning to the supplier |
+|---|---|---|
+| No runner set up (every session on the M2 Max today) | `unavailable`, inputs prepared | none (D-058) |
+| Runner finished, every sample valid | `complete` | none |
+| Runner stopped early or some samples rejected | `partial` | one fixed `completion_partial` string |
+| Runner failed, timed out with nothing, or returned nothing usable | `failed` | one fixed `completion_failed` string |
+
+The runner's own output goes only to `runner_log_tail.txt` (the last 64 KiB), never to a warning or
+`session.json`. The runner inherits no `GEMINI_API_KEY` or endpoint token. Runs are one at a time;
+a second concurrent session is skipped with a warning.
+
+**The runner contract.** The stage and its runner share only the folder:
+- `request.json` names the seeds and the budget;
+- the runner writes one mesh per sample, `runner/sample_<k>_mesh_zup.ply`;
+- it rewrites `runner/result.json` atomically after each sample;
+- it must not start a sample that would end past the budget.
+
+Pins, seeds and every file layout are checked strictly, and a mesh in the wrong units (LaS-Comp
+works in a unit cube) is rejected. The real LaS-Comp runner is `scripts/lascomp_runner.py` (A-12),
+in its own Python 3.10 environment built by `scripts/setup_completion_env.sh` on a CUDA host.
+`tests/completion_stub_runner.py` is the CI stand-in.
+
+**Running it elsewhere** (A-12's Colab check; its story notes have the full round trip):
+```
+python -m recon.completion prepare <session>/artifacts   # on the Mac: inputs + request, no runner
+# on the CUDA host, once:  bash scripts/setup_completion_env.sh
+# then, per folder:        ~/lascomp-venv/bin/python -I scripts/lascomp_runner.py \
+#                            --lascomp-root ~/LaS-Comp --request <folder>/request.json
+python -m recon.completion ingest <session>/artifacts    # back on the Mac: samples + completion.json
+```
+
+**Parameters.** Every number is a declared default in `CompletionParameters`, with its reason in the
+docstring.
+- `max_samples` (8), `budget_s` (2850) and `overrun_allowance_s` (90) were measured by A-12 on a
+  Colab T4, s-04 and s-02 at LaS-Comp's default steps. They hold for a T4 only; another GPU needs
+  its own measurement.
+- The isolation defaults come from A-10's s-04 inspection and the golden set's fusion cuts. Re-check
+  them once R-26 and R-27 change segmentation and cleanup.
+- Once a runner is configured, the served model waits for the budget, which is longer than capture
+  polls (10 min). Read D-058 before configuring one for suppliers.
+
+## A-05 · disagreement map
+
+Right after the completion stage, `run_reconstruction_pipeline` builds the disagreement map
+(`recon/disagreement.py`), timed as `stage_timings_s["disagreement"]`. It reads only
+`completion/` and the fusion record, and writes only `completion/disagreement/`. It is capture
+guidance and nothing else (D-005, D-006, D-066): no verdict reads it, and nothing in `inspect/` may
+import it (a test checks).
+
+**What it measures.** A-12's seed-to-seed spread, per point:
+- For each point of each accepted `sample_<k>.ply`, the distance to every other sample's mesh
+  (`runner/sample_<j>_mesh_zup.ply`, point-to-triangle); its spread is the median over the others.
+- A point within 2 mm of the partial is seen surface (A-12's split). The session's noise level is
+  the median spread there.
+- An unseen point counts by its spread *above* that noise level, times the area it stands for
+  (mm·mm²). Points below fusion's board cut are never counted: no camera above the board sees the
+  board-contact face, and no photo puts the cut band into the partial.
+- Counted points are pooled into 2 mm voxels, so the scorer casts about as many rays as it does for
+  the served mesh.
+
+**How the scorer uses it.** The served mesh alone blocks a view, so guessed surface never hides
+anything. A target just behind served *Unobserved* surface (within 2 mm) still counts, as the same
+surface. When every sample's mesh is consistently wound, a target facing away from the camera
+doesn't count. `recon.agent_tools.score_next_view` picks the map up beside the served GLB and adds
+`best_by_disagreement`; `best` stays C-08's.
+
+**Outcomes** (`disagreement.json`, never a warning):
+
+| Situation | Status |
+|---|---|
+| Completion `unavailable` or `failed`, or fewer than 2 accepted samples (every host without a runner today) | `unavailable` |
+| A map was built (it can hold no targets, if the samples agree) | `complete`, plus `targets.npz` |
+| Unreadable inputs, or no seen points to set the noise level | `failed`, with the reason |
+
+**A folder ingested later** (A-12's route) can be mapped in place, because an `unavailable` record is
+the one thing the stage will replace:
+```
+python -m recon.completion ingest <session>/artifacts
+python -m recon.disagreement <session>/artifacts/completion --fusion-dir <session>/artifacts/fusion
+python -m recon.next_view <session>/artifacts/uncertainty --disagreement-dir <session>/artifacts/completion/disagreement
+```
+Without `--fusion-dir` (a completion folder copied on its own) the board cut falls back to a level
+plane through the partial's lowest point, and the record says which was used.
+
+**Not done.** The phone's arrow still follows C-07's fixed orbit. Nothing the scorer ranks reaches
+the phone yet, with or without the map, because that needs a contract field (D-031).

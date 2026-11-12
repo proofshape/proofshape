@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import {
@@ -10,6 +12,25 @@ import {
   mapProvenanceRgb,
   remapModelProvenanceColors,
 } from "./provenance-colors.js";
+
+// C-19: these two fixtures already exist for the mock service (contract-stub.ts) -- reused here
+// rather than committing a second copy. model.glb has no provenance; model-provenance.glb does.
+const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "stub", "fixtures");
+
+function loadFixtureScene(fileName: string): Promise<THREE.Object3D> {
+  const bytes = readFileSync(join(FIXTURES_DIR, fileName));
+  const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return new Promise((resolvePromise, rejectPromise) => {
+    new GLTFLoader().parse(
+      arrayBuffer,
+      "",
+      (gltf) => {
+        resolvePromise(gltf.scene);
+      },
+      rejectPromise,
+    );
+  });
+}
 
 function findProvenanceSource(): string {
   let directory = process.cwd();
@@ -97,6 +118,26 @@ describe("C-12 provenance colors", () => {
       foundProvenance: false,
       unknownVertices: 0,
     });
+  });
+
+  // C-19: the tests above build a hand-made THREE.BufferGeometry directly -- real GLTFLoader
+  // output (actual normalized BufferAttribute typing from a real binary parse) is what the
+  // viewer actually hands to remapModelProvenanceColors, so it's exercised here too, not only
+  // through the constants drift test above.
+  it("finds and remaps provenance colors parsed from a real GLB", async () => {
+    const scene = await loadFixtureScene("model-provenance.glb");
+
+    const result = remapModelProvenanceColors(scene);
+
+    expect(result.foundProvenance).toBe(true);
+  });
+
+  it("reports no provenance for a real GLB with no vertex colors", async () => {
+    const scene = await loadFixtureScene("model.glb");
+
+    const result = remapModelProvenanceColors(scene);
+
+    expect(result).toEqual({ foundProvenance: false, unknownVertices: 0 });
   });
 
   it("reserves inferred and unknown slots in the visible legend", () => {

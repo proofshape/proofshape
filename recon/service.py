@@ -20,7 +20,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from recon import agent_tools
+# R-31: import the process guard before agent_tools -> provenance -> Open3D. The module applies
+# the macOS-only OMP_NUM_THREADS=1 guard as an import side effect; Linux is unchanged.
+from recon import runtime_env as _runtime_env  # noqa: F401
 from recon.vlm_check import VlmSupervisor, latest_checked
 
 MIN_FINISH_FRAMES = 3
@@ -389,6 +391,8 @@ def run_reconstruction_pipeline(
     """Run the existing R-02 -> backend -> R-04 -> R-07 -> R-08 chain."""
     from recon import (
         board_pose,
+        completion,
+        disagreement,
         mesh_cleanup,
         metric_alignment,
         provenance,
@@ -476,6 +480,7 @@ def run_reconstruction_pipeline(
         reconstruction_dir,
         alignment_path,
         provenance_dir,
+        fusion_dir=fusion_dir,
     )
     stage_timings_s["provenance"] = time.perf_counter() - started
 
@@ -484,6 +489,37 @@ def run_reconstruction_pipeline(
     stage_timings_s["uncertainty"] = time.perf_counter() - started
     final_model_path = uncertainty_dir / "mesh_uncertainty.glb"
 
+    # A-04: shape completion only reads the files above and writes inside completion/, so the
+    # served GLB is the same with it on or off. It never raises; a configured runner that fails
+    # adds one warning, and a host with no runner just records that (D-058).
+    warnings: list[str] = []
+    if not completion.completion_disabled():
+        started = time.perf_counter()
+        outcome = completion.run_completion_stage(
+            completion.PipelineArtifacts(
+                capture_dir=capture_dir,
+                board_pose_dir=board_dir,
+                reconstruction_dir=reconstruction_dir,
+                fusion_dir=fusion_dir,
+                provenance_dir=provenance_dir,
+                uncertainty_dir=uncertainty_dir,
+            ),
+            artifact_dir / "completion",
+            completion.resolve_runner_command(),
+        )
+        stage_timings_s["completion"] = time.perf_counter() - started
+        if outcome.warning is not None:
+            warnings.append(outcome.warning)
+
+        # A-05: the disagreement map, from the samples just written. Guidance only (D-005, D-006):
+        # it writes inside completion/disagreement/ and nothing here reads it back. It never
+        # raises and adds no warning; with no runner it just records `unavailable`.
+        started = time.perf_counter()
+        disagreement.disagreement_stage(
+            artifact_dir / "completion", fusion_dir=fusion_dir
+        )
+        stage_timings_s["disagreement"] = time.perf_counter() - started
+
     return {
         "glb_path": str(final_model_path),
         "reference_tier_used": "charuco_board",
@@ -491,7 +527,7 @@ def run_reconstruction_pipeline(
         # R-25: report coverage from the same post-downgrade labels encoded in the GLB we serve.
         "observed_fraction": uncertainty_report.get("observed_fraction"),
         "stage_timings_s": stage_timings_s,
-        "warnings": [],
+        "warnings": warnings,
     }
 
 
@@ -520,6 +556,10 @@ def create_app(
     known_order_codes: set[str] | None = None,
     vlm_supervisor: VlmSupervisor | None = None,
 ) -> FastAPI:
+    # R-31: keep agent_tools lazy so the runtime guard above has already run before its
+    # provenance dependency can import Open3D.
+    from recon import agent_tools
+
     root = Path(
         data_dir or os.environ.get("PROOFSHAPE_DATA_DIR", "proofshape-data/sessions")
     )
@@ -572,6 +612,16 @@ def create_app(
                         "Invalid frame upload. Both frame and gyro multipart file "
                         "parts are required."
                     ),
+                ),
+            )
+        if request.method == "POST" and request.url.path.endswith("/v1/sessions"):
+            # R-29 (#186's validation half): the contract's own 400 description already covers
+            # "the order code is unknown or the request is malformed" -- reuse that code rather
+            # than inventing one; a dedicated malformed_request code is #217/D-031's job.
+            return error(
+                400,
+                ErrorDetail(
+                    code="order_code_unknown", message="The request body is malformed."
                 ),
             )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import type { Plugin } from "vite";
 import { defineConfig } from "vitest/config";
@@ -62,6 +63,14 @@ export default defineConfig({
     ...(servingForDeviceTesting ? [basicSsl()] : []),
   ],
   server,
+  build: {
+    rollupOptions: {
+      input: {
+        capture: fileURLToPath(new URL("./index.html", import.meta.url)),
+        report: fileURLToPath(new URL("./report.html", import.meta.url)),
+      },
+    },
+  },
   test: {
     environment: "node",
     environmentOptions: {

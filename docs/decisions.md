@@ -61,6 +61,7 @@ Robust ICP with a Tukey loss, and if the runner-up alignment residual is within 
 the session is marked ambiguous.
 *Why:* on a near-symmetric part the feature that breaks the symmetry is often the defect. A
 least-squares fit can silently choose the alignment that explains it away.
+*Threshold superseded by D-061 (2026-11-06): 20%, not 10%. The rule itself stands.*
 
 ---
 
@@ -1046,6 +1047,387 @@ proposal, so it is raised with the team, not settled here. D-017 still holds: co
 cut.
 *Checked against D-028:* fetched every origin branch on 2026-11-02; D-056 (A-11's open PR) was the
 highest number anywhere, so D-057 was free.
+*Narrowed by D-058 (2026-11-03):* "installed at build time" now means installed by A-12's setup
+script on the CUDA host, not built into the service image. It is still never vendored.
+
+**D-058 · A-04 is split: the service side builds the completion stage around a runner contract,
+A-12 builds the real runner.** (2026-11-03)
+@TabeenRaoof, A-04's owner, settled this while planning A-04. The team's review of the pull
+request that splits the story is its agreement.
+
+D-057 left A-04 with a model the service can't run. LaS-Comp is CUDA-only and needs Python 3.10
+and torch 2.4. The service runs on the M2 Max (D-049), and the image's torch is 2.8. So:
+- **A-04** builds the stage inside `run_reconstruction_pipeline`, after R-10, and everything
+  around the model:
+  - part isolation and the partial point cloud;
+  - one cropped capture photo;
+  - a versioned file contract with a runner run as a separate process, whose command comes from
+    `PROOFSHAPE_COMPLETION_RUNNER`;
+  - ingesting K samples, and `LABEL_INFERRED`.
+
+  It is tested in CI against a stub runner.
+- **A-12** builds the real LaS-Comp runner and a setup script for a CUDA host. It measures them on
+  the golden set and sets K and the time budget from that measurement.
+- **Neither changes the image.** Adding a second Python and torch 2.4 to the image is a later
+  follow-up with no story yet. `tests/test_container.py`'s one-torch rule stands until then.
+- **No runner, no warning.** A host without a runner (every session on the Mac today) still
+  prepares the inputs and records `unavailable` in `completion.json`, but adds no warning. A runner
+  that is configured and then fails adds one fixed warning. `PROOFSHAPE_COMPLETION=0` turns the
+  stage off.
+
+*Why inline:* A-04's criteria already asked for it, it keeps GPU use one stage after another, and
+no host runs the model today, so nobody waits yet.
+*Why no warning without a runner:* capture shows `warnings` to the supplier
+(`capture/src/shell.ts`). A stage that isn't installed on the host isn't something the supplier
+can act on, and `completion.json` still records why it didn't run.
+*The known cost:* once a runner is configured, the served model waits for completion's budget. At
+A-10's measured ~5 min a sample, that's longer than capture polls for: 300 polls 2 s apart, so it
+gives up after 10 min. It's also longer than `smoke_r14` waits (15 min). Whoever first configures
+a runner for suppliers must shorten the budget or move the stage after the result is saved. That
+is a change to this decision, not a tuning of it.
+*Checked against D-028:* fetched every origin branch on 2026-11-03; D-057 was the highest number
+anywhere, so D-058 was free.
+
+---
+
+**D-059 · R-26's criterion 1 does not cover a flat part whose side wall was never reconstructed
+at all.** (2026-11-05)
+R-26's redesign (#241, round 3) tells a flat part apart from a legitimate raised board layer by
+connectivity: it pools the points around each elevated cell cluster and looks for any point at a
+height strictly between the board and the cluster's own top -- evidence of a side wall. That
+signal requires at least one camera angle to have seen some part of the wall. `#241`'s review
+surfaced a case with none: a large, thin part whose wall is never captured by any angle, so the
+point cloud has literally zero points at an intermediate height anywhere near it (the review's
+added test, `test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protected`,
+builds this directly -- board points are dropped under the part's own footprint to model real
+occlusion rather than the fixture's own default of scattering them everywhere). From height data
+alone, that case is indistinguishable from a legitimate floating board layer (R-17's case), which
+must still be excluded from the cut.
+
+Criterion 1 is narrowed: a flat part lower than `DEFAULT_MAX_BOARD_LAYER_MM` survives
+segmentation unless every camera angle failed to capture any point on its side wall, in which
+case it is excluded like a floating board layer, and that is accepted rather than treated as a
+defect in `#241`. This is a statement about what the geometry alone can support, not a tuning of
+thresholds -- raising or lowering `DEFAULT_MIN_WALL_POINTS` does not change which case this is.
+
+*Why:* height/connectivity data cannot carry a signal that was never captured. Closing this
+residual case needs a different kind of input (for example color/texture from the capture photo,
+or a VLM hint) and is out of R-26's scope as written; a future story can take it up if a part this
+thin and this occluded turns out to matter in practice. Recording this now rather than leaving a
+code comment to carry the exception means a future reviewer checking criterion 1 against the
+code finds the actual, narrower claim instead of a mismatch.
+*Checked against D-028:* fetched every origin branch on 2026-11-05; D-058 was the highest number
+anywhere, so D-059 was free.
+
+**Disputed, raised with the team (2026-11-05):** @TabeenRaoof's re-review of #241 found this
+entry describes the wrong limit. The test it's built on,
+`test_residual_risk_a_large_wall_less_part_with_real_occlusion_is_not_protected`, had its sign
+backwards (`part_z = -(offset_mm - 6.0)` placed the part 6 mm *below* the board, not above), so
+it was passing for an uninteresting reason, not because of anything connectivity-related. With
+the sign fixed and independently reconfirmed, a wall-less, fully-occluded part is actually kept
+correctly, including #180's own 40 x 40 x 6 mm case -- *unless* the part's own top has more
+points than the visible board, at which point the robust plane **fit** itself locks onto the
+part. That is a board-plane-fit robustness limit, unrelated to walls or connectivity. The same
+review found round 3's search also cuts worse than `main`'s plain, whole-footprint histogram on
+the real golden objects (s-01 fails outright; s-02 through s-05 all cut lower, admitting board as
+part), and suggested reverting to that plain search with a to-be-designed loud refusal for the
+ambiguous case, rather than this entry's connectivity-based narrowing.
+This decision is therefore **not reaffirmed and not re-decided here** -- per this file's own
+header, a decision that needs revisiting is raised with the team and the matter stops there
+rather than being built past in either direction again. @TabeenRaoof and @mbj1994 should settle,
+together, whether criterion 1 is better served by this entry (corrected), by no exception at all
+with a loud-refusal design instead, or by something else, before `#241` relies on either.
+
+**Superseded by D-060 (2026-11-06):** the team settled it. @TabeenRaoof traced the actual cause
+(per-frame VGGT pose misalignment, not a wall/connectivity question at all) and both reviewers
+agreed to stop iterating segmentation heuristics in R-26. D-059's framing -- a side-wall
+exception to criterion 1 -- is retired along with round 3's connectivity code; D-060 records
+what replaces it.
+
+---
+
+**D-060 · R-26 stops at `main`'s plain layer search; the real fix is per-frame board
+re-anchoring, a new story (R-30).** (2026-11-06)
+Three rounds of segmentation-only redesigns on `#241` (per-cell median, then side-wall
+connectivity) each fixed the previous round's synthetic failure and introduced a new real-data
+one, most recently round 3 cutting too low on s-02 through s-05 and failing s-01 outright.
+@TabeenRaoof traced the actual cause with reproduction scripts against the five golden objects
+(posted on `#241`): the 3-6 mm "raised board layer" R-17 found is not a second physical layer.
+It is the *real* board, as seen by a handful of frames whose VGGT pose is misaligned by a few
+millimetres -- confirmed three ways (board-pixel grey level and checker-square parity rule out a
+depth or colour artifact; per-frame re-fitting directly shows individual frames 2.3-4.7 mm off
+on every golden object). R-23's alignment is one global similarity transform and cannot correct
+per-frame drift. On the merged point cloud this misalignment artifact and a genuine flat part's
+own top are the same shape -- a dense planar patch a few millimetres up -- so no classifier
+built from the merged cloud's height/location data alone can tell them apart; `DEFAULT_MIN_WALL_POINTS
+= 3` made round 3's connectivity check pass on every real cluster precisely because real data
+always has a few hundred points at intermediate heights from board noise, part walls or the
+layer's own spread, carrying no information. @mbj1994 independently reviewed the finding and
+agreed.
+
+**For R-26:** `measure_board_surface`'s layer-top search reverts to `main`'s original
+whole-footprint histogram (proven correct on all five golden objects), dropping rounds 2-3's
+per-cell/connectivity code entirely. The explicit `height_threshold_mm` override
+(`segment_run`/`fuse_run`/the confidence sweep) is kept -- it has worked every round -- as is a
+plain `min_kept_points` floor. A flat part under `DEFAULT_MAX_BOARD_LAYER_MM` is not reliably
+protected by the measured search; the override is the documented way to segment one correctly
+until R-30 lands. The five golden objects must be rerun on the final head and confirmed to match
+`main`'s existing cuts before D-038 close-out.
+
+**New story, R-30 (per-frame board re-anchoring before fusion):** fit each frame's own board
+plane (points already available in `fuse_run`, which has per-frame points and extrinsics) and
+correct that frame's extrinsic before merging, with a loud refusal when a frame shows too little
+board to anchor. This is upstream of segmentation and, per @TabeenRaoof's prototype, removes the
+ghost layer entirely (3-6x tighter board noise, the "first density gap" rule then correct on all
+five objects including a synthetic #180-style thin plate) while also sharpening the part's own
+geometry and shrinking #231's board-skin artifact. It is not filed as blocking R-26.
+
+*Why:* height/location data on the merged cloud cannot distinguish two things that are
+genuinely the same shape there; fixing it needs the per-frame signal that gets lost at merge
+time, not a cleverer post-hoc classifier. Three independent attempts at the latter each traded
+one golden-data failure for another, which is itself evidence the ambiguity is real, not a
+tuning gap. `main`'s search is the only version actually proven against all five golden objects.
+*Checked against D-028:* fetched every origin branch on 2026-11-06; D-059 was the highest number
+anywhere, so D-060 was free. R-29 was the highest story number anywhere, so R-30 is free for the
+new story.
+
+---
+
+**D-061 · The orientation-ambiguity threshold is 20%, superseding D-008's 10%.** (2026-11-06)
+I-05's `check_ambiguity` refines every I-03 candidate with I-04's `refine` and marks the session
+ambiguous when the runner-up's inlier RMSE is within this threshold of the best's. D-008 set 10%;
+this sets 20%. D-008's rule, and its reason, are unchanged.
+
+Measured on I-01 output (σ 0.3 mm, I-01's 20% Unobserved patch), 12 seeds per class, runner-up
+over best:
+
+| Class | Ratio | Flagged at 10% | 15% | 20% |
+|---|---|---|---|---|
+| s-05, truly four-fold symmetric (should flag) | 1.00–1.01 | 12/12 | 12/12 | 12/12 |
+| 60 × 40 × 8 mm plate whose 10 mm hole is **missing** (D-008's case; should flag) | 0.82–1.15 | **9/12** | 11/12 | **12/12** |
+| The same plate, hole shifted 3 mm (shouldn't) | 1.22–1.35 | 0/12 | 0/12 | 0/12 |
+| The same plate, hole in place (shouldn't) | 1.67–2.25 | 0/12 | 0/12 | 0/12 |
+| s-04, scalene (shouldn't) | 3.07–5.76 | 0/12 | 0/12 | 0/12 |
+
+With nothing hidden, D-008's case reads 0.98–1.04 and 10% catches all 12. The hidden patch breaks
+the symmetry on the model side by about as much as a small missing feature does, which is what
+pushes a quarter of those cases past 10%.
+
+*Why:* 10% misses D-008's own case a quarter of the time on an occluded scan, and real scans are
+always occluded (the board-contact face is never seen). The two errors don't cost the same: a
+missed ambiguity can let the fit choose the alignment that explains the defect away, giving a
+wrong Pass or Fail, while a false flag costs one Rescan. 20% catches every measured case of D-008's
+kind and flags none of the disambiguated ones.
+*Limits, stated plainly:* the margins are narrow on both sides. D-008's case reaches 1.15 and the
+3 mm shifted hole starts at 1.22, so 20% sits in a gap of 0.07. This is one synthetic test part and
+one noise level; the threshold should be re-measured when real captures of near-symmetric parts
+exist. A part with a smaller symmetry-breaking feature than this one may need more than 20%, and
+that would be a change to this decision, not a tuning of it.
+*Checked against D-028:* fetched every origin branch on 2026-11-06; D-056, D-059 and D-060 are
+held on open branches and D-058 is the highest on `main`, so D-061 was the first free number.
+Re-checked after R-26 merged: D-059 and D-060 are now on `main`, and D-061 is still free.
+*Agreement:* proposed in I-05's PR, which asks both @mbj1994 and @dalwalyk to agree and merges
+only with both approving.
+
+**D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
+provenance, and the viewer does the colouring.** (2026-11-09)
+Settles how I-06's per-vertex deviation reaches C-14's viewer. Recorded by P-30, so that I-06, still
+titles-only, is written against it.
+
+**Two new vertex attributes.** The GLB served at `getReconstruction`'s `glb_url` gains two
+application-specific vertex attributes. glTF requires the leading underscore.
+- **`_DEVIATION_MM`:** one float32 per vertex, in the served mesh's own vertex order. The vertices
+  are not moved. The value is the signed distance to the CAD in millimetres: positive where the
+  part has extra material, negative where material is missing (glossary; proposal §7.2).
+- **`_DEVIATION_MEASURED`:** one float32 per vertex, exactly 1.0 where I-06 computed a deviation
+  and 0.0 everywhere else. `_DEVIATION_MM` is 0.0 wherever this is 0.0.
+- Neither may hold NaN, which glTF forbids in float accessors.
+- Both are float32 so that every element sits on the 4-byte boundary glTF requires for vertex
+  attributes. A tightly packed uint8 mask would not.
+- three.js's GLTFLoader exposes them as `_deviation_mm` and `_deviation_measured`.
+
+**COLOR_0 is unchanged.** It is still 255 for Observed and 128 for Unobserved
+(`recon/provenance.py`), remapped by `capture/src/provenance-colors.ts`.
+- **I-06 measures Observed vertices only.** It sets `_DEVIATION_MEASURED` to 1.0 only on Observed
+  vertices that it actually compared with the CAD. That excludes any it leaves out, such as
+  surface outside the registered part.
+- **The viewer has two independent gates.** It colours a vertex by deviation only when COLOR_0
+  says Observed **and** `_DEVIATION_MEASURED` is 1.0. Every other vertex is drawn the Unobserved
+  grey. So a fault on either side can't paint unseen surface (D-005).
+
+**When it appears.** A GLB without these attributes is valid: every session with no CAD, and every
+session before its verdict. The viewer then offers no heatmap. I-06 writes the new GLB beside the
+old one and switches the session record in one atomic write, the way `SessionStore` already
+writes. So `glb_url` stays the same and no viewer reads a half-written file.
+
+**One writer.** `recon/mesh_cleanup.write_glb` gains optional extra vertex attributes. C-14's mock
+fixture and I-06 both use it, so the format is one piece of code on both sides.
+
+**No contract change.** The contract says per-vertex provenance and uncertainty "travel inside the
+GLB itself, not in this JSON body". It doesn't specify the GLB's contents, and the `model.glb`
+route is outside the schema. So this layout is recorded here, not in the frozen file.
+
+*Why:*
+- **Colours baked on the server** would fix the palette, the range and the legend when the file is
+  written, and would overwrite the provenance colours the viewer already relies on. That is the
+  sprint plan's stand-in (§5, D4: "Vertex colors in the GLB") and R-09's note that heatmap
+  colouring is I-06's job. This decision departs from both.
+- **Numbers let the viewer choose.** The viewer can take its range from the order's tolerance,
+  label the legend in mm, and switch back to provenance without fetching anything.
+- **One file needs no new route and no D-031 round.**
+
+*Known cost:* the served GLB grows by 8 bytes per vertex (for 30,000 vertices, about 240 kB). A
+tool that doesn't know these attributes ignores them.
+
+*Not decided here:*
+- the colour scale, its range and its legend (C-14);
+- how the distance is computed and which vertices are compared (I-06);
+- whether a later D-031 request names these attributes in the contract;
+- σ, which today lives in `uncertainty/sigma_mm.npz`, not in the GLB, despite the contract's
+  wording.
+
+*Checked against D-028:* fetched every origin branch on 2026-11-09. D-061 is the highest anywhere,
+so D-062 was the first free number.
+
+*Agreement:* it binds I-06's writer, and nobody has written I-06 yet, so P-30's pull request asks
+both @mbj1994 and @dalwalyk to agree, and merges only with both approving.
+
+**D-063 · The board height-clearance floor is also sigma-relative:
+`max(min_clearance_mm, clearance_sigma_k * residual_sigma_mm, board_layer_top_mm)`, k = 4.0.**
+(2026-11-11)
+R-30 (D-060's downstream fix) moved every golden object's measured-path height cut to the fixed
+`DEFAULT_MIN_BOARD_CLEARANCE_MM` floor (2.0 mm). R-30's own completion record flagged that s-02's
+post-correction `residual_sigma_mm` (0.58 mm, s-03 close behind at 0.57 mm) sits only about 3.4
+sigma under that floor -- thin enough for real above-plane board noise to cross it and read as
+part/skin -- and explicitly punted a sigma-relative fix to "R-33 or a later story." R-35/#292 is
+that story.
+
+*Measured:* swept k = 4.0 and 4.5 against all five golden objects' real fused data
+(`scripts/measure_wall_share.py`'s board-skin face share, plus `isolate_part`'s core stats; full
+table in R-35.md). s-02's and s-03's residual sigma (0.575/0.566 mm on this run) are both close
+enough to each other, and to s-01's (0.438 mm), that any k large enough to meaningfully raise
+their floor also narrows the margin before s-01's own floor would start moving too. At k=4.5,
+s-01 is left with only 0.03 mm of headroom before its own sigma floor would cross 2.0 mm --
+too close to a coincidence of one run. At k=4.0, s-01 keeps about 12% headroom, a real margin,
+while s-02's board-skin share still drops 8.4 points and s-03's drops 2.0 points. s-04/s-05 are
+unaffected at either value.
+
+*Why:* a single fixed floor assumes every board is at least as clean as the noisiest one it was
+ever tuned against; the golden set alone spans a 1.6x range in residual sigma (0.36-0.58 mm), so a
+floor sized for the clean end leaves no margin on the noisy end. D-003 requires this k be
+measured, not guessed, since it is exactly the kind of tolerance/k that decision governs.
+
+*Known cost:* does not fully close s-02's board-skin problem -- its share (46.0%) stays far above
+the other four objects' (0.6-4.9%) even at the chosen k. s-02 is the reflective padlock under a
+different lighting condition from its twin s-01; the remainder is likely reflectivity- or
+lighting-related, not a sigma-floor problem, and is left for a later story if the team wants it
+closed further.
+
+*Does not change:* D-060's layer-top search logic or `board_layer_top_mm`'s own computation --
+this is a second, independent floor under the same `max(...)`, not a revision of the search.
+Does not change the explicit `height_threshold_mm` override path (R-26), which still takes
+neither floor, by design.
+
+*Checked against D-028:* fetched every origin branch on 2026-11-11. D-062 is the highest anywhere,
+so D-063 was the first free number.
+
+**D-064 · The WIP cap counts active stories only; a story waiting on something outside its
+owner's hands doesn't count.** (2026-11-11)
+Sprint plan working agreement 5 capped work in progress at two stories per person. It now caps
+*active* stories at two. A claimed story isn't active while it waits only on something its owner
+can't move: a review, a sprint-boundary merge (D-031's kind), lab or GPU access, or a teammate's
+input. That holds only while its notes say what it waits on and since when. When the wait ends
+the story counts again; an owner who is then at three takes no new claim until one is Done or
+released.
+
+*Why:* the cap exists for the reason the plan gives: three half-finished features at a milestone
+is worse than one finished one. A story parked on a lab slot or a teammate's answer isn't being
+half-worked by anyone, so counting it only stops its owner starting the next thing. The cap was
+waived by named exception four times in five days, each time for this reason: G-01 (2026-11-06),
+G-05 and P-30 (2026-11-09), R-32 (2026-11-10). A rule that needs an exception for nearly every
+claim no longer says what the team actually does. What still matters is that a waiting story
+stays visible, so the note is required.
+*Does not change:* one person per story, claimed visibly before work starts (D-037); and no story
+crosses a gate (working agreement 4). A waiting story at a boundary is still finished, cut or
+explicitly carried.
+*Risk, stated:* more claims held at once means more stories that can be caught waiting at a gate.
+Working agreement 4 still applies to them, and the required note makes them quick to find at the
+boundary call.
+*Checked against D-028:* fetched every origin branch on 2026-11-11. D-063 is the highest anywhere,
+so D-064 was the first free number.
+*Agreement:* it changes a working agreement for all three, so its pull request asks both
+@mbj1994 and @dalwalyk to agree, and merges only with both approving.
+
+**D-066 · The disagreement map weighs each unseen point by its spread above the session's own
+seen-surface spread; it ranks next views alongside C-08 and never blocks one.** (2026-11-11)
+A-05 builds the map from A-04's K completion samples (`recon/disagreement.py`). It has five parts.
+- **Spread.** For each point of each accepted sample, the spread is the median, over the other
+  samples, of its point-to-triangle distance to their meshes. That is A-12's measure, applied per
+  point. The median keeps one outlier seed from raising every other sample's spread.
+- **Seen.** A point is seen within 2 mm of the partial cloud: A-12's split, unchanged.
+- **Weight.** The noise level is the median spread over this session's seen points: what the model
+  does with surface it was shown. An unseen point weighs max(0, spread − noise level) times the
+  area it stands for, in mm·mm².
+  - Points below fusion's board cut never count. No camera above the board sees the board-contact
+    face, and the cut band is never in the partial, so no photo helps there.
+  - Counted points are pooled into 2 mm voxels (R-07's TSDF voxel).
+- **Ranking.** Every candidate view gains the weight it would see and a `disagreement_rank`.
+  - `ranked` keeps C-08's order and `best` stays C-08's first, because `agent_policy` reads
+    `best`'s count as what is left under-observed. The map's own choice is `best_by_disagreement`.
+  - Only the served mesh blocks a ray, so guessed surface never hides anything (C-08's rule).
+  - A target up to 2 mm behind served Unobserved surface still counts, as the same surface, and
+    0.5 mm applies behind Observed surface.
+  - A target facing away from the camera doesn't count, but only when every sample's mesh is
+    consistently wound (each shared edge walked once each way). Its signed volume then says which
+    way is out.
+- **Where it runs.** Inline, straight after the completion stage. It never raises, never adds a
+  warning, and records `unavailable` with fewer than 2 samples. That is every host without a runner
+  today (D-058).
+
+*Why:* the owner chose this weighting on 2026-11-11. A fixed "high spread" threshold would turn one
+part's measurement into a constant for every part. A raw sum would let large, low-spread areas
+outvote one small, uncertain feature. Measuring against the session's own seen surface needs no
+number from anywhere else, so the threshold moves with the part, the lighting and the model.
+*Measured on A-12's prepared folders (2026-11-11, M2 Max, CPU):*
+- **s-04:** the per-pair figures came out at U 0.78 / 1.67 / 2.15 mm and O 0.24 / 0.24 / 0.25 mm,
+  against A-12's U 0.77 / 1.58 / 2.08 and O 0.24 / 0.24 / 0.25. The difference is a different point
+  sampling.
+- **s-02:** U 0.88 / 1.07 / 2.56 and O 0.26 / 0.24 / 0.20 mm, against A-12's 0.87 / 1.08 / 2.48 and
+  0.26 / 0.24 / 0.20.
+- The noise levels were 0.26 and 0.24 mm. The maps took 0.6 and 1.0 s, and all six LaS-Comp
+  meshes were consistently wound.
+*Limits, stated plainly:*
+- **A guess over seen surface still counts.** On s-04, 17% of the weight is the raised patch above
+  the observed top that P-29 saw change with the seed. A photo from above re-observes that top but
+  can't stop the model guessing there. Telling such a guess apart from unseen surface isn't done
+  here.
+- **The weight's absolute size is new.** Whether a view that sees N mm·mm² is worth a photo is not
+  decided.
+- **At K = 3 the median of two is a mean.** The median's protection against an outlier starts at
+  K = 4.
+*Does not change:* D-005 and D-006, since nothing in `inspect/` may import the map (a test checks);
+A-04's files; and the contract (D-031). The only new response key is
+`stage_timings_s["disagreement"]`, and that object is open-keyed. **Nothing the scorer ranks
+reaches the phone's arrow yet**, with or without the map. That needs a contract field, at a
+boundary.
+*Checked against D-028:* fetched every origin branch on 2026-11-11. D-064 is the highest on `main`
+and D-065 is held on `planning/P-33-android-parked` (#310), so D-066 was the first free number.
+
+**D-067 · A-03's prose-to-spec parser pins Gemini Flash-Lite, the same snapshot name A-01
+pins, as its own independent decision.** (2026-11-12)
+Proposal §9's component table names "Gemini Flash-Lite API, structured output" for this row,
+the same model row A-01's VLM supervision uses. `recon/spec_parser.py` pins it as its own
+constant (`MODEL`, not imported from `recon.vlm_check`), following A-01's own precedent (a
+stable snapshot, never `-latest`) rather than assuming A-01's pin covers this unrelated
+component too.
+
+*Why:* each generative component names its own model, even when the answer happens to agree
+with another component's — the same pattern A-10/A-12 already set for shape completion. A-03
+and A-01 are unrelated capture-time/buyer-time components that could diverge in the future
+(a cheaper or better model for one without touching the other); treating them as one pin now
+would make that split harder later for no reason today.
+*Checked against D-028:* fetched every origin branch on 2026-11-12. D-066 is the highest
+anywhere (`generative-ai/A-05-disagreement-map`), so D-067 was the first free number.
 
 ---
 

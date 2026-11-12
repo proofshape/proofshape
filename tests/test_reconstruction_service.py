@@ -226,6 +226,26 @@ def test_contract_error_paths_are_structured(tmp_path):
         assert too_few.json()["code"] == "too_few_frames"
 
 
+def test_create_session_malformed_body_is_contract_shaped(tmp_path):
+    """R-29 (#186's validation half): a malformed createSession body used to fall through to
+    FastAPI's default 422 {"detail": [...]} envelope instead of the contract's 400 ErrorDetail."""
+    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    with TestClient(app) as client:
+        empty_body = client.post("/v1/sessions", json={})
+        assert empty_body.status_code == 400
+        _validate_contract_response("createSession", "400", empty_body.json())
+        assert empty_body.json()["code"] == "order_code_unknown"
+
+        invalid_json = client.post(
+            "/v1/sessions",
+            content="not json at all",
+            headers={"content-type": "application/json"},
+        )
+        assert invalid_json.status_code == 400
+        _validate_contract_response("createSession", "400", invalid_json.json())
+        assert invalid_json.json()["code"] == "order_code_unknown"
+
+
 def test_r02_failure_is_preserved_without_breaking_frozen_schema(tmp_path):
     def failing_pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
         raise service.ReconstructionFailure(
@@ -395,7 +415,9 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
 
     seen = {}
 
-    def fake_provenance(mesh_path, reconstruction_dir, alignment_path, out_dir):
+    def fake_provenance(
+        mesh_path, reconstruction_dir, alignment_path, out_dir, **_kwargs
+    ):
         seen["provenance_mesh"] = mesh_path
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "mesh_provenance.glb").write_bytes(b"provenance")

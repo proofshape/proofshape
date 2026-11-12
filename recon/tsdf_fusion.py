@@ -29,13 +29,21 @@ point cloud in `points.ply`, so a pixel left out of the cloud is left out of the
 too, rather than the two silently disagreeing on which pixels to trust. `fuse_run` reads the
 threshold from the run's own `run.json` by default, so the fused surface always matches the
 cloud that was actually written for that run; passing `min_confidence` explicitly overrides it.
+
+R-30/D-060: some frames' own board sits a few mm/degrees off the consensus plane -- VGGT pose
+error R-23's one global alignment can't correct. `reanchor_frames_to_board` fits and corrects
+each frame's own board-plane drift, before any of it reaches the height check or the volume
+above, removing the artifact at its source rather than trying to classify around it downstream
+the way three rounds of R-26 tried and D-060 found couldn't work.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +55,14 @@ from recon.metric_alignment import (
     project_points_to_camera,
 )
 from recon.part_segmentation import (
+    DEFAULT_BOARD_FIT_MAX_ITERATIONS,
+    DEFAULT_BOARD_FIT_SIGMA_CLIP,
+    DEFAULT_BOARD_SEARCH_BAND_MM,
     DEFAULT_FOOTPRINT_MM,
     DEFAULT_MAX_BOARD_TILT_DEG,
+    DEFAULT_MIN_KEPT_POINTS,
     BoardSurface,
+    fit_board_plane_robust,
     measure_board_surface,
     segment_part,
 )
@@ -70,6 +83,17 @@ DEFAULT_TRUNCATION_VOXEL_MULTIPLE = 4.0
 DEFAULT_MAX_PART_HEIGHT_MM = 150.0
 
 DEFAULT_POISSON_DEPTH = 9
+
+# R-30: a single frame's own board-candidate count needed to trust a per-frame re-anchoring fit.
+# Deliberately smaller than DEFAULT_MIN_BOARD_POINTS (which pools every frame) -- a bare
+# assumption (D-033), not yet measured against the golden set's real per-frame counts.
+DEFAULT_MIN_FRAME_BOARD_POINTS = 100
+
+# R-33 criterion 2: a frame's own signed distance to a sample point counts as "voted on the
+# surface" within this many mm of zero -- tied to the voxel grid's own resolution (one voxel),
+# since that is the finest distinction marching cubes can make. A bare assumption, not measured;
+# overridable via measure_voxel_vote_consensus's own parameter.
+DEFAULT_NEAR_SURFACE_MM = DEFAULT_VOXEL_SIZE_MM
 
 
 def build_voxel_grid(
@@ -105,6 +129,192 @@ def build_voxel_grid(
     centers = np.stack([grid_x, grid_y, grid_z], axis=-1).reshape(-1, 3)
     shape = (len(axis_coords[0]), len(axis_coords[1]), len(axis_coords[2]))
     return centers, shape
+
+
+@dataclass(frozen=True)
+class FrameReanchorReport:
+    """What R-30's re-anchoring measured and did for one frame, for the golden rerun's figures."""
+
+    frame_index: int
+    candidate_count: int
+    tilt_before_deg: float
+    offset_shift_mm: float
+
+
+def _rotation_aligning_unit_vectors(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """The minimal rotation matrix taking unit vector `a` onto unit vector `b`.
+
+    Rodrigues' rotation formula from the rotation axis `a x b` and angle between them. R-30's
+    board normals are always near-vertical (tilt bounded by `DEFAULT_MAX_BOARD_TILT_DEG`
+    upstream), so `a` and `b` are never antiparallel in practice; that degenerate case (a 180
+    degree rotation, whose axis this formula can't recover from a near-zero cross product) is
+    rejected rather than guessed at.
+    """
+    cross = np.cross(a, b)
+    sin_angle = float(np.linalg.norm(cross))
+    cos_angle = float(np.dot(a, b))
+    if sin_angle < 1e-12:
+        if cos_angle > 0:
+            return np.eye(3)
+        raise ValueError(
+            "frame and global board normals are antiparallel -- no minimal rotation exists; "
+            "this frame's fitted plane is not a small drift from the consensus."
+        )
+    axis = cross / sin_angle
+    skew = np.array(
+        [
+            [0.0, -axis[2], axis[1]],
+            [axis[2], 0.0, -axis[0]],
+            [-axis[1], axis[0], 0.0],
+        ]
+    )
+    return np.eye(3) + skew * sin_angle + skew @ skew * (1.0 - cos_angle)
+
+
+def reanchor_frames_to_board(
+    board_frame_points: np.ndarray,
+    board_extrinsic: np.ndarray,
+    valid_depth: np.ndarray,
+    global_board_surface: BoardSurface,
+    footprint_mm: tuple[float, float] = DEFAULT_FOOTPRINT_MM,
+    search_band_mm: float = DEFAULT_BOARD_SEARCH_BAND_MM,
+    sigma_clip: float = DEFAULT_BOARD_FIT_SIGMA_CLIP,
+    max_fit_iterations: int = DEFAULT_BOARD_FIT_MAX_ITERATIONS,
+    min_frame_board_points: int = DEFAULT_MIN_FRAME_BOARD_POINTS,
+) -> tuple[np.ndarray, np.ndarray, list[FrameReanchorReport]]:
+    """R-30: correct each frame's own board-plane drift before its points enter fusion.
+
+    D-060 traced R-17's raised-board-layer artifact to per-frame VGGT pose error: some frames'
+    own board sits a few mm/degrees off the consensus plane R-23's one global alignment can't
+    fix. For each frame, this fits that frame's *own* board plane (the same robust fit
+    `measure_board_surface` uses, via `fit_board_plane_robust`, restricted to this frame's own
+    candidate points) and applies the rigid (rotation + translation) correction that brings it
+    onto `global_board_surface` -- not a per-point vertical shift, which can't correct tilt.
+
+    The correction is applied to both representations `fuse_run` needs downstream: the frame's
+    own `board_frame_points` (so the global board-plane fit and `segment_part`'s masking see the
+    corrected geometry), and its `board_extrinsic` (so `fuse_tsdf`'s re-projection of voxels into
+    this frame's real, unchanged depth measurements lands in the corrected frame). Derivation:
+    with `x' = R_s @ x + t_s` the corrected point for original point `x`, and
+    `x_cam = R_board @ x + t_board` (the frame's existing camera-from-board pose, unchanged, since
+    the physical depth measurement itself doesn't change), substituting `x = R_s.T @ (x' - t_s)`
+    gives `x_cam = (R_board @ R_s.T) @ x' + (t_board - R_board @ R_s.T @ t_s)` -- the corrected
+    extrinsic below.
+
+    Returns `(corrected_board_frame_points, corrected_board_extrinsic, reports)` -- one report
+    per frame, for the golden rerun to record (candidate count, tilt before correction, and the
+    z-shift applied at that frame's own candidate centroid).
+
+    Raises:
+        ValueError: a frame has fewer than `min_frame_board_points` of its own valid, in-footprint,
+            near-the-assumed-board-height candidate points -- too little of this frame's own board
+            is visible to trust a per-frame fit, rather than silently skipping correction for it
+            or guessing.
+    """
+    board_frame_points = np.asarray(board_frame_points, dtype=np.float64)
+    board_extrinsic = np.asarray(board_extrinsic, dtype=np.float64)
+    valid_depth = np.asarray(valid_depth, dtype=bool)
+    if board_frame_points.ndim != 4 or board_frame_points.shape[3] != 3:
+        raise ValueError(
+            f"board_frame_points must have shape (S,H,W,3), got {board_frame_points.shape}"
+        )
+    frame_count, height, width, _ = board_frame_points.shape
+    if board_extrinsic.shape != (frame_count, 3, 4):
+        raise ValueError(
+            f"board_extrinsic must be ({frame_count},3,4), got {board_extrinsic.shape}"
+        )
+    if valid_depth.shape != (frame_count, height, width):
+        raise ValueError(
+            f"valid_depth must be ({frame_count},{height},{width}), got {valid_depth.shape}"
+        )
+    footprint_width_mm, footprint_height_mm = footprint_mm
+
+    normal_global = np.array(
+        [-global_board_surface.slope_x, -global_board_surface.slope_y, 1.0]
+    )
+    normal_global = normal_global / np.linalg.norm(normal_global)
+
+    corrected_points = board_frame_points.copy()
+    corrected_extrinsic = board_extrinsic.copy()
+    reports: list[FrameReanchorReport] = []
+
+    for frame_index in range(frame_count):
+        points_flat = board_frame_points[frame_index].reshape(-1, 3)
+        x_mm, y_mm, z_mm = points_flat[:, 0], points_flat[:, 1], points_flat[:, 2]
+        in_footprint = (
+            (x_mm >= 0.0)
+            & (x_mm <= footprint_width_mm)
+            & (y_mm >= 0.0)
+            & (y_mm <= footprint_height_mm)
+        )
+        candidates = (
+            valid_depth[frame_index].reshape(-1)
+            & in_footprint
+            & (np.abs(z_mm) <= search_band_mm)
+        )
+        candidate_count = int(np.count_nonzero(candidates))
+        if candidate_count < min_frame_board_points:
+            raise ValueError(
+                f"frame {frame_index}: only {candidate_count} of its own board candidate points "
+                f"within {search_band_mm} mm of z=0 inside the footprint; need at least "
+                f"{min_frame_board_points} to trust a per-frame re-anchoring fit for this frame, "
+                "rather than skip or guess its correction."
+            )
+
+        cx_mm, cy_mm, cz_mm = x_mm[candidates], y_mm[candidates], z_mm[candidates]
+        slope_x, slope_y, z_at_origin_mm, _residual_sigma_mm, _inlier_count = (
+            fit_board_plane_robust(
+                cx_mm,
+                cy_mm,
+                cz_mm,
+                sigma_clip,
+                max_fit_iterations,
+                min_frame_board_points,
+            )
+        )
+        tilt_before_deg = float(np.degrees(np.arctan(np.hypot(slope_x, slope_y))))
+
+        normal_local = np.array([-slope_x, -slope_y, 1.0])
+        normal_local = normal_local / np.linalg.norm(normal_local)
+        rotation_correction = _rotation_aligning_unit_vectors(
+            normal_local, normal_global
+        )
+
+        centroid_x, centroid_y = float(np.mean(cx_mm)), float(np.mean(cy_mm))
+        centroid_z_local = slope_x * centroid_x + slope_y * centroid_y + z_at_origin_mm
+        centroid_rotated = rotation_correction @ np.array(
+            [centroid_x, centroid_y, centroid_z_local]
+        )
+        centroid_target_z = global_board_surface.plane_z_mm(
+            np.array([centroid_rotated[0]]), np.array([centroid_rotated[1]])
+        )[0]
+        translation_correction = np.array(
+            [0.0, 0.0, float(centroid_target_z - centroid_rotated[2])]
+        )
+
+        corrected_points[frame_index] = (
+            points_flat @ rotation_correction.T + translation_correction
+        ).reshape(height, width, 3)
+
+        rotation_board = board_extrinsic[frame_index, :, :3]
+        translation_board = board_extrinsic[frame_index, :, 3]
+        rotation_board_corrected = rotation_board @ rotation_correction.T
+        translation_board_corrected = (
+            translation_board - rotation_board_corrected @ translation_correction
+        )
+        corrected_extrinsic[frame_index, :, :3] = rotation_board_corrected
+        corrected_extrinsic[frame_index, :, 3] = translation_board_corrected
+
+        reports.append(
+            FrameReanchorReport(
+                frame_index=frame_index,
+                candidate_count=candidate_count,
+                tilt_before_deg=tilt_before_deg,
+                offset_shift_mm=float(translation_correction[2]),
+            )
+        )
+
+    return corrected_points, corrected_extrinsic, reports
 
 
 def fuse_tsdf(
@@ -209,6 +419,148 @@ def fuse_tsdf(
     return tsdf, weight
 
 
+@dataclass(frozen=True)
+class VoxelVoteReport:
+    """R-33 criterion 2: one sample point's per-frame vote breakdown.
+
+    `contributing_frame_count` is how many frames said anything at all about this point (the
+    same `contributes` test `fuse_tsdf` uses: in bounds, a real depth measurement, not occluded
+    beyond `truncation_mm` behind that measurement). Of those, `near_surface_frame_count` voted
+    the point is on the surface itself (within `near_surface_mm` of zero signed distance);
+    `in_front_frame_count` voted it is empty space in front of what that frame saw;
+    `behind_frame_count` voted it is behind that frame's surface but still within the truncation
+    band. The three always sum to `contributing_frame_count`.
+    """
+
+    contributing_frame_count: int
+    near_surface_frame_count: int
+    in_front_frame_count: int
+    behind_frame_count: int
+
+    def as_report(self) -> dict[str, int]:
+        return {
+            "contributing_frame_count": self.contributing_frame_count,
+            "near_surface_frame_count": self.near_surface_frame_count,
+            "in_front_frame_count": self.in_front_frame_count,
+            "behind_frame_count": self.behind_frame_count,
+        }
+
+
+def measure_voxel_vote_consensus(
+    depth_mm: np.ndarray,
+    extrinsic_board: np.ndarray,
+    intrinsic: np.ndarray,
+    sample_points_mm: np.ndarray,
+    truncation_mm: float,
+    near_surface_mm: float = DEFAULT_NEAR_SURFACE_MM,
+    keep_mask: np.ndarray | None = None,
+) -> list[VoxelVoteReport]:
+    """R-33 criterion 2: for a handful of sample points (not the whole dense grid), how many
+    frames actually voted each one "on the surface" versus merely in front of or behind one.
+
+    #231's wall surfaces are suspected to come from `fuse_tsdf`'s per-voxel update having no
+    requirement that more than one frame agree a voxel is *on* the surface before trusting a
+    near-zero crossing -- `weight` only counts frames that said anything at all. This measures
+    that directly: reuses `fuse_tsdf`'s exact per-frame `contributes`/`signed_distance` logic
+    (the same occlusion rule -- a frame farther behind the surface than `truncation_mm` says
+    nothing about this point, excluded from every count here too, not just the near/front/behind
+    split) but, instead of averaging into one TSDF value, classifies and keeps every contributing
+    frame's own vote for each sample point. A real surface point should show broad multi-frame
+    agreement at `near_surface`; a spurious wall point, by the suspected mechanism, should be
+    decided by very few frames (often one), split between `in_front` and `behind` rather than
+    clustered at `near_surface`.
+
+    Call this on a handful of sample points (tens to low hundreds), not a dense grid -- it keeps
+    every frame's own classification per point rather than discarding it into a running average,
+    so its cost and memory scale with frame_count * len(sample_points_mm).
+    """
+    depth_mm = np.asarray(depth_mm, dtype=np.float64)
+    if depth_mm.ndim != 3:
+        raise ValueError(f"depth_mm must have shape (S,H,W), got {depth_mm.shape}")
+    frame_count, height, width = depth_mm.shape
+    extrinsic_board = np.asarray(extrinsic_board, dtype=np.float64)
+    if extrinsic_board.shape != (frame_count, 3, 4):
+        raise ValueError(
+            f"extrinsic_board must be ({frame_count},3,4), got {extrinsic_board.shape}"
+        )
+    intrinsic = np.asarray(intrinsic, dtype=np.float64)
+    if intrinsic.shape != (frame_count, 3, 3):
+        raise ValueError(
+            f"intrinsic must be ({frame_count},3,3), got {intrinsic.shape}"
+        )
+    sample_points_mm = np.asarray(sample_points_mm, dtype=np.float64)
+    if sample_points_mm.ndim != 2 or sample_points_mm.shape[1] != 3:
+        raise ValueError(
+            f"sample_points_mm must have shape (N,3), got {sample_points_mm.shape}"
+        )
+    if not np.isfinite(truncation_mm) or truncation_mm <= 0:
+        raise ValueError("truncation_mm must be a positive, finite number.")
+    if not np.isfinite(near_surface_mm) or near_surface_mm <= 0:
+        raise ValueError("near_surface_mm must be a positive, finite number.")
+    if near_surface_mm > truncation_mm:
+        raise ValueError("near_surface_mm must not exceed truncation_mm.")
+    if keep_mask is not None:
+        keep_mask = np.asarray(keep_mask, dtype=bool)
+        if keep_mask.shape != depth_mm.shape:
+            raise ValueError(
+                f"keep_mask must match depth_mm's shape {depth_mm.shape}, got {keep_mask.shape}"
+            )
+
+    sample_count = sample_points_mm.shape[0]
+    near_surface_votes = np.zeros(sample_count, dtype=np.int64)
+    in_front_votes = np.zeros(sample_count, dtype=np.int64)
+    behind_votes = np.zeros(sample_count, dtype=np.int64)
+
+    for frame_index in range(frame_count):
+        rotation = extrinsic_board[frame_index, :, :3]
+        translation = extrinsic_board[frame_index, :, 3]
+        u, v, z_cam = project_points_to_camera(
+            sample_points_mm, rotation, translation, intrinsic[frame_index]
+        )
+
+        in_front_frame = z_cam > 1e-9
+        u_index = np.round(u).astype(np.int64)
+        v_index = np.round(v).astype(np.int64)
+
+        in_bounds = (
+            in_front_frame
+            & (u_index >= 0)
+            & (u_index < width)
+            & (v_index >= 0)
+            & (v_index < height)
+        )
+        clamped_u = np.where(in_bounds, u_index, 0)
+        clamped_v = np.where(in_bounds, v_index, 0)
+
+        depth_sample = depth_mm[frame_index, clamped_v, clamped_u]
+        has_depth = in_bounds & np.isfinite(depth_sample) & (depth_sample > 0.0)
+        if keep_mask is not None:
+            sample_kept = keep_mask[frame_index, clamped_v, clamped_u]
+            has_depth = has_depth & sample_kept
+
+        signed_distance = depth_sample - z_cam
+        contributes = has_depth & (signed_distance > -truncation_mm)
+
+        near_surface_votes += contributes & (np.abs(signed_distance) <= near_surface_mm)
+        in_front_votes += contributes & (signed_distance > near_surface_mm)
+        behind_votes += (
+            contributes
+            & (signed_distance < -near_surface_mm)
+            & (signed_distance > -truncation_mm)
+        )
+
+    contributing_votes = near_surface_votes + in_front_votes + behind_votes
+    return [
+        VoxelVoteReport(
+            contributing_frame_count=int(contributing_votes[i]),
+            near_surface_frame_count=int(near_surface_votes[i]),
+            in_front_frame_count=int(in_front_votes[i]),
+            behind_frame_count=int(behind_votes[i]),
+        )
+        for i in range(sample_count)
+    ]
+
+
 def extract_mesh_marching_cubes(
     tsdf: np.ndarray,
     weight: np.ndarray,
@@ -218,10 +570,26 @@ def extract_mesh_marching_cubes(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Extract the zero-crossing surface as a mesh, ignoring never-observed voxels.
 
-    Voxels with `weight == 0` are masked out of the marching-cubes input entirely (skimage's
-    `mask` parameter), so unobserved space can never fabricate a surface -- the same "unobserved
-    geometry never asserts anything" principle AGENTS.md's hard rule states for the verdict logic,
-    applied here at the meshing level.
+    R-33 (review on #231, then #287): a plain `weight == 0` mask does not actually keep
+    unobserved space from fabricating a surface, despite this function's own former claim that
+    it did. skimage's `mask` only gates whether a cube (8 corners) is attempted at all --
+    empirically, as little as one `True` corner is enough to trigger it, and the *other 7
+    corners' raw stored values* are then used for interpolation regardless of their own mask
+    status. A never-touched voxel's `tsdf` default of `0.0` sits exactly on `level=0.0`, so
+    every cube straddling an observed/never-observed boundary is a guaranteed crossing -- this
+    is why #231's wall surfaces exist: on real golden data, 90-98% of wall points have zero
+    contributing frames, not "too few".
+
+    The fix runs skimage against the plain `weight > 0` mask -- so real surface right at a
+    boundary still interpolates from every corner that genuinely is observed -- then drops every
+    face whose own cube (the 8 grid points `floor(centroid)` through `floor(centroid) + 1`) is
+    not *fully* observed, and reindexes the surviving vertices. A face that survives this filter
+    is never built from an unobserved corner's fabricated `0.0`, regardless of skimage's real
+    (unknown, compiled) activation threshold. Measured against blanket-eroding the mask instead
+    (this fix's first version, review on #287): filtering by cube keeps materially more real part
+    geometry at every true boundary, since erosion throws away a whole voxel of margin on both
+    sides of a boundary while this only throws away the cubes that actually mix observed and
+    unobserved corners (golden-object comparison in R-33.md).
     """
     from skimage.measure import marching_cubes
 
@@ -245,11 +613,116 @@ def extract_mesh_marching_cubes(
         if "No surface found" not in str(exc):
             raise
         return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
+    except ValueError as exc:
+        # A separate, pre-existing gap (review on #231): skimage's own level-range check runs
+        # over the *entire raw volume*, ignoring mask entirely, and raises this when nothing in
+        # the array crosses zero at all. Reachable even without this fix, just rare in practice
+        # (a real grid almost always has an untouched 0.0 voxel somewhere) -- closed here rather
+        # than left as a second uncaught exception shape for the same "no real surface" outcome.
+        if "Surface level must be within volume data range" not in str(exc):
+            raise
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
+
+    vertices, faces = _drop_faces_with_an_unobserved_corner(
+        vertices, faces, observed_mask, voxel_size_mm
+    )
+    if len(faces) == 0:
+        return np.empty((0, 3), dtype=np.float32), np.empty((0, 3), dtype=np.int32)
 
     vertices_mm = (vertices + np.asarray(origin_mm, dtype=np.float64)).astype(
         np.float32
     )
     return vertices_mm, faces.astype(np.int32)
+
+
+def _drop_faces_with_an_unobserved_corner(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    observed_mask: np.ndarray,
+    voxel_size_mm: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Keep only faces whose own marching-cubes cube has all 8 corners observed (R-33, #287).
+
+    skimage's `spacing` argument scaled the returned vertices by `voxel_size_mm`; dividing back
+    out gives each vertex's position in voxel-index units, where `floor` of a face's centroid
+    identifies which cube -- the 8 grid points from that index to index + 1 on each axis -- the
+    face belongs to. A triangle that happens to lie exactly on a cube face is attributed to
+    whichever cube its centroid floors into; skimage places vertices on cube edges rather than
+    corners, so a real triangle's centroid landing on an exact integer on every axis at once
+    does not arise.
+    """
+    cube_observed = (
+        observed_mask[:-1, :-1, :-1]
+        & observed_mask[1:, :-1, :-1]
+        & observed_mask[:-1, 1:, :-1]
+        & observed_mask[:-1, :-1, 1:]
+        & observed_mask[1:, 1:, :-1]
+        & observed_mask[1:, :-1, 1:]
+        & observed_mask[:-1, 1:, 1:]
+        & observed_mask[1:, 1:, 1:]
+    )
+    voxel_index = vertices / voxel_size_mm
+    centroid_index = voxel_index[faces].mean(axis=1)
+    cube_index = np.clip(
+        np.floor(centroid_index).astype(np.int64),
+        0,
+        np.asarray(cube_observed.shape) - 1,
+    )
+    keep = cube_observed[cube_index[:, 0], cube_index[:, 1], cube_index[:, 2]]
+
+    kept_faces = faces[keep]
+    used_vertices = np.unique(kept_faces)
+    remap = np.full(len(vertices), -1, dtype=np.int64)
+    remap[used_vertices] = np.arange(len(used_vertices))
+    return vertices[used_vertices], remap[kept_faces]
+
+
+def _orient_poisson_normals(point_cloud, points_mm: np.ndarray) -> str:
+    """Orient Poisson normals coherently and pin a decisive overall board-frame sign.
+
+    Full-rank clouds use Open3D tangent-plane consistency. Exactly planar clouds use a PCA
+    normal directly because Open3D 0.18 sends coplanar data through Qhull/Delaunay. The
+    consistency algorithms still leave one global +/- choice. In ProofShape board coordinates
+    cameras are above the board in -z, so when substantially more normals have a strong +z
+    component than a strong -z component, flip the whole field. The 25% vote margin avoids
+    arbitrarily flipping closed/symmetric shapes whose up/down evidence is balanced.
+    """
+    points_mm = np.asarray(points_mm, dtype=np.float64)
+    centred = points_mm - points_mm.mean(axis=0)
+    singular_values = np.linalg.svd(centred, compute_uv=False)
+    if len(singular_values) == 0 or singular_values[0] <= 0.0:
+        raise ValueError("Poisson input does not span a surface.")
+
+    tolerance = max(1e-9, float(singular_values[0]) * 1e-10)
+    rank = int(np.count_nonzero(singular_values > tolerance))
+    if rank < 2:
+        raise ValueError(
+            "Poisson input is rank-deficient (point/line-like); at least a surface is required."
+        )
+
+    if rank == 2:
+        _u, _s, vh = np.linalg.svd(centred, full_matrices=False)
+        plane_normal = np.asarray(vh[-1], dtype=np.float64)
+        normal_length = float(np.linalg.norm(plane_normal))
+        if not np.isfinite(normal_length) or normal_length <= 0.0:
+            raise ValueError("Could not determine a finite planar Poisson normal.")
+        plane_normal /= normal_length
+        point_cloud.normals = type(point_cloud.normals)(
+            np.tile(plane_normal, (len(points_mm), 1))
+        )
+        mode = "planar_pca"
+    else:
+        tangent_k = min(30, len(points_mm) - 1)
+        point_cloud.orient_normals_consistent_tangent_plane(tangent_k)
+        mode = "tangent_plane"
+
+    normals = np.asarray(point_cloud.normals, dtype=np.float64)
+    strong_down = int(np.count_nonzero(normals[:, 2] > 0.2))
+    strong_up = int(np.count_nonzero(normals[:, 2] < -0.2))
+    if strong_down > max(1, math.ceil(1.25 * strong_up)):
+        point_cloud.normals = type(point_cloud.normals)(-normals)
+
+    return mode
 
 
 def extract_mesh_poisson(
@@ -280,6 +753,11 @@ def extract_mesh_poisson(
     point_cloud = o3d.geometry.PointCloud()
     point_cloud.points = o3d.utility.Vector3dVector(points_mm)
     point_cloud.estimate_normals()
+
+    # R-27: Poisson requires a coherent normal field. Full-rank clouds use Open3D's
+    # tangent-plane orientation; planar clouds use a deterministic PCA normal instead because
+    # Open3D 0.18's tangent-plane path invokes Qhull/Delaunay and rejects coplanar inputs.
+    _orient_poisson_normals(point_cloud, points_mm)
 
     mesh, _densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
         point_cloud, depth=poisson_depth
@@ -384,9 +862,11 @@ def write_fusion_report(
     min_confidence: float,
     min_confidence_source: str,
     confidence_dropped_pixel_count: int,
+    reanchor_reports: list[FrameReanchorReport],
+    board_surface_before_reanchoring: BoardSurface,
 ) -> dict[str, Any]:
     report = {
-        "story": ["R-07", "R-20", "R-21"],
+        "story": ["R-07", "R-20", "R-21", "R-30"],
         "source_run_dir": str(reconstruction_run_dir),
         "source_alignment_json": str(alignment_json_path),
         "units": "mm",
@@ -409,6 +889,21 @@ def write_fusion_report(
         "min_confidence": min_confidence,
         "min_confidence_source": min_confidence_source,
         "confidence_dropped_pixel_count": confidence_dropped_pixel_count,
+        # R-30: the board surface measured before any per-frame correction (also the target
+        # every frame was corrected onto), the one measured after (same plane by construction,
+        # but its tighter residual_sigma_mm is the actual before/after diagnostic), and each
+        # frame's own pre-correction tilt/candidate count/applied shift -- what the golden
+        # rerun's acceptance criteria ask to be recorded, not just asserted to "look better".
+        "board_surface_before_reanchoring": board_surface_before_reanchoring.as_report(),
+        "reanchor_reports": [
+            {
+                "frame_index": r.frame_index,
+                "candidate_count": r.candidate_count,
+                "tilt_before_deg": r.tilt_before_deg,
+                "offset_shift_mm": r.offset_shift_mm,
+            }
+            for r in reanchor_reports
+        ],
     }
     path = Path(path)
     path.write_text(
@@ -429,6 +924,9 @@ def fuse_run(
     max_part_height_mm: float = DEFAULT_MAX_PART_HEIGHT_MM,
     max_board_tilt_deg: float = DEFAULT_MAX_BOARD_TILT_DEG,
     min_confidence: float | None = None,
+    min_kept_points: int = DEFAULT_MIN_KEPT_POINTS,
+    vote_sample_points_mm: np.ndarray | None = None,
+    vote_near_surface_mm: float = DEFAULT_NEAR_SURFACE_MM,
 ) -> dict[str, Any]:
     """Load R-01 depth/poses and an R-04 alignment, fuse, extract a mesh, and write the outputs.
 
@@ -440,6 +938,13 @@ def fuse_run(
     R-21: the board surface is fit from this run's own valid-depth pixels before segmenting, so
     the height cut (and the voxel grid's z top, below) follow the real board, not z=0.
     `height_threshold_mm` still overrides the measured value when given, same as `segment_run`.
+
+    `vote_sample_points_mm` (R-33 criterion 2), when given, runs
+    `measure_voxel_vote_consensus` on those points using this exact run's own depth/extrinsic/
+    keep_mask, and writes the result to `vote_consensus.json` in `out_dir` -- for comparing a
+    sample of wall-classified points against a sample of part points from a previous run of this
+    same reconstruction. `method` must be `"marching_cubes"`: the vote mechanism this measures
+    is specific to `fuse_tsdf`'s per-voxel update, which the Poisson path never runs.
 
     `min_confidence=None` (the default) reads the threshold the source run itself used
     (`run.json`'s own `min_confidence`), so the fused surface agrees with `points.ply` by
@@ -454,6 +959,11 @@ def fuse_run(
     if method not in ("marching_cubes", "poisson"):
         raise ValueError(
             f"method must be 'marching_cubes' or 'poisson', got {method!r}"
+        )
+    if vote_sample_points_mm is not None and method != "marching_cubes":
+        raise ValueError(
+            "vote_sample_points_mm needs method='marching_cubes' -- the vote mechanism it "
+            "measures is fuse_tsdf's own per-voxel update, which the Poisson path never runs."
         )
     if out_dir.exists() and any(out_dir.iterdir()):
         raise FileExistsError(
@@ -492,18 +1002,46 @@ def fuse_run(
 
     # Only pixels with a real depth measurement feed the board-plane fit -- an invalid pixel
     # (depth <= 0 or non-finite) unprojects to the camera centre, not a board point.
+    valid_depth = np.isfinite(depth) & (depth > 0.0)
+    flat_valid_depth = valid_depth.reshape(-1)
+    board_surface_before_reanchoring = measure_board_surface(
+        board_frame_points.reshape(-1, 3)[flat_valid_depth],
+        footprint_mm,
+        max_tilt_deg=max_board_tilt_deg,
+        height_threshold_mm=height_threshold_mm,
+    )
+
+    # R-30: correct each frame's own board-plane drift (D-060) before any of it feeds
+    # segmentation or fusion -- see reanchor_frames_to_board's docstring for the derivation.
+    board_frame_points, board_extrinsic, reanchor_reports = reanchor_frames_to_board(
+        board_frame_points,
+        board_extrinsic,
+        valid_depth,
+        board_surface_before_reanchoring,
+        footprint_mm,
+    )
+
+    # Re-fit after correction: the target plane is the same by construction, but this is the
+    # fit that now actually describes the (much tighter) corrected cloud, and is what
+    # segmentation and the voxel grid's bounds use from here on.
     flat_points = board_frame_points.reshape(-1, 3)
-    valid_depth = (np.isfinite(depth) & (depth > 0.0)).reshape(-1)
     board_surface = measure_board_surface(
-        flat_points[valid_depth], footprint_mm, max_tilt_deg=max_board_tilt_deg
+        flat_points[flat_valid_depth],
+        footprint_mm,
+        max_tilt_deg=max_board_tilt_deg,
+        height_threshold_mm=height_threshold_mm,
     )
     # segment_part itself requires every point finite; an invalid pixel's unprojected point can
     # still be non-finite (e.g. NaN depth), so it's excluded here too rather than passed through
     # and never classified as part geometry -- fuse_tsdf already drops invalid-depth pixels on
     # its own, independently of this mask, so their keep value doesn't otherwise matter.
     segmented_flat = np.zeros(flat_points.shape[0], dtype=bool)
-    segmented_flat[valid_depth] = segment_part(
-        flat_points[valid_depth], board_surface, height_threshold_mm, footprint_mm
+    segmented_flat[flat_valid_depth] = segment_part(
+        flat_points[flat_valid_depth],
+        board_surface,
+        height_threshold_mm,
+        footprint_mm,
+        min_kept_points=min_kept_points,
     )
     segmented_mask = segmented_flat.reshape(frame_count, height, width)
 
@@ -557,7 +1095,43 @@ def fuse_run(
         observed_voxel_count = int(np.count_nonzero(keep_mask))
         total_voxel_count = observed_voxel_count
 
+    if vote_sample_points_mm is not None:
+        vote_reports = measure_voxel_vote_consensus(
+            depth_mm,
+            board_extrinsic,
+            intrinsic,
+            vote_sample_points_mm,
+            resolved_truncation_mm,
+            near_surface_mm=vote_near_surface_mm,
+            keep_mask=keep_mask,
+        )
+        (out_dir / "vote_consensus.json").write_text(
+            json.dumps(
+                {
+                    "story": "R-33",
+                    "near_surface_mm": vote_near_surface_mm,
+                    "truncation_mm": resolved_truncation_mm,
+                    "sample_points_mm": np.asarray(
+                        vote_sample_points_mm, dtype=float
+                    ).tolist(),
+                    "votes": [report.as_report() for report in vote_reports],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
     write_mesh_ply(out_dir / "mesh.ply", vertices_mm, faces)
+    # R-30 (review on #270, @TabeenRaoof): the re-anchoring correction above only ever lived in
+    # this function's local `board_extrinsic` -- provenance/uncertainty independently rebuild
+    # their own camera poses from poses.npz and the single global alignment, so without this they
+    # would silently check the corrected mesh against the *uncorrected*, still-drifted cameras.
+    # Persisted here, in the same (S,3,4) shape and "extrinsic" key poses.npz itself uses, so a
+    # caller that has it can load it exactly like a pose array; provenance_run prefers it when
+    # given a fusion_dir that has one.
+    np.savez_compressed(out_dir / "corrected_extrinsic.npz", extrinsic=board_extrinsic)
     return write_fusion_report(
         out_dir / "tsdf_fusion.json",
         reconstruction_run_dir,
@@ -576,6 +1150,8 @@ def fuse_run(
         min_confidence=resolved_min_confidence,
         min_confidence_source=min_confidence_source,
         confidence_dropped_pixel_count=confidence_dropped_pixel_count,
+        reanchor_reports=reanchor_reports,
+        board_surface_before_reanchoring=board_surface_before_reanchoring,
     )
 
 
