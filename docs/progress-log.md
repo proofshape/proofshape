@@ -2279,11 +2279,14 @@ G-05.
 **What changed:** added A-13's Gemini adapter, structured action mapping, lazy A-07 read-tool
 execution, offline tests and a synthetic-only live-check script. D-068 records the independent
 model pin and on-demand tool choice.
-**Result:** 1,205 Python tests passed with 4 deprecation warnings; Ruff, formatting and
-story-state checks passed.
-Two live runs returned the pinned model and different model-authored tool/message traces; both
-then triggered A-07's loop fallback after repeating unavailable VLM inspection.
-**Concluded:** the pinned model is live and variable on identical synthetic state; fallback is
-working, while repeated unavailable-tool requests remain visible for follow-up.
-**Next:** second-member clean-checkout run, owner-measured actual hours and review before A-13 can
-close under the definition of done.
+**Result:** initial full suite passed 1,205 tests with 4 deprecation warnings. After review, the
+per-turn action enum was tightened and `check_agent_model.py` passed twice without fallback, with
+different model-authored supplier messages; all responses used the pinned model. The revised full
+suite passed 1,206 tests with 4 deprecation warnings; Ruff, formatting and story-state checks pass.
+The second-member run on the prior head found one unrelated clean-Mac failure because
+`tests/test_macos_openmp.py` assumed optional `torch`; this PR now skips that integration test when
+torch is absent. A rerun on the revised head is requested.
+**Concluded:** only unresolved tools are offered on each step, and A-07 now demonstrates different
+supplier-facing answers on identical synthetic state.
+**Next:** second-member clean-checkout rerun on the revised head, then final D-038 close-out and
+approval with the owner's reported 8 h actual.
