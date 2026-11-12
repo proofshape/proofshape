@@ -2239,3 +2239,36 @@ waiting rather than active, so this claim is within the cap.
 **Result:** merged to `main`. CI (pytest, ruff, typescript) green on the merged head.
 **Next:** implement A-07's core tool-calling loop against a mock model, then its fallback to
 A-08's deterministic policy.
+
+## 2026-11-11 — G-01 cube readings and slicer settings recorded; story closed (PR #303)
+
+**Who:** @TabeenRaoof (PR #303). The lab facts and protocol came earlier, in #260.
+
+**What changed:**
+- `fixtures/caliper_g-01.json` holds 90 caliper readings: 3 cubes × 3 axes × 10, measured 2026-11-11
+  with the G-06 caliper.
+  - They were copied by script from the lab-day checklist, not retyped.
+  - One typing slip was fixed before commit. Cube 1's tenth X reading had gone in as 30.3; the
+    owner checked it, and it is 30.0.
+- `stories/G/G-01.md` gets the 2026-11-10 visit (the lab's only A1 mini, grey Bambu PLA Basic, one
+  spool, about 9:20 am to 12:45 pm), the slicer settings, the per-axis deviation table and the
+  completion record.
+
+**Measured, with no tolerance (G-04 judges):**
+- The mean − 30 mm over the three cubes: X −0.027, Y −0.073, Z +0.010.
+- The range of the three cube means: X 0.11, Y 0.01, Z 0.05.
+- Y read short on all three prints, by close to the same amount. Every deviation is under one
+  0.1 mm caliper step.
+
+**Slicer settings,** read from the sliced cube file the printer ran
+(`g01_calibration_cube_30mm.gcode.3mf`, exported 2026-11-10):
+- A1 mini 0.4 nozzle, 0.20mm Standard @BBL A1M, Bambu PLA Basic @BBL A1M, Textured PEI Plate.
+- 0.2 mm layers, 2 walls, 5 top and 3 bottom shell layers, 15% grid infill.
+- Bambu Studio 02.09.01.70, with an estimate of 27 min 33 s and 10.00 g per cube.
+- G-02 and G-05 print on exactly these.
+
+**Result:** this PR sets G-01 to `State: Done`, 7 h actual (est 3). `check_story_states.py` is
+clean.
+
+**Next:** G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in
+G-05.
