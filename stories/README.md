@@ -330,7 +330,7 @@ Full detail in each story file.
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
 | [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
 | [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Ready | _unclaimed_ |
-| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Ready | _unclaimed_ |
+| [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Claimed | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Ready | _unclaimed_ |
 | [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Blocked | _unclaimed_ |
 | [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
