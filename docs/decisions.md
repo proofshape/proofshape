@@ -1292,6 +1292,33 @@ neither floor, by design.
 *Checked against D-028:* fetched every origin branch on 2026-11-11. D-062 is the highest anywhere,
 so D-063 was the first free number.
 
+**D-064 · The WIP cap counts active stories only; a story waiting on something outside its
+owner's hands doesn't count.** (2026-11-11)
+Sprint plan working agreement 5 capped work in progress at two stories per person. It now caps
+*active* stories at two. A claimed story isn't active while it waits only on something its owner
+can't move: a review, a sprint-boundary merge (D-031's kind), lab or GPU access, or a teammate's
+input. That holds only while its notes say what it waits on and since when. When the wait ends
+the story counts again; an owner who is then at three takes no new claim until one is Done or
+released.
+
+*Why:* the cap exists for the reason the plan gives: three half-finished features at a milestone
+is worse than one finished one. A story parked on a lab slot or a teammate's answer isn't being
+half-worked by anyone, so counting it only stops its owner starting the next thing. The cap was
+waived by named exception four times in five days, each time for this reason: G-01 (2026-11-06),
+G-05 and P-30 (2026-11-09), R-32 (2026-11-10). A rule that needs an exception for nearly every
+claim no longer says what the team actually does. What still matters is that a waiting story
+stays visible, so the note is required.
+*Does not change:* one person per story, claimed visibly before work starts (D-037); and no story
+crosses a gate (working agreement 4). A waiting story at a boundary is still finished, cut or
+explicitly carried.
+*Risk, stated:* more claims held at once means more stories that can be caught waiting at a gate.
+Working agreement 4 still applies to them, and the required note makes them quick to find at the
+boundary call.
+*Checked against D-028:* fetched every origin branch on 2026-11-11. D-063 is the highest anywhere,
+so D-064 was the first free number.
+*Agreement:* it changes a working agreement for all three, so its pull request asks both
+@mbj1994 and @dalwalyk to agree, and merges only with both approving.
+
 ---
 
 ## Open — not yet decided
