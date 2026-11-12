@@ -40,14 +40,19 @@ export function mountAgentConversation(container: HTMLElement): AgentConversatio
     container.hidden = false;
 
     const fallbackReason = result.fallback_reason;
-    if (fallbackReason !== null) {
+    if (result.finished) {
+      if (fallbackReason === null) {
+        delete status.dataset.agentFallbackReason;
+      } else {
+        status.dataset.agentFallbackReason = fallbackReason;
+      }
+      status.textContent = "Capture assistant says the session is finished.";
+    } else if (fallbackReason !== null) {
       status.dataset.agentFallbackReason = fallbackReason;
       status.textContent = "Automatic guidance is active. Continue following the capture arrows.";
     } else {
       delete status.dataset.agentFallbackReason;
-      status.textContent = result.finished
-        ? "Capture assistant says the session is finished."
-        : "Assistant guidance updated.";
+      status.textContent = "Assistant guidance updated.";
     }
 
     const message = result.message?.trim();
