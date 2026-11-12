@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  AgentMessageResult,
   ErrorDetail,
   ReconstructionResult,
   Session,
@@ -115,6 +116,7 @@ export interface ContractStub {
   failReconstruction: () => void;
   useNoReferenceReconstruction: () => void;
   setVerdictScenario: (scenario: VerdictScenario, sessionId?: string) => void;
+  setAgentFallback: (fallback: boolean, reason?: string) => void;
 }
 
 export function createContractStub(): ContractStub {
@@ -126,6 +128,8 @@ export function createContractStub(): ContractStub {
   let reconstructionNoReference = false;
   let latestSessionId: string | null = null;
   const verdictScenarios = new Map<string, VerdictScenario>();
+  let agentFallback = false;
+  let agentFallbackReason = "model_unavailable";
 
   function sendJson(res: ServerResponse, status: number, body: unknown): void {
     const text = JSON.stringify(body);
@@ -366,6 +370,24 @@ export function createContractStub(): ContractStub {
     sendJson(res, 200, body);
   }
 
+  function handleAgentMessage(res: ServerResponse, sessionId: string): void {
+    const session = sessions.get(sessionId);
+    if (!session) {
+      sendJson(res, 404, sessionNotFound());
+      return;
+    }
+    const body: AgentMessageResult = agentFallback
+      ? { message: null, fallback: true, fallback_reason: agentFallbackReason }
+      : {
+          message:
+            session.acceptedFrameCount === 0
+              ? "Capture your first guided frame."
+              : "Frame accepted. Continue to the next guided view.",
+          fallback: false,
+        };
+    sendJson(res, 200, body);
+  }
+
   function handleVerdict(res: ServerResponse, sessionId: string): void {
     if (!sessions.has(sessionId)) {
       sendJson(res, 404, sessionNotFound());
@@ -422,6 +444,7 @@ export function createContractStub(): ContractStub {
     const reconstructionMatch = /^\/v1\/sessions\/([^/]+)\/reconstruction$/.exec(path);
     const modelMatch = /^\/v1\/sessions\/([^/]+)\/model\.glb$/.exec(path);
     const verdictMatch = /^\/v1\/sessions\/([^/]+)\/verdict$/.exec(path);
+    const agentMessageMatch = /^\/v1\/sessions\/([^/]+)\/agent-message$/.exec(path);
 
     if (req.method === "POST" && path === "/v1/sessions") {
       toWebRequest(req)
@@ -458,6 +481,10 @@ export function createContractStub(): ContractStub {
       handleVerdict(res, verdictMatch[1] as string);
       return;
     }
+    if (req.method === "GET" && agentMessageMatch) {
+      handleAgentMessage(res, agentMessageMatch[1] as string);
+      return;
+    }
 
     if (next) {
       next();
@@ -487,6 +514,10 @@ export function createContractStub(): ContractStub {
         throw new Error("stub: setVerdictScenario requires an existing session");
       }
       verdictScenarios.set(targetSessionId, scenario);
+    },
+    setAgentFallback: (fallback: boolean, reason = "model_unavailable") => {
+      agentFallback = fallback;
+      agentFallbackReason = reason;
     },
   };
 }
