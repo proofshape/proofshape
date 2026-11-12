@@ -148,11 +148,19 @@ export async function getAgentMessage(
   baseUrl: string,
   sessionId: string,
   authToken?: string,
+  timeoutMs = 2000,
 ): Promise<ApiResult<AgentMessageResult>> {
-  const response = await fetch(
-    `${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/agent-message`,
-    { headers: authHeaders(authToken) },
-  );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(
+      `${baseUrl}/v1/sessions/${encodeURIComponent(sessionId)}/agent-message`,
+      { headers: authHeaders(authToken), signal: controller.signal },
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
   const body = await readJsonBody(response, "getAgentMessage");
   if (response.status === 200) {
     return { ok: true, status: response.status, body: body as AgentMessageResult };
