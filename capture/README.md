@@ -100,8 +100,13 @@ An organisation/repository admin must set
 No laptop dev server is required to open the resulting HTTPS page.
 
 The hosted page is deliberately disconnected from the paid reconstruction service
-until O-005 is answered and recorded in `docs/decisions.md`. Public recon can
-only be enabled when all three O-005 confirmations are explicitly set to `true`:
+until O-005 is answered and recorded in `docs/decisions.md`. While it is
+disconnected, the production page stops before mounting the capture shell and says
+"Reconstruction service is not configured for this hosted build yet" instead of
+sending `/v1/sessions` to GitHub Pages and exposing a raw HTTP 405. Local
+development is unchanged and still uses the Vite contract stub when the base URL
+is blank. Public recon can only be enabled when all three O-005 confirmations are
+explicitly set to `true`:
 
 - `PROOFSHAPE_CORS_PREFLIGHT_CONFIRMED` — the real Lightning deployment accepted
   the browser's token-less CORS preflight.
