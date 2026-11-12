@@ -53,9 +53,9 @@ describe("hostedReconUnavailable", () => {
   });
 
   it("allows a configured production backend", () => {
-    expect(
-      hostedReconUnavailable("https://example.lightning.ai", false),
-    ).toBe(false);
+    expect(hostedReconUnavailable("https://example.lightning.ai", false)).toBe(
+      false,
+    );
   });
 });
 
