@@ -1319,6 +1319,47 @@ so D-064 was the first free number.
 *Agreement:* it changes a working agreement for all three, so its pull request asks both
 @mbj1994 and @dalwalyk to agree, and merges only with both approving.
 
+**D-065 · Android device testing is parked; an iPhone in Safari is the only tested path until
+C-23 runs, revisited before the expo if time allows.** (2026-11-11)
+#305 split the Android device check out of C-18 into C-23. The team parks C-23 rather than
+cutting it:
+- **What's parked.** C-23 stays written, `Ready` and unclaimed. Its content and estimate are
+  unchanged. C-18, the iPhone check, is unaffected.
+- **Until it runs,** the capture app is tested on an iPhone in Safari only. The manual says so
+  (§2), so a supplier knows to use one. X-04 (I4) runs on the iPhone, and adds an Android phone
+  only if C-23 has run.
+- **The revisit point.** Before the expo, if time allows. The expo is most likely Fri 2026-12-05
+  (O-006), the day after M7's code freeze (Dec 3–4: "no behavior-changing commits"). So:
+  - the check is decided at the Dec 2 boundary at the latest;
+  - any fix C-23 finds lands before Dec 4;
+  - after the freeze, it can only be recorded.
+- **The trigger.** Someone on the team has an Android phone to run it on, an open question since
+  C-18 was written up on 2026-11-09, and the boundary call finds C-23's 2 h.
+
+*Why:* nobody has an Android phone lined up, and the capture lane's S6 hours were oversubscribed
+before this was split out (P-30, P-31). Parked on purpose and written down, the check stays visible
+instead of being quietly dropped, and it stops blocking I4 and the backup demo (X-05), which
+otherwise wait on it forever.
+
+*Cost, stated:*
+- **The proposal's §12 acceptance rule is unmet** while this stands: "run on one iOS and one
+  Android phone at every milestone. Tier 1 must pass on both." So is the sprint plan's S6 line,
+  "test on one iPhone and one Android".
+- **Android behaviour that differs from iOS is untested:**
+  - C-03's path for a browser without `DeviceOrientationEvent.requestPermission`;
+  - a relative rather than compass `alpha` for C-20's heading maths;
+  - Chrome's handling of the dev server's self-signed certificate.
+- **If C-23 hasn't run by the expo,** the final report says so.
+
+*Does not change:* C-18; C-23's acceptance criteria; the proposal itself, which is a historical
+submission (this entry records the departure from it).
+
+*Checked against D-028:* fetched every origin branch on 2026-11-11. D-064 is held on
+`chore/wip-cap-active-work` (#307), so D-065 was the first free number.
+
+*Agreement:* it changes the proposal's acceptance rule for this semester, so P-33's pull request
+asks both @mbj1994 and @dalwalyk to agree, and merges only with both approving.
+
 **D-066 · The disagreement map weighs each unseen point by its spread above the session's own
 seen-surface spread; it ranks next views alongside C-08 and never blocks one.** (2026-11-11)
 A-05 builds the map from A-04's K completion samples (`recon/disagreement.py`). It has five parts.
@@ -1448,3 +1489,9 @@ assumed. First, whether `--token-auth` refuses the token-less CORS preflight tha
 whether a token visible in the client bundle is acceptable at all. Third, the order code as the
 access control: the deployed `app = create_app()` sets no `known_order_codes`, so today any
 non-empty code starts a paid GPU run.
+
+**O-006 · The expo date is unconfirmed: most likely Fri 2026-12-05.** (2026-11-11)
+Recorded as the team's working assumption, given by @TabeenRaoof on 2026-11-11, because nothing in
+the repository named a date. It falls the day after M7's code freeze (Dec 3–4), so what is shown
+at the expo is what is on `main` at the freeze. D-065 times C-23's revisit against it. Confirm it,
+and update this entry and D-065, once the date is known.
