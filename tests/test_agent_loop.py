@@ -125,6 +125,51 @@ def test_falls_back_on_a_malformed_reply(tmp_path):
     assert result.fallback_reason == "model_error"
 
 
+def test_model_path_runs_only_the_requested_tool_and_caches_its_result(
+    tmp_path, monkeypatch
+):
+    store = service.SessionStore(tmp_path)
+    calls: list[str] = []
+    states = []
+
+    def score_next_view(record):
+        calls.append("score_next_view")
+        return ToolResult(
+            available=True, data={"best": {"under_observed_visible_count": 2}}
+        )
+
+    def unexpected_tool(*_args, **_kwargs):
+        raise AssertionError("an unselected tool ran")
+
+    monkeypatch.setattr("recon.agent_loop.score_next_view", score_next_view)
+    monkeypatch.setattr("recon.agent_loop.check_frame", unexpected_tool)
+    monkeypatch.setattr("recon.agent_loop.vlm_inspect", unexpected_tool)
+    monkeypatch.setattr("recon.agent_loop.coverage_report", unexpected_tool)
+
+    def model_caller(state):
+        states.append(state)
+        if len(states) <= 2:
+            return _reply(tool="score_next_view")
+        return _reply(done=True, message="Two spots still need a clearer view.")
+
+    result = run_agent_turn(
+        _capturing_record(),
+        store,
+        "sess_x",
+        lambda sid: None,
+        model_caller,
+        min_frames=3,
+    )
+
+    assert result.fallback_reason is None
+    assert calls == ["score_next_view"]
+    assert states[0].tools.score_next_view.reason == "not_requested"
+    assert states[1].tools.score_next_view.data == {
+        "best": {"under_observed_visible_count": 2}
+    }
+    assert states[1].tools.coverage_report.reason == "not_requested"
+
+
 def test_falls_back_on_timeout(tmp_path):
     store = service.SessionStore(tmp_path)
     clock = _fixed_clock(

@@ -227,16 +227,16 @@ Full detail in each story file.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Done | @TabeenRaoof |
-| [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | nothing | Claimed | @dalwalyk |
-| [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Blocked | _unclaimed_ |
+| [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | nothing | Done | @dalwalyk |
+| [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Ready | _unclaimed_ |
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
 | [G-05](G/G-05.md) | Defect ladder at 2 / 4 / 8 mm | 4 h | nothing | Claimed | @TabeenRaoof |
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
-| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Blocked | _unclaimed_ |
+| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Ready | _unclaimed_ |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Blocked | _unclaimed_ |
-| [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Blocked | _unclaimed_ |
+| [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Ready | _unclaimed_ |
 
 ---
 
@@ -333,7 +333,7 @@ Full detail in each story file.
 | [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Done | @dalwalyk |
 | [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
-| [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Claimed | @dalwalyk |
+| [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Done | @dalwalyk |
 | [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
 
 **Waiting on a decision, no story yet:**
@@ -458,7 +458,7 @@ Full detail in each story file.
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone | 3 h | C-13, C-20 | Done | @dalwalyk |
 | [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
-| [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Claimed | @mbj1994 |
+| [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Done | @mbj1994 |
 | [C-23](C/C-23.md) | Device testing: the capture path on an Android phone | 2 h | C-13, C-20 | Ready | _unclaimed_ |
 
 ---

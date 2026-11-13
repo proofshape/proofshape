@@ -11,7 +11,14 @@ import {
   stopCameraStream,
   type CapturedFrame,
 } from "./camera.js";
-import { createSession, finishSession, getReconstruction, uploadFrame } from "./api.js";
+import {
+  createSession,
+  finishSession,
+  getAgentMessage,
+  getReconstruction,
+  uploadFrame,
+} from "./api.js";
+import { mountAgentConversation } from "./agent-conversation.js";
 import { requireElement, requireTyped } from "./dom.js";
 import { checkBlur, checkDuplicate, checkExposure, type FramePixels } from "./frame_gate.js";
 import { requestGyroPermission } from "./gyro.js";
@@ -80,6 +87,9 @@ export const APP_SHELL_HTML = `
     <div id="shell-gyro-overlay"></div>
   </section>
   <section>
+    <div id="shell-agent-conversation"></div>
+  </section>
+  <section>
     <h2>Finish and reconstruct (C-10)</h2>
     <button id="shell-finish-button" type="button" disabled>Finish session</button>
     <button id="shell-retry-reconstruction-button" type="button" hidden>
@@ -114,6 +124,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const captureStatus = requireElement(root, "#shell-capture-status");
   const vlmHint = requireElement(root, "#shell-vlm-hint");
   const gyroOverlayContainer = requireElement(root, "#shell-gyro-overlay");
+  const agentConversationContainer = requireElement(root, "#shell-agent-conversation");
   const finishButton = requireTyped(root, "#shell-finish-button", HTMLButtonElement, "<button>");
   const retryReconstructionButton = requireTyped(
     root,
@@ -125,6 +136,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const reconstructionStatus = requireElement(root, "#shell-reconstruction-status");
   const reportLink = requireTyped(root, "#shell-report-link", HTMLAnchorElement, "<a>");
   const modelViewer = requireElement(root, "#shell-model-viewer");
+
+  const agentConversation = mountAgentConversation(agentConversationContainer);
 
   const state: AppState = {
     sessionId: null,
@@ -162,6 +175,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // only if finishSession itself fails (so a retry is possible); left `true` forever once it
   // actually succeeds, since there's nothing left in this session to capture into or finish again.
   let sessionFinishing = false;
+  // C-22: only the newest assistant request may update the panel. Accepted frames can trigger
+  // overlapping optional guidance calls, so an older reply must never land after a newer one.
+  let latestAgentRequestId = 0;
   // C-13: the deployed service's glb_url is behind the same bearer-token gate as every other
   // route (D-042/D-048) -- the model viewer needs authToken too, not just the session calls.
   const modelViewerOptions: ModelViewerOptions = {
@@ -252,6 +268,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // still anchor duplicate-detection and orbit coverage for the next, real session
     // (overlay.ts's own comment anticipates this exact remount).
     gyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
+    agentConversation.clear();
     lastAcceptedForGate = null;
     // A previous session's finish (success or in-flight-then-abandoned) must not carry over and
     // leave Capture/Finish permanently disabled for this new attempt.
@@ -377,6 +394,33 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     })();
   });
 
+  async function refreshAgentConversation(sessionId: string): Promise<void> {
+    const requestId = ++latestAgentRequestId;
+    try {
+      const result = await getAgentMessage(options.baseUrl, sessionId, options.authToken);
+      if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
+        return;
+      }
+      if (!result.ok) {
+        // Today's real service has no agent route yet. Keep the panel hidden until a real 200 has
+        // existed; after one has existed, transportUnavailable changes only the status line.
+        agentConversation.transportUnavailable();
+        return;
+      }
+      // C-22 mirrors A-07's finished field for the future D-031 wire, but does not make that
+      // mock-only field drive session lifecycle yet. The real phone contract must define whether
+      // the service has already finished the session and how reconstruction should be resumed.
+      agentConversation.show(result.body);
+    } catch {
+      if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
+        return;
+      }
+      // Transport failure is not an A-07 fallback reason. The view keeps that client-side state
+      // separate and leaves deterministic capture guidance usable.
+      agentConversation.transportUnavailable();
+    }
+  }
+
   captureButton.addEventListener("click", () => {
     // Layers of defense beyond the disabled attribute itself (fails loudly rather than silently
     // misbehaving if this handler is ever reached in a state the button shouldn't allow):
@@ -491,6 +535,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           if (feedback !== undefined) {
             setStatus(vlmHint, describeVlmFeedback(feedback), "info");
           }
+          // Guidance is optional and must never hold the capture/finish lock. Run it separately;
+          // getAgentMessage also bounds the request so a stalled route cannot linger forever.
+          void refreshAgentConversation(sessionId);
         } else {
           lastAcceptedForGate = previousAcceptedForGate;
         }
