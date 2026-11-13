@@ -2381,3 +2381,21 @@ are Done.
 **Concluded:** A-13's live synthetic runs produced different model-authored supplier messages; the
 agent loop is not yet wired into supplier sessions pending the D-031 route.
 **Next:** the D-031 agent-message route is part of A-07's noted follow-up; no A-13 work remains.
+
+## 2026-11-12 — A-11 close-out: VLM hint checked on an iPhone, synced for the Nov 13 boundary (PR #217)
+
+**Who:** @TabeenRaoof
+**What changed:** synced #217 with `main` twice on 2026-11-12. The first sync resolved six
+conflicts, adopted #242's helper and gave createSession's malformed body `malformed_request`. The
+second resolved one conflict in `capture/src/shell.ts`: after an accepted upload, A-11's VLM tip
+and C-22's agent-conversation refresh both run. The contract is unchanged at 1.1.0 by `main`.
+**Result:** on the synced head, 1,210 Python tests and 268 vitest tests pass; `tsc`, ruff and
+`check_story_states.py` are clean. Manual stub check on an iPhone (Safari, `npm run dev:device`
+with `PROOFSHAPE_STUB_VLM_FEEDBACK=1`): no tip on frame 0, then "Tip (from frame 0): Good start:
+the part and the reference sheet are both in view." from frame 1, kept through frame 5.
+**Concluded:** the hint reaches the supplier as text and doesn't block capture, alongside C-22's
+assistant panel.
+**Close-out:** 7 h actual against 4 h estimated, the owner's figure (5.5 h measured to
+2026-11-04, then the 2026-11-12 close-out).
+**Next:** @dalwalyk reruns the clean checkout on the final SHA; both other members approve that
+exact commit at the Nov 13 call (D-031), then it merges.
