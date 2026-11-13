@@ -1415,6 +1415,30 @@ A-07 falls back first, its bounded worker may remain alive until that SDK reques
 *Checked against D-028:* fetched all origin branches on 2026-11-12; D-067 was highest anywhere,
 so D-068 was free.
 
+**D-069 · G-05 prints only the control and the 4 mm hole shift; the rest of the ladder is cut.**
+(2026-11-12)
+G-05 prints and calipers two parts: `g05_00_control_50x32x20mm.stl` and
+`g05_02_hole_shift_4mm.stl`. The other eight parts (the 2 and 8 mm hole shifts, the three pockets
+and the three bumps) are out of the story and won't be printed this semester unless time is left
+after M6. Their STLs, `scripts/make_g05_defect_ladder.py` and its tests stay on `main` unchanged.
+G-09 photographs the same two parts.
+
+*Why:* three weeks remain to M6 (Dec 2). The Tier 1 chain to I3 and I4 runs G-05 → G-09 → X-03
+→ X-04 → X-05, and X-03 names `g05_02` as its planted-defect part, so those two prints are the only
+ones on it. Each extra part adds lab time, caliper readings and 25–30 photographs (G-09), when
+the backlog left on 2026-11-11 was about 118 estimated hours against about 63 h of planned build
+capacity (the rest of S5 plus S6). Keeping the files costs nothing, and printing them later needs
+no new design.
+
+*What's given up:* the proposal's planted-defect test (§12) planned "shifted holes and missing or
+excess material at 2, 4 and 8 mm", and M3 a printed 2 / 4 / 8 mm amplitude ladder. The test now
+has a single rung, a 4 mm hole shift, so it can't show a smallest detectable defect or test
+missing and excess material on a real print. The report states that limit instead of implying a
+ladder. I-07's synthetic (I-01) tests still plant deviations, but they don't replace a printed
+part.
+*Checked against D-028:* fetched all origin branches on 2026-11-12; D-068 was highest anywhere,
+so D-069 was free.
+
 ---
 
 ## Open — not yet decided
