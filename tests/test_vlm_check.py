@@ -327,3 +327,42 @@ def test_latest_checked_ignores_corrupt_mismatched_and_temporary_files(tmp_path)
     (vlm_dir / ".frame_0030.json.abc123.tmp").write_text("{}", encoding="utf-8")
 
     assert latest_checked(tmp_path).frame_index == 0
+
+
+def test_supervisor_latest_checked_serves_its_newest_published_check(tmp_path):
+    # A-11's upload path asks the supervisor, which caches what it has itself published.
+    session_dir = tmp_path.resolve()
+    supervisor = VlmSupervisor()
+    try:
+        # Out of order, as two checks can finish: the cache keeps the higher index.
+        for check in (
+            parse_response(5, reply(5, hint="Move left.")),
+            parse_response(0, reply(0)),
+            unchecked(10, "api_error"),  # newest, but not a check
+        ):
+            supervisor._publish(
+                VlmSupervisor.result_path(session_dir, check.frame_index), check
+            )
+        for path in (session_dir / "vlm").iterdir():
+            path.unlink()  # gone from disk, so a hit can only come from the cache
+
+        result = supervisor.latest_checked(session_dir)
+    finally:
+        supervisor.close()
+
+    assert result.frame_index == 5
+    assert result.observation.hint == "Move left."
+
+
+def test_supervisor_latest_checked_falls_back_to_disk_before_it_publishes(tmp_path):
+    # A fresh supervisor (a restart) has nothing cached yet, so it reads what is on disk.
+    write_result(tmp_path, parse_response(0, reply(0)))
+    write_result(tmp_path, parse_response(5, reply(5, hint="From before the restart.")))
+    supervisor = VlmSupervisor()
+    try:
+        result = supervisor.latest_checked(tmp_path)
+    finally:
+        supervisor.close()
+
+    assert result.frame_index == 5
+    assert result.observation.hint == "From before the restart."

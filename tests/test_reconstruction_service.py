@@ -7,6 +7,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft7Validator, RefResolver
+from pydantic import ValidationError
 
 from recon import service
 
@@ -954,3 +955,25 @@ def test_crash_is_logged_for_the_operator(tmp_path, caplog):
     assert result["warnings"][0].startswith("internal_error:")
     assert "/srv/models" not in result["warnings"][0]
     assert "/srv/models" in caplog.text
+
+
+def _vlm_feedback(hint):
+    return service.VlmFeedback(
+        frame_index=5,
+        hint=hint,
+        same_part=True,
+        hands_occluding=False,
+        screen_photo=False,
+        lighting_adequate=True,
+    )
+
+
+@pytest.mark.parametrize("hint", ["", "   ", "line\nline", "line\rline", "a" * 241])
+def test_vlm_feedback_hint_keeps_the_contracts_limits(hint):
+    # The contract's VlmFeedback.hint is one nonblank line of 1-240 characters.
+    with pytest.raises(ValidationError):
+        _vlm_feedback(hint)
+
+
+def test_vlm_feedback_hint_accepts_one_line_at_the_limit():
+    assert _vlm_feedback("a" * 240).hint == "a" * 240

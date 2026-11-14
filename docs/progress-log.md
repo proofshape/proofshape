@@ -2389,7 +2389,7 @@ agent loop is not yet wired into supplier sessions pending the D-031 route.
 conflicts, adopted #242's helper and gave createSession's malformed body `malformed_request`. The
 second resolved one conflict in `capture/src/shell.ts`: after an accepted upload, A-11's VLM tip
 and C-22's agent-conversation refresh both run. The contract is unchanged at 1.1.0 by `main`.
-**Result:** on the synced head, 1,210 Python tests and 268 vitest tests pass; `tsc`, ruff and
+**Result:** on the synced head, 1,210 Python tests and 268 vitest tests passed; `tsc`, ruff and
 `check_story_states.py` are clean. Manual stub check on an iPhone (Safari, `npm run dev:device`
 with `PROOFSHAPE_STUB_VLM_FEEDBACK=1`): no tip on frame 0, then "Tip (from frame 0): Good start:
 the part and the reference sheet are both in view." from frame 1, kept through frame 5.
@@ -2397,5 +2397,9 @@ the part and the reference sheet are both in view." from frame 1, kept through f
 assistant panel.
 **Close-out:** 7 h actual against 4 h estimated, the owner's figure (5.5 h measured to
 2026-11-04, then the 2026-11-12 close-out).
+**Review (2026-11-14):** @dalwalyk's `2ae0319` holds `VlmFeedback.hint` to the contract's one-line
+1–240 limit and caches the newest check in `VlmSupervisor`, so an upload no longer rescans `vlm/`.
+Tests for both followed (eight cases, each shown to fail with its change removed); 1,218 Python
+tests pass.
 **Next:** @dalwalyk reruns the clean checkout on the final SHA; both other members approve that
-exact commit at the Nov 13 call (D-031), then it merges.
+exact commit (D-031), then it merges.
