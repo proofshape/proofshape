@@ -4,6 +4,7 @@ import {
   describeFinishSession,
   describeNetworkError,
   describeUploadFrame,
+  describeVlmFeedback,
 } from "./messages.js";
 
 describe("describeCreateSession", () => {
@@ -47,6 +48,34 @@ describe("describeUploadFrame", () => {
         },
       }),
     ).toBe("Frame rejected — That frame was too blurry to use.");
+  });
+});
+
+describe("describeVlmFeedback", () => {
+  it("names the earlier frame the tip is about", () => {
+    expect(
+      describeVlmFeedback({
+        frame_index: 10,
+        hint: "Hold the part by its base.",
+        same_part: true,
+        hands_occluding: true,
+        screen_photo: false,
+        lighting_adequate: true,
+      }),
+    ).toBe("Tip (from frame 10): Hold the part by its base.");
+  });
+
+  it("works for the reference frame, whose same_part is null", () => {
+    expect(
+      describeVlmFeedback({
+        frame_index: 0,
+        hint: "Good start.",
+        same_part: null,
+        hands_occluding: false,
+        screen_photo: false,
+        lighting_adequate: true,
+      }),
+    ).toBe("Tip (from frame 0): Good start.");
   });
 });
 

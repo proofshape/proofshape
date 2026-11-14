@@ -27,6 +27,7 @@ import {
   describeFinishSession,
   describeNetworkError,
   describeUploadFrame,
+  describeVlmFeedback,
 } from "./messages.js";
 import {
   mountModelViewer,
@@ -82,6 +83,7 @@ export const APP_SHELL_HTML = `
     <video id="shell-camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
     <button id="shell-capture-button" type="button" disabled>Capture frame</button>
     <p id="shell-capture-status"></p>
+    <p id="shell-vlm-hint"></p>
     <div id="shell-gyro-overlay"></div>
   </section>
   <section>
@@ -120,6 +122,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const cameraPreview = requireTyped(root, "#shell-camera-preview", HTMLVideoElement, "<video>");
   const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
   const captureStatus = requireElement(root, "#shell-capture-status");
+  const vlmHint = requireElement(root, "#shell-vlm-hint");
   const gyroOverlayContainer = requireElement(root, "#shell-gyro-overlay");
   const agentConversationContainer = requireElement(root, "#shell-agent-conversation");
   const finishButton = requireTyped(root, "#shell-finish-button", HTMLButtonElement, "<button>");
@@ -254,6 +257,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     setStatus(sessionStatus, "", "info");
     setStatus(cameraStatus, "", "info");
     setStatus(gyroStatus, "", "info");
+    // A-11: a previous session's tip is about a different part. Start stays disabled once a
+    // session exists, so today this only guards a future flow that re-enables it.
+    setStatus(vlmHint, "", "info");
     reportLink.hidden = true;
     reportLink.removeAttribute("href");
     startButton.disabled = true;
@@ -522,6 +528,13 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
           gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
+          // A-11: the newest VLM tip, if a check has finished. It stays until a newer one
+          // arrives (a later 202 without feedback leaves it alone) and never blocks capture.
+          // setStatus writes textContent: the hint is model output, never HTML.
+          const feedback = result.body.vlm_feedback;
+          if (feedback !== undefined) {
+            setStatus(vlmHint, describeVlmFeedback(feedback), "info");
+          }
           // Guidance is optional and must never hold the capture/finish lock. Run it separately;
           // getAgentMessage also bounds the request so a stalled route cannot linger forever.
           void refreshAgentConversation(sessionId);

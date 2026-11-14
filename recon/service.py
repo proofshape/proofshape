@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -17,7 +18,7 @@ from fastapi import BackgroundTasks, FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 # R-31: import the process guard before agent_tools -> provenance -> Open3D. The module applies
 # the macOS-only OMP_NUM_THREADS=1 guard as an import side effect; Linux is unchanged.
@@ -49,7 +50,18 @@ ErrorCode = Literal[
     "too_few_frames",
     "order_code_unknown",
     "no_cad_uploaded",
+    # Contract v1.1 (A-11, D-056).
+    "malformed_request",
+    "internal_error",
 ]
+
+# A crash's exception text can name paths or internals, so the supplier gets a generic message
+# and the operator gets the detail here (#186).
+logger = logging.getLogger(__name__)
+INTERNAL_ERROR_MESSAGE = (
+    "The service hit an internal error while reconstructing. This is not a problem with your "
+    "photos; please try a new capture session."
+)
 
 
 class ErrorDetail(BaseModel):
@@ -68,9 +80,36 @@ class SessionResponse(BaseModel):
     status: Literal["capturing", "finished"]
 
 
+class VlmFeedback(BaseModel):
+    """A-11: the newest checked VLM result, as the supplier sees it. It describes an earlier
+    sampled frame (frame_index), not necessarily this upload, because checks are asynchronous.
+    Model version, token counts and unchecked reasons stay server-side."""
+
+    frame_index: int
+    # Matches the contract's VlmFeedback schema (minLength 1 / maxLength 240) and
+    # FrameObservation.hint (recon/vlm_check.py), the field this is always built from.
+    hint: str = Field(min_length=1, max_length=240)
+    same_part: bool | None  # null for frame 0, the reference
+    hands_occluding: bool
+    screen_photo: bool
+    lighting_adequate: bool
+
+    @field_validator("hint")
+    @classmethod
+    def one_line_hint(cls, value: str) -> str:
+        if not value.strip() or "\n" in value or "\r" in value:
+            raise ValueError("hint must be one nonblank line")
+        return value
+
+
 class UploadFrameResult(BaseModel):
     accepted: bool
     frame_index: int
+    # Absent, never null, when there's no checked result yet (contract v1.1). A field-level
+    # rule rather than the route's exclude_none, which would also drop same_part: null.
+    vlm_feedback: VlmFeedback | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
 
 
 class ScaleAgreement(BaseModel):
@@ -201,7 +240,7 @@ class SessionStore:
                     record["reconstruction"] = {
                         "status": "failed",
                         "failure": {
-                            "code": "metric_alignment_failed",
+                            "code": "internal_error",
                             "message": (
                                 "Reconstruction was interrupted by a service restart; "
                                 "start a new capture session."
@@ -544,7 +583,7 @@ def create_app(
             supervisor.close()
 
     app = FastAPI(
-        title="ProofShape reconstruction service", version="1.0.0", lifespan=lifespan
+        title="ProofShape reconstruction service", version="1.1.0", lifespan=lifespan
     )
     # C-13: capture/ is served from a different origin than this service (D-042 left this
     # decision to whichever story first connected them). A wildcard origin is deliberate, not an
@@ -577,7 +616,7 @@ def create_app(
             return error(
                 422,
                 ErrorDetail(
-                    code="vlm_veto",
+                    code="malformed_request",
                     message=(
                         "Invalid frame upload. Both frame and gyro multipart file "
                         "parts are required."
@@ -585,13 +624,13 @@ def create_app(
                 ),
             )
         if request.method == "POST" and request.url.path.endswith("/v1/sessions"):
-            # R-29 (#186's validation half): the contract's own 400 description already covers
-            # "the order code is unknown or the request is malformed" -- reuse that code rather
-            # than inventing one; a dedicated malformed_request code is #217/D-031's job.
+            # R-29 (#186's validation half) made this a contract-shaped 400; v1.1 (D-056) gives it
+            # its own code, since a body that can't be read is an app bug, not an unknown order
+            # code. createSession's 400 already covers "the request is malformed".
             return error(
                 400,
                 ErrorDetail(
-                    code="order_code_unknown", message="The request body is malformed."
+                    code="malformed_request", message="The request body is malformed."
                 ),
             )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
@@ -650,22 +689,18 @@ def create_app(
             return error(
                 422,
                 ErrorDetail(
-                    code="frame_rejected_exposure",
+                    code="malformed_request",
                     message="The uploaded frame is empty.",
                 ),
             )
         try:
             gyro_value = _parse_gyro(await gyro.read())
         except (TypeError, ValueError) as exc:
-            # F-03 froze the upload 422 envelope before defining a request-validation
-            # ErrorCode. Keep the response contract-valid for v1 and make the semantic
-            # debt explicit; D-031 requires a sprint-boundary contract change to add a
-            # dedicated malformed_request code.
             return error(
                 422,
                 ErrorDetail(
-                    code="vlm_veto",
-                    message=f"Malformed frame upload (not a VLM decision): {exc}",
+                    code="malformed_request",
+                    message=f"Malformed frame upload: the gyro part is invalid ({exc}).",
                 ),
             )
         try:
@@ -680,8 +715,19 @@ def create_app(
             )
         # No Google call (or capacity wait) occurs on this request path. The saved files
         # are the source of truth, including after a restart or upload/finish race.
-        supervisor.submit(store.session_dir(session_id), frame_index)
-        return UploadFrameResult(accepted=True, frame_index=frame_index)
+        session_dir = store.session_dir(session_id)
+        supervisor.submit(session_dir, frame_index)
+        # A-11: attach the newest result already on disk. Reading files never waits on the
+        # VLM, so this upload is no slower; the hint may describe an earlier frame.
+        checked = supervisor.latest_checked(session_dir)
+        feedback = None
+        if checked is not None:
+            feedback = VlmFeedback(
+                frame_index=checked.frame_index, **checked.observation.model_dump()
+            )
+        return UploadFrameResult(
+            accepted=True, frame_index=frame_index, vlm_feedback=feedback
+        )
 
     def run_session(session_id: str) -> None:
         record = store.load(session_id)
@@ -708,15 +754,17 @@ def create_app(
             }
         except ReconstructionFailure as exc:
             record["reconstruction"] = {"status": "failed", "failure": exc.as_dict()}
-        except Exception as exc:  # noqa: BLE001 - terminal job boundary
+        except Exception:  # terminal job boundary, logged below
             # Background reconstruction must never leave a persisted session at
-            # status=pending. Unexpected numpy/cv2/model exceptions are converted
-            # into a terminal failure here; the original exception text is preserved.
+            # status=pending. Unexpected numpy/cv2/model exceptions become a terminal
+            # internal_error; the exception text is logged for the operator, not shown to
+            # the supplier (#186).
+            logger.exception("Reconstruction crashed for session %s", session_id)
             record["reconstruction"] = {
                 "status": "failed",
                 "failure": {
-                    "code": "metric_alignment_failed",
-                    "message": f"Reconstruction failed: {exc}",
+                    "code": "internal_error",
+                    "message": INTERNAL_ERROR_MESSAGE,
                 },
             }
         # Join even when reconstruction fails. Results never enter session.json: workers
@@ -769,7 +817,7 @@ def create_app(
             return ReconstructionResult(status="pending")
         if reconstruction["status"] == "failed":
             failure = reconstruction.get("failure", {})
-            code = failure.get("code", "metric_alignment_failed")
+            code = failure.get("code", "internal_error")
             message = failure.get("message", "Reconstruction failed.")
             return ReconstructionResult(
                 status="failed", warnings=[f"{code}: {message}"]
