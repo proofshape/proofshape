@@ -18,12 +18,12 @@ from fastapi import BackgroundTasks, FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # R-31: import the process guard before agent_tools -> provenance -> Open3D. The module applies
 # the macOS-only OMP_NUM_THREADS=1 guard as an import side effect; Linux is unchanged.
 from recon import runtime_env as _runtime_env  # noqa: F401
-from recon.vlm_check import VlmSupervisor, latest_checked
+from recon.vlm_check import VlmSupervisor
 
 MIN_FINISH_FRAMES = 3
 
@@ -86,11 +86,20 @@ class VlmFeedback(BaseModel):
     Model version, token counts and unchecked reasons stay server-side."""
 
     frame_index: int
-    hint: str
+    # Matches the contract's VlmFeedback schema (minLength 1 / maxLength 240) and
+    # FrameObservation.hint (recon/vlm_check.py), the field this is always built from.
+    hint: str = Field(min_length=1, max_length=240)
     same_part: bool | None  # null for frame 0, the reference
     hands_occluding: bool
     screen_photo: bool
     lighting_adequate: bool
+
+    @field_validator("hint")
+    @classmethod
+    def one_line_hint(cls, value: str) -> str:
+        if not value.strip() or "\n" in value or "\r" in value:
+            raise ValueError("hint must be one nonblank line")
+        return value
 
 
 class UploadFrameResult(BaseModel):
@@ -710,7 +719,7 @@ def create_app(
         supervisor.submit(session_dir, frame_index)
         # A-11: attach the newest result already on disk. Reading files never waits on the
         # VLM, so this upload is no slower; the hint may describe an earlier frame.
-        checked = latest_checked(session_dir)
+        checked = supervisor.latest_checked(session_dir)
         feedback = None
         if checked is not None:
             feedback = VlmFeedback(
