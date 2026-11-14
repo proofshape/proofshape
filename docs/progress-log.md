@@ -2382,7 +2382,7 @@ are Done.
 agent loop is not yet wired into supplier sessions pending the D-031 route.
 **Next:** the D-031 agent-message route is part of A-07's noted follow-up; no A-13 work remains.
 
-## 2026-11-14 — G-03 specimen calipering: 26 features, 260 readings (PR #332)
+## 2026-11-14 — G-03 specimen calipering: 26 features, 260 readings (PR #333)
 
 **Who:** @TabeenRaoof took the readings. G-03 is claimed for @dalwalyk, who closes it.
 
