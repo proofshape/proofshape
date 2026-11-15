@@ -2393,8 +2393,11 @@ checks it. `stories/G/G-03.md` records each feature's measured minus CAD.
 **Measured, not judged:**
 - Every specimen except the triangle is within ±0.2 mm of CAD on every feature.
 - The triangle, `g02_03`, reads 0.54 to 1.01 mm short on its three sides, unlike G-06's s-04,
-  which read 0.13 to 0.41 mm long the same way. It's worth a re-check before G-04 uses it.
+  which read 0.13 to 0.41 mm long the same way. The measurer stands by the readings, so they're
+  kept as measured.
 
-**Next:** @dalwalyk closes G-03 (D-038): `State: Done` and the completion record. Two of the
-measurer's notes still need corner letters: `g02_05`'s damaged corner and `g02_06`'s pushed-in
-corner.
+**Time:** 6 h of @TabeenRaoof's time for the readings.
+
+**Next:** @dalwalyk closes G-03 (D-038) with `State: Done` and the completion record. Two of the
+measurer's notes name a damaged corner that can't now be located: `g02_05`'s and `g02_06`'s. They
+stay as written.
