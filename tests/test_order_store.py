@@ -92,8 +92,6 @@ def test_order_store_keeps_cad_bytes_unchanged(tmp_path):
     assert record["has_cad"] is True
     assert store.cad_path(record["order_code"]).read_bytes() == raw
 
-
-
 def test_order_code_path_traversal_is_rejected(tmp_path):
     orders = tmp_path / "orders"
     orders.mkdir()
