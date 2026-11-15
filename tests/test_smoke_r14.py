@@ -43,7 +43,7 @@ def _failing_pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
 
 def test_drives_the_real_service_end_to_end(tmp_path):
     _, frames = _frames(tmp_path)
-    app = service.create_app(tmp_path / "data", pipeline_runner=_pipeline)
+    app = service.create_app(tmp_path / "data", pipeline_runner=_pipeline, known_order_codes={"R14-SMOKE"})
     with TestClient(app) as client:
         body, glb = drive_session(client, frames)
     assert body["status"] == "complete"
@@ -52,7 +52,7 @@ def test_drives_the_real_service_end_to_end(tmp_path):
 
 def test_a_failed_reconstruction_is_an_error_not_a_pass(tmp_path):
     _, frames = _frames(tmp_path)
-    app = service.create_app(tmp_path / "data", pipeline_runner=_failing_pipeline)
+    app = service.create_app(tmp_path / "data", pipeline_runner=_failing_pipeline, known_order_codes={"R14-SMOKE"})
     with (
         TestClient(app) as client,
         pytest.raises(RuntimeError, match="board_not_detected"),
