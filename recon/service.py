@@ -592,12 +592,13 @@ def create_app(
     )
     store = SessionStore(root)
     orders_root = Path(
-        orders_dir
-        or os.environ.get("PROOFSHAPE_ORDERS_DIR", "proofshape-data/orders")
+        orders_dir or os.environ.get("PROOFSHAPE_ORDERS_DIR", "proofshape-data/orders")
     )
     order_store = OrderStore(orders_root)
     configured_buyer_key = (
-        buyer_key if buyer_key is not None else os.environ.get("PROOFSHAPE_BUYER_KEY", "")
+        buyer_key
+        if buyer_key is not None
+        else os.environ.get("PROOFSHAPE_BUYER_KEY", "")
     )
     supervisor = vlm_supervisor or VlmSupervisor(os.environ.get("GEMINI_API_KEY", ""))
 
