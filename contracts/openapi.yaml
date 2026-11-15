@@ -9,7 +9,9 @@ info:
     both other team members' approval, at a sprint boundary only — see CONTRIBUTING.md and
     D-031. Versioned by the `/v1` path prefix, so a v2 can be introduced alongside this one
     rather than replacing it in place (D-032). 1.1.0 (A-11, D-056) is additive: an optional
-    `vlm_feedback` on the upload response and two error codes; a v1.0 client is unaffected.\n    1.2.0 (R-34) additively introduces buyer orders, stored CAD metadata, and named order/verdict errors.\n
+    `vlm_feedback` on the upload response and two error codes; a v1.0 client is unaffected.
+    1.2.0 (R-34) additively introduces buyer orders, stored CAD metadata, and named order/verdict errors.
+
 servers:
   - url: /v1
 
