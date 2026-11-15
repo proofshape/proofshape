@@ -23,6 +23,12 @@ def _no_gemini_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
 
+def _create_app(*args, **kwargs):
+    """Existing R-14 tests use PO-1; R-34 keeps that fixture path through the explicit test override."""
+    kwargs.setdefault("known_order_codes", {"PO-1"})
+    return service.create_app(*args, **kwargs)
+
+
 def _fake_pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
     assert len(list(capture_dir.glob("*.jpg"))) == 3
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -87,7 +93,7 @@ def test_vlm_never_blocks_upload_and_timeout_evidence_survives_session_save(tmp_
         raise TimeoutError("private-api-key")
 
     supervisor = VlmSupervisor(inspector=blocked, join_timeout_s=0.02)
-    app = service.create_app(
+    app = _create_app(
         tmp_path, pipeline_runner=_fake_pipeline, vlm_supervisor=supervisor
     )
     try:
@@ -123,7 +129,7 @@ def test_vlm_join_is_written_even_if_reconstruction_fails_without_key(
     def broken(*args):
         raise RuntimeError("pipeline failed")
 
-    app = service.create_app(tmp_path, pipeline_runner=broken)
+    app = _create_app(tmp_path, pipeline_runner=broken)
     with TestClient(app) as client:
         sid = client.post("/v1/sessions", json={"order_code": "PO-1"}).json()[
             "session_id"
@@ -137,7 +143,7 @@ def test_vlm_join_is_written_even_if_reconstruction_fails_without_key(
 
 
 def test_session_frames_finish_and_reconstruction_match_contract(tmp_path):
-    app = service.create_app(
+    app = _create_app(
         tmp_path,
         pipeline_runner=_fake_pipeline,
         known_order_codes={"PO-1"},
@@ -177,7 +183,7 @@ def test_cors_allows_any_browser_origin(tmp_path):
     # access-control story to whichever story first connected them. The wildcard is deliberate
     # (see create_app's own comment) -- confirm it actually answers a cross-origin request
     # rather than relying on FastAPI's default (none) going unnoticed.
-    app = service.create_app(
+    app = _create_app(
         tmp_path, pipeline_runner=_fake_pipeline, known_order_codes={"PO-1"}
     )
     with TestClient(app) as client:
@@ -202,7 +208,7 @@ def test_cors_allows_any_browser_origin(tmp_path):
 
 
 def test_contract_error_paths_are_structured(tmp_path):
-    app = service.create_app(
+    app = _create_app(
         tmp_path,
         pipeline_runner=_fake_pipeline,
         known_order_codes={"PO-1"},
@@ -231,7 +237,7 @@ def test_create_session_malformed_body_is_contract_shaped(tmp_path):
     """R-29 (#186's validation half): a malformed createSession body used to fall through to
     FastAPI's default 422 {"detail": [...]} envelope instead of the contract's 400 ErrorDetail.
     Since v1.1 (D-056) its code is malformed_request, not order_code_unknown."""
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         empty_body = client.post("/v1/sessions", json={})
         assert empty_body.status_code == 400
@@ -255,7 +261,7 @@ def test_r02_failure_is_preserved_without_breaking_frozen_schema(tmp_path):
             "The board was not visible in enough frames.",
         )
 
-    app = service.create_app(tmp_path, pipeline_runner=failing_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=failing_pipeline)
     with TestClient(app) as client:
         created = client.post("/v1/sessions", json={"order_code": "PO-1"})
         session_id = created.json()["session_id"]
@@ -313,7 +319,7 @@ def test_r02_and_r04_failure_mapping_is_explicit():
 
 
 def test_no_cad_verdict_path_uses_frozen_error_envelope(tmp_path):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         created = client.post("/v1/sessions", json={"order_code": "PO-1"})
         session_id = created.json()["session_id"]
@@ -324,7 +330,7 @@ def test_no_cad_verdict_path_uses_frozen_error_envelope(tmp_path):
 
 
 def test_public_operation_ids_match_the_frozen_contract(tmp_path):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     generated = app.openapi()
     operation_ids = set()
     for path_item in generated["paths"].values():
@@ -341,7 +347,7 @@ def test_public_operation_ids_match_the_frozen_contract(tmp_path):
 
 
 def test_missing_multipart_part_uses_error_detail_contract(tmp_path):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         created = client.post("/v1/sessions", json={"order_code": "PO-1"})
         session_id = created.json()["session_id"]
@@ -358,13 +364,13 @@ def test_missing_multipart_part_uses_error_detail_contract(tmp_path):
 
 
 def test_pending_reconstruction_is_failed_after_service_restart(tmp_path):
-    first_app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    first_app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     record = first_app.state.store.create("PO-1")
     record["status"] = "finished"
     record["reconstruction"] = {"status": "pending"}
     first_app.state.store.save(record)
 
-    restarted_app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    restarted_app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     recovered = restarted_app.state.store.load(record["session_id"])
 
     assert restarted_app.state.orphaned_pending_failed == 1
@@ -627,7 +633,7 @@ def test_pipeline_reads_the_calibrated_board_poses_downstream(tmp_path, monkeypa
 
 
 def test_malformed_gyro_returns_malformed_request_not_a_vlm_code(tmp_path):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         created = client.post("/v1/sessions", json={"order_code": "PO-1"})
         session_id = created.json()["session_id"]
@@ -646,7 +652,7 @@ def test_malformed_gyro_returns_malformed_request_not_a_vlm_code(tmp_path):
 
 
 def test_empty_frame_is_rejected_with_contract_error(tmp_path):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         created = client.post("/v1/sessions", json={"order_code": "PO-1"})
         session_id = created.json()["session_id"]
@@ -668,7 +674,7 @@ def test_empty_frame_is_rejected_with_contract_error(tmp_path):
 
 
 def test_upload_race_after_finish_returns_422_not_500(tmp_path, monkeypatch):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     original_add_frame = app.state.store.add_frame
 
     def lost_race(*args, **kwargs):
@@ -696,7 +702,7 @@ def test_upload_race_after_finish_returns_422_not_500(tmp_path, monkeypatch):
 
 
 def test_finish_race_returns_409_not_500(tmp_path, monkeypatch):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     record = app.state.store.create("PO-1")
     record["frame_count"] = service.MIN_FINISH_FRAMES
     app.state.store.save(record)
@@ -731,7 +737,7 @@ def test_unexpected_pipeline_exception_becomes_terminal_failure(tmp_path):
     def failing_pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
         raise UnexpectedPipelineError("synthetic unexpected model failure")
 
-    app = service.create_app(tmp_path, pipeline_runner=failing_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=failing_pipeline)
     with TestClient(app) as client:
         created = client.post("/v1/sessions", json={"order_code": "PO-1"})
         session_id = created.json()["session_id"]
@@ -748,7 +754,7 @@ def test_unexpected_pipeline_exception_becomes_terminal_failure(tmp_path):
 
 
 def test_model_404_uses_error_detail_envelope(tmp_path):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         response = client.get("/v1/sessions/does-not-exist/model.glb")
 
@@ -770,7 +776,7 @@ def _finished_session(client: TestClient) -> str:
 def test_glb_url_defaults_to_request_url_for_unchanged(tmp_path):
     """R-15 regression guard: an ordinary direct caller (local dev, CI, every existing test)
     must see byte-identical behavior to before the Lightning-proxy fix."""
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         session_id = _finished_session(client)
         body = client.get(f"/v1/sessions/{session_id}/reconstruction").json()
@@ -781,7 +787,7 @@ def test_glb_url_defaults_to_request_url_for_unchanged(tmp_path):
 def test_glb_url_uses_x_forwarded_host_when_present(tmp_path):
     """R-15: Lightning's own deployment proxy was confirmed (2026-10-07) to present the
     container with Host: localhost -- X-Forwarded-Host, when a proxy sends it, is the fix."""
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         session_id = _finished_session(client)
         body = client.get(
@@ -798,7 +804,7 @@ def test_glb_url_uses_x_forwarded_host_when_present(tmp_path):
 
 
 def test_glb_url_forwarded_proto_defaults_to_the_request_scheme(tmp_path):
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         session_id = _finished_session(client)
         body = client.get(
@@ -813,7 +819,7 @@ def test_glb_url_env_override_wins_over_everything(tmp_path, monkeypatch):
     """The operator-set override (R-15's deploy workflow) takes priority even over a forwarded
     host, so a known-good public URL is never second-guessed by a proxy header."""
     monkeypatch.setenv(service.PUBLIC_BASE_URL_ENV, "https://recon.proofshape.example/")
-    app = service.create_app(tmp_path, pipeline_runner=_fake_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=_fake_pipeline)
     with TestClient(app) as client:
         session_id = _finished_session(client)
         body = client.get(
@@ -833,7 +839,7 @@ def _no_key_app(tmp_path):
     from recon.vlm_check import VlmSupervisor
 
     # No key, so uploads only ever write `unchecked` results; tests add checked ones by hand.
-    return service.create_app(
+    return _create_app(
         tmp_path, pipeline_runner=_fake_pipeline, vlm_supervisor=VlmSupervisor()
     )
 
@@ -943,7 +949,7 @@ def test_crash_is_logged_for_the_operator(tmp_path, caplog):
     def failing_pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
         raise RuntimeError("secret internal path /srv/models")
 
-    app = service.create_app(tmp_path, pipeline_runner=failing_pipeline)
+    app = _create_app(tmp_path, pipeline_runner=failing_pipeline)
     with TestClient(app) as client, caplog.at_level("ERROR", logger="recon.service"):
         session_id = client.post("/v1/sessions", json={"order_code": "PO-1"}).json()[
             "session_id"
