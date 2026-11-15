@@ -1,0 +1,4 @@
+{
+  "code": "cad_unreadable",
+  "message": "The CAD file must be STL, OBJ, or GLB."
+}
