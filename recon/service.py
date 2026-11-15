@@ -609,7 +609,7 @@ def create_app(
             supervisor.close()
 
     app = FastAPI(
-        title="ProofShape reconstruction service", version="1.1.0", lifespan=lifespan
+        title="ProofShape reconstruction service", version="1.2.0", lifespan=lifespan
     )
     # C-13: capture/ is served from a different origin than this service (D-042 left this
     # decision to whichever story first connected them). A wildcard origin is deliberate, not an
@@ -658,6 +658,14 @@ def create_app(
                 400,
                 ErrorDetail(
                     code="malformed_request", message="The request body is malformed."
+                ),
+            )
+        if request.method == "POST" and request.url.path.endswith("/v1/orders"):
+            return error(
+                422,
+                ErrorDetail(
+                    code="malformed_request",
+                    message="The order request is malformed; a JSON spec part is required.",
                 ),
             )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
@@ -763,7 +771,7 @@ def create_app(
                     422,
                     ErrorDetail(
                         code="cad_unreadable",
-                        message=f"The CAD file could not be read: {exc}",
+                        message="The CAD file could not be read.",
                     ),
                 )
             finally:
