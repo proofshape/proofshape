@@ -96,7 +96,9 @@ class OrderStore:
 
     def _new_code(self) -> str:
         for _ in range(100):
-            body = "".join(secrets.choice(CROCKFORD_BASE32) for _ in range(ORDER_CODE_LENGTH))
+            body = "".join(
+                secrets.choice(CROCKFORD_BASE32) for _ in range(ORDER_CODE_LENGTH)
+            )
             code = f"{ORDER_CODE_PREFIX}{body}"
             if not self.order_dir(code).exists():
                 return code
