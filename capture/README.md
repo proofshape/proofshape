@@ -95,6 +95,11 @@ whenever a push to `main` changes `capture/**`. The workflow uses the base path
 reported by `actions/configure-pages`, so repository Pages and a future custom
 domain both build the correct asset URLs, then publishes `capture/dist`.
 
+The verified hosted URL is `https://proofshape.github.io/proofshape/`. Capture Pages
+run [43193610764](https://github.com/proofshape/proofshape/actions/runs/43193610764)
+completed successfully on 2026-11-12; its build and deploy jobs both passed and the
+deploy step reported that exact environment URL.
+
 An organisation/repository admin must set
 **Settings → Pages → Build and deployment → Source** to **GitHub Actions** once.
 No laptop dev server is required to open the resulting HTTPS page.
