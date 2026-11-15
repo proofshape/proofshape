@@ -85,6 +85,36 @@ def sampled_indices(frame_count: int) -> list[int]:
     return indices
 
 
+def latest_checked(session_dir: Path) -> FrameCheck | None:
+    """A-11: the newest *checked* result already on disk, or None.
+
+    This runs on the upload request path, so it only reads files that exist and never waits on
+    the VLM. It skips `unchecked` results (their reasons, like `missing_api_key`, are for the
+    operator, not the supplier) and anything that can't be trusted: unreadable or invalid files,
+    and files whose stored index doesn't match their name, the same checks `join` applies. The
+    index comes from the file name, not a name sort, because 4-digit padding stops sorting
+    correctly at 10000. A-01's temporary files (`.frame_NNNN.json.<hex>.tmp`) can't match.
+    """
+    vlm_dir = Path(session_dir) / "vlm"
+    if not vlm_dir.is_dir():
+        return None
+    candidates: list[tuple[int, Path]] = []
+    for path in vlm_dir.glob("frame_*.json"):
+        try:
+            index = int(path.stem.removeprefix("frame_"))
+        except ValueError:
+            continue
+        candidates.append((index, path))
+    for index, path in sorted(candidates, reverse=True):
+        try:
+            result = FrameCheck.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if result.frame_index == index and result.status == "checked":
+            return result
+    return None
+
+
 def unchecked(frame_index: int, reason: str, **metadata: Any) -> FrameCheck:
     return FrameCheck(
         frame_index=frame_index, status="unchecked", reason=reason, **metadata
@@ -232,6 +262,10 @@ class VlmSupervisor:
         self._pending: dict[Path, Future] = {}
         self._closed = False
         self.join_timeout_s = join_timeout_s
+        # A-11's hot path (upload_frame) asks for this on every accepted frame. Caching the
+        # best result this supervisor has itself published keeps that O(1) once a session has
+        # any checked result, instead of latest_checked()'s full vlm/ rescan every time.
+        self._latest_checked_by_session: dict[Path, FrameCheck] = {}
 
     @staticmethod
     def result_path(session_dir: Path, index: int) -> Path:
@@ -243,6 +277,24 @@ class VlmSupervisor:
             # change the evidence after run_session has already assembled its report.
             if not path.exists():
                 atomic_json(path, result.model_dump())
+                if result.status == "checked":
+                    session_dir = path.parent.parent
+                    cached = self._latest_checked_by_session.get(session_dir)
+                    if cached is None or result.frame_index > cached.frame_index:
+                        self._latest_checked_by_session[session_dir] = result
+
+    def latest_checked(self, session_dir: Path) -> FrameCheck | None:
+        """A-11's upload-response path: the newest checked result for this session, served
+        from this supervisor's own cache of what it has published (O(1)) rather than
+        `latest_checked()`'s full rescan of every call, once there is anything to cache.
+        Before that -- a session with no checked result yet, or a fresh supervisor after a
+        restart -- falls back to that same disk scan, which is cheap while `vlm/` is small."""
+        session_dir = Path(session_dir).resolve()
+        with self._lock:
+            cached = self._latest_checked_by_session.get(session_dir)
+            if cached is not None:
+                return cached
+        return latest_checked(session_dir)
 
     def submit(self, session_dir: Path, index: int, *, final: bool = False) -> None:
         if index < 0 or (index % 5 != 0 and not final):
