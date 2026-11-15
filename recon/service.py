@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import threading
 import time
 import uuid
@@ -695,14 +696,20 @@ def create_app(
         },
         operation_id="createOrder",
     )
-    async def create_order(
+    def create_order(
         spec: Annotated[UploadFile, File()],
         cad: Annotated[UploadFile | None, File()] = None,
         placement_note: Annotated[str | None, Form()] = None,
         buyer_reference: Annotated[str | None, Form()] = None,
         x_proofshape_buyer_key: Annotated[str | None, Header()] = None,
     ):
-        if not configured_buyer_key or x_proofshape_buyer_key != configured_buyer_key:
+        if (
+            not configured_buyer_key
+            or x_proofshape_buyer_key is None
+            or not secrets.compare_digest(
+                x_proofshape_buyer_key, configured_buyer_key
+            )
+        ):
             return error(
                 401,
                 ErrorDetail(
@@ -712,7 +719,7 @@ def create_app(
             )
 
         try:
-            raw_spec = await spec.read()
+            raw_spec = spec.file.read()
             parsed_spec = json.loads(raw_spec.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             return error(
@@ -731,15 +738,21 @@ def create_app(
                 ),
             )
 
+        def normalized_optional_text(value: str | None) -> str | None:
+            if value is None:
+                return None
+            stripped = value.strip()
+            return stripped or None
+
         cad_name = None
-        cad_bytes = None
+        cad_source_path = None
         cad_units = None
         cad_bbox_mm = None
         if cad is not None and cad.filename:
             from inspection.cad import load_mesh
 
             cad_name = Path(cad.filename).name
-            cad_bytes = await cad.read()
+            cad_bytes = cad.file.read()
             if not cad_bytes:
                 return error(
                     422,
@@ -760,14 +773,15 @@ def create_app(
 
             validate_dir = orders_root / ".validate"
             validate_dir.mkdir(parents=True, exist_ok=True)
-            validate_path = validate_dir / f"{uuid.uuid4().hex}{suffix}"
-            validate_path.write_bytes(cad_bytes)
+            cad_source_path = validate_dir / f"{uuid.uuid4().hex}{suffix}"
+            cad_source_path.write_bytes(cad_bytes)
             try:
-                vertices, _faces, cad_units = load_mesh(validate_path)
+                vertices, _faces, cad_units = load_mesh(cad_source_path)
                 mins = vertices.min(axis=0).astype(float).tolist()
                 maxs = vertices.max(axis=0).astype(float).tolist()
                 cad_bbox_mm = [mins, maxs]
-            except (OSError, ValueError):
+            except Exception:
+                cad_source_path.unlink(missing_ok=True)
                 return error(
                     422,
                     ErrorDetail(
@@ -775,19 +789,21 @@ def create_app(
                         message="The CAD file could not be read.",
                     ),
                 )
-            finally:
-                validate_path.unlink(missing_ok=True)
 
-        record = order_store.create(
-            created_at=datetime.now(UTC).isoformat(),
-            spec=parsed_spec,
-            placement_note=(placement_note.strip() if placement_note else None),
-            buyer_reference=(buyer_reference.strip() if buyer_reference else None),
-            cad_name=cad_name,
-            cad_bytes=cad_bytes,
-            cad_units=cad_units,
-            cad_bbox_mm=cad_bbox_mm,
-        )
+        try:
+            record = order_store.create(
+                created_at=datetime.now(UTC).isoformat(),
+                spec=parsed_spec,
+                placement_note=normalized_optional_text(placement_note),
+                buyer_reference=normalized_optional_text(buyer_reference),
+                cad_name=cad_name,
+                cad_source_path=cad_source_path,
+                cad_units=cad_units,
+                cad_bbox_mm=cad_bbox_mm,
+            )
+        finally:
+            if cad_source_path is not None:
+                cad_source_path.unlink(missing_ok=True)
         return order_response(record)
 
     @app.get(
