@@ -2,6 +2,8 @@
 
 import json
 import re
+import secrets
+import struct
 
 from fastapi.testclient import TestClient
 
@@ -9,6 +11,30 @@ from recon import service
 from recon.order_store import OrderStore
 
 ORDER_RE = re.compile(r"^PO-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{8}$")
+
+
+def _malformed_glb_accessor_reference() -> bytes:
+    document = json.dumps(
+        {
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": 0}],
+            "bufferViews": [],
+            "accessors": [],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+            "nodes": [{"mesh": 0}],
+            "scenes": [{"nodes": [0]}],
+            "scene": 0,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    document += b" " * ((-len(document)) % 4)
+    total_length = 12 + 8 + len(document)
+    return (
+        b"glTF"
+        + struct.pack("<II", 2, total_length)
+        + struct.pack("<I4s", len(document), b"JSON")
+        + document
+    )
 
 
 def _ascii_stl() -> bytes:
@@ -50,13 +76,15 @@ def test_order_store_round_trip_atomic_write_and_code_format(tmp_path):
 def test_order_store_keeps_cad_bytes_unchanged(tmp_path):
     store = OrderStore(tmp_path)
     raw = _ascii_stl()
+    source = tmp_path / "upload.stl"
+    source.write_bytes(raw)
     record = store.create(
         created_at="2026-11-15T00:00:00+00:00",
         spec={},
         placement_note=None,
         buyer_reference=None,
         cad_name="buyer-part.stl",
-        cad_bytes=raw,
+        cad_source_path=(tmp_path / "upload.stl"),
         cad_units="mm",
         cad_bbox_mm=[[0.0, 0.0, 0.0], [10.0, 20.0, 0.0]],
     )
@@ -64,6 +92,94 @@ def test_order_store_keeps_cad_bytes_unchanged(tmp_path):
     assert record["has_cad"] is True
     assert store.cad_path(record["order_code"]).read_bytes() == raw
 
+
+
+def test_order_code_path_traversal_is_rejected(tmp_path):
+    orders = tmp_path / "orders"
+    orders.mkdir()
+    (tmp_path / "order.json").write_text(
+        json.dumps(
+            {
+                "order_code": "..",
+                "created_at": "2026-11-15T00:00:00+00:00",
+                "has_cad": False,
+                "cad": None,
+                "spec": {"secret": "must-not-leak"},
+                "placement_note": "private",
+                "buyer_reference": "PRIVATE-PO",
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = service.create_app(tmp_path / "sessions", orders_dir=orders)
+
+    with TestClient(app) as client:
+        fetched = client.get("/v1/orders/%2e%2e")
+        session = client.post("/v1/sessions", json={"order_code": ".."})
+
+    assert fetched.status_code == 404
+    assert fetched.json()["code"] == "order_code_unknown"
+    assert session.status_code == 400
+    assert session.json()["code"] == "order_code_unknown"
+
+
+def test_order_code_collision_retries_atomically(tmp_path, monkeypatch):
+    store = OrderStore(tmp_path)
+    (tmp_path / "PO-AAAAAAAA").mkdir()
+    choices = iter("A" * 8 + "B" * 8)
+    monkeypatch.setattr(secrets, "choice", lambda _alphabet: next(choices))
+
+    record = store.create(
+        created_at="2026-11-15T00:00:00+00:00",
+        spec={},
+        placement_note=None,
+        buyer_reference=None,
+    )
+
+    assert record["order_code"] == "PO-BBBBBBBB"
+
+
+def test_whitespace_optional_fields_are_normalized_to_none(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", "{}", "application/json")},
+            data={"placement_note": "   ", "buyer_reference": "\t"},
+        )
+
+    assert response.status_code == 201
+    assert "placement_note" not in response.json()
+    assert "buyer_reference" not in response.json()
+
+
+def test_malformed_glb_reference_returns_cad_unreadable(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": ("spec.json", "{}", "application/json"),
+                "cad": (
+                    "broken.glb",
+                    _malformed_glb_accessor_reference(),
+                    "model/gltf-binary",
+                ),
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "cad_unreadable"
 
 def test_create_order_round_trip_and_session_gate(tmp_path):
     app = service.create_app(
