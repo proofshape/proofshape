@@ -780,7 +780,7 @@ def create_app(
                 mins = vertices.min(axis=0).astype(float).tolist()
                 maxs = vertices.max(axis=0).astype(float).tolist()
                 cad_bbox_mm = [mins, maxs]
-            except Exception:
+            except (AttributeError, IndexError, KeyError, OSError, TypeError, ValueError):
                 cad_source_path.unlink(missing_ok=True)
                 return error(
                     422,
