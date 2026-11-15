@@ -1,0 +1,99 @@
+{
+  "captures": [
+    {
+      "aggregate_bytes": 111694323,
+      "drive_folder_id": "1ZSS58pPZ7cyiFVEMZv517q9XEjwT53eW",
+      "frames": 29,
+      "lighting": "condition A",
+      "object": "grey square prism, 20 x 20 x 15 mm",
+      "reflective": false,
+      "sample_id": "g02_01",
+      "content_sha256": "d1286f43bf1b3a3ed6a9850ef1203e0b57008b14a521cf0c98e28842ee48a25e"
+    },
+    {
+      "aggregate_bytes": 114870169,
+      "drive_folder_id": "1wAJBj0fEfHyCl3YL-aMg7RiFA7NQWYeK",
+      "frames": 30,
+      "lighting": "condition A",
+      "object": "grey rectangular prism, 50 x 20 x 25 mm",
+      "reflective": false,
+      "sample_id": "g02_02",
+      "content_sha256": "749acec444ba7209daa012e686ee2bc8a26ed73e58a36acef7e47e6c22a85413"
+    },
+    {
+      "aggregate_bytes": 96928499,
+      "drive_folder_id": "1Z8FVLP--iQhQ6bt-gRiO1ZIrZ1HyQF5b",
+      "frames": 25,
+      "lighting": "condition A",
+      "object": "grey right-triangle prism, 40 x 30 x 20 mm",
+      "reflective": false,
+      "sample_id": "g02_03",
+      "content_sha256": "d4fcd0fe3b3c4c8635f1c7aed42e81bdf71ac1ce7f4519be9340b1c593f639ad"
+    },
+    {
+      "aggregate_bytes": 104528054,
+      "drive_folder_id": "11gA3MsC6hgfyQCVghEXLlmLLkLs6FQ_X",
+      "frames": 27,
+      "lighting": "condition A",
+      "object": "grey pentagonal prism, r22 x 25 mm",
+      "reflective": false,
+      "sample_id": "g02_04",
+      "content_sha256": "9afa3bdbd4fbd8732314096523020100fe52e7221b9e9dc87b2af8b80bfb0d4e"
+    },
+    {
+      "aggregate_bytes": 109839814,
+      "drive_folder_id": "1GoROgkbVa-a_LUe_NusQk9MkRejxXGm8",
+      "frames": 29,
+      "lighting": "condition A",
+      "object": "grey hexagonal prism, r28 x 35 mm",
+      "reflective": false,
+      "sample_id": "g02_05",
+      "content_sha256": "21107933ef53c712ae34a2a887a95db7470526d30b18566a6964d2dff4858ffb"
+    },
+    {
+      "aggregate_bytes": 109025416,
+      "drive_folder_id": "1nEy-59LueY_q26K_9ei15hu4Y3m4SCYp",
+      "frames": 29,
+      "lighting": "condition A",
+      "object": "grey rectangular prism, 70 x 45 x 40 mm",
+      "reflective": false,
+      "sample_id": "g02_06",
+      "content_sha256": "787de197d4aeeb9efdd65b9cd654dd0bddf89dad4081e9b7cab1c7e35cf8d56b"
+    }
+  ],
+  "drive_root_folder_id": "1xrqH2t14ZOUbIa7Ke3XiJIBQkBc3SwwY",
+  "notes": "G-08: the six G-02 specimens, photographed 2026-11-15 by @TabeenRaoof on the same G-06-calipered board sheet as the golden set (F-06), at the same table under lighting condition A. iPhone 16 main camera, 5712 x 4284 landscape stills. Photos remain outside git.",
+  "reference_cad": [
+    {
+      "filename": "g02_01_square_20x20x15mm.stl",
+      "path": "fixtures/reference_cad/g02_01_square_20x20x15mm.stl",
+      "sample_id": "g02_01"
+    },
+    {
+      "filename": "g02_02_rect_50x20x25mm.stl",
+      "path": "fixtures/reference_cad/g02_02_rect_50x20x25mm.stl",
+      "sample_id": "g02_02"
+    },
+    {
+      "filename": "g02_03_right_triangle_40x30x20mm.stl",
+      "path": "fixtures/reference_cad/g02_03_right_triangle_40x30x20mm.stl",
+      "sample_id": "g02_03"
+    },
+    {
+      "filename": "g02_04_pentagon_r22x25mm.stl",
+      "path": "fixtures/reference_cad/g02_04_pentagon_r22x25mm.stl",
+      "sample_id": "g02_04"
+    },
+    {
+      "filename": "g02_05_hexagon_r28x35mm.stl",
+      "path": "fixtures/reference_cad/g02_05_hexagon_r28x35mm.stl",
+      "sample_id": "g02_05"
+    },
+    {
+      "filename": "g02_06_rect_70x45x40mm.stl",
+      "path": "fixtures/reference_cad/g02_06_rect_70x45x40mm.stl",
+      "sample_id": "g02_06"
+    }
+  ],
+  "version": 1
+}
