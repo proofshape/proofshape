@@ -1478,6 +1478,56 @@ part.
 *Checked against D-028:* fetched all origin branches on 2026-11-12; D-068 was highest anywhere,
 so D-069 was free.
 
+**D-072 · The demo's reconstruction service runs on the M2 Max, reached from the phone over the
+local network; a public URL comes later only if four conditions hold.** (2026-11-15)
+This covers the integration runs (X-03, X-04), the Dec 2 backup recording (X-05) and the live
+defense. They all run against `recon.service` on @TabeenRaoof's M2 Max (32 GB). The phone reaches
+it through the capture dev server's HTTPS proxy (`npm run dev:device` with
+`PROOFSHAPE_RECON_PROXY`, D-049), as C-13 and C-18 did. R-36 owns the runbook and the rehearsal.
+The hosted GitHub Pages app (C-21) stays fail-closed. It calls a public service only once all four
+of these hold:
+- Lightning Deployments work again;
+- credits are allocated to the teamspace;
+- a cost guard that actually stops an idle deployment exists (#107);
+- O-005 is answered and R-34's order-code gate is merged.
+
+*Why:*
+- **Lightning is unavailable twice over.** Its credits ran out on 2026-10-07, after a deployment
+  was left running for about 28.5 h (R-15). C-21's close-out notes (2026-11-15, not yet on `main`)
+  report a Lightning platform security incident, with Deployments still down. And `--max-runtime`
+  doesn't stop a deployment, so nothing caps the cost today (#107).
+- **The Mac path is proven where it counts.**
+  - It completed real iPhone sessions: C-13 with 19 frames, and C-18's pass on 2026-11-11 with
+    20 frames.
+  - It takes about a minute per session (R-31: 56 s through uvicorn), comparable to a T4.
+  - The M2 Max runs 30-frame sessions; uncapped, 19 frames peaked at about 17 GB.
+- **Nothing in the plan needs a public URL.** X-03 asks for "the real service" and X-05 for one
+  recording. The sprint plan's own stand-in for a GPU service is "natively on Apple Silicon;
+  rented pod as backup" (D6), and the recording is the plan of record if anything fails (M8).
+- **It costs nothing, and nothing generative is lost.** The Lightning image has no completion
+  runner either (D-058), so shape completion is `unavailable` on both hosts.
+
+*What it changes:*
+- X-04's open question about its run mode is settled: local dev mode on the Mac, so C-21 is not a
+  dependency.
+- C-21's "which service the hosted page calls" is answered for this term by the four conditions
+  above.
+- S6's "rehearse losing the pod and bringing it back" becomes losing the Mac service
+  mid-session and bringing it back (R-36).
+
+*Limits, stated plainly:*
+- **One machine.** If the M2 Max fails on the day, the recording is the demo.
+- **The network.** The phone and the Mac must reach each other on the room's network. Campus Wi-Fi
+  may block that, which is why R-36 rehearses in the room, with the iPhone's personal hotspot as
+  the fallback. The sprint plan's rule stands: never demo live on a laptop not tested in the room.
+- **Memory on smaller Macs.** A teammate's 18 GB Mac fits about 14 frames. That was measured on
+  #146 with Metal capped to match an 18 GB machine; 16 and 19 frames ran out of memory. So a
+  fallback laptop caps sessions there.
+*Checked against D-028:* fetched every origin branch on 2026-11-15. D-069 is the highest on
+`main`, and D-070 and D-071 are held on open branches, so D-072 was the first free number.
+*Agreement:* it settles X-04's run mode and C-21's open question, which @mbj1994 holds, so its pull
+request asks both @mbj1994 and @dalwalyk to agree.
+
 ---
 
 ## Open — not yet decided
