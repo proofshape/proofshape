@@ -81,9 +81,10 @@ GOLDEN_CAPTURE_MANIFEST=fixtures/specimen_capture_manifest.json \
 `.gitignore` now lets any top-level `fixtures/*.sha256` be committed without a force-add, while
 checksum files inside `fixtures/data/` stay ignored.
 
-If Drive throttles gdown's folder listing on a first full download (it did once while these
-were checked), wait and run the script again. It never swaps in a sample that failed its count
-or hash check.
+If gdown stops partway with "Failed to retrieve file url" (it did after about 100 files on the
+day these were checked, while Drive still served the same files on its plain download URL), wait
+and run the script again, ideally later or from another network. It never swaps in a sample that
+failed its count or hash check, so a retry is always safe.
 
 ## Caliper readings
 
