@@ -1478,6 +1478,34 @@ part.
 *Checked against D-028:* fetched all origin branches on 2026-11-12; D-068 was highest anywhere,
 so D-069 was free.
 
+
+**D-070 · Orders are file-backed, use server-generated Crockford codes, and createOrder is guarded by a server-held buyer key.** (2026-11-15)
+R-34 stores each order under `PROOFSHAPE_ORDERS_DIR` (default
+`proofshape-data/orders`) as `<order_code>/order.json`, with an uploaded CAD beside it as
+`cad.<ext>`. The JSON write is atomic through a temporary file and replace, matching the
+session-store pattern. The CAD is validated with `inspection.cad.load_mesh`, but the stored bytes
+are never converted or rewritten.
+
+The server generates codes as `PO-` plus eight Crockford-base32 characters. The buyer's own PO
+number belongs in `buyer_reference`; it is not used as the access code. Codes are not single-use:
+a Rescan may legitimately create another session for the same order.
+
+`POST /v1/orders` requires `X-ProofShape-Buyer-Key`, checked against
+`PROOFSHAPE_BUYER_KEY`. If the key is unset or wrong, order creation is refused. This closes
+O-005's "any code can start paid GPU work" gap without putting a buyer credential in the public
+capture bundle: `createSession` now accepts only a stored order code, while the explicit
+`known_order_codes` argument remains a test override.
+
+*Why:* the public supplier path may need a deployment bearer token, so that token cannot also be
+the authority to mint new orders. A separate buyer key keeps order creation on the buyer/operator
+side while preserving a simple file-backed semester implementation.
+*Known limit:* Lightning container storage is ephemeral (D-042), so orders disappear when that
+deployment's disk disappears. Shared durable storage is a separate future story.
+*Does not change:* buyer accounts/portal routing, single-use codes, verdict computation, or
+tolerance interpretation.
+*Checked against D-028:* D-069 is the highest decision on the current main history and no D-070
+entry was found in the open-PR search when this was recorded, so D-070 was free.
+
 ---
 
 ## Open — not yet decided
