@@ -8,8 +8,8 @@ import os
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
 from collections.abc import Callable
+from datetime import UTC, datetime
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -766,7 +766,7 @@ def create_app(
                 mins = vertices.min(axis=0).astype(float).tolist()
                 maxs = vertices.max(axis=0).astype(float).tolist()
                 cad_bbox_mm = [mins, maxs]
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError):
                 return error(
                     422,
                     ErrorDetail(
@@ -778,7 +778,7 @@ def create_app(
                 validate_path.unlink(missing_ok=True)
 
         record = order_store.create(
-            created_at=datetime.now(timezone.utc).isoformat(),
+            created_at=datetime.now(UTC).isoformat(),
             spec=parsed_spec,
             placement_note=(placement_note.strip() if placement_note else None),
             buyer_reference=(buyer_reference.strip() if buyer_reference else None),
