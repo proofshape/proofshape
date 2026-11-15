@@ -92,6 +92,7 @@ def test_order_store_keeps_cad_bytes_unchanged(tmp_path):
     assert record["has_cad"] is True
     assert store.cad_path(record["order_code"]).read_bytes() == raw
 
+
 def test_order_code_path_traversal_is_rejected(tmp_path):
     orders = tmp_path / "orders"
     orders.mkdir()
@@ -178,6 +179,7 @@ def test_malformed_glb_reference_returns_cad_unreadable(tmp_path):
 
     assert response.status_code == 422
     assert response.json()["code"] == "cad_unreadable"
+
 
 def test_create_order_round_trip_and_session_gate(tmp_path):
     app = service.create_app(
