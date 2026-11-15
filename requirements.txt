@@ -43,6 +43,9 @@ fastapi==0.142.2
 uvicorn==0.54.0
 python-multipart==0.0.32
 httpx==0.28.1
+# A-11: UploadFrameResult drops an empty vlm_feedback with Field(exclude_if=...), which
+# first ships in pydantic 2.12. FastAPI already pulls pydantic in; this only sets the floor.
+pydantic>=2.12
 
 # A-01 sampled VLM supervision; SDK pinned for reproducible structured-output calls.
 google-genai==2.33.0
