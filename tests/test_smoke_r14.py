@@ -79,17 +79,29 @@ class FakeDeployment:
         self.pending_polls = pending_polls
         self.glb_scheme = glb_scheme
         self.auth_headers: set[str] = set()
+        self.buyer_headers: set[str] = set()
         self.uploaded = 0
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.auth_headers.add(request.headers.get("authorization", ""))
         path = request.url.path
+        if path == "/v1/orders":
+            self.buyer_headers.add(request.headers.get("x-proofshape-buyer-key", ""))
+            return httpx.Response(
+                201,
+                json={
+                    "order_code": "PO-7K2M9Q4R",
+                    "created_at": "2026-11-15T03:15:00+00:00",
+                    "has_cad": False,
+                    "spec": {},
+                },
+            )
         if path == "/v1/sessions":
             return httpx.Response(
                 201,
                 json={
                     "session_id": "sess_1",
-                    "order_code": "R14-SMOKE",
+                    "order_code": "PO-7K2M9Q4R",
                     "status": "capturing",
                 },
             )
@@ -127,12 +139,19 @@ def test_remote_smoke_polls_until_complete_and_sends_the_token(tmp_path):
     out = tmp_path / "out" / "model.glb"
 
     result = NS["run_remote_smoke"](
-        capture, "https://recon.example", "tok", out, client_factory=fake.client_factory
+        capture,
+        "https://recon.example",
+        "tok",
+        "buyer-key",
+        out,
+        client_factory=fake.client_factory,
     )
 
     assert result["downloaded_glb_bytes"] == len(b"glTF-remote")
     assert out.read_bytes() == b"glTF-remote"
+    assert result["order_code"] == "PO-7K2M9Q4R"
     assert fake.auth_headers == {"Bearer tok"}
+    assert fake.buyer_headers == {"buyer-key"}
 
 
 def test_remote_smoke_catches_a_proxy_downgrading_the_glb_link(tmp_path):
@@ -143,6 +162,7 @@ def test_remote_smoke_catches_a_proxy_downgrading_the_glb_link(tmp_path):
             capture,
             "https://recon.example",
             "tok",
+            "buyer-key",
             tmp_path / "m.glb",
             client_factory=fake.client_factory,
         )
@@ -197,6 +217,19 @@ def test_remote_mode_refuses_to_run_without_the_token(tmp_path, monkeypatch):
         ["smoke_r14.py", str(capture), "--base-url", "https://recon.example"],
     )
     with pytest.raises(SystemExit, match="PROOFSHAPE_ENDPOINT_TOKEN is not set"):
+        NS["main"]()
+
+
+def test_remote_mode_refuses_to_run_without_the_buyer_key(tmp_path, monkeypatch):
+    capture, _ = _frames(tmp_path)
+    monkeypatch.setenv("PROOFSHAPE_ENDPOINT_TOKEN", "tok")
+    monkeypatch.delenv("PROOFSHAPE_BUYER_KEY", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["smoke_r14.py", str(capture), "--base-url", "https://recon.example"],
+    )
+    with pytest.raises(SystemExit, match="PROOFSHAPE_BUYER_KEY is not set"):
         NS["main"]()
 
 
