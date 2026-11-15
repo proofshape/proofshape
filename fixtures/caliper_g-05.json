@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "story": "G-05",
+  "measured_by": "@TabeenRaoof",
+  "date": "2026-11-13",
+  "instrument": {
+    "type": "digital caliper",
+    "resolution_mm": 0.1,
+    "accuracy_spec": "±0.02 mm"
+  },
+  "features": [
+    {
+      "object": "g05-00",
+      "kind": "wall",
+      "cad_vertices": null,
+      "nominal_mm": 6.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "left web a: outside jaws from the left face (x = 0) to the hole's left wall, at mid-height (z ≈ 10 mm), 13–16 mm in from the front face; top face up, notch at back-right",
+      "orientation_on_board": null,
+      "readings_mm": [5.9, 5.9, 5.9, 5.9, 5.9, 5.9, 5.9, 5.9, 6.0, 5.9],
+      "mean_mm": 5.91,
+      "min_mm": 5.9,
+      "max_mm": 6.0,
+      "std_mm": 0.0316
+    },
+    {
+      "object": "g05-00",
+      "kind": "hole_width",
+      "cad_vertices": null,
+      "nominal_mm": 12.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "hole width w: inside jaws across the hole's left and right walls (along x), at mid-height (z ≈ 10 mm), 13–16 mm in from the front face; top face up, notch at back-right",
+      "orientation_on_board": null,
+      "readings_mm": [12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0],
+      "mean_mm": 12.0,
+      "min_mm": 12.0,
+      "max_mm": 12.0,
+      "std_mm": 0.0
+    },
+    {
+      "object": "g05-00",
+      "kind": "wall",
+      "cad_vertices": null,
+      "nominal_mm": 32.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "right web b: outside jaws from the hole's right wall to the right face (x = 50), below the notch, at mid-height (z ≈ 10 mm), 13–16 mm in from the front face; top face up, notch at back-right",
+      "orientation_on_board": null,
+      "readings_mm": [32.0, 32.0, 32.0, 32.0, 32.0, 31.9, 32.0, 31.9, 31.9, 32.0],
+      "mean_mm": 31.97,
+      "min_mm": 31.9,
+      "max_mm": 32.0,
+      "std_mm": 0.0483
+    },
+    {
+      "object": "g05-02",
+      "kind": "wall",
+      "cad_vertices": null,
+      "nominal_mm": 10.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "left web a: outside jaws from the left face (x = 0) to the hole's left wall, at mid-height (z ≈ 10 mm), 13–16 mm in from the front face; top face up, notch at back-right",
+      "orientation_on_board": null,
+      "readings_mm": [9.9, 9.9, 9.9, 9.9, 9.9, 9.9, 9.9, 9.9, 10.0, 9.9],
+      "mean_mm": 9.91,
+      "min_mm": 9.9,
+      "max_mm": 10.0,
+      "std_mm": 0.0316
+    },
+    {
+      "object": "g05-02",
+      "kind": "hole_width",
+      "cad_vertices": null,
+      "nominal_mm": 12.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "hole width w: inside jaws across the hole's left and right walls (along x), at mid-height (z ≈ 10 mm), 13–16 mm in from the front face; top face up, notch at back-right",
+      "orientation_on_board": null,
+      "readings_mm": [12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0, 12.0],
+      "mean_mm": 12.0,
+      "min_mm": 12.0,
+      "max_mm": 12.0,
+      "std_mm": 0.0
+    },
+    {
+      "object": "g05-02",
+      "kind": "wall",
+      "cad_vertices": null,
+      "nominal_mm": 28.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "right web b: outside jaws from the hole's right wall to the right face (x = 50), below the notch, at mid-height (z ≈ 10 mm), 13–16 mm in from the front face; top face up, notch at back-right",
+      "orientation_on_board": null,
+      "readings_mm": [28.0, 28.0, 28.0, 28.0, 27.9, 27.9, 28.0, 28.0, 28.0, 28.0],
+      "mean_mm": 27.98,
+      "min_mm": 27.9,
+      "max_mm": 28.0,
+      "std_mm": 0.0422
+    }
+  ]
+}
