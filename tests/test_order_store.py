@@ -83,7 +83,10 @@ def test_create_order_round_trip_and_session_gate(tmp_path):
                 ),
                 "cad": ("part.stl", _ascii_stl(), "model/stl"),
             },
-            data={"placement_note": "Board arrow up", "buyer_reference": "PO-EXTERNAL-7"},
+            data={
+                "placement_note": "Board arrow up",
+                "buyer_reference": "PO-EXTERNAL-7",
+            },
         )
         assert created.status_code == 201
         body = created.json()
@@ -118,7 +121,10 @@ def test_known_order_codes_override_store_for_tests(tmp_path):
         known_order_codes={"PO-TEST"},
     )
     with TestClient(app) as client:
-        assert client.post("/v1/sessions", json={"order_code": "PO-TEST"}).status_code == 201
+        assert (
+            client.post("/v1/sessions", json={"order_code": "PO-TEST"}).status_code
+            == 201
+        )
         assert (
             client.post("/v1/sessions", json={"order_code": "PO-OTHER"}).json()["code"]
             == "order_code_unknown"
@@ -189,7 +195,10 @@ def test_verdict_distinguishes_no_cad_from_not_available(tmp_path):
             "/v1/sessions", json={"order_code": with_cad["order_code"]}
         ).json()["session_id"]
 
-        assert client.get(f"/v1/sessions/{sid_no_cad}/verdict").json()["code"] == "no_cad_uploaded"
+        assert (
+            client.get(f"/v1/sessions/{sid_no_cad}/verdict").json()["code"]
+            == "no_cad_uploaded"
+        )
         assert (
             client.get(f"/v1/sessions/{sid_with_cad}/verdict").json()["code"]
             == "verdict_not_available"
