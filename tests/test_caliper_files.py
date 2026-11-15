@@ -45,7 +45,9 @@ FEATURE_KEYS = {
     "max_mm",
     "std_mm",
 }
-KINDS = {"edge", "height", "board_span", "cube_axis"}
+# `wall` and `hole_width` are G-05's: a web between a face and a hole wall, and a hole read with
+# the inside jaws. The printed hole's centre is the left web plus half the hole width.
+KINDS = {"edge", "height", "board_span", "cube_axis", "wall", "hole_width"}
 NOMINAL_SOURCES = {"cad", "D-034", "cube"}
 READINGS_PER_FEATURE = 10  # the Ground truth protocol: 10 independent placements
 HANDLE_RE = re.compile(r"^@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$")

@@ -80,8 +80,8 @@ Each object in `features`:
 
 | Field | Meaning |
 |---|---|
-| `object` | `s-04`, a specimen ID, `board`, or a cube ID |
-| `kind` | `edge`, `height`, `board_span` or `cube_axis` |
+| `object` | `s-04`, a specimen ID, `board`, a cube ID, or a G-05 part ID such as `g05-00` |
+| `kind` | `edge`, `height`, `board_span`, `cube_axis`, `wall` (G-05: the web between an outside face and a hole wall, outside jaws) or `hole_width` (G-05: across a hole, inside jaws) |
 | `cad_vertices` | For an `edge`, the CAD vertex pair it runs between, as `[[x, y], [x, y]]` in the STL's millimetres. `null` otherwise |
 | `nominal_mm` | The size it should be, in millimetres |
 | `nominal_source` | Where `nominal_mm` comes from: `"cad"`, `"D-034"` (the board's 20 mm squares) or `"cube"` |
