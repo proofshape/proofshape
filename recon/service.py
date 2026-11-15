@@ -706,9 +706,7 @@ def create_app(
         if (
             not configured_buyer_key
             or x_proofshape_buyer_key is None
-            or not secrets.compare_digest(
-                x_proofshape_buyer_key, configured_buyer_key
-            )
+            or not secrets.compare_digest(x_proofshape_buyer_key, configured_buyer_key)
         ):
             return error(
                 401,
@@ -780,7 +778,14 @@ def create_app(
                 mins = vertices.min(axis=0).astype(float).tolist()
                 maxs = vertices.max(axis=0).astype(float).tolist()
                 cad_bbox_mm = [mins, maxs]
-            except (AttributeError, IndexError, KeyError, OSError, TypeError, ValueError):
+            except (
+                AttributeError,
+                IndexError,
+                KeyError,
+                OSError,
+                TypeError,
+                ValueError,
+            ):
                 cad_source_path.unlink(missing_ok=True)
                 return error(
                     422,
