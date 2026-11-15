@@ -79,8 +79,6 @@ def test_spec_is_valid_openapi(spec):
         from openapi_spec_validator import validate_spec
     validate_spec(spec)
 
-
-
 def test_info_description_has_no_literal_escape_sequences(spec):
     """Folded YAML prose uses real line breaks, not visible backslash-n text."""
     assert "\\n" not in spec["info"]["description"]
