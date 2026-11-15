@@ -2,13 +2,14 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.0.0"
+  version: "1.1.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
     both other team members' approval, at a sprint boundary only — see CONTRIBUTING.md and
     D-031. Versioned by the `/v1` path prefix, so a v2 can be introduced alongside this one
-    rather than replacing it in place (D-032).
+    rather than replacing it in place (D-032). 1.1.0 (A-11, D-056) is additive: an optional
+    `vlm_feedback` on the upload response and two error codes; a v1.0 client is unaffected.
 
 servers:
   - url: /v1
@@ -61,7 +62,9 @@ paths:
               $ref: "#/components/schemas/UploadFrameRequest"
       responses:
         "202":
-          description: Frame accepted.
+          description: >
+            Frame accepted. From v1.1 it may also carry `vlm_feedback`: the coaching hint from the
+            newest completed VLM check, which describes an earlier sampled frame, not this one.
           content:
             application/json:
               schema:
@@ -224,10 +227,10 @@ components:
         contributes_to_verdict:
           type: boolean
           description: >
-            D-005 made structural. A region with `provenance: unobserved` MUST have this set to
-            `false` — unobserved geometry can only ever trigger a Rescan, never a Pass or a Fail.
-            Enforced by tests/test_contract.py across every committed example, not just described
-            here.
+            D-005 made structural. A region with any provenance other than `observed`
+            (`unobserved` or `inferred`) MUST have this set to `false` — geometry that wasn't
+            observed can only ever trigger a Rescan, never a Pass or a Fail. Enforced by
+            tests/test_contract.py across every committed example, not just described here.
 
     ErrorDetail:
       type: object
@@ -251,9 +254,16 @@ components:
             - too_few_frames
             - order_code_unknown
             - no_cad_uploaded
+            - malformed_request
+            - internal_error
           description: >
             Covers the failure modes R-02 and R-04 report (R-14's third acceptance criterion),
             plus the session-lifecycle and frame-gate errors this contract's own endpoints need.
+            Added in v1.1 (D-056): `malformed_request`, from any route, means the request itself
+            is missing a part or can't be parsed, so the client should fix it rather than retake
+            a photo; `internal_error` means the service failed for a reason unrelated to the
+            photos, and its message never includes the server's internal error text. `vlm_veto`
+            means only the VLM's semantic check (A-02), never a malformed upload.
         message:
           type: string
           description: Human-readable, safe to show to the supplier holding the phone.
@@ -309,6 +319,41 @@ components:
           type: boolean
         frame_index:
           type: integer
+        vlm_feedback:
+          $ref: "#/components/schemas/VlmFeedback"
+          description: >
+            v1.1. Absent (never null) until a VLM check of this session has completed.
+
+    VlmFeedback:
+      type: object
+      required: [frame_index, hint, same_part, hands_occluding, screen_photo, lighting_adequate]
+      description: >
+        The newest completed VLM capture-supervision check for this session (A-01, A-11, D-056).
+        The check runs asynchronously on sampled frames (0, 5, 10, …), so this describes an
+        earlier frame, named by `frame_index`, and arrives on a later upload. Coaching only:
+        it never decides a verdict and never rejects a frame (a veto is A-02's `vlm_veto`).
+        The hint is model output; clients must show it as plain text, never as markup.
+      properties:
+        frame_index:
+          type: integer
+          description: The sampled frame this check looked at.
+        hint:
+          type: string
+          minLength: 1
+          maxLength: 240
+          description: One line of coaching for the supplier holding the phone.
+        same_part:
+          type: [boolean, "null"]
+          description: >
+            Whether this frame shows the same part as frame 0. Null for frame 0 itself, the
+            reference. Present either way.
+        hands_occluding:
+          type: boolean
+        screen_photo:
+          type: boolean
+          description: True if the frame looks like a photo of a screen rather than the part.
+        lighting_adequate:
+          type: boolean
 
     ReconstructionResult:
       type: object

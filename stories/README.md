@@ -326,7 +326,7 @@ Full detail in each story file.
 | [A-10](A/A-10.md) | Spike: choose the shape-completion model | 4 h | nothing | Done | @TabeenRaoof |
 | [A-04](A/A-04.md) | Shape completion stage: K samples stored, Inferred label defined, verdict mesh untouched | 8 h | A-10 | Done | @TabeenRaoof |
 | [A-12](A/A-12.md) | LaS-Comp runner and CUDA setup: the real model behind A-04's contract | 5 h | A-04, A-10 | Done | @TabeenRaoof |
-| [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Claimed | @TabeenRaoof |
+| [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Done | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
 | [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
@@ -368,8 +368,8 @@ Poisson fallback) change what the supplier gets back.
 **Waiting on a decision, no story yet:**
 - #181 changes D-039's scale-agreement formula.
 - #200 (Python 3.12 vs the open3d pin) touches D-047.
-- The internal-failure error code in #186 is a contract change and belongs in A-11's D-031
-  request.
+- The internal-failure error code in #186 is a contract change; A-11's D-031 request carries
+  it (`internal_error`, D-056).
 
 **Closing issues.** In the pull request, write the keyword before each number
 (`Fixes #189, fixes #191`). GitHub closes only the first of a comma list, which is how PR #45 left
@@ -452,7 +452,7 @@ Full detail in each story file.
 |---|---|---|---|---|---|
 | [C-14](C/C-14.md) | Heatmap rendering in the viewer (D-062) | 4 h | C-12 | Done | @mbj1994 |
 | [C-15](C/C-15.md) | Report page: verdict, reasons, heatmap, print to PDF | 5 h | C-10, C-14, C-19 | Done | @mbj1994 |
-| [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Blocked | _unclaimed_ |
+| [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Ready | _unclaimed_ |
 | [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Done | @dalwalyk |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Blocked | _unclaimed_ |
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
@@ -512,7 +512,7 @@ Full detail in each story file.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Done | @dalwalyk |
-| [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Blocked | _unclaimed_ |
+| [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Ready | _unclaimed_ |
 | [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Blocked | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, C-23, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
