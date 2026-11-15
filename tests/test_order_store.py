@@ -2,8 +2,6 @@
 
 import json
 import re
-from pathlib import Path
-
 from fastapi.testclient import TestClient
 
 from recon import service
