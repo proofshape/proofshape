@@ -338,6 +338,8 @@ def test_public_operation_ids_match_the_frozen_contract(tmp_path):
             operation_ids.add(operation["operationId"])
 
     assert operation_ids == {
+        "createOrder",
+        "getOrder",
         "createSession",
         "uploadFrame",
         "finishSession",
