@@ -2445,3 +2445,23 @@ checks it. `stories/G/G-03.md` records each feature's measured minus CAD.
 **Next:** @dalwalyk closes G-03 (D-038) with `State: Done` and the completion record. Two of the
 measurer's notes name a damaged corner that can't now be located: `g02_05`'s and `g02_06`'s. They
 stay as written.
+
+## 2026-11-15 — G-05 Done: the control and the 4 mm shift printed and calipered; printed shift 4.00 mm (PR #347)
+
+**Who:** @TabeenRaoof. Claimed in #273; cut to two parts by D-069 (#331); readings in #332.
+
+**What changed:** `stories/G/G-05.md` records the print and the result.
+- The print record was read from the sliced files: the lab's only A1 mini, grey, one spool, G-01's
+  settings, Bambu Studio 02.09.01.70, and each file's SHA-256.
+- Both parts printed unrotated: `g05_00`'s placement comes from its project, `g05_02`'s from its
+  G-code.
+
+**Measured, not judged** (#332's readings, 2026-11-13):
+- The hole centres are 11.91 mm (control, CAD 12) and 15.91 mm (shift, CAD 16).
+- That puts **the printed shift at 4.00 mm** against 4.00 in CAD.
+- An independent repeat on 2026-11-15 gave 4.005 mm, with each centre within 0.025 mm.
+
+**Result:** G-05 is Done at 6 h actual (est 4). `check_story_states.py --fix` makes G-09 Ready.
+
+**Next:** G-09 photographs the two parts under G-08's conditions, and X-03 uses `g05-02` once I-07
+exists.
