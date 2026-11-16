@@ -715,6 +715,16 @@ def create_app(
             and secrets.compare_digest(value, configured_buyer_key)
         )
 
+    def spec_parse_response(result: SpecParseResult) -> JSONResponse:
+        # C-16: the contract omits top-level fields that do not apply, but a nested
+        # feature.tolerance_mm=null is meaningful A-03 evidence and must survive.
+        content = {
+            key: value
+            for key, value in result.model_dump(mode="json").items()
+            if value is not None
+        }
+        return JSONResponse(content=content)
+
     @app.post(
         "/v1/spec/parse",
         response_model=SpecParseResult,
@@ -746,13 +756,13 @@ def create_app(
                 ),
             )
         if configured_spec_parser is None:
-            return unparsed("missing_api_key")
+            return spec_parse_response(unparsed("missing_api_key"))
         try:
             response = configured_spec_parser(prose)
         except Exception:
             logger.exception("Spec parser call failed")
-            return unparsed("model_error")
-        return parse_spec_response(response)
+            return spec_parse_response(unparsed("model_error"))
+        return spec_parse_response(parse_spec_response(response))
 
     @app.post(
         "/v1/orders",
