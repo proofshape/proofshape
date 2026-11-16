@@ -54,6 +54,38 @@ shifted-hole, pocket and bump variants, written by `scripts/make_g05_defect_ladd
 are planted-defect parts for M4 and the proposal's §12 test, not σ_floor specimens, and
 deliberately not prisms; `stories/G/G-05.md` has the design and why.
 
+## G-08 specimen capture
+
+The six G-02 specimens (`g02_01` to `g02_06`) were photographed for G-04's accuracy runs. The
+photos are on the same Google Drive as the golden set, and `specimen_capture_manifest.json`
+describes them in the golden manifest's own format: Drive folder IDs, frame counts, aggregate
+byte counts and a `content_sha256` per sample. Its `reference_cad` block points at each
+specimen's CAD under `reference_cad/`.
+
+- **Capture:** 25–30 landscape stills each, 2026-11-15, on the same G-06-calipered board sheet
+  and table as the golden set, under lighting condition A. iPhone 16 main camera, 5712 × 4284,
+  the same camera the golden set used.
+- **Checks:** the board was posed in every frame by R-02's own detection, and no frame was
+  softer than the golden set's softest. One frame taken on the ultra-wide lens was dropped
+  before the hashes were computed: a second lens would break the single-camera calibration.
+
+The same script downloads either set; point it at this manifest and give it its own output
+directory:
+
+```bash
+GOLDEN_CAPTURE_MANIFEST=fixtures/specimen_capture_manifest.json \
+  bash fixtures/download_golden_capture.sh fixtures/data/specimen_capture
+```
+
+`specimen_capture_manifest.sha256` locks the manifest the same way the golden one does.
+`.gitignore` now lets any top-level `fixtures/*.sha256` be committed without a force-add, while
+checksum files inside `fixtures/data/` stay ignored.
+
+If gdown stops partway with "Failed to retrieve file url" (it did after about 100 files on the
+day these were checked, while Drive still served the same files on its plain download URL), wait
+and run the script again, ideally later or from another network. It never swaps in a sample that
+failed its count or hash check, so a retry is always safe.
+
 ## Caliper readings
 
 The ground-truth stories (`stories/G/`) record caliper readings as one file per story,

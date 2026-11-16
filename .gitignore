@@ -4,6 +4,9 @@ fixtures/**
 !fixtures/*.sh
 !fixtures/*.json
 !fixtures/*.pdf
+# G-08: each capture manifest's checksum lock is versioned beside it (the golden set's was
+# force-added before this rule). Top level only: fixtures/data/ stays ignored.
+!fixtures/*.sha256
 !fixtures/README.md
 *.jpg
 *.JPG

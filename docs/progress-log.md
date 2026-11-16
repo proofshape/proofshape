@@ -2425,3 +2425,23 @@ Tests for both followed (eight cases, each shown to fail with its change removed
 tests pass.
 **Next:** @dalwalyk reruns the clean checkout on the final SHA; both other members approve that
 exact commit (D-031), then it merges.
+
+## 2026-11-14 — G-03 specimen calipering: 26 features, 260 readings (PR #333)
+
+**Who:** @TabeenRaoof took the readings. G-03 is claimed for @dalwalyk, who closes it.
+
+**What changed:** `fixtures/caliper_g-03.json` holds every footprint side and the height of the six
+G-02 specimens: 26 features, 10 readings each, with the G-06 caliper. `tests/test_caliper_files.py`
+checks it. `stories/G/G-03.md` records each feature's measured minus CAD.
+
+**Measured, not judged:**
+- Every specimen except the triangle is within ±0.2 mm of CAD on every feature.
+- The triangle, `g02_03`, reads 0.54 to 1.01 mm short on its three sides, unlike G-06's s-04,
+  which read 0.13 to 0.41 mm long the same way. The measurer stands by the readings, so they're
+  kept as measured.
+
+**Time:** 6 h of @TabeenRaoof's time for the readings.
+
+**Next:** @dalwalyk closes G-03 (D-038) with `State: Done` and the completion record. Two of the
+measurer's notes name a damaged corner that can't now be located: `g02_05`'s and `g02_06`'s. They
+stay as written.

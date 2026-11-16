@@ -189,28 +189,30 @@ decision the team has made. **Undecided.**
 
 ## 4 · Setting up an order — the buyer
 
-**Status: Planned.** Built by C-16 (the buyer page), R-34 (the order store it saves to, and the
-service checking order codes against it), C-17 (the printable sheet with the order code) and the
-inspection stories (I-01 through I-10).
+**Status: Partly works now.** R-34 provides the order store and API; C-16 (the buyer page),
+C-17 (the printable sheet with the order code) and the remaining inspection workflow are still
+planned.
 
 The intended flow:
 
-1. **Upload the CAD** (STL/OBJ/GLB).
-2. **Enter what matters** — the tolerance, and the critical features by name ("the four mounting
-   holes", "the sealing face"). **Planned:** you will also be able to write this in plain English
-   and have it converted into the structured specification (A-03, prose-to-spec parser).
-3. **Intake pre-check runs** (I-09). Any feature whose tolerance is tighter than the method's own
-   noise floor for the required reference tier is flagged **Unverifiable before any photograph is
-   taken** (I-10) — so it can be routed to a CMM knowingly, rather than discovered through endless
-   Rescans in the field.
-4. **Generate the capture link and the printable sheet** for that purchase order. The sheet
-   carries a per-order QR code and an orientation arrow in the margin, binding the capture to the
-   order.
+1. **Create an order.** R-34 now exposes `POST /v1/orders`. It accepts an optional CAD
+   (STL/OBJ/GLB), an opaque JSON spec, an optional placement note and an optional buyer reference.
+   Order creation requires the server-held buyer key (D-070); the public capture app never embeds
+   that key.
+2. **Store the CAD and spec.** The CAD is validated by the existing CAD loader, then stored
+   byte-for-byte with its units and bounding box. The spec is stored without interpreting its
+   tolerance internals yet.
+3. **Use the generated order code.** The server returns a hard-to-guess, easy-to-type
+   `PO-` code with eight Crockford-base32 characters. `GET /v1/orders/{order_code}` reads the
+   stored order, and `createSession` now rejects codes that are not in the order store.
+4. **Planned buyer UI and inspection steps.** C-16 will provide the browser buyer page; I-09/I-10
+   will run the intake pre-check; C-17 will generate the printable sheet and QR code.
 
-**What exists today instead.** There is no buyer side and no order storage. The supplier types an
-order code by hand (§5). The mock service accepts only `PO-48213-A`; the real reconstruction
-service accepts **any** non-empty code, because there is no buyer database to check it against
-(`recon/README.md`, R-14; R-34 is the planned store). A capture link can pre-fill the order code with `?order=<code>` (C-13).
+There is still no buyer-facing page, so today an operator creates the order through the API and
+the supplier types or receives the returned order code (§5). The mock service still accepts only
+`PO-48213-A`; the real service now checks every code against the R-34 order store instead of
+accepting any non-empty value. A capture link can pre-fill the order code with `?order=<code>`
+(C-13).
 
 **Planned** (C-17): the order code, a QR code and an orientation arrow in the sheet's margin, with
 the board itself unchanged. Where they sit is recorded as a decision when C-17 is built (D-034 left
@@ -460,7 +462,9 @@ C-15 does not generate one.
 
 | Code | What happened | What to do |
 |---|---|---|
-| `order_code_unknown` | The order code was not recognised. Today the mock service accepts only `PO-48213-A`, and the real service rejects only an empty or blank code, because there is no buyer database to check against yet (§4). Until v1.1 a malformed request body also came back with this code (R-29); it now gets `malformed_request` (D-056). | Check the code. |
+| `order_code_unknown` | The order code was not recognised. The mock service accepts only `PO-48213-A`; the real service now requires the code to exist in the R-34 order store (§4). Until v1.1 a malformed request body also came back with this code (R-29); it now gets `malformed_request` (D-056). | Check the code or have the buyer create the order first. |
+| `buyer_auth_required` | `createOrder` was called without the configured buyer key, with the wrong key, or while the server has no buyer key configured (D-070). | Use the buyer-side key; never put it in the public capture bundle. |
+| `cad_unreadable` | The uploaded CAD was empty, unsupported, or rejected by the existing CAD loader. | Export a valid STL, OBJ or GLB and try again. |
 | `too_few_frames` | Not enough accepted frames to reconstruct. The real service needs at least 3. | Keep going around the part. |
 | `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
@@ -481,7 +485,8 @@ C-15 does not generate one.
 | `insufficient_baseline` | Fewer than 3 frames could be posed from the board. | Move further between shots and follow the orbit. |
 | `metric_alignment_failed` | The model could not be locked to the board's metric frame. **If the message starts "Fusion failed:"**, the board surface around the part could not be measured: too few board points near it, or the fitted board tilted more than 2° (R-21). It caused 4 of the 5 failed phone sessions in C-13's test, and why phone frames hit it more than the golden photos is not yet known. **If it says the frames carry no EXIF focal length and calibrating from the board failed**, the camera could not be calibrated from the board (D-050), most often because too few frames showed enough of it. The rest of the message gives the exact reason. | Lay the sheet flat, keep as much board visible around the part as possible (§3.4), and shoot the full orbit. |
 | `internal_error` | The service itself crashed while reconstructing, or was restarted while your session was still reconstructing (D-056). It is not a problem with your photos. The page shows it as "Reconstruction failed." followed by `internal_error:` and a short message; the details are in the service's log, not on the phone. | Start a new session and reshoot; tell the team, since the log says what went wrong. |
-| `no_cad_uploaded` | A verdict was requested for an order with no CAD. Today that is every order (§8.2). | Expected — no CAD, no verdict (D-004). The model is still valid. |
+| `no_cad_uploaded` | A verdict was requested for a stored order that has no CAD. | Expected — no CAD, no verdict (D-004). The reconstruction can still exist. |
+| `verdict_not_available` | The order has a CAD, but the I-07 verdict logic is not available yet. R-34 deliberately does not invent a result. | Keep the reconstruction; wait for the inspection/verdict stage rather than treating this as Pass or Fail. |
 
 **Not produced yet** (frozen in the contract, nothing raises them):
 

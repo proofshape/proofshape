@@ -1519,6 +1519,65 @@ part.
 *Checked against D-028:* fetched all origin branches on 2026-11-12; D-068 was highest anywhere,
 so D-069 was free.
 
+
+**D-070 · Orders are file-backed, use server-generated Crockford codes, and createOrder is guarded by a server-held buyer key.** (2026-11-15)
+R-34 stores each order under `PROOFSHAPE_ORDERS_DIR` (default
+`proofshape-data/orders`) as `<order_code>/order.json`, with an uploaded CAD beside it as
+`cad.<ext>`. The JSON write is atomic through a temporary file and replace, matching the
+session-store pattern. The CAD is validated with `inspection.cad.load_mesh`, but the stored bytes
+are never converted or rewritten.
+
+The server generates codes as `PO-` plus eight Crockford-base32 characters. The buyer's own PO
+number belongs in `buyer_reference`; it is not used as the access code. Codes are not single-use:
+a Rescan may legitimately create another session for the same order.
+
+`POST /v1/orders` requires `X-ProofShape-Buyer-Key`, checked against
+`PROOFSHAPE_BUYER_KEY`. If the key is unset or wrong, order creation is refused. This closes
+O-005's "any code can start paid GPU work" gap without putting a buyer credential in the public
+capture bundle: `createSession` now accepts only a stored order code, while the explicit
+`known_order_codes` argument remains a test override.
+
+*Why:* the public supplier path may need a deployment bearer token, so that token cannot also be
+the authority to mint new orders. A separate buyer key keeps order creation on the buyer/operator
+side while preserving a simple file-backed semester implementation.
+*Known limit:* Lightning container storage is ephemeral (D-042), so orders disappear when that
+deployment's disk disappears. Shared durable storage is a separate future story.
+*Does not change:* buyer accounts/portal routing, single-use codes, verdict computation, or
+tolerance interpretation.
+*Checked against D-028:* D-069 is the highest decision on the current main history and no D-070
+entry was found in the open-PR search when this was recorded, so D-070 was free.
+
+---
+
+**D-071 · X-02/M2: batch is the committed reconstruction mode; interactive is not built.**
+(2026-11-15)
+R-13's real measurement on the shared T4, `s-04`, 30 frames (`stories/R/R-13.md`, 2026-10-07):
+
+| Backbone | Total (s) | Dominant stage |
+|---|---:|---|
+| VGGT | 80.21 | `model_load_s`, 45.0% |
+| MASt3R | 265.90 | `alignment_s`, 79.6% |
+| COLMAP | 80.63 (refused, 28/30 registered) | `feature_extraction_s` + `mapping_s`, 92.2% |
+
+The proposal's own bar (§M2): "Interactive mode if a reconstruction update takes under ~2 s,
+otherwise every third frame." These totals include a one-time model load (VGGT's `model_load_s`
+is 36.12 s of the 80.21 s total, 45%) that a per-frame interactive update would not pay each
+time; without it, VGGT's 30-frame pass is about 44 s — still tens of seconds, nowhere near
+"nearly free," but no per-increment timing was measured, so the decision rests on that 44 s
+figure, not the raw total. R-32 also ran VGGT on the M2 Max (`mps`), 36–67 s for 30 frames —
+faster than the T4 in some runs, so this isn't "the fastest GPU this project has used"; the
+conclusion holds regardless of which GPU. Batch is confirmed as the only mode built; interactive
+mode is not built this semester.
+
+*Why:* the gate (`docs/sprint-plan.md` §7, Gate M2 · I2) exists to decide this with a real
+number instead of guessing, and the number is unambiguous — this isn't a close call the team
+needs to weigh.
+*What's given up:* nothing new. Batch was already the shipped path since M1 (proposal's own risk
+table: "GPU too slow for interactive mode → Batch mode ships at M1 and is always the fallback");
+this closes the M2 gate on real evidence rather than leaving the decision implicit.
+*Checked against D-028:* fetched all origin branches on 2026-11-15; D-070 (held on
+`recon/R-34-order-store`) was highest anywhere, so D-071 was free.
+
 ---
 
 ## Open — not yet decided
