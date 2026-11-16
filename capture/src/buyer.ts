@@ -84,8 +84,8 @@ function cadDimensions(box: [number[], number[]] | undefined): string {
   return `${dims.map((value) => value.toFixed(2)).join(" × ")} mm`;
 }
 
-function requireElement<T extends Element>(root: ParentNode, selector: string): T {
-  const element = root.querySelector<T>(selector);
+function requireElement(root: ParentNode, selector: string): Element {
+  const element = root.querySelector(selector);
   if (element === null) {
     throw new Error(`buyer page: missing ${selector}`);
   }
@@ -235,15 +235,15 @@ export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): vo
     </section>
   `;
 
-  const keyInput = requireElement<HTMLInputElement>(root, "#buyer-key");
-  const cadInput = requireElement<HTMLInputElement>(root, "#buyer-cad");
-  const proseInput = requireElement<HTMLTextAreaElement>(root, "#buyer-prose");
-  const assumptionsInput = requireElement<HTMLTextAreaElement>(root, "#buyer-assumptions");
-  const placementInput = requireElement<HTMLInputElement>(root, "#placement-note");
-  const referenceInput = requireElement<HTMLInputElement>(root, "#buyer-reference");
-  const tbody = requireElement<HTMLTableSectionElement>(root, "#feature-rows");
-  const status = requireElement<HTMLElement>(root, "#buyer-status");
-  const result = requireElement<HTMLElement>(root, "#buyer-result");
+  const keyInput = requireElement(root, "#buyer-key") as HTMLInputElement;
+  const cadInput = requireElement(root, "#buyer-cad") as HTMLInputElement;
+  const proseInput = requireElement(root, "#buyer-prose") as HTMLTextAreaElement;
+  const assumptionsInput = requireElement(root, "#buyer-assumptions") as HTMLTextAreaElement;
+  const placementInput = requireElement(root, "#placement-note") as HTMLInputElement;
+  const referenceInput = requireElement(root, "#buyer-reference") as HTMLInputElement;
+  const tbody = requireElement(root, "#feature-rows") as HTMLTableSectionElement;
+  const status = requireElement(root, "#buyer-status") as HTMLElement;
+  const result = requireElement(root, "#buyer-result") as HTMLElement;
   const locationHref = options.locationHref ?? window.location.href;
 
   keyInput.value = sessionStorage.getItem(BUYER_KEY_STORAGE) ?? "";
@@ -299,7 +299,7 @@ export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): vo
       status.textContent = `Parser unavailable: ${String(error)}. Use the manual table.`;
     }
   };
-  requireElement<HTMLButtonElement>(root, "#parse-spec").addEventListener("click", () => {
+  (requireElement(root, "#parse-spec") as HTMLButtonElement).addEventListener("click", () => {
     void handleParseSpec();
   });
 
@@ -368,7 +368,7 @@ export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): vo
       status.textContent = `Could not create order: ${String(error)}`;
     }
   };
-  requireElement<HTMLButtonElement>(root, "#create-order").addEventListener("click", () => {
+  (requireElement(root, "#create-order") as HTMLButtonElement).addEventListener("click", () => {
     void handleCreateOrder();
   });
 }
