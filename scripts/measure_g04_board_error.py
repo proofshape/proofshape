@@ -7,16 +7,34 @@ G-02 specimens (`g02_01`..`g02_06`), against G-03's caliper truth for each speci
 measured (anisotropic) board pitch. Idempotent: an existing `recon_run_dir`/`board_pose_dir` is
 reused rather than re-run, since R-01 (VGGT) is the expensive step.
 
-Some specimens' edges are excluded from the aggregate, not by a hardcoded list but because
-`cad_size_check.match_caliper_edge_truth` finds their caliper readings genuinely ambiguous (a
-symmetric or near-regular footprint with several different physical-side readings for one CAD
-length class, and no record of which side faced which way when photographed -- see G-03/G-08's
-own notes). Their height feature has no such ambiguity and stays in.
+**Edges are excluded from the aggregate entirely (not just the symmetric/near-regular
+specimens), per review on PR #348 (@TabeenRaoof):** `measure_prism`'s edge length is its 2nd-
+to-98th-percentile point extent, which reads a perfect, noiseless, reconstruction-free prism
+about 4% short of its true corner-to-corner length by construction -- a caliper reads corner to
+corner, so this alone biases every edge negative before any real error. Worse, `_fit_rigid_2d`'s
+exhaustive discrete pose search was shown, on the same photos and the same code run twice, to
+land in two different poses for g02_03's triangle (board scale agreed to 4 decimals; edge
+numbers did not) -- not a continuous noise effect, a qualitatively wrong fit, confirmed visually
+against the point cloud for g02_01 and g02_03. Both are real, pre-existing bugs in code this
+story only newly depends on; fixing them (corner-to-corner edge measurement via fitted-wall-line
+intersection, and a pose search that cannot land wrong on these shapes) is real work, left open,
+not attempted here. `match_caliper_edge_truth`'s own ambiguous-length-class exclusion
+(``conflict_atol_mm``) still runs and is still correct as far as it goes, but it is not why these
+specimens' edges are actually unusable -- the fit itself is why, for every specimen, not only the
+symmetric ones.
 
-A whole specimen is excluded (edges and height) if its own board-anchored alignment (R-23)
-didn't converge -- `board_scale` more than `MAX_BOARD_SCALE_DEVIATION` from 1.0, found live on
-g02_02 (board_scale 0.83, rms_residual_mm 21x every other specimen's). That specimen's part
-measurement is evidence the alignment failed for its capture, not evidence about the part.
+Height has no such dependency: it comes from the top-face point-density peak, computed before
+`_fit_rigid_2d` ever runs, and is the only caliper-matched feature this aggregate trusts.
+
+A whole specimen is excluded if its own board-anchored alignment (R-23) didn't converge --
+`board_scale` more than `MAX_BOARD_SCALE_DEVIATION` from 1.0, found live on g02_02 (board_scale
+0.83, rms_residual_mm 21x every other specimen's). Review on PR #348 traced this to one frame
+(`IMG_4665`, median per-corner residual 124.8 mm against every other frame's single digits):
+R-23's unweighted least-squares has no per-frame outlier rejection, and `metric_alignment.main`
+prints PASS with no residual threshold at all, so this failure would reach the live service
+silently today. That specimen's part measurement is evidence the alignment failed for its
+capture, not evidence about the part -- a robust (per-frame-rejecting) R-23 solve plus an
+alignment-residual gate into Unverifiable is the real fix, left open, not attempted here.
 
     python scripts/measure_g04_board_error.py [--device mps] [--out PATH]
 """
@@ -153,13 +171,19 @@ def measure_specimen(
 
 
 def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
-    """Pool every included edge and height caliper error, from specimens whose board-anchored
-    alignment converged (`board_alignment_ok`), into one distribution, per Proposal §12 ("report
-    mean and 95th-percentile error... sigma_floor per tier feeds the pre-check"). sigma_floor_mm
-    is defined here, concretely, as the 95th percentile of absolute error -- this story's own
-    choice, not left implicit. A specimen with `board_alignment_ok=False` contributes nothing:
-    its board itself didn't reconstruct at the right scale, so nothing it reports about the part
-    is evidence about the part's own accuracy.
+    """Pool every included specimen's **height** caliper error (only) into one distribution, per
+    Proposal §12 ("report mean and 95th-percentile error... sigma_floor per tier feeds the
+    pre-check"). Edges are not pooled here -- see the module docstring: `measure_prism`'s edge
+    length and `_fit_rigid_2d`'s pose search both have real, pre-existing problems that make an
+    edge-level number untrustworthy (confirmed by review, not assumed), while height is computed
+    independently of both and is the only feature this aggregate currently trusts. A specimen
+    with `board_alignment_ok=False` contributes nothing: its board itself didn't reconstruct at
+    the right scale, so nothing it reports is evidence about the part's own accuracy.
+
+    sigma_floor_mm is the 95th percentile (nearest-rank) of absolute height error -- this story's
+    own concrete choice. With n this small, nearest-rank p95 is close to (and, at n<=20, can
+    equal) the maximum; `max_error_mm` is reported alongside so that isn't mistaken for a finer-
+    grained percentile than the sample size supports.
     """
     errors_mm: list[float] = []
     excluded_specimen_ids: list[str] = []
@@ -167,15 +191,13 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
         if not result["board_alignment_ok"]:
             excluded_specimen_ids.append(result["specimen_id"])
             continue
-        for edge in result["caliper"]["edges"]:
-            errors_mm.append(edge["caliper_error_mm"])
         height = result["caliper"]["height"]
         if height is not None:
             errors_mm.append(height["caliper_error_mm"])
 
     if not errors_mm:
         raise ValueError(
-            "No specimen contributed any caliper-matched feature to aggregate."
+            "No specimen contributed a height caliper feature to aggregate."
         )
 
     absolute_errors_mm = sorted(abs(e) for e in errors_mm)
@@ -189,11 +211,14 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
         "excluded_specimen_ids": excluded_specimen_ids,
         "mean_error_mm": mean_mm,
         "sigma_floor_mm": sigma_floor_mm,
+        "max_error_mm": absolute_errors_mm[-1],
         "sigma_floor_definition": (
-            "95th percentile of |caliper_error_mm| pooled across every included edge and "
-            "height feature, from specimens whose board-anchored alignment converged. "
-            "mean_error_mm is the signed mean (systematic bias), reported separately, per "
-            "Proposal §12."
+            "95th percentile (nearest-rank) of |caliper_error_mm|, pooled across every "
+            "included specimen's height feature only -- edges are excluded (see module "
+            "docstring: measure_prism/_fit_rigid_2d aren't trustworthy yet). mean_error_mm is "
+            "the signed mean (systematic bias). With n this small, sigma_floor_mm and "
+            "max_error_mm are close or equal; both are reported rather than implying more "
+            "precision than the sample size supports."
         ),
     }
 
@@ -245,8 +270,10 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print(
-        f"G-04 BOARD ERROR: {summary['feature_count']} features, "
-        f"mean={summary['mean_error_mm']:.3f} mm, sigma_floor (p95)={summary['sigma_floor_mm']:.3f} mm"
+        f"G-04 BOARD ERROR (heights only): {summary['feature_count']} features, "
+        f"mean={summary['mean_error_mm']:.3f} mm, "
+        f"sigma_floor (p95)={summary['sigma_floor_mm']:.3f} mm, "
+        f"max={summary['max_error_mm']:.3f} mm"
     )
     print(f"Evidence written to {args.out}")
     return 0

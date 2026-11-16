@@ -1,7 +1,8 @@
 """Unit tests for G-04's board-error aggregation script. All synthetic -- no GPU, no fixtures
 (`fixtures/data/` is gitignored and no test may depend on it; `ensure_reconstruction` /
 `measure_specimen` / `main` drive the real R-01/R-02/R-04/cad_size_check chain and are exercised
-by the real run itself, the same D-052 manual-check exception `smoke_r14.py`/`smoke_r13.py` use).
+by the real run itself, a written record, not unit-testable, the same as `smoke_r14.py`/
+`smoke_r13.py`).
 """
 
 from __future__ import annotations
@@ -114,31 +115,32 @@ def _result(
     }
 
 
-def test_aggregate_computes_mean_and_p95_sigma_floor() -> None:
+def test_aggregate_pools_only_heights_ignoring_edges() -> None:
+    # Edges here are huge (-80/90 mm) and must never enter the aggregate -- only height does,
+    # per review on PR #348 (measure_prism/_fit_rigid_2d aren't trustworthy for edges yet).
     results = [
-        _result([0.1, -0.2, 0.3], height_error_mm=0.05),
-        _result(
-            [0.5], height_error_mm=None
-        ),  # g02_01-style: no height-independent edges here
+        _result([-80.0, 90.0], height_error_mm=0.05, specimen_id="g02_01"),
+        _result([], height_error_mm=-0.20, specimen_id="g02_03"),
+        _result([70.0], height_error_mm=0.30, specimen_id="g02_04"),
+        _result([], height_error_mm=-0.10, specimen_id="g02_05"),
+        _result([-60.0], height_error_mm=0.15, specimen_id="g02_06"),
     ]
 
     summary = m.aggregate(results)
 
-    assert summary["feature_count"] == 5
     assert summary["excluded_specimen_ids"] == []
-    errors = [0.1, -0.2, 0.3, 0.05, 0.5]
-    assert summary["mean_error_mm"] == pytest.approx(sum(errors) / len(errors))
-    # p95 of |errors| sorted [0.05, 0.1, 0.2, 0.3, 0.5] -> round(0.95*4)=4th index -> 0.5
-    assert summary["sigma_floor_mm"] == pytest.approx(0.5)
+    assert summary["feature_count"] == 5  # one height per specimen, no edges
+    heights = [0.05, -0.20, 0.30, -0.10, 0.15]
+    assert summary["mean_error_mm"] == pytest.approx(sum(heights) / len(heights))
+    # p95 (nearest-rank) of |heights| sorted [0.05, 0.10, 0.15, 0.20, 0.30] -> round(0.95*4)=4 -> 0.30
+    assert summary["sigma_floor_mm"] == pytest.approx(0.30)
+    assert summary["max_error_mm"] == pytest.approx(0.30)
 
 
 def test_aggregate_excludes_specimens_with_failed_board_alignment() -> None:
     results = [
         _result(
-            [0.1, -0.2],
-            height_error_mm=0.05,
-            board_alignment_ok=True,
-            specimen_id="g02_01",
+            [], height_error_mm=0.05, board_alignment_ok=True, specimen_id="g02_01"
         ),
         _result(
             [-80.0, 90.0],
@@ -151,10 +153,8 @@ def test_aggregate_excludes_specimens_with_failed_board_alignment() -> None:
     summary = m.aggregate(results)
 
     assert summary["excluded_specimen_ids"] == ["g02_02"]
-    assert summary["feature_count"] == 3
-    assert (
-        summary["sigma_floor_mm"] < 1.0
-    )  # the excluded specimen's huge errors never enter
+    assert summary["feature_count"] == 1
+    assert summary["sigma_floor_mm"] == pytest.approx(0.05)
 
 
 def test_aggregate_rejects_empty_input() -> None:

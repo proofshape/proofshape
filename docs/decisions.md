@@ -1580,46 +1580,80 @@ this closes the M2 gate on real evidence rather than leaving the decision implic
 
 ---
 
-**D-073 · G-04: the board reference's σ_floor is 7.52 mm, well above the 3 mm fallback line.**
-(2026-11-16)
+**D-073 · G-04: the board reference's σ_floor, from heights only, is 0.86 mm — edges are not
+yet trustworthy enough to include.** (2026-11-16, corrected same-day on review)
 Real chain (R-01 → R-02 → R-04/R-23 → `cad_size_check.build_report`, extended for caliper truth
 and G-06's measured board pitch) run on all six G-02 specimens (`fixtures/data/g04_board_error/
-g04-board-error-evidence.json`), confidence filter `--min-confidence 1.0001` (D-045):
+g04-board-error-evidence.json`), confidence filter `--min-confidence 1.0001` (D-045).
 
-| Specimen | Board scale | Included in aggregate | Notes |
-|---|---:|---|---|
-| g02_01 (square) | 0.9947 | height only | edges excluded: symmetric footprint, no recorded orientation (see method) |
-| g02_02 (rect) | 0.8311 | **excluded entirely** | R-23's board-anchored alignment did not converge for this capture (rms 21.3 mm vs 2–4 mm everywhere else) — evidence of a failed alignment, not of the part |
-| g02_03 (triangle) | 0.9984 | edges + height | already-flagged caliper anomaly (G-03); reconstruction disagrees by −7.5/+9.7/−3.0 mm across its three edges |
-| g02_04 (pentagon) | 0.9976 | height only | edges excluded: near-regular footprint, same orientation gap |
-| g02_05 (hexagon) | 0.9970 | height only | edges excluded: same reason |
-| g02_06 (rect) | 0.9959 | edges + height | consistent ≈−3 mm on every edge |
+**This decision originally reported σ_floor = 7.52 mm from pooled edges and heights.** Review
+on PR #348 (@TabeenRaoof) re-ran the identical chain on the identical photos and got different
+edge numbers (board scale agreed to 4 decimals; edges did not) and traced it to two real,
+pre-existing bugs this story's extension newly depends on, neither invented by this review:
 
-Pooled over the 12 included features: mean error **−1.11 mm** (systematic bias), **σ_floor_mm
-= 7.52 mm** (95th percentile of `|caliper_error_mm|` — this story's own concrete definition;
-Proposal §12 names both figures and says σ_floor "feeds the pre-check" from them, not how).
-g02_03's edge_index 0 (−7.52 mm, triangle) sets the figure.
+1. `measure_prism`'s edge length is the 2nd–98th-percentile point extent along the edge, which
+   reads a perfect, noiseless, reconstruction-free prism about 4% short of its true corner-to-
+   corner length by construction (confirmed by sampling each G-02 CAD's own walls densely with
+   no noise at all and running `measure_prism` on that alone). A caliper reads corner to corner;
+   this convention mismatch alone explains most of g02_06's "consistent" negative edge errors.
+2. `_fit_rigid_2d`'s exhaustive discrete pose search can land in a visibly wrong pose for a
+   right triangle (g02_03) and the square (g02_01), confirmed against the point cloud directly,
+   and is not stable run to run on identical input — tiny reconstruction differences can flip
+   which discrete candidate scores best, landing a qualitatively different pose, not just a
+   numerically close one. This is why the original run and the review's re-run disagreed by
+   whole millimetres on individual edges while agreeing on the (robust, averaged) board scale.
+
+Both make every edge-level number untrustworthy right now, for every specimen, not only the
+symmetric/near-regular ones this decision originally named. **Fixing them — corner-to-corner
+edge measurement via fitted-wall-line intersection, and a pose search that cannot land wrong on
+these shapes — is real, open work, not attempted here** (per the review's own suggested path:
+report what can be trusted, record the gap honestly, rather than ship a number from a known
+fitting artifact).
+
+**Height has no such dependency** (it comes from the top-face point-density peak, computed
+before `_fit_rigid_2d` ever runs) and is the only feature this decision now trusts:
+
+| Specimen | Board scale | Height error (mm) |
+|---|---:|---:|
+| g02_01 (square, 15 mm) | 0.9947 | −0.76 |
+| g02_02 (rect, 25 mm) | 0.8311 | **excluded entirely** — see below |
+| g02_03 (triangle, 20 mm) | 0.9984 | −0.40 |
+| g02_04 (pentagon, 25 mm) | 0.9976 | +0.86 |
+| g02_05 (hexagon, 35 mm) | 0.9970 | −0.14 |
+| g02_06 (rect, 40 mm) | 0.9959 | +0.61 |
+
+Pooled over the 5 included heights: mean error **+0.03 mm**, **σ_floor_mm (95th percentile,
+nearest-rank) = 0.86 mm**, equal to `max_error_mm` here — with n = 5, nearest-rank p95 is the
+maximum, reported alongside rather than implied to be a finer-grained percentile than 5 points
+support.
 
 *Conditions this holds under:* landscape phone stills (G-08's capture convention), the board
 reference only (not app capture, not the sheet/card references — G-10's job), R-01's raw point
-cloud (not the R-07/R-08 mesh).
-*Why 7.52 mm, not a smaller number:* per this story's own acceptance criteria, a σ_floor above
-3 mm is reported as the result, not tuned until it looks better. g02_02 was excluded on an
-independent, pre-existing basis (R-23's own documented normal range is sub-1% scale deviation;
-g02_02 measured 16.9%) confirmed via its board-ruler diagnostic alone, with no reference to its
-caliper numbers — excluding it is a data-quality call, not cherry-picking for a nicer result.
-*What's given up:* the proposal's M3 fallback applies — demo tolerances move up and the
-Unverifiable path becomes the story's working path, until something narrows this (e.g. whether
-g02_03's own inconsistency is print-specific, a reconstruction artifact for acute angles, or
-real). R-16 judges against `sigma_floor_mm = 7.52` for specimens shot on the board reference.
+cloud (not the R-07/R-08 mesh), **heights only — edges are an open gap, not covered**.
+*Why not the originally-reported 7.52 mm:* that number was itself a measurement artifact (the
+two bugs above), not a real, reproducible finding about the board reference — reporting it
+without the review's reproduction attempt would have been reporting noise as signal. 0.86 mm is
+the smallest the real evidence currently supports; it is likely optimistic (n = 5, no edges),
+not a claim that the board reference's true floor is this good.
+*What's given up:* the proposal's M3 fallback does **not** need to trigger on this evidence —
+0.86 mm is under the 3 mm line — but this is provisional on the edge gap, not a clean pass.
+R-16 judges against `sigma_floor_mm = 0.86` for specimens shot on the board reference, with the
+same caveat.
+*g02_02, with the real root cause named (not "the alignment didn't converge"):* one frame,
+`IMG_4665`, has a median per-corner residual of 124.8 mm against every other frame's single
+digits; R-23's unweighted least-squares has no per-frame outlier rejection, and
+`metric_alignment.main` prints `PASS` with no residual threshold at all, so this failure would
+reach the live service silently today. Dropping that one frame gives board scale ≈0.99, in line
+with every other specimen — confirming the raw reconstruction is fine and the fault is R-23's
+solve. **Concrete follow-up, not "no story owns it":** a per-frame-rejecting R-23 solve, plus an
+alignment-residual gate that sends a session to Unverifiable instead of printing `PASS`
+regardless. No story currently owns building this.
 *Design note, scoped deliberately:* the pitch correction for G-06's measured (anisotropic)
 board pitch is applied only inside `cad_size_check.py`'s new `apply_board_pitch_correction`,
 never inside `recon/metric_alignment.py`, which R-23's live alignment also depends on — a future
-story touching R-23's alignment should see this rather than rediscover it.
-*Open, not investigated further here:* why R-23's alignment failed specifically for g02_02's
-capture (its raw VGGT/legacy-camera-centre scale, 0.951, is in the normal legacy range, so the
-fault is in the board-anchored solve for this one capture, not the raw reconstruction) — a real
-finding, no story currently owns it.
+story touching R-23's alignment should see this rather than rediscover it. Unaffected by the
+edge-measurement finding above (pitch correction is a pre-`_fit_rigid_2d` coordinate scale, not
+part of either buggy step).
 *Checked against D-028:* fetched all origin branches on 2026-11-16; D-072 (held on
 `recon/R-36-demo-host`) was highest anywhere, so D-073 was free.
 
