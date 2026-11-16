@@ -179,17 +179,43 @@ def bin_dir(tmp_path: Path) -> Path:
     return d
 
 
-def test_committed_manifest_matches_its_committed_sha256() -> None:
-    # F-08: fixtures/golden_capture_manifest.sha256 is the committed checksum of the versioned
-    # inventory manifest (fixtures/README.md) -- it only catches an accidental edit to the
-    # manifest if something actually checks the two still agree.
-    manifest_path = REPO_ROOT / "fixtures" / "golden_capture_manifest.json"
-    sha_path = REPO_ROOT / "fixtures" / "golden_capture_manifest.sha256"
+@pytest.mark.parametrize(
+    "manifest_name", ["golden_capture_manifest.json", "specimen_capture_manifest.json"]
+)
+def test_committed_manifest_matches_its_committed_sha256(manifest_name: str) -> None:
+    # F-08: each manifest's committed .sha256 is the checksum of the versioned inventory manifest
+    # (fixtures/README.md) -- it only catches an accidental edit to the manifest if something
+    # actually checks the two still agree. G-08 added the specimen set's.
+    manifest_path = REPO_ROOT / "fixtures" / manifest_name
+    sha_path = manifest_path.with_suffix(".sha256")
     expected_line = sha_path.read_text(encoding="utf-8").strip()
     expected_hash, _, expected_name = expected_line.partition("  ")
-    assert expected_name == "golden_capture_manifest.json"
+    assert expected_name == manifest_name
     actual_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     assert actual_hash == expected_hash
+
+
+def test_specimen_manifest_lists_every_g02_specimen_with_its_hash_and_cad() -> None:
+    # G-08: one capture per G-02 specimen, 25-30 frames each (the story's criterion), every one
+    # hash-locked so the downloader refuses rather than falls back to a count-only check, and
+    # each mapped to the reference CAD it will be compared against (G-04).
+    data = json.loads(
+        (REPO_ROOT / "fixtures" / "specimen_capture_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    sample_ids = [capture["sample_id"] for capture in data["captures"]]
+    assert sample_ids == [f"g02_0{i}" for i in range(1, 7)]
+    for capture in data["captures"]:
+        assert 25 <= capture["frames"] <= 30, capture["sample_id"]
+        assert len(capture["content_sha256"]) == 64
+        int(capture["content_sha256"], 16)
+        assert capture["drive_folder_id"]
+    cad = {entry["sample_id"]: entry for entry in data["reference_cad"]}
+    assert sorted(cad) == sample_ids
+    for entry in cad.values():
+        assert (REPO_ROOT / entry["path"]).is_file(), entry["path"]
+        assert entry["path"].endswith(entry["filename"])
 
 
 def test_missing_gdown_fails_with_install_hint(tmp_path: Path) -> None:

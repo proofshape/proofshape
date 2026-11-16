@@ -233,7 +233,7 @@ Full detail in each story file.
 | [G-05](G/G-05.md) | Planted-defect parts: the control and the 4 mm hole shift | 4 h | nothing | Claimed | @TabeenRaoof |
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
-| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Claimed | @TabeenRaoof |
+| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Blocked | _unclaimed_ |
 | [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Ready | _unclaimed_ |
