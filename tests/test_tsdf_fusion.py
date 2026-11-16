@@ -942,6 +942,48 @@ def test_fuse_run_writes_mesh_and_report(tmp_path):
     assert on_disk_report == report
 
 
+def test_fuse_run_skips_a_frame_the_alignment_rejected(tmp_path):
+    # R-38/PR #358 review: rejected_frame_names was written to metric_alignment.json but nothing
+    # downstream read it, so a frame R-23's alignment rejected as an outlier (its own depth was
+    # the problem) still reached fusion -- reintroducing exactly the bad data the rejection
+    # found, one stage later. frame_1's depth here is garbage (NaN everywhere); if it weren't
+    # skipped, it would corrupt the board-plane fit or crash outright. The result must match
+    # test_fuse_run_writes_mesh_and_report's single-good-frame numbers exactly.
+    run_dir = tmp_path / "run"
+    good_depth = _board_and_part_depth()
+    bad_depth = np.full_like(good_depth, np.nan)
+    depth = np.concatenate([good_depth, bad_depth], axis=0)
+    extrinsic = np.concatenate([_SCENE_EXTRINSIC, _SCENE_EXTRINSIC], axis=0)
+    intrinsic = np.concatenate([_SCENE_INTRINSIC, _SCENE_INTRINSIC], axis=0)
+    _write_synthetic_run(run_dir, depth, extrinsic=extrinsic, intrinsic=intrinsic)
+    alignment_json = run_dir / "metric_alignment.json"
+    alignment_json.write_text(
+        json.dumps(
+            {
+                "scale": 1.0,
+                "rotation": np.eye(3).tolist(),
+                "translation_mm": [0.0, 0.0, 0.0],
+                "rejected_frame_names": ["frame_1.jpg"],
+            }
+        )
+    )
+    out_dir = tmp_path / "mesh_out"
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        out_dir,
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+        min_kept_points=0,
+    )
+
+    assert report["frame_count"] == 1
+    assert report["total_voxel_count"] == 16 * 12 * 10
+    assert report["board_surface"]["offset_mm"] == pytest.approx(-10.0, abs=0.5)
+
+
 def test_fuse_run_grid_top_follows_the_fitted_plane(tmp_path):
     # The fitted plane sits at z=-10 (board-frame), not z=0 -- the voxel grid's top must follow
     # it, or the grid itself would clip the part's base before fusion even runs.

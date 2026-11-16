@@ -978,6 +978,7 @@ def fuse_run(
     )
 
     with np.load(reconstruction_run_dir / "poses.npz") as poses:
+        frame_names = [str(name) for name in poses["frame_names"]]
         extrinsic = poses["extrinsic"].astype(np.float64)
         intrinsic = poses["intrinsic"].astype(np.float64)
     with np.load(reconstruction_run_dir / "depth.npz") as depth_data:
@@ -988,6 +989,22 @@ def fuse_run(
     scale = float(alignment_json["scale"])
     rotation = np.asarray(alignment_json["rotation"], dtype=np.float64)
     translation = np.asarray(alignment_json["translation_mm"], dtype=np.float64)
+
+    # R-38: a frame R-23's alignment rejected as an outlier (its own depth, not its detection or
+    # pose, was wrong) must not reach fusion either -- the alignment fix alone only stops that
+    # frame from corrupting the *scale*; its depth is still exactly the bad data the rejection
+    # found, and feeding it into the volume anyway reintroduces the same problem one stage later
+    # (confirmed live: review on PR #358 found the real g02_02 reproduction case fails fusion
+    # outright once the alignment itself is correct, with an error that doesn't name the real
+    # cause). Keep every frame not named in rejected_frame_names, in their original order.
+    rejected_frame_names = set(alignment_json.get("rejected_frame_names", []))
+    if rejected_frame_names:
+        keep = np.array([name not in rejected_frame_names for name in frame_names])
+        frame_names = [name for name in frame_names if name not in rejected_frame_names]
+        extrinsic = extrinsic[keep]
+        intrinsic = intrinsic[keep]
+        depth = depth[keep]
+        depth_conf = depth_conf[keep]
 
     board_extrinsic = apply_similarity_transform_to_extrinsic(
         extrinsic, scale, rotation, translation

@@ -1760,38 +1760,50 @@ distinct frames. `align_board_geometry` now calls it instead of `solve_similarit
 `FAIL`/exit-1 path instead of unconditional `PASS`.
 
 **The real sweep (`reject_sigma_k=8.0`, every available real capture, no VGGT re-run needed —
-all 11 already cached on disk):**
+all 11 already cached on disk). "Worst/threshold" is the worst frame's own median residual
+divided by the first-iteration MAD-trim threshold — how close each capture came to rejecting
+anything, not just whether it did:**
 
-| Capture | RMS before fix (mm) | RMS after fix (mm) | Rejected frame |
-|---|---:|---:|---|
-| s-01 | not separately measured | 2.101 | `IMG_3927.jpeg` |
-| s-02 | — | 3.019 | none |
-| s-03 | — | 1.608 | none |
-| s-04 | — | 2.080 | none |
-| s-05 | — | 2.351 | none |
-| g02_01 | — | 3.914 | none |
-| **g02_02** | **23.353** | **1.863** | **`IMG_4665.JPG`** |
-| g02_03 | — | 2.155 | none |
-| g02_04 | — | 2.732 | none |
-| g02_05 | — | 3.190 | none |
-| g02_06 | — | 3.789 | none |
+| Capture | RMS before fix (mm) | RMS after fix (mm) | Rejected frame | Worst/threshold |
+|---|---:|---:|---|---:|
+| **s-01** | **2.545** | **2.101** | **`IMG_3927.jpeg`** | **1.04** |
+| s-02 | 3.019 | 3.019 | none | 0.56 |
+| s-03 | 1.608 | 1.608 | none | 0.62 |
+| s-04 | 2.080 | 2.080 | none | 0.51 |
+| s-05 | 2.351 | 2.351 | none | 0.64 |
+| g02_01 | 3.914 | 3.914 | none | 0.56 |
+| **g02_02** | **23.353** | **1.863** | **`IMG_4665.JPG`** | **8.38** |
+| g02_03 | 2.155 | 2.155 | none | 0.68 |
+| g02_04 | 2.732 | 2.732 | none | 0.65 |
+| g02_05 | 3.190 | 3.190 | none | 0.45 |
+| g02_06 | 3.789 | 3.789 | none | 0.42 |
 
 `g02_02`'s fix matches Tabeen's own manual estimate (RMS ≈1.86 mm after dropping `IMG_4665` by
-hand) almost exactly. **A second, smaller finding the real sweep surfaced, not assumed from the
-single known case:** `s-01` (golden set, previously thought clean) also has a real, if subtler,
-outlier frame — `IMG_3927.jpeg` read 7.1 mm median residual against 2–4 mm for every other frame
-there. Genuinely rejected, not a false positive from an over-aggressive `reject_sigma_k`: every
-other clean capture (9 of 11) rejects nothing at the same `k=8.0`.
+hand) almost exactly, and the worst/threshold ratio (8.38) separates it by a wide margin from
+every other capture.
 
-Every one of the 10 clean-after-fix results falls in **1.6–3.9 mm**. `DEFAULT_MAX_RESIDUAL_MM =
-8.0 mm`, about 2x the highest of those (3.914 mm) — comfortable margin above real clean results,
-while far below the ~23 mm the real g02_02 failure produced before rejection, so the gate would
-have caught it even without the rejection fix alone.
+**`s-01` is a genuine but borderline rejection, not a second confirmed-clean-margin case like
+g02_02 — stated precisely, not oversold.** Its worst frame (`IMG_3927.jpeg`, 7.15 mm) clears the
+threshold (6.88 mm) by only ~4%, a 1.04 ratio against every other clean capture's 0.42–0.68.
+Review on PR #358 re-ran this independently and got 7.16/6.99 = 1.02 — close enough to confirm
+the same conclusion, but the two runs' own ~0.01–0.03 mm-level differences (consistent with the
+~0.3 mm run-to-run noise D-073 already noted for `measure_prism`'s top-face search, a different
+but related floating-point/VGGT non-determinism) mean a future re-run could plausibly land
+`s-01` on either side of the line. The effect either way is small and harmless: `s-01`'s scale
+moves about +0.13% and its RMS goes from 2.545 to 2.101 mm. Kept as a rejection here because it
+clears the line as measured, not because it's an obviously-bad frame the way `IMG_4665` is.
+
+Every clean-after-fix result falls in **1.6–3.9 mm**. `DEFAULT_MAX_RESIDUAL_MM = 8.0 mm`, about
+2x the highest of those (3.914 mm) — comfortable margin above real clean results, while far
+below the ~23 mm the real g02_02 failure produced before rejection, so the gate would have
+caught it even without the rejection fix alone.
 
 *Why `reject_sigma_k=8.0`, not swept separately as its own parameter:* the same value correctly
-rejects both the real g02_02 case (124.8 mm, an extreme outlier) and the subtler s-01 case
-(7.1 mm vs 2–4 mm, a much smaller margin) without any false rejection on the other 9 captures —
-confirmed live, not assumed to generalize from one case.
+separates the real g02_02 case (124.8 mm, worst/threshold 8.38, an unambiguous outlier) from the
+9 unambiguously-clean captures (worst/threshold 0.42–0.68) without any false rejection among
+them. `s-01` sits right at the boundary (1.04) rather than cleanly on either side — confirmed
+live, not assumed to generalize from one case, and not claimed to be a crisp separation in every
+instance.
 *Known limit, found and recorded, not hidden:* the per-frame rejection is a single-shot
 threshold on the initial (uncorrected) solve's residuals. If a single frame's corruption has
 enough leverage to distort that initial solve severely (confirmed separately: an extreme,
@@ -1799,6 +1811,31 @@ enough leverage to distort that initial solve severely (confirmed separately: an
 the corrupted frame's own residual can shrink rather than stand out), this design will not
 recover it. The real g02_02 failure (scale pulled to 0.83, not collapsed to near-zero) is well
 within what this design handles; a future, more severe failure mode is not guaranteed to be.
+Separately, the MAD-trim threshold has no absolute floor — on a capture whose own clean frames
+happen to agree very tightly (`s-03`'s threshold is 4.62 mm), a frame only a few mm off could
+still be rejected. That costs a frame's worth of observations, not correctness, so it's left as
+is, not a bug.
+*Rejected frames are also skipped at fusion, not only at alignment (review on PR #358,
+@TabeenRaoof, caught after the first version of this fix only touched alignment):*
+`rejected_frame_names` was written to `metric_alignment.json` but nothing downstream read it, so
+a rejected frame's depth — exactly the bad data the rejection found — still reached
+`tsdf_fusion.fuse_run`. Confirmed live: once g02_02's alignment was fixed in isolation, fusion
+then failed outright on `IMG_4665`'s own depth (R-30's per-frame re-anchoring correctly refused
+it), with an error that didn't name the real cause — safer than silently fusing bad geometry,
+but not the recovery this decision originally described. `fuse_run` now drops any frame named in
+`rejected_frame_names` before any of its depth reaches the volume. Confirmed this actually lets
+g02_02 recover end to end (review, scratch test deleting `IMG_4665` from a copy of its
+`poses.npz`/`depth.npz`): alignment unchanged at 1.859 mm, fusion runs cleanly on the remaining
+29 frames, and `cad_size_check.build_report` then gives a board scale of 0.9989 and a height
+error of −0.17 mm against caliper truth — inside D-073's 0.86 mm σ_floor. `g02_02` rejoining
+G-04's aggregate (still a follow-up, not done in this story) now has real evidence it would land
+inside tolerance, not just a plausible guess that it might.
+*The live service never checked the residual either, only the CLI did (review on PR #358,
+@mbj1994):* `recon/service.py::run_reconstruction_pipeline` called `metric_alignment.load_and_
+align` directly and went straight to fusion, never through `metric_alignment.main`, so
+`--max-residual-mm` only ever existed on the command line. A live session whose post-rejection
+RMS still exceeds `DEFAULT_MAX_RESIDUAL_MM` now raises the pipeline's existing
+`metric_alignment_failed` error right after alignment, before fusion ever starts.
 *Design fork, decided explicitly (not assumed either way):* the residual-threshold failure is
 `metric_alignment.main`'s own new `FAIL`/exit-1, **not** wired into the `Unverifiable` verdict.
 No verdict-computation code exists anywhere in the repo today (`GET /v1/sessions/{id}/verdict`
