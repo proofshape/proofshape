@@ -14,7 +14,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "format:check": "prettier --write src/api.ts src/api.test.ts src/buyer.ts src/buyer.test.ts && git diff --exit-code -- src/api.ts src/api.test.ts src/buyer.ts src/buyer.test.ts"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
