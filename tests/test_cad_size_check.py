@@ -20,11 +20,14 @@ from recon.board_pose import make_board
 from recon.cad_size_check import (
     PrismCAD,
     _RunBundle,
+    apply_board_pitch_correction,
     build_argument_parser,
     build_report,
+    caliper_edge_errors,
     compute_height_above_board,
     fit_board_plane,
     main,
+    match_caliper_edge_truth,
     measure_board_scale,
     measure_legacy_camera_centre_board_scale,
     measure_prism,
@@ -417,6 +420,129 @@ def test_measure_prism_rejects_too_few_candidate_points() -> None:
         measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
 
 
+# --- G-04: board pitch correction, caliper truth ------------------------------------------------
+
+
+def test_apply_board_pitch_correction_scales_x_and_y_independently() -> None:
+    points = np.array([[160.0, 120.0, 5.0], [80.0, 60.0, -5.0]])
+
+    corrected = apply_board_pitch_correction(
+        points,
+        measured_span_across_mm=160.16,
+        measured_span_down_mm=120.55,
+        nominal_span_across_mm=160.0,
+        nominal_span_down_mm=120.0,
+    )
+
+    assert corrected[:, 0] == pytest.approx(points[:, 0] * (160.16 / 160.0))
+    assert corrected[:, 1] == pytest.approx(points[:, 1] * (120.55 / 120.0))
+    assert corrected[:, 2] == pytest.approx(points[:, 2])  # z untouched
+
+
+def test_apply_board_pitch_correction_rejects_wrong_shape() -> None:
+    with pytest.raises(ValueError, match="shape"):
+        apply_board_pitch_correction(
+            np.zeros((5, 2)),
+            measured_span_across_mm=160.16,
+            measured_span_down_mm=120.55,
+        )
+
+
+def _rect_prism(long_mm: float, short_mm: float, height_mm: float = 60.0) -> PrismCAD:
+    footprint = np.array(
+        [[0.0, 0.0], [long_mm, 0.0], [long_mm, short_mm], [0.0, short_mm]]
+    )
+    edges = [(footprint[i], footprint[(i + 1) % 4]) for i in range(4)]
+    return PrismCAD(footprint_xy=footprint, height_mm=height_mm, edges=edges)
+
+
+def test_match_caliper_edge_truth_applies_one_reading_to_both_edges_of_its_length_class() -> (
+    None
+):
+    # A 50x20 rectangle: one caliper reading per length class, matching G-03's own convention
+    # of measuring "the two long sides"/"the two short sides" once each, not edge-by-edge.
+    prism = _rect_prism(long_mm=50.0, short_mm=20.0)
+    features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [50.0, 0.0]], "mean_mm": 49.93},
+        {"kind": "edge", "cad_vertices": [[50.0, 0.0], [50.0, 20.0]], "mean_mm": 19.9},
+        {"kind": "height", "cad_vertices": None, "mean_mm": 59.8},
+    ]
+
+    truth_mm = match_caliper_edge_truth(prism, features)
+
+    # Both long edges (index 0 and 2) get the long reading; both short edges (1 and 3) the short.
+    assert truth_mm == [49.93, 19.9, 49.93, 19.9]
+
+
+def test_match_caliper_edge_truth_leaves_unmeasured_length_class_as_none() -> None:
+    prism = _rect_prism(long_mm=50.0, short_mm=20.0)
+    features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [50.0, 0.0]], "mean_mm": 49.93},
+    ]
+
+    truth_mm = match_caliper_edge_truth(prism, features)
+
+    assert truth_mm == [49.93, None, 49.93, None]
+
+
+def test_match_caliper_edge_truth_excludes_ambiguous_length_class() -> None:
+    # A square: all 4 edges share one CAD length, but two different physical sides were
+    # calipered differently (g02_01's real situation) -- excluded, not guessed.
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [30.0, 0.0]], "mean_mm": 29.9},
+        {"kind": "edge", "cad_vertices": [[30.0, 0.0], [30.0, 30.0]], "mean_mm": 29.81},
+    ]
+
+    truth_mm = match_caliper_edge_truth(prism, features)
+
+    assert truth_mm == [None, None, None, None]
+
+
+def test_match_caliper_edge_truth_averages_agreeing_duplicate_readings() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [30.0, 0.0]], "mean_mm": 29.90},
+        {"kind": "edge", "cad_vertices": [[30.0, 0.0], [30.0, 30.0]], "mean_mm": 29.92},
+    ]
+
+    truth_mm = match_caliper_edge_truth(prism, features)
+
+    assert truth_mm == pytest.approx([29.91, 29.91, 29.91, 29.91])
+
+
+def test_caliper_edge_errors_reports_bias_apart_from_spread() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    points = _synthesize_prism_points(
+        prism, noise_mm=0.3, rng=np.random.default_rng(13)
+    )
+    measurement = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+    # One real measurement, one caliper-missing (None) -- only the first should be reported.
+    caliper_truth_mm = [29.9, None, None, None]
+
+    errors = caliper_edge_errors(measurement, caliper_truth_mm)
+
+    assert len(errors) == 1
+    entry = errors[0]
+    assert entry["edge_index"] == 0
+    assert entry["caliper_truth_mm"] == 29.9
+    assert entry["caliper_error_mm"] == pytest.approx(
+        measurement.edges[0].measured_length_mm - 29.9
+    )
+    assert (
+        entry["perpendicular_spread_mm"] == measurement.edges[0].perpendicular_spread_mm
+    )
+
+
+def test_caliper_edge_errors_rejects_wrong_length() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    points = _synthesize_prism_points(prism, rng=np.random.default_rng(14))
+    measurement = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+    with pytest.raises(ValueError, match="expected 4"):
+        caliper_edge_errors(measurement, [29.9, None])
+
+
 # --- measure_board_scale -----------------------------------------------------------------------
 
 
@@ -727,6 +853,51 @@ def test_build_report_with_and_without_cad(tmp_path: Path) -> None:
     assert with_cad["prism"]["height_ratio"] == pytest.approx(1.0, abs=0.08)
     for edge in with_cad["prism"]["edges"]:
         assert edge["ratio"] == pytest.approx(1.0, abs=0.08)
+
+
+def test_build_report_with_caliper_truth_and_board_pitch(tmp_path: Path) -> None:
+    prism = _box_prism(30.0, 60.0)
+    run_dir, board_dir = tmp_path / "run", tmp_path / "board"
+    _write_synthetic_run(run_dir, board_dir, prism)
+    stl_path = tmp_path / "box.stl"
+    stl_path.write_text(_box_ascii_stl_text(30.0, 60.0), encoding="ascii")
+    # Every edge agrees (29.9, within conflict_atol_mm of each other) -- a consistent reading,
+    # not g02_01's genuine conflict, so every edge should get caliper truth, not None.
+    caliper_features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [30.0, 0.0]], "mean_mm": 29.9},
+        {"kind": "height", "cad_vertices": None, "mean_mm": 59.8},
+    ]
+
+    report = build_report(
+        run_dir,
+        board_dir,
+        cad_path=stl_path,
+        caliper_features=caliper_features,
+        board_pitch_mm=(160.16, 120.55),  # G-06's real measured board pitch
+    )
+
+    assert report["prism"]["board_pitch_mm"] == {"across": 160.16, "down": 120.55}
+    caliper = report["prism"]["caliper"]
+    assert len(caliper["edges"]) == 4
+    for edge in caliper["edges"]:
+        assert edge["caliper_truth_mm"] == pytest.approx(29.9)
+    assert caliper["height"]["caliper_truth_mm"] == pytest.approx(59.8)
+    assert caliper["height"]["caliper_error_mm"] == pytest.approx(
+        report["prism"]["height_mm"] - 59.8
+    )
+
+    # Without board_pitch_mm, no x/y correction is applied -- edge lengths should differ (z,
+    # i.e. height, is untouched by design, so that alone wouldn't show the correction).
+    uncorrected = build_report(
+        run_dir, board_dir, cad_path=stl_path, caliper_features=caliper_features
+    )
+    assert uncorrected["prism"]["board_pitch_mm"] is None
+    assert uncorrected["prism"]["height_mm"] == pytest.approx(
+        report["prism"]["height_mm"]
+    )
+    assert uncorrected["prism"]["edges"][0]["measured_length_mm"] != pytest.approx(
+        report["prism"]["edges"][0]["measured_length_mm"]
+    )
 
 
 def _fused_wall_glb(path: Path, outward_mm: float, decoy_outward_mm: float) -> None:
