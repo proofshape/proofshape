@@ -105,7 +105,9 @@ def test_parse_spec_model_error_is_contract_valid_and_omits_spec(tmp_path):
     assert body == {"status": "unparsed", "reason": "model_error"}
 
 
-def test_parse_spec_missing_api_key_is_contract_valid_and_explicit(tmp_path, monkeypatch):
+def test_parse_spec_missing_api_key_is_contract_valid_and_explicit(
+    tmp_path, monkeypatch
+):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     app = service.create_app(
         tmp_path / "sessions",
