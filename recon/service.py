@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field, field_validator
 # the macOS-only OMP_NUM_THREADS=1 guard as an import side effect; Linux is unchanged.
 from recon import runtime_env as _runtime_env  # noqa: F401
 from recon.order_store import OrderStore
+from recon.spec_parser import GeminiSpecParser, SpecParseResult, parse_spec_response, unparsed
 from recon.vlm_check import VlmSupervisor
 
 MIN_FINISH_FRAMES = 3
@@ -78,6 +79,10 @@ class ErrorDetail(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     order_code: str
+
+
+class SpecParseRequest(BaseModel):
+    prose: str = Field(min_length=1)
 
 
 class SessionResponse(BaseModel):
@@ -583,6 +588,7 @@ def create_app(
     vlm_supervisor: VlmSupervisor | None = None,
     orders_dir: Path | None = None,
     buyer_key: str | None = None,
+    spec_parser: Callable[[str], Any] | None = None,
 ) -> FastAPI:
     # R-31: keep agent_tools lazy so the runtime guard above has already run before its
     # provenance dependency can import Open3D.
@@ -601,7 +607,11 @@ def create_app(
         if buyer_key is not None
         else os.environ.get("PROOFSHAPE_BUYER_KEY", "")
     )
-    supervisor = vlm_supervisor or VlmSupervisor(os.environ.get("GEMINI_API_KEY", ""))
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    supervisor = vlm_supervisor or VlmSupervisor(gemini_key)
+    configured_spec_parser = spec_parser
+    if configured_spec_parser is None and gemini_key:
+        configured_spec_parser = GeminiSpecParser(gemini_key)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -611,7 +621,7 @@ def create_app(
             supervisor.close()
 
     app = FastAPI(
-        title="ProofShape reconstruction service", version="1.2.0", lifespan=lifespan
+        title="ProofShape reconstruction service", version="1.3.0", lifespan=lifespan
     )
     # C-13: capture/ is served from a different origin than this service (D-042 left this
     # decision to whichever story first connected them). A wildcard origin is deliberate, not an
@@ -670,6 +680,14 @@ def create_app(
                     message="The order request is malformed; a JSON spec part is required.",
                 ),
             )
+        if request.method == "POST" and request.url.path.endswith("/v1/spec/parse"):
+            return error(
+                422,
+                ErrorDetail(
+                    code="malformed_request",
+                    message="The spec-parser request needs non-empty buyer prose.",
+                ),
+            )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     def order_response(record: dict[str, Any]) -> OrderResponse:
@@ -684,6 +702,52 @@ def create_app(
             placement_note=record.get("placement_note"),
             buyer_reference=record.get("buyer_reference"),
         )
+
+    def buyer_key_authorized(value: str | None) -> bool:
+        return bool(
+            configured_buyer_key
+            and value is not None
+            and secrets.compare_digest(value, configured_buyer_key)
+        )
+
+    @app.post(
+        "/v1/spec/parse",
+        response_model=SpecParseResult,
+        responses={
+            401: {"model": ErrorDetail},
+            422: {"model": ErrorDetail},
+        },
+        operation_id="parseSpec",
+    )
+    def parse_spec(
+        body: SpecParseRequest,
+        x_proofshape_buyer_key: Annotated[str | None, Header()] = None,
+    ):
+        if not buyer_key_authorized(x_proofshape_buyer_key):
+            return error(
+                401,
+                ErrorDetail(
+                    code="buyer_auth_required",
+                    message="A valid buyer key is required to parse a spec.",
+                ),
+            )
+        prose = body.prose.strip()
+        if not prose:
+            return error(
+                422,
+                ErrorDetail(
+                    code="malformed_request",
+                    message="The buyer prose must not be blank.",
+                ),
+            )
+        if configured_spec_parser is None:
+            return unparsed("missing_api_key")
+        try:
+            response = configured_spec_parser(prose)
+        except Exception:
+            logger.exception("Spec parser call failed")
+            return unparsed("model_error")
+        return parse_spec_response(response)
 
     @app.post(
         "/v1/orders",
@@ -703,11 +767,7 @@ def create_app(
         buyer_reference: Annotated[str | None, Form()] = None,
         x_proofshape_buyer_key: Annotated[str | None, Header()] = None,
     ):
-        if (
-            not configured_buyer_key
-            or x_proofshape_buyer_key is None
-            or not secrets.compare_digest(x_proofshape_buyer_key, configured_buyer_key)
-        ):
+        if not buyer_key_authorized(x_proofshape_buyer_key):
             return error(
                 401,
                 ErrorDetail(
