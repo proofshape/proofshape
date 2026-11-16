@@ -455,6 +455,7 @@ Full detail in each story file.
 | [C-15](C/C-15.md) | Report page: verdict, reasons, heatmap, print to PDF | 5 h | C-10, C-14, C-19 | Done | @mbj1994 |
 | [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Done | @mbj1994 |
 | [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Done | @dalwalyk |
+| [R-36](R/R-36.md) | Demo host: the reconstruction service on the M2 Max, rehearsed in the room (D-072) | 3 h | C-13, C-18, R-31 | Claimed | @TabeenRaoof |
 | [R-37](R/R-37.md) | cad_size_check: corner-to-corner edge measurement and a pose search that can't land wrong | 5 h | R-22 | Ready | _unclaimed_ |
 | [R-38](R/R-38.md) | R-23's alignment solve needs per-frame outlier rejection and a real residual gate | 4 h | R-23 | Ready | _unclaimed_ |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Done | @mbj1994 |

@@ -2467,3 +2467,24 @@ timing exception but still requires both other members to approve its final head
 **Close-out:** owner-confirmed actual time is **2 h** against the 5 h estimate. C-16 and its index
 row are Done on the final close-out branch; both other members still approve that exact final head
 under D-031 before merge.
+
+## 2026-11-16 — R-36 home pre-check: the demo path runs on the M2 Max (PR #340)
+
+**Who:** @TabeenRaoof
+**What changed:** no code. R-36's story records the measurement runs, and its runbook criterion
+gains the order step that R-34 and C-16 made necessary.
+**Result:** on `main` at `5407b7d`, with the service on the M2 Max and an iPhone in Safari through
+`npm run dev:device` on home Wi-Fi:
+- golden s-04 through the HTTP smoke flow: 30 frames reconstructed in 47–50 s;
+- three real iPhone sessions of s-04: 31–51 s from Finish to model, metric on the board;
+- the clean 23-frame run against nominal CAD: height 0.947, edges 0.95–1.04, fit residual 2.32 mm,
+  comparable to golden;
+- the same main wide lens in every frame;
+- the live Gemini check: it flagged a screen photo at frame 5, and the tip reached the phone;
+- stopping the service mid-session twice (91 s, 138 s): the session continued and finished both
+  times.
+
+Seven gaps are listed in R-36's notes for their own issues, among them the raw outage message,
+Safari backgrounding losing the session, a screen frame getting into the model, and
+`cad_size_check`'s blob selection.
+**Next:** the rehearsal in the defense room, and the runbook in `recon/README.md`.
