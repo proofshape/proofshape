@@ -7,6 +7,10 @@ on:
     paths:
       - capture/package.json
       - .github/workflows/c17-lock-helper.yml
+  pull_request:
+    paths:
+      - capture/package.json
+      - .github/workflows/c17-lock-helper.yml
 
 permissions:
   contents: read
