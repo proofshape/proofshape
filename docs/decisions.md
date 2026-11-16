@@ -255,6 +255,12 @@ between the story and the sprint plan.
 *Checked against D-028 at write time:* D-031 and D-032 were free on every open branch, `main`
 included, as of 2026-09-13 — thirteen branches checked, highest claimed anywhere was D-030.
 
+*Timing exception record (2026-11-16):* R-34 / PR #335 was merged before the Dec 2 sprint boundary
+after the team explicitly reviewed the early-boundary exception. C-16 / PR #346 is proposed under
+that same exception because it is the buyer UI for R-34 and adds only the server-side `parseSpec`
+route needed to land A-03 safely. C-16 still must receive both other members' approvals on its
+final head before merge; this note records the exception, not an approval.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already

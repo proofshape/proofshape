@@ -1,10 +1,39 @@
-// Hand-written from contracts/openapi.yaml (F-03, frozen; v1.1 since A-11, D-056). Keep these
+// Hand-written from contracts/openapi.yaml (F-03, frozen; v1.3 with C-16). Keep these
 // in sync with the spec by hand — there is no code generator wired up yet.
 
 export interface Session {
   session_id: string;
   order_code: string;
   status: "capturing" | "finished";
+}
+
+export type SpecKind = "hole" | "face" | "edge" | "overall";
+
+export interface SpecFeature {
+  name: string;
+  kind: SpecKind;
+  tolerance_mm: number | null;
+  critical: boolean;
+}
+
+export interface InspectionSpec {
+  features: SpecFeature[];
+  assumptions: string[];
+}
+
+export type SpecParseResult =
+  | { status: "parsed"; spec: InspectionSpec; reason?: never }
+  | { status: "unparsed"; reason: string; spec?: never };
+
+export interface Order {
+  order_code: string;
+  created_at: string;
+  has_cad: boolean;
+  cad_units?: "mm" | "assumed_mm";
+  cad_bounding_box_mm?: [number[], number[]];
+  spec: Record<string, unknown>;
+  placement_note?: string;
+  buyer_reference?: string;
 }
 
 // v1.1 (A-11): the newest completed VLM check. It describes an earlier sampled frame, named by
@@ -42,6 +71,9 @@ export type ErrorCode =
   | "too_few_frames"
   | "order_code_unknown"
   | "no_cad_uploaded"
+  | "cad_unreadable"
+  | "verdict_not_available"
+  | "buyer_auth_required"
   | "malformed_request"
   | "internal_error";
 
