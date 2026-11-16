@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSession, finishSession, getReconstruction, getVerdict, uploadFrame } from "./api.js";
+import {
+  createOrder,
+  createSession,
+  finishSession,
+  getReconstruction,
+  getVerdict,
+  parseInspectionSpec,
+  uploadFrame,
+} from "./api.js";
 import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 
 const FAKE_JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
@@ -27,6 +35,76 @@ describe("api against the contract stub", () => {
 
   afterEach(async () => {
     await close();
+  });
+
+  it("creates an order through the R-34 mock route", async () => {
+    const result = await createOrder(
+      baseUrl,
+      {
+        spec: {
+          features: [
+            { name: "mounting hole", kind: "hole", tolerance_mm: 2, critical: true },
+          ],
+          assumptions: [],
+        },
+        placementNote: "Arrow up",
+        buyerReference: "BUYER-42",
+      },
+      "buyer-key",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.order_code).toMatch(/^PO-/);
+      expect(result.body.spec).toEqual({
+        features: [
+          { name: "mounting hole", kind: "hole", tolerance_mm: 2, critical: true },
+        ],
+        assumptions: [],
+      });
+    }
+  });
+
+  it("parses buyer prose through the A-03 mock route", async () => {
+    const result = await parseInspectionSpec(
+      baseUrl,
+      "The mounting holes need 2 mm; the sealing face must be flat.",
+      "buyer-key",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.status).toBe("parsed");
+      if (result.body.status === "parsed") {
+        expect(result.body.spec.features.some((feature) => feature.tolerance_mm === null)).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  it("sends the spec as a JSON multipart file when creating an order", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await createOrder(
+      baseUrl,
+      {
+        spec: {
+          features: [{ name: "overall", kind: "overall", tolerance_mm: 1, critical: false }],
+          assumptions: ["manual"],
+        },
+      },
+      "buyer-key",
+    );
+
+    const init = fetchSpy.mock.calls[0]?.[1];
+    const form = init?.body;
+    expect(form).toBeInstanceOf(FormData);
+    const specPart = (form as FormData).get("spec");
+    expect(specPart).toBeInstanceOf(Blob);
+    expect(JSON.parse(await (specPart as Blob).text())).toEqual({
+      features: [{ name: "overall", kind: "overall", tolerance_mm: 1, critical: false }],
+      assumptions: ["manual"],
+    });
+    expect(new Headers(init?.headers).get("X-ProofShape-Buyer-Key")).toBe("buyer-key");
+    vi.restoreAllMocks();
   });
 
   it("returns a session id for the known order code", async () => {
