@@ -421,7 +421,8 @@ export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): vo
       }
 
       result.hidden = false;
-      status.textContent = "Order created. Review the code, capture link and printable sheet below.";
+      status.textContent =
+        "Order created. Review the code, capture link and printable sheet below.";
     } catch (error) {
       status.textContent = `${describeNetworkError(error)} Check the form and try creating the order again.`;
     }

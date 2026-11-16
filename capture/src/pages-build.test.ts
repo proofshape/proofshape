@@ -50,8 +50,10 @@ describe("GitHub Pages production build", () => {
         ? new TextEncoder().encode(boardAsset.source)
         : boardAsset?.source;
     expect(boardBytes).toBeDefined();
-    expect(createHash("sha256").update(boardBytes ?? new Uint8Array()).digest("hex")).toBe(
-      "1b64d0328a7551da20fee6ccf5c6edacd5f48858be4004dffb093a60c9c9a354",
-    );
+    expect(
+      createHash("sha256")
+        .update(boardBytes ?? new Uint8Array())
+        .digest("hex"),
+    ).toBe("1b64d0328a7551da20fee6ccf5c6edacd5f48858be4004dffb093a60c9c9a354");
   });
 });

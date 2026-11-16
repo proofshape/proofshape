@@ -1,8 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import encodeQR from "qr";
 
-export const BOARD_SHA256 =
-  "1b64d0328a7551da20fee6ccf5c6edacd5f48858be4004dffb093a60c9c9a354";
+export const BOARD_SHA256 = "1b64d0328a7551da20fee6ccf5c6edacd5f48858be4004dffb093a60c9c9a354";
 
 export const MM_TO_PT = 72 / 25.4;
 export const mmToPt = (mm: number): number => mm * MM_TO_PT;
