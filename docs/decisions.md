@@ -1662,6 +1662,13 @@ edge-measurement finding above (pitch correction is a pre-`_fit_rigid_2d` coordi
 part of either buggy step).
 *Checked against D-028:* fetched all origin branches on 2026-11-16; D-072 (held on
 `recon/R-36-demo-host`) was highest anywhere, so D-073 was free.
+*Related, checked, not a problem here:* GitHub issue #356 (@TabeenRaoof, found during R-36's
+pre-check) found `cad_size_check`'s candidate-region blob selection can pick a low pile of
+stray points instead of the part on low-resolution, few-frame phone-style captures. Checked
+G-04's own six runs against it: every measured height lands in the right ballpark for its
+specimen (a stray-point blob would read near zero), and none raised the error #356 reproduces.
+Likely because G-08's captures (5712×4284, 25–30 stills) are far denser than the 480×640/10–16-
+frame captures #356 reproduces on. Not re-investigated beyond this check.
 
 ---
 
