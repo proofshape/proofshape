@@ -8,7 +8,7 @@ function isRollupOutput(value: unknown): value is RollupOutput {
 }
 
 describe("GitHub Pages production build", () => {
-  it("rewrites both HTML entries under the configured base path", async () => {
+  it("rewrites all HTML entries under the configured base path", async () => {
     const result = await build({
       configFile: false,
       root: fileURLToPath(new URL("..", import.meta.url)),
@@ -19,6 +19,7 @@ describe("GitHub Pages production build", () => {
         rollupOptions: {
           input: {
             capture: fileURLToPath(new URL("../index.html", import.meta.url)),
+            buyer: fileURLToPath(new URL("../buyer.html", import.meta.url)),
             report: fileURLToPath(new URL("../report.html", import.meta.url)),
           },
         },
@@ -35,6 +36,7 @@ describe("GitHub Pages production build", () => {
     );
 
     expect(htmlAssets.get("index.html")).toContain("/proofshape/assets/");
+    expect(htmlAssets.get("buyer.html")).toContain("/proofshape/assets/");
     expect(htmlAssets.get("report.html")).toContain("/proofshape/assets/");
   });
 });

@@ -2,7 +2,7 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.2.0"
+  version: "1.3.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
@@ -11,6 +11,7 @@ info:
     rather than replacing it in place (D-032). 1.1.0 (A-11, D-056) is additive: an optional
     `vlm_feedback` on the upload response and two error codes; a v1.0 client is unaffected.
     1.2.0 (R-34) additively introduces buyer orders, stored CAD metadata, and named order/verdict errors.
+    1.3.0 (C-16) additively exposes A-03's server-side prose-to-spec parser to the buyer page.
 
 servers:
   - url: /v1
@@ -71,6 +72,46 @@ paths:
                 $ref: "#/components/schemas/Order"
         "404":
           description: No order has that code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /spec/parse:
+    post:
+      operationId: parseSpec
+      summary: Parse buyer prose into an editable inspection spec
+      description: >
+        Runs A-03's Gemini parser on the server so the Gemini key never reaches the browser.
+        The result is a proposal only: C-16 requires the buyer to review the editable table and
+        fill every null tolerance before createOrder can submit it.
+      parameters:
+        - name: X-ProofShape-Buyer-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpecParseRequest"
+      responses:
+        "200":
+          description: Parsed or explicitly unparsed proposal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpecParseResult"
+        "401":
+          description: Buyer authentication is absent or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "422":
+          description: Buyer prose is missing or blank.
           content:
             application/json:
               schema:
@@ -344,6 +385,63 @@ components:
           items:
             type: integer
           description: Which uploaded frames the error applies to, when relevant.
+
+    SpecParseRequest:
+      type: object
+      required: [prose]
+      properties:
+        prose:
+          type: string
+          minLength: 1
+
+    SpecFeature:
+      type: object
+      required: [name, kind, tolerance_mm, critical]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+        kind:
+          type: string
+          enum: [hole, face, edge, overall]
+        tolerance_mm:
+          type: [number, "null"]
+          exclusiveMinimum: 0
+          description: Null only when the buyer's prose did not state a number; C-16 must fill it before createOrder.
+        critical:
+          type: boolean
+
+    InspectionSpec:
+      type: object
+      required: [features, assumptions]
+      additionalProperties: false
+      properties:
+        features:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/SpecFeature"
+        assumptions:
+          type: array
+          items:
+            type: string
+
+    SpecParseResult:
+      type: object
+      required: [status]
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum: [parsed, unparsed]
+        spec:
+          $ref: "#/components/schemas/InspectionSpec"
+        reason:
+          type: string
+      description: >
+        A-03 parser result. Parsed carries a proposed spec; unparsed carries a reason and no
+        invented spec. The buyer confirms the editable C-16 table before createOrder.
 
     CreateOrderRequest:
       type: object

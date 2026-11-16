@@ -1,0 +1,409 @@
+import { createOrder, parseInspectionSpec } from "./api.js";
+import { describeNetworkError } from "./messages.js";
+import type { InspectionSpec, SpecFeature, SpecKind } from "./types.js";
+
+const SPEC_KINDS: SpecKind[] = ["hole", "face", "edge", "overall"];
+const BUYER_KEY_STORAGE = "proofshape_buyer_key";
+
+export interface BuyerPageOptions {
+  baseUrl: string;
+  authToken?: string;
+  locationHref?: string;
+}
+
+export interface FeatureDraft {
+  name: string;
+  kind: SpecKind;
+  tolerance: string;
+  critical: boolean;
+}
+
+export function buildInspectionSpec(
+  rows: FeatureDraft[],
+  assumptionsText: string,
+): { ok: true; spec: InspectionSpec } | { ok: false; message: string } {
+  const features: SpecFeature[] = [];
+  for (const [index, row] of rows.entries()) {
+    const name = row.name.trim();
+    if (!name) {
+      return { ok: false, message: `Feature ${String(index + 1)} needs a name.` };
+    }
+    if (!SPEC_KINDS.includes(row.kind)) {
+      return { ok: false, message: `Feature ${String(index + 1)} has an invalid kind.` };
+    }
+    const tolerance = Number(row.tolerance);
+    if (!row.tolerance.trim() || !Number.isFinite(tolerance) || tolerance <= 0) {
+      return {
+        ok: false,
+        message: `Feature ${String(index + 1)} needs a tolerance greater than 0 mm.`,
+      };
+    }
+    features.push({
+      name,
+      kind: row.kind,
+      tolerance_mm: tolerance,
+      critical: row.critical,
+    });
+  }
+
+  if (features.length === 0) {
+    return { ok: false, message: "Add at least one inspection feature." };
+  }
+
+  const assumptions = assumptionsText
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return { ok: true, spec: { features, assumptions } };
+}
+
+export function validateCadFile(file: File | undefined): string | null {
+  if (file === undefined) return null;
+  const dot = file.name.lastIndexOf(".");
+  const suffix = dot >= 0 ? file.name.slice(dot).toLowerCase() : "";
+  return [".stl", ".obj", ".glb"].includes(suffix) ? null : "CAD file must be STL, OBJ, or GLB.";
+}
+
+export function captureLinkFor(locationHref: string, orderCode: string): string {
+  const url = new URL(locationHref);
+  url.pathname = url.pathname.replace(/buyer(\.html)?\/?$/, "");
+  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("order", orderCode);
+  return url.toString();
+}
+
+function cadDimensions(box: [number[], number[]] | undefined): string {
+  if (box === undefined) return "No CAD uploaded";
+  const mins = box[0];
+  const maxs = box[1];
+  const dims = [0, 1, 2].map((index) => (maxs[index] ?? 0) - (mins[index] ?? 0));
+  return `${dims.map((value) => value.toFixed(2)).join(" × ")} mm`;
+}
+
+function requireElement(root: ParentNode, selector: string): Element {
+  const element = root.querySelector(selector);
+  if (element === null) {
+    throw new Error(`buyer page: missing ${selector}`);
+  }
+  return element;
+}
+
+function featureRow(draft: FeatureDraft): HTMLTableRowElement {
+  const tr = document.createElement("tr");
+  tr.className = "feature-row";
+
+  const nameCell = document.createElement("td");
+  const name = document.createElement("input");
+  name.type = "text";
+  name.value = draft.name;
+  name.dataset.field = "name";
+  name.setAttribute("aria-label", "Feature name");
+  nameCell.append(name);
+
+  const kindCell = document.createElement("td");
+  const kind = document.createElement("select");
+  kind.dataset.field = "kind";
+  kind.setAttribute("aria-label", "Feature kind");
+  for (const value of SPEC_KINDS) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    option.selected = value === draft.kind;
+    kind.append(option);
+  }
+  kindCell.append(kind);
+
+  const toleranceCell = document.createElement("td");
+  const tolerance = document.createElement("input");
+  tolerance.type = "number";
+  tolerance.min = "0";
+  tolerance.step = "any";
+  tolerance.value = draft.tolerance;
+  tolerance.placeholder = "mm";
+  tolerance.dataset.field = "tolerance";
+  tolerance.setAttribute("aria-label", "Tolerance mm");
+  toleranceCell.append(tolerance);
+
+  const criticalCell = document.createElement("td");
+  const critical = document.createElement("input");
+  critical.type = "checkbox";
+  critical.checked = draft.critical;
+  critical.dataset.field = "critical";
+  critical.setAttribute("aria-label", "Critical feature");
+  criticalCell.append(critical);
+
+  const removeCell = document.createElement("td");
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.textContent = "Remove";
+  remove.dataset.action = "remove-feature";
+  removeCell.append(remove);
+
+  tr.append(nameCell, kindCell, toleranceCell, criticalCell, removeCell);
+  return tr;
+}
+
+function readFeatureRows(tbody: HTMLTableSectionElement): FeatureDraft[] {
+  return Array.from(tbody.querySelectorAll<HTMLTableRowElement>(".feature-row")).map((row) => ({
+    name: row.querySelector<HTMLInputElement>('[data-field="name"]')?.value ?? "",
+    kind:
+      (row.querySelector<HTMLSelectElement>('[data-field="kind"]')?.value as
+        SpecKind | undefined) ?? "overall",
+    tolerance: row.querySelector<HTMLInputElement>('[data-field="tolerance"]')?.value ?? "",
+    critical: row.querySelector<HTMLInputElement>('[data-field="critical"]')?.checked ?? false,
+  }));
+}
+
+function draftFromFeature(feature: SpecFeature): FeatureDraft {
+  return {
+    name: feature.name,
+    kind: feature.kind,
+    tolerance: feature.tolerance_mm === null ? "" : String(feature.tolerance_mm),
+    critical: feature.critical,
+  };
+}
+
+function applyParsedFeatures(tbody: HTMLTableSectionElement, features: SpecFeature[]): void {
+  const parsedRows = features.map((feature) => featureRow(draftFromFeature(feature)));
+  const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>(".feature-row"));
+  if (rows.length === 1 && rows[0]?.dataset.placeholder === "true") {
+    tbody.replaceChildren(...parsedRows);
+    return;
+  }
+  tbody.append(...parsedRows);
+}
+
+function parserReasonMessage(reason: string): string {
+  switch (reason) {
+    case "no_features":
+      return "The assistant did not find a feature to check. Describe at least one feature, or fill in the table yourself.";
+    case "missing_assumption_for_null_tolerance":
+      return "The assistant could not safely interpret one missing tolerance. Fill in the table yourself and record any assumption you need.";
+    case "missing_api_key":
+    case "model_error":
+    case "invalid_reply":
+    default:
+      return "The assistant could not read that description. Review or fill in the table yourself.";
+  }
+}
+
+export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): void {
+  root.innerHTML = `
+    <section class="buyer-shell">
+      <header>
+        <p>ProofShape buyer setup</p>
+        <h1>Create an inspection order</h1>
+        <p class="buyer-warning">
+          Tolerances are not yet checked against the method's measured noise floor. Entering a
+          tolerance here does not mean ProofShape can verify it.
+        </p>
+      </header>
+      <div class="buyer-grid">
+        <label class="buyer-field">
+          Buyer key
+          <input id="buyer-key" type="password" autocomplete="off" />
+          <small>Stored only in this tab's sessionStorage; never built into the app.</small>
+        </label>
+
+        <label class="buyer-field">
+          CAD file (optional)
+          <input id="buyer-cad" type="file" accept=".stl,.obj,.glb" />
+          <small>No CAD creates a model-only order with no inspection verdict.</small>
+        </label>
+
+        <label class="buyer-field">
+          Describe what matters (optional AI assist)
+          <textarea id="buyer-prose" rows="3" placeholder="The four mounting holes need to line up within about 2 mm..."></textarea>
+        </label>
+        <div class="buyer-actions">
+          <button id="parse-spec" type="button">Parse into editable table</button>
+          <button id="add-feature" type="button">Add feature</button>
+        </div>
+
+        <div>
+          <table class="feature-table">
+            <thead><tr><th>Name</th><th>Kind</th><th>Tolerance (mm)</th><th>Critical</th><th></th></tr></thead>
+            <tbody id="feature-rows"></tbody>
+          </table>
+        </div>
+
+        <label class="buyer-field">
+          Assumptions (one per line)
+          <textarea id="buyer-assumptions" rows="3"></textarea>
+        </label>
+
+        <label class="buyer-field">
+          Placement note
+          <input id="placement-note" type="text" placeholder="Hole A toward the sheet's arrow" />
+        </label>
+
+        <label class="buyer-field">
+          Buyer reference
+          <input id="buyer-reference" type="text" placeholder="Your PO or internal reference" />
+        </label>
+
+        <div class="buyer-actions">
+          <button id="create-order" type="button">Create order</button>
+        </div>
+        <p id="buyer-status" class="buyer-status" role="status">Ready.</p>
+        <section id="buyer-result" class="buyer-result" hidden></section>
+      </div>
+    </section>
+  `;
+
+  const keyInput = requireElement(root, "#buyer-key") as HTMLInputElement;
+  const cadInput = requireElement(root, "#buyer-cad") as HTMLInputElement;
+  const proseInput = requireElement(root, "#buyer-prose") as HTMLTextAreaElement;
+  const assumptionsInput = requireElement(root, "#buyer-assumptions") as HTMLTextAreaElement;
+  const placementInput = requireElement(root, "#placement-note") as HTMLInputElement;
+  const referenceInput = requireElement(root, "#buyer-reference") as HTMLInputElement;
+  const tbody = requireElement(root, "#feature-rows") as HTMLTableSectionElement;
+  const status = requireElement(root, "#buyer-status") as HTMLElement;
+  const result = requireElement(root, "#buyer-result") as HTMLElement;
+  const locationHref = options.locationHref ?? window.location.href;
+
+  keyInput.value = sessionStorage.getItem(BUYER_KEY_STORAGE) ?? "";
+  keyInput.addEventListener("input", () => {
+    if (keyInput.value) sessionStorage.setItem(BUYER_KEY_STORAGE, keyInput.value);
+    else sessionStorage.removeItem(BUYER_KEY_STORAGE);
+  });
+
+  const starterRow = featureRow({ name: "", kind: "overall", tolerance: "", critical: false });
+  starterRow.dataset.placeholder = "true";
+  tbody.append(starterRow);
+
+  const markEdited = (event: Event): void => {
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+      target.closest<HTMLTableRowElement>(".feature-row")?.removeAttribute("data-placeholder");
+    }
+  };
+  tbody.addEventListener("input", markEdited);
+  tbody.addEventListener("change", markEdited);
+
+  root.querySelector("#add-feature")?.addEventListener("click", () => {
+    tbody.append(featureRow({ name: "", kind: "overall", tolerance: "", critical: false }));
+  });
+
+  tbody.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.dataset.action === "remove-feature") {
+      target.closest("tr")?.remove();
+    }
+  });
+
+  const handleParseSpec = async (): Promise<void> => {
+    const buyerKey = keyInput.value.trim();
+    const prose = proseInput.value.trim();
+    if (!buyerKey) {
+      status.textContent = "Enter the buyer key before using the parser.";
+      return;
+    }
+    if (!prose) {
+      status.textContent = "Describe what matters before parsing.";
+      return;
+    }
+
+    status.textContent = "Parsing requirements…";
+    try {
+      const parsed = await parseInspectionSpec(options.baseUrl, prose, buyerKey, options.authToken);
+      if (!parsed.ok) {
+        status.textContent = parsed.error.message;
+        return;
+      }
+      if (parsed.body.status === "unparsed") {
+        status.textContent = parserReasonMessage(parsed.body.reason);
+        return;
+      }
+
+      applyParsedFeatures(tbody, parsed.body.spec.features);
+      const parsedAssumptions = parsed.body.spec.assumptions.join("\n");
+      if (parsedAssumptions) {
+        assumptionsInput.value = assumptionsInput.value.trim()
+          ? `${assumptionsInput.value.trim()}\n${parsedAssumptions}`
+          : parsedAssumptions;
+      }
+      const hasMissing = parsed.body.spec.features.some((feature) => feature.tolerance_mm === null);
+      status.textContent = hasMissing
+        ? "Parsed. Fill every blank tolerance, then review the assumptions and remove any that no longer apply."
+        : "Parsed. Review the added fields and assumptions before creating the order.";
+    } catch (error) {
+      status.textContent = `${describeNetworkError(error)} Use the manual table if the assistant stays unavailable.`;
+    }
+  };
+  (requireElement(root, "#parse-spec") as HTMLButtonElement).addEventListener("click", () => {
+    void handleParseSpec();
+  });
+
+  const handleCreateOrder = async (): Promise<void> => {
+    const buyerKey = keyInput.value.trim();
+    if (!buyerKey) {
+      status.textContent = "Enter the buyer key before creating an order.";
+      return;
+    }
+
+    const file = cadInput.files?.[0];
+    const cadError = validateCadFile(file);
+    if (cadError !== null) {
+      status.textContent = cadError;
+      return;
+    }
+
+    const specResult = buildInspectionSpec(readFeatureRows(tbody), assumptionsInput.value);
+    if (!specResult.ok) {
+      status.textContent = specResult.message;
+      return;
+    }
+
+    status.textContent = "Creating order…";
+    result.hidden = true;
+    try {
+      const created = await createOrder(
+        options.baseUrl,
+        {
+          spec: specResult.spec,
+          ...(file !== undefined ? { cad: file } : {}),
+          placementNote: placementInput.value,
+          buyerReference: referenceInput.value,
+        },
+        buyerKey,
+        options.authToken,
+      );
+      if (!created.ok) {
+        status.textContent = created.error.message;
+        return;
+      }
+
+      const captureLink = captureLinkFor(locationHref, created.body.order_code);
+      result.replaceChildren();
+
+      const heading = document.createElement("h2");
+      heading.textContent = "Order created";
+
+      const code = document.createElement("p");
+      code.append("Order code: ");
+      const codeValue = document.createElement("code");
+      codeValue.textContent = created.body.order_code;
+      code.append(codeValue);
+
+      const size = document.createElement("p");
+      size.textContent = `CAD size: ${cadDimensions(created.body.cad_bounding_box_mm)}`;
+
+      const link = document.createElement("a");
+      link.href = captureLink;
+      link.textContent = "Open supplier capture link";
+
+      result.append(heading, code, size, link);
+      result.hidden = false;
+      status.textContent = "Order created. Review the code and capture link below.";
+    } catch (error) {
+      status.textContent = `${describeNetworkError(error)} Check the form and try creating the order again.`;
+    }
+  };
+  (requireElement(root, "#create-order") as HTMLButtonElement).addEventListener("click", () => {
+    void handleCreateOrder();
+  });
+}

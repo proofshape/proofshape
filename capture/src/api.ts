@@ -2,10 +2,13 @@ import type {
   AgentMessageResult,
   ErrorDetail,
   Gyro,
+  InspectionSpec,
+  Order,
   ReconstructionResult,
   Session,
   UploadFrameResult,
   VerdictResult,
+  SpecParseResult,
 } from "./types.js";
 
 export type ApiResult<TBody> =
@@ -36,6 +39,81 @@ function unexpectedStatus(operation: string, response: Response, body: unknown):
 // stub, which expects no auth header.
 function authHeaders(authToken: string | undefined): Record<string, string> {
   return authToken === undefined ? {} : { Authorization: `Bearer ${authToken}` };
+}
+
+function buyerHeaders(buyerKey: string, authToken?: string): Record<string, string> {
+  return {
+    ...authHeaders(authToken),
+    "X-ProofShape-Buyer-Key": buyerKey,
+  };
+}
+
+export interface CreateOrderInput {
+  spec: InspectionSpec;
+  cad?: File;
+  placementNote?: string;
+  buyerReference?: string;
+}
+
+export async function createOrder(
+  baseUrl: string,
+  input: CreateOrderInput,
+  buyerKey: string,
+  authToken?: string,
+): Promise<ApiResult<Order>> {
+  const form = new FormData();
+  form.set(
+    "spec",
+    new Blob([JSON.stringify(input.spec)], { type: "application/json" }),
+    "spec.json",
+  );
+  if (input.cad !== undefined) {
+    form.set("cad", input.cad, input.cad.name);
+  }
+  if (input.placementNote?.trim()) {
+    form.set("placement_note", input.placementNote.trim());
+  }
+  if (input.buyerReference?.trim()) {
+    form.set("buyer_reference", input.buyerReference.trim());
+  }
+
+  const response = await fetch(`${baseUrl}/v1/orders`, {
+    method: "POST",
+    headers: buyerHeaders(buyerKey, authToken),
+    body: form,
+  });
+  const body = await readJsonBody(response, "createOrder");
+  if (response.status === 201) {
+    return { ok: true, status: response.status, body: body as Order };
+  }
+  if (response.status === 401 || response.status === 422) {
+    return { ok: false, status: response.status, error: body as ErrorDetail };
+  }
+  unexpectedStatus("createOrder", response, body);
+}
+
+export async function parseInspectionSpec(
+  baseUrl: string,
+  prose: string,
+  buyerKey: string,
+  authToken?: string,
+): Promise<ApiResult<SpecParseResult>> {
+  const response = await fetch(`${baseUrl}/v1/spec/parse`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...buyerHeaders(buyerKey, authToken),
+    },
+    body: JSON.stringify({ prose }),
+  });
+  const body = await readJsonBody(response, "parseInspectionSpec");
+  if (response.status === 200) {
+    return { ok: true, status: response.status, body: body as SpecParseResult };
+  }
+  if (response.status === 401 || response.status === 422) {
+    return { ok: false, status: response.status, error: body as ErrorDetail };
+  }
+  unexpectedStatus("parseInspectionSpec", response, body);
 }
 
 export async function createSession(

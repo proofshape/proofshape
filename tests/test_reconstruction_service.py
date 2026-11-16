@@ -340,6 +340,7 @@ def test_public_operation_ids_match_the_frozen_contract(tmp_path):
     assert operation_ids == {
         "createOrder",
         "getOrder",
+        "parseSpec",
         "createSession",
         "uploadFrame",
         "finishSession",
