@@ -1539,6 +1539,51 @@ this closes the M2 gate on real evidence rather than leaving the decision implic
 
 ---
 
+**D-073 · G-04: the board reference's σ_floor is 7.52 mm, well above the 3 mm fallback line.**
+(2026-11-16)
+Real chain (R-01 → R-02 → R-04/R-23 → `cad_size_check.build_report`, extended for caliper truth
+and G-06's measured board pitch) run on all six G-02 specimens (`fixtures/data/g04_board_error/
+g04-board-error-evidence.json`), confidence filter `--min-confidence 1.0001` (D-045):
+
+| Specimen | Board scale | Included in aggregate | Notes |
+|---|---:|---|---|
+| g02_01 (square) | 0.9947 | height only | edges excluded: symmetric footprint, no recorded orientation (see method) |
+| g02_02 (rect) | 0.8311 | **excluded entirely** | R-23's board-anchored alignment did not converge for this capture (rms 21.3 mm vs 2–4 mm everywhere else) — evidence of a failed alignment, not of the part |
+| g02_03 (triangle) | 0.9984 | edges + height | already-flagged caliper anomaly (G-03); reconstruction disagrees by −7.5/+9.7/−3.0 mm across its three edges |
+| g02_04 (pentagon) | 0.9976 | height only | edges excluded: near-regular footprint, same orientation gap |
+| g02_05 (hexagon) | 0.9970 | height only | edges excluded: same reason |
+| g02_06 (rect) | 0.9959 | edges + height | consistent ≈−3 mm on every edge |
+
+Pooled over the 12 included features: mean error **−1.11 mm** (systematic bias), **σ_floor_mm
+= 7.52 mm** (95th percentile of `|caliper_error_mm|` — this story's own concrete definition;
+Proposal §12 names both figures and says σ_floor "feeds the pre-check" from them, not how).
+g02_03's edge_index 0 (−7.52 mm, triangle) sets the figure.
+
+*Conditions this holds under:* landscape phone stills (G-08's capture convention), the board
+reference only (not app capture, not the sheet/card references — G-10's job), R-01's raw point
+cloud (not the R-07/R-08 mesh).
+*Why 7.52 mm, not a smaller number:* per this story's own acceptance criteria, a σ_floor above
+3 mm is reported as the result, not tuned until it looks better. g02_02 was excluded on an
+independent, pre-existing basis (R-23's own documented normal range is sub-1% scale deviation;
+g02_02 measured 16.9%) confirmed via its board-ruler diagnostic alone, with no reference to its
+caliper numbers — excluding it is a data-quality call, not cherry-picking for a nicer result.
+*What's given up:* the proposal's M3 fallback applies — demo tolerances move up and the
+Unverifiable path becomes the story's working path, until something narrows this (e.g. whether
+g02_03's own inconsistency is print-specific, a reconstruction artifact for acute angles, or
+real). R-16 judges against `sigma_floor_mm = 7.52` for specimens shot on the board reference.
+*Design note, scoped deliberately:* the pitch correction for G-06's measured (anisotropic)
+board pitch is applied only inside `cad_size_check.py`'s new `apply_board_pitch_correction`,
+never inside `recon/metric_alignment.py`, which R-23's live alignment also depends on — a future
+story touching R-23's alignment should see this rather than rediscover it.
+*Open, not investigated further here:* why R-23's alignment failed specifically for g02_02's
+capture (its raw VGGT/legacy-camera-centre scale, 0.951, is in the normal legacy range, so the
+fault is in the board-anchored solve for this one capture, not the raw reconstruction) — a real
+finding, no story currently owns it.
+*Checked against D-028:* fetched all origin branches on 2026-11-16; D-072 (held on
+`recon/R-36-demo-host`) was highest anywhere, so D-073 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
