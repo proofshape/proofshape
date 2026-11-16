@@ -1,12 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  buildInspectionSpec,
-  captureLinkFor,
-  mountBuyerPage,
-  validateCadFile,
-} from "./buyer.js";
+import { buildInspectionSpec, captureLinkFor, mountBuyerPage, validateCadFile } from "./buyer.js";
 
 function required(root: ParentNode, selector: string): Element {
   const element = root.querySelector(selector);
@@ -47,10 +42,7 @@ describe("C-16 buyer setup", () => {
     ["hole A", "-1", "Feature 1 needs a tolerance greater than 0 mm."],
     ["hole A", "nope", "Feature 1 needs a tolerance greater than 0 mm."],
   ])("blocks invalid feature input", (name, tolerance, message) => {
-    const result = buildInspectionSpec(
-      [{ name, kind: "hole", tolerance, critical: true }],
-      "",
-    );
+    const result = buildInspectionSpec([{ name, kind: "hole", tolerance, critical: true }], "");
     expect(result).toEqual({ ok: false, message });
   });
 
@@ -72,10 +64,10 @@ describe("C-16 buyer setup", () => {
 
   it("shows service failure without clearing the form", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({ code: "buyer_auth_required", message: "Wrong buyer key." }),
-        { status: 401, headers: { "Content-Type": "application/json" } },
-      ),
+      new Response(JSON.stringify({ code: "buyer_auth_required", message: "Wrong buyer key." }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
     );
     const root = document.createElement("main");
     document.body.append(root);
@@ -101,7 +93,10 @@ describe("C-16 buyer setup", () => {
           created_at: "2026-11-15T03:15:00+00:00",
           has_cad: true,
           cad_units: "mm",
-          cad_bounding_box_mm: [[0, 0, 0], [50, 32, 20]],
+          cad_bounding_box_mm: [
+            [0, 0, 0],
+            [50, 32, 20],
+          ],
           spec: {},
         }),
         { status: 201, headers: { "Content-Type": "application/json" } },
