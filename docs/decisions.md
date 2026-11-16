@@ -1612,9 +1612,9 @@ pre-existing bugs this story's extension newly depends on, neither invented by t
 Both make every edge-level number untrustworthy right now, for every specimen, not only the
 symmetric/near-regular ones this decision originally named. **Fixing them — corner-to-corner
 edge measurement via fitted-wall-line intersection, and a pose search that cannot land wrong on
-these shapes — is real, open work, not attempted here** (per the review's own suggested path:
-report what can be trusted, record the gap honestly, rather than ship a number from a known
-fitting artifact).
+these shapes — is real, open work, filed as R-37, not attempted here** (per the review's own
+suggested path: report what can be trusted, record the gap honestly, rather than ship a number
+from a known fitting artifact).
 
 **Height has no such dependency** (it comes from the top-face point-density peak, computed
 before `_fit_rigid_2d` ever runs) and is the only feature this decision now trusts:
@@ -1641,19 +1641,31 @@ two bugs above), not a real, reproducible finding about the board reference — 
 without the review's reproduction attempt would have been reporting noise as signal. 0.86 mm is
 the smallest the real evidence currently supports; it is likely optimistic (n = 5, no edges),
 not a claim that the board reference's true floor is this good.
-*What's given up:* the proposal's M3 fallback does **not** need to trigger on this evidence —
-0.86 mm is under the 3 mm line — but this is provisional on the edge gap, not a clean pass.
-R-16 judges against `sigma_floor_mm = 0.86` for specimens shot on the board reference, with the
-same caveat.
+*What 0.86 mm covers, stated precisely because R-16 and I-07 will read this literally:* 0.86 mm
+is σ_floor **for out-of-plane (height) features on the board reference only.** It says nothing
+about in-plane features — edge lengths, wall positions — which **have no measured floor yet**,
+pending R-37. Concretely:
+- **R-16** judges in-plane comparisons (e.g. s-04's B–C leg, a 60 mm in-plane length) as
+  **insufficient-evidence**, not within/out-of-tolerance against 0.86 mm — that story's own
+  criteria already provide for this case.
+- **I-07**'s `max(σ, σ_floor)` does **not** apply 0.86 to in-plane deviation (most Observed
+  vertices are wall vertices, i.e. in-plane) until R-37 lands and a real in-plane figure exists.
+- "Does not trigger M3's fallback" holds **for height tolerances only** — M3 ("every demo
+  tolerance is set from it") is met for height, not for in-plane, which remains ungated.
+- One interim bound for in-plane *scale* (not edge localisation) exists already in the board-
+  scale column above: 0.9947–0.9984, i.e. −0.16% to −0.53% over the board's own span. That is a
+  separate, smaller claim than an edge-localisation σ_floor and is not this decision's result.
 *g02_02, with the real root cause named (not "the alignment didn't converge"):* one frame,
 `IMG_4665`, has a median per-corner residual of 124.8 mm against every other frame's single
 digits; R-23's unweighted least-squares has no per-frame outlier rejection, and
 `metric_alignment.main` prints `PASS` with no residual threshold at all, so this failure would
 reach the live service silently today. Dropping that one frame gives board scale ≈0.99, in line
 with every other specimen — confirming the raw reconstruction is fine and the fault is R-23's
-solve. **Concrete follow-up, not "no story owns it":** a per-frame-rejecting R-23 solve, plus an
-alignment-residual gate that sends a session to Unverifiable instead of printing `PASS`
-regardless. No story currently owns building this.
+solve. **Filed as R-38**: a per-frame-rejecting R-23 solve, plus a real residual threshold
+(`metric_alignment.main` stops printing unconditional `PASS`), with the question of whether that
+threshold should also expand the `Unverifiable` verdict beyond its current intake-time-only use
+(`docs/glossary.md`) left as R-38's own explicit design fork, not assumed here either way. This
+matters beyond G-04: R-36 serves live sessions through this exact chain.
 *Design note, scoped deliberately:* the pitch correction for G-06's measured (anisotropic)
 board pitch is applied only inside `cad_size_check.py`'s new `apply_board_pitch_correction`,
 never inside `recon/metric_alignment.py`, which R-23's live alignment also depends on — a future
