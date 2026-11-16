@@ -60,6 +60,105 @@ describe("C-16 buyer setup", () => {
     expect(captureLinkFor("https://example.test/proofshape/buyer.html", "PO-ABC")).toBe(
       "https://example.test/proofshape/?order=PO-ABC",
     );
+    expect(captureLinkFor("https://example.test/proofshape/buyer", "PO-ABC")).toBe(
+      "https://example.test/proofshape/?order=PO-ABC",
+    );
+  });
+
+  it("requires a buyer to fill every parser null tolerance before createOrder", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: "parsed",
+          spec: {
+            features: [
+              { name: "mounting holes", kind: "hole", tolerance_mm: 2, critical: true },
+              { name: "sealing face", kind: "face", tolerance_mm: null, critical: true },
+            ],
+            assumptions: ["No numeric tolerance was given for the sealing face."],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const root = document.createElement("main");
+    document.body.append(root);
+    mountBuyerPage(root, { baseUrl: "", locationHref: "https://example.test/buyer.html" });
+
+    const key = required(root, "#buyer-key") as HTMLInputElement;
+    key.value = "buyer-key";
+    key.dispatchEvent(new Event("input"));
+    (required(root, "#buyer-prose") as HTMLTextAreaElement).value =
+      "Mounting holes within 2 mm; sealing face flat.";
+    (required(root, "#parse-spec") as HTMLButtonElement).click();
+
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll(".feature-row")).toHaveLength(2);
+    });
+    const tolerances = root.querySelectorAll<HTMLInputElement>('[data-field="tolerance"]');
+    expect(tolerances[1]?.value).toBe("");
+
+    (required(root, "#create-order") as HTMLButtonElement).click();
+
+    expect(root.querySelector("#buyer-status")?.textContent).toBe(
+      "Feature 2 needs a tolerance greater than 0 mm.",
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/v1/spec/parse");
+  });
+
+  it("appends parsed features instead of deleting buyer-entered rows", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: "parsed",
+          spec: {
+            features: [{ name: "parsed hole", kind: "hole", tolerance_mm: 2, critical: true }],
+            assumptions: [],
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const root = document.createElement("main");
+    document.body.append(root);
+    mountBuyerPage(root, { baseUrl: "", locationHref: "https://example.test/buyer.html" });
+
+    const key = required(root, "#buyer-key") as HTMLInputElement;
+    key.value = "buyer-key";
+    key.dispatchEvent(new Event("input"));
+    (required(root, '[data-field="name"]') as HTMLInputElement).value = "manual face";
+    (required(root, '[data-field="tolerance"]') as HTMLInputElement).value = "1";
+    (required(root, "#buyer-prose") as HTMLTextAreaElement).value = "one hole within 2 mm";
+    (required(root, "#parse-spec") as HTMLButtonElement).click();
+
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll(".feature-row")).toHaveLength(2);
+    });
+    const names = root.querySelectorAll<HTMLInputElement>('[data-field="name"]');
+    expect(names[0]?.value).toBe("manual face");
+    expect(names[1]?.value).toBe("parsed hole");
+  });
+
+  it("does not expose raw network errors from buyer actions", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
+    const root = document.createElement("main");
+    document.body.append(root);
+    mountBuyerPage(root, { baseUrl: "", locationHref: "https://example.test/buyer.html" });
+
+    const key = required(root, "#buyer-key") as HTMLInputElement;
+    key.value = "buyer-key";
+    key.dispatchEvent(new Event("input"));
+    (required(root, "#buyer-prose") as HTMLTextAreaElement).value = "one hole within 2 mm";
+    (required(root, "#parse-spec") as HTMLButtonElement).click();
+
+    await vi.waitFor(() => {
+      expect(root.querySelector("#buyer-status")?.textContent).toContain(
+        "No connection to the service",
+      );
+    });
+    expect(root.querySelector("#buyer-status")?.textContent).not.toContain("Failed to fetch");
   });
 
   it("shows service failure without clearing the form", async () => {
