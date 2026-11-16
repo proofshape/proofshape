@@ -2273,6 +2273,28 @@ clean.
 **Next:** G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in
 G-05.
 
+## 2026-11-11 — P-33 Android device testing parked until the expo (D-065, O-006)
+
+**Who:** @TabeenRaoof (PR #324). The claim was #310.
+
+**What changed:**
+- **D-065 parks the Android check (C-23)** rather than cutting it. It stays written, `Ready` and
+  unclaimed, and is revisited before the expo if time allows: decided at the Dec 2 boundary at
+  the latest, with any fix landing before M7's code freeze on Dec 4.
+- **O-006 records the expo date** as the team's unconfirmed working assumption, most likely Fri
+  2026-12-05, the day after the freeze.
+- **X-04 (I4) no longer depends on C-23.** It runs on the iPhone, adding Android only if C-23 has
+  run. As written, it could never have started, and the backup demo (X-05) waits on it.
+- **The manual's §2** now says Android is untested and parked, so suppliers use an iPhone in
+  Safari. The sprint plan's S6 line and the capture section point at D-065.
+
+**Result:** the proposal's §12 rule ("Tier 1 must pass on both") is unmet while D-065 stands,
+stated as its cost. `check_story_states.py` is consistent. P-33 closed at 0.5 h actual, the
+owner's figure. No code.
+
+**Next:** the Nov 13 boundary call confirms the carry. Confirm the expo date and update O-006.
+Revisit C-23 at the Dec 2 boundary if someone has an Android phone.
+
 ## 2026-11-11 — P-32 Done: the WIP cap counts active stories only (D-064, PR #307); A-05 claimed (#308)
 
 **Who:** @TabeenRaoof. #307 approved by @mbj1994 and @dalwalyk, #308 by @dalwalyk.
@@ -2403,3 +2425,23 @@ Tests for both followed (eight cases, each shown to fail with its change removed
 tests pass.
 **Next:** @dalwalyk reruns the clean checkout on the final SHA; both other members approve that
 exact commit (D-031), then it merges.
+
+## 2026-11-14 — G-03 specimen calipering: 26 features, 260 readings (PR #333)
+
+**Who:** @TabeenRaoof took the readings. G-03 is claimed for @dalwalyk, who closes it.
+
+**What changed:** `fixtures/caliper_g-03.json` holds every footprint side and the height of the six
+G-02 specimens: 26 features, 10 readings each, with the G-06 caliper. `tests/test_caliper_files.py`
+checks it. `stories/G/G-03.md` records each feature's measured minus CAD.
+
+**Measured, not judged:**
+- Every specimen except the triangle is within ±0.2 mm of CAD on every feature.
+- The triangle, `g02_03`, reads 0.54 to 1.01 mm short on its three sides, unlike G-06's s-04,
+  which read 0.13 to 0.41 mm long the same way. The measurer stands by the readings, so they're
+  kept as measured.
+
+**Time:** 6 h of @TabeenRaoof's time for the readings.
+
+**Next:** @dalwalyk closes G-03 (D-038) with `State: Done` and the completion record. Two of the
+measurer's notes name a damaged corner that can't now be located: `g02_05`'s and `g02_06`'s. They
+stay as written.

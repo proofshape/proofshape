@@ -1,0 +1,869 @@
+{
+  "version": 1,
+  "story": "G-03",
+  "measured_by": "@TabeenRaoof",
+  "date": "2026-11-14",
+  "instrument": {
+    "type": "digital caliper",
+    "resolution_mm": 0.1,
+    "accuracy_spec": "±0.02 mm"
+  },
+  "features": [
+    {
+      "object": "g02_01",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          0,
+          0
+        ],
+        [
+          20,
+          0
+        ]
+      ],
+      "nominal_mm": 20.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "width between sides 2 and 4 (jaws flat on those two faces), at mid-height (about 7.5 mm up), away from the first-layer flare; this is the length of sides 1 and 3, whose CAD edge is given",
+      "orientation_on_board": "sides marked 1-4 on the top face (1 is the CAD y=0 wall, counting counter-clockwise from above); not photographed yet, so G-08 records which way each numbered side faced on the board",
+      "readings_mm": [
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9
+      ],
+      "mean_mm": 19.9,
+      "min_mm": 19.9,
+      "max_mm": 19.9,
+      "std_mm": 0.0
+    },
+    {
+      "object": "g02_01",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          20,
+          0
+        ],
+        [
+          20,
+          20
+        ]
+      ],
+      "nominal_mm": 20.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "width between sides 1 and 3 (jaws flat on those two faces), at mid-height (about 7.5 mm up), away from the first-layer flare; this is the length of sides 2 and 4, whose CAD edge is given",
+      "orientation_on_board": "sides marked 1-4 on the top face (1 is the CAD y=0 wall, counting counter-clockwise from above); not photographed yet, so G-08 records which way each numbered side faced on the board",
+      "readings_mm": [
+        19.8,
+        19.8,
+        19.8,
+        19.8,
+        19.8,
+        19.8,
+        19.8,
+        19.8,
+        19.9,
+        19.8
+      ],
+      "mean_mm": 19.81,
+      "min_mm": 19.8,
+      "max_mm": 19.9,
+      "std_mm": 0.0316
+    },
+    {
+      "object": "g02_01",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 15.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "base to top face, jaws flat across both faces, away from the edges",
+      "orientation_on_board": null,
+      "readings_mm": [
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.0,
+        15.1,
+        15.0,
+        15.0
+      ],
+      "mean_mm": 15.01,
+      "min_mm": 15.0,
+      "max_mm": 15.1,
+      "std_mm": 0.0316
+    },
+    {
+      "object": "g02_02",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          0,
+          0
+        ],
+        [
+          50,
+          0
+        ]
+      ],
+      "nominal_mm": 50.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "jaws flat on the two short end faces, at mid-height (about 12.5 mm up), away from the first-layer flare; this is the length of the two long sides, whose CAD edge is given",
+      "orientation_on_board": null,
+      "readings_mm": [
+        50.0,
+        50.0,
+        49.9,
+        49.9,
+        49.9,
+        50.0,
+        49.9,
+        49.9,
+        49.9,
+        49.9
+      ],
+      "mean_mm": 49.93,
+      "min_mm": 49.9,
+      "max_mm": 50.0,
+      "std_mm": 0.0483
+    },
+    {
+      "object": "g02_02",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          50,
+          0
+        ],
+        [
+          50,
+          20
+        ]
+      ],
+      "nominal_mm": 20.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "jaws flat on the two long faces, at mid-height (about 12.5 mm up), away from the first-layer flare; this is the length of the two short sides, whose CAD edge is given",
+      "orientation_on_board": null,
+      "readings_mm": [
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9,
+        19.9
+      ],
+      "mean_mm": 19.9,
+      "min_mm": 19.9,
+      "max_mm": 19.9,
+      "std_mm": 0.0
+    },
+    {
+      "object": "g02_02",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 25.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "base to top face, jaws flat across both faces, away from the edges",
+      "orientation_on_board": null,
+      "readings_mm": [
+        24.9,
+        24.9,
+        24.9,
+        25.0,
+        25.0,
+        25.0,
+        24.9,
+        25.0,
+        25.0,
+        24.9
+      ],
+      "mean_mm": 24.95,
+      "min_mm": 24.9,
+      "max_mm": 25.0,
+      "std_mm": 0.0527
+    },
+    {
+      "object": "g02_03",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          0
+        ]
+      ],
+      "nominal_mm": 40.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at A (the right angle) and B, at mid-height (about 10 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        39.3,
+        39.3,
+        39.3,
+        39.3,
+        39.3,
+        39.3,
+        39.3,
+        39.4,
+        39.3,
+        39.4
+      ],
+      "mean_mm": 39.32,
+      "min_mm": 39.3,
+      "max_mm": 39.4,
+      "std_mm": 0.0422
+    },
+    {
+      "object": "g02_03",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          30
+        ]
+      ],
+      "nominal_mm": 30.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at C and A, at mid-height (about 10 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        29.5,
+        29.5,
+        29.4,
+        29.4,
+        29.4,
+        29.5,
+        29.5,
+        29.4,
+        29.5,
+        29.5
+      ],
+      "mean_mm": 29.46,
+      "min_mm": 29.4,
+      "max_mm": 29.5,
+      "std_mm": 0.0516
+    },
+    {
+      "object": "g02_03",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          40,
+          0
+        ],
+        [
+          0,
+          30
+        ]
+      ],
+      "nominal_mm": 50.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at B and C, at mid-height (about 10 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        49.0,
+        49.0,
+        48.9,
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0,
+        49.0
+      ],
+      "mean_mm": 48.99,
+      "min_mm": 48.9,
+      "max_mm": 49.0,
+      "std_mm": 0.0316
+    },
+    {
+      "object": "g02_03",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 20.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "base to top face, jaws flat across both faces, away from the edges",
+      "orientation_on_board": null,
+      "readings_mm": [
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        20.0,
+        19.9,
+        20.0,
+        20.0,
+        20.0
+      ],
+      "mean_mm": 19.99,
+      "min_mm": 19.9,
+      "max_mm": 20.0,
+      "std_mm": 0.0316
+    },
+    {
+      "object": "g02_04",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          0.0,
+          22.0
+        ],
+        [
+          -20.923,
+          6.798
+        ]
+      ],
+      "nominal_mm": 25.863,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at A and B (corners marked A-E counter-clockwise on the top face), at mid-height (about 12.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        25.9,
+        25.9,
+        26.0,
+        26.0,
+        26.0,
+        26.1,
+        26.0,
+        26.0,
+        26.0,
+        26.1
+      ],
+      "mean_mm": 26.0,
+      "min_mm": 25.9,
+      "max_mm": 26.1,
+      "std_mm": 0.0667
+    },
+    {
+      "object": "g02_04",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          -20.923,
+          6.798
+        ],
+        [
+          -12.931,
+          -17.798
+        ]
+      ],
+      "nominal_mm": 25.862,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at B and C (corners marked A-E counter-clockwise on the top face), at mid-height (about 12.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        26.0,
+        26.0,
+        25.9,
+        26.0,
+        26.1,
+        26.0,
+        26.1,
+        26.1,
+        26.0,
+        26.0
+      ],
+      "mean_mm": 26.02,
+      "min_mm": 25.9,
+      "max_mm": 26.1,
+      "std_mm": 0.0632
+    },
+    {
+      "object": "g02_04",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          -12.931,
+          -17.798
+        ],
+        [
+          12.931,
+          -17.798
+        ]
+      ],
+      "nominal_mm": 25.862,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at C and D (corners marked A-E counter-clockwise on the top face), at mid-height (about 12.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        25.9,
+        26.0,
+        26.0,
+        25.8,
+        26.0,
+        25.9,
+        26.0,
+        26.0,
+        26.0,
+        25.9
+      ],
+      "mean_mm": 25.95,
+      "min_mm": 25.8,
+      "max_mm": 26.0,
+      "std_mm": 0.0707
+    },
+    {
+      "object": "g02_04",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          12.931,
+          -17.798
+        ],
+        [
+          20.923,
+          6.798
+        ]
+      ],
+      "nominal_mm": 25.862,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at D and E (corners marked A-E counter-clockwise on the top face), at mid-height (about 12.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        25.7,
+        25.9,
+        25.8,
+        25.8,
+        26.0,
+        25.8,
+        25.9,
+        26.0,
+        25.9,
+        26.0
+      ],
+      "mean_mm": 25.88,
+      "min_mm": 25.7,
+      "max_mm": 26.0,
+      "std_mm": 0.1033
+    },
+    {
+      "object": "g02_04",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          20.923,
+          6.798
+        ],
+        [
+          0.0,
+          22.0
+        ]
+      ],
+      "nominal_mm": 25.863,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at E and A (corners marked A-E counter-clockwise on the top face), at mid-height (about 12.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        26.0,
+        25.9,
+        26.0,
+        25.9,
+        26.0,
+        26.0,
+        25.9,
+        25.9,
+        25.9,
+        25.9
+      ],
+      "mean_mm": 25.94,
+      "min_mm": 25.9,
+      "max_mm": 26.0,
+      "std_mm": 0.0516
+    },
+    {
+      "object": "g02_04",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 25.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "base to top face, jaws flat across both faces, away from the edges",
+      "orientation_on_board": null,
+      "readings_mm": [
+        24.9,
+        25.0,
+        25.0,
+        25.0,
+        24.9,
+        24.9,
+        25.0,
+        25.0,
+        24.9,
+        25.0
+      ],
+      "mean_mm": 24.96,
+      "min_mm": 24.9,
+      "max_mm": 25.0,
+      "std_mm": 0.0516
+    },
+    {
+      "object": "g02_05",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          0.0,
+          28.0
+        ],
+        [
+          -24.249,
+          14.0
+        ]
+      ],
+      "nominal_mm": 28.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at A and B (corners marked A-F counter-clockwise on the top face), at mid-height (about 17.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        28.1,
+        28.0,
+        28.0,
+        28.0,
+        28.0,
+        27.9,
+        28.1,
+        28.0,
+        28.1,
+        28.0
+      ],
+      "mean_mm": 28.02,
+      "min_mm": 27.9,
+      "max_mm": 28.1,
+      "std_mm": 0.0632
+    },
+    {
+      "object": "g02_05",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          -24.249,
+          14.0
+        ],
+        [
+          -24.249,
+          -14.0
+        ]
+      ],
+      "nominal_mm": 28.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at B and C (corners marked A-F counter-clockwise on the top face), at mid-height (about 17.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        28.1,
+        28.0,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.0,
+        28.1
+      ],
+      "mean_mm": 28.08,
+      "min_mm": 28.0,
+      "max_mm": 28.1,
+      "std_mm": 0.0422
+    },
+    {
+      "object": "g02_05",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          -24.249,
+          -14.0
+        ],
+        [
+          0.0,
+          -28.0
+        ]
+      ],
+      "nominal_mm": 28.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at C and D (corners marked A-F counter-clockwise on the top face), at mid-height (about 17.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        28.1,
+        28.1,
+        28.2,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.2,
+        28.1,
+        28.1
+      ],
+      "mean_mm": 28.12,
+      "min_mm": 28.1,
+      "max_mm": 28.2,
+      "std_mm": 0.0422
+    },
+    {
+      "object": "g02_05",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          0.0,
+          -28.0
+        ],
+        [
+          24.249,
+          -14.0
+        ]
+      ],
+      "nominal_mm": 28.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at D and E (corners marked A-F counter-clockwise on the top face), at mid-height (about 17.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        28.1,
+        28.2,
+        28.2,
+        28.2,
+        28.1,
+        28.2,
+        28.3,
+        28.2,
+        28.3,
+        28.2
+      ],
+      "mean_mm": 28.2,
+      "min_mm": 28.1,
+      "max_mm": 28.3,
+      "std_mm": 0.0667
+    },
+    {
+      "object": "g02_05",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          24.249,
+          -14.0
+        ],
+        [
+          24.249,
+          14.0
+        ]
+      ],
+      "nominal_mm": 28.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at E and F (corners marked A-F counter-clockwise on the top face), at mid-height (about 17.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        28.0,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.0,
+        28.1,
+        28.0,
+        28.1
+      ],
+      "mean_mm": 28.07,
+      "min_mm": 28.0,
+      "max_mm": 28.1,
+      "std_mm": 0.0483
+    },
+    {
+      "object": "g02_05",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          24.249,
+          14.0
+        ],
+        [
+          0.0,
+          28.0
+        ]
+      ],
+      "nominal_mm": 28.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the vertical corners at F and A (corners marked A-F counter-clockwise on the top face), at mid-height (about 17.5 mm up), away from the first-layer flare",
+      "orientation_on_board": null,
+      "readings_mm": [
+        28.2,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.1,
+        28.1
+      ],
+      "mean_mm": 28.11,
+      "min_mm": 28.1,
+      "max_mm": 28.2,
+      "std_mm": 0.0316
+    },
+    {
+      "object": "g02_05",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 35.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "base to top face, jaws flat across both faces, away from the edges",
+      "orientation_on_board": null,
+      "readings_mm": [
+        35.0,
+        35.0,
+        35.0,
+        34.9,
+        35.0,
+        35.0,
+        34.9,
+        35.0,
+        35.0,
+        35.0
+      ],
+      "mean_mm": 34.98,
+      "min_mm": 34.9,
+      "max_mm": 35.0,
+      "std_mm": 0.0422
+    },
+    {
+      "object": "g02_06",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          0,
+          0
+        ],
+        [
+          70,
+          0
+        ]
+      ],
+      "nominal_mm": 70.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "jaws flat on the two short end faces, at mid-height (about 20 mm up), away from the first-layer flare; this is the length of the two long sides, whose CAD edge is given",
+      "orientation_on_board": null,
+      "readings_mm": [
+        69.9,
+        70.0,
+        69.9,
+        69.8,
+        69.9,
+        69.8,
+        70.0,
+        69.9,
+        69.8,
+        69.9
+      ],
+      "mean_mm": 69.89,
+      "min_mm": 69.8,
+      "max_mm": 70.0,
+      "std_mm": 0.0738
+    },
+    {
+      "object": "g02_06",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          70,
+          0
+        ],
+        [
+          70,
+          45
+        ]
+      ],
+      "nominal_mm": 45.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "jaws flat on the two long faces, at mid-height (about 20 mm up), away from the first-layer flare; this is the length of the two short sides, whose CAD edge is given",
+      "orientation_on_board": null,
+      "readings_mm": [
+        44.9,
+        45.0,
+        44.9,
+        44.9,
+        44.9,
+        45.0,
+        45.0,
+        44.9,
+        44.9,
+        44.9
+      ],
+      "mean_mm": 44.93,
+      "min_mm": 44.9,
+      "max_mm": 45.0,
+      "std_mm": 0.0483
+    },
+    {
+      "object": "g02_06",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 40.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "base to top face, jaws flat across both faces, away from the edges",
+      "orientation_on_board": null,
+      "readings_mm": [
+        39.9,
+        39.9,
+        39.9,
+        40.0,
+        40.0,
+        39.9,
+        39.9,
+        40.0,
+        40.0,
+        40.0
+      ],
+      "mean_mm": 39.95,
+      "min_mm": 39.9,
+      "max_mm": 40.0,
+      "std_mm": 0.0527
+    }
+  ]
+}

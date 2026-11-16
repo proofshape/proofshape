@@ -1358,6 +1358,47 @@ so D-064 was the first free number.
 *Agreement:* it changes a working agreement for all three, so its pull request asks both
 @mbj1994 and @dalwalyk to agree, and merges only with both approving.
 
+**D-065 · Android device testing is parked; an iPhone in Safari is the only tested path until
+C-23 runs, revisited before the expo if time allows.** (2026-11-11)
+#305 split the Android device check out of C-18 into C-23. The team parks C-23 rather than
+cutting it:
+- **What's parked.** C-23 stays written, `Ready` and unclaimed. Its content and estimate are
+  unchanged. C-18, the iPhone check, is unaffected.
+- **Until it runs,** the capture app is tested on an iPhone in Safari only. The manual says so
+  (§2), so a supplier knows to use one. X-04 (I4) runs on the iPhone, and adds an Android phone
+  only if C-23 has run.
+- **The revisit point.** Before the expo, if time allows. The expo is most likely Fri 2026-12-05
+  (O-006), the day after M7's code freeze (Dec 3–4: "no behavior-changing commits"). So:
+  - the check is decided at the Dec 2 boundary at the latest;
+  - any fix C-23 finds lands before Dec 4;
+  - after the freeze, it can only be recorded.
+- **The trigger.** Someone on the team has an Android phone to run it on, an open question since
+  C-18 was written up on 2026-11-09, and the boundary call finds C-23's 2 h.
+
+*Why:* nobody has an Android phone lined up, and the capture lane's S6 hours were oversubscribed
+before this was split out (P-30, P-31). Parked on purpose and written down, the check stays visible
+instead of being quietly dropped, and it stops blocking I4 and the backup demo (X-05), which
+otherwise wait on it forever.
+
+*Cost, stated:*
+- **The proposal's §12 acceptance rule is unmet** while this stands: "run on one iOS and one
+  Android phone at every milestone. Tier 1 must pass on both." So is the sprint plan's S6 line,
+  "test on one iPhone and one Android".
+- **Android behaviour that differs from iOS is untested:**
+  - C-03's path for a browser without `DeviceOrientationEvent.requestPermission`;
+  - a relative rather than compass `alpha` for C-20's heading maths;
+  - Chrome's handling of the dev server's self-signed certificate.
+- **If C-23 hasn't run by the expo,** the final report says so.
+
+*Does not change:* C-18; C-23's acceptance criteria; the proposal itself, which is a historical
+submission (this entry records the departure from it).
+
+*Checked against D-028:* fetched every origin branch on 2026-11-11. D-064 is held on
+`chore/wip-cap-active-work` (#307), so D-065 was the first free number.
+
+*Agreement:* it changes the proposal's acceptance rule for this semester, so P-33's pull request
+asks both @mbj1994 and @dalwalyk to agree, and merges only with both approving.
+
 **D-066 · The disagreement map weighs each unseen point by its spread above the session's own
 seen-surface spread; it ranks next views alongside C-08 and never blocks one.** (2026-11-11)
 A-05 builds the map from A-04's K completion samples (`recon/disagreement.py`). It has five parts.
@@ -1478,6 +1519,64 @@ part.
 *Checked against D-028:* fetched all origin branches on 2026-11-12; D-068 was highest anywhere,
 so D-069 was free.
 
+**D-070 · Orders are file-backed, use server-generated Crockford codes, and createOrder is guarded by a server-held buyer key.** (2026-11-15)
+R-34 stores each order under `PROOFSHAPE_ORDERS_DIR` (default
+`proofshape-data/orders`) as `<order_code>/order.json`, with an uploaded CAD beside it as
+`cad.<ext>`. The JSON write is atomic through a temporary file and replace, matching the
+session-store pattern. The CAD is validated with `inspection.cad.load_mesh`, but the stored bytes
+are never converted or rewritten.
+
+The server generates codes as `PO-` plus eight Crockford-base32 characters. The buyer's own PO
+number belongs in `buyer_reference`; it is not used as the access code. Codes are not single-use:
+a Rescan may legitimately create another session for the same order.
+
+`POST /v1/orders` requires `X-ProofShape-Buyer-Key`, checked against
+`PROOFSHAPE_BUYER_KEY`. If the key is unset or wrong, order creation is refused. This closes
+O-005's "any code can start paid GPU work" gap without putting a buyer credential in the public
+capture bundle: `createSession` now accepts only a stored order code, while the explicit
+`known_order_codes` argument remains a test override.
+
+*Why:* the public supplier path may need a deployment bearer token, so that token cannot also be
+the authority to mint new orders. A separate buyer key keeps order creation on the buyer/operator
+side while preserving a simple file-backed semester implementation.
+*Known limit:* Lightning container storage is ephemeral (D-042), so orders disappear when that
+deployment's disk disappears. Shared durable storage is a separate future story.
+*Does not change:* buyer accounts/portal routing, single-use codes, verdict computation, or
+tolerance interpretation.
+*Checked against D-028:* D-069 is the highest decision on the current main history and no D-070
+entry was found in the open-PR search when this was recorded, so D-070 was free.
+
+---
+
+**D-071 · X-02/M2: batch is the committed reconstruction mode; interactive is not built.**
+(2026-11-15)
+R-13's real measurement on the shared T4, `s-04`, 30 frames (`stories/R/R-13.md`, 2026-10-07):
+
+| Backbone | Total (s) | Dominant stage |
+|---|---:|---|
+| VGGT | 80.21 | `model_load_s`, 45.0% |
+| MASt3R | 265.90 | `alignment_s`, 79.6% |
+| COLMAP | 80.63 (refused, 28/30 registered) | `feature_extraction_s` + `mapping_s`, 92.2% |
+
+The proposal's own bar (§M2): "Interactive mode if a reconstruction update takes under ~2 s,
+otherwise every third frame." These totals include a one-time model load (VGGT's `model_load_s`
+is 36.12 s of the 80.21 s total, 45%) that a per-frame interactive update would not pay each
+time; without it, VGGT's 30-frame pass is about 44 s — still tens of seconds, nowhere near
+"nearly free," but no per-increment timing was measured, so the decision rests on that 44 s
+figure, not the raw total. R-32 also ran VGGT on the M2 Max (`mps`), 36–67 s for 30 frames —
+faster than the T4 in some runs, so this isn't "the fastest GPU this project has used"; the
+conclusion holds regardless of which GPU. Batch is confirmed as the only mode built; interactive
+mode is not built this semester.
+
+*Why:* the gate (`docs/sprint-plan.md` §7, Gate M2 · I2) exists to decide this with a real
+number instead of guessing, and the number is unambiguous — this isn't a close call the team
+needs to weigh.
+*What's given up:* nothing new. Batch was already the shipped path since M1 (proposal's own risk
+table: "GPU too slow for interactive mode → Batch mode ships at M1 and is always the fallback");
+this closes the M2 gate on real evidence rather than leaving the decision implicit.
+*Checked against D-028:* fetched all origin branches on 2026-11-15; D-070 (held on
+`recon/R-34-order-store`) was highest anywhere, so D-071 was free.
+
 **D-072 · The demo's reconstruction service runs on the M2 Max, reached from the phone over the
 local network; a public URL comes later only if four conditions hold.** (2026-11-15)
 This covers the integration runs (X-03, X-04), the Dec 2 backup recording (X-05) and the live
@@ -1525,6 +1624,8 @@ of these hold:
   fallback laptop caps sessions there.
 *Checked against D-028:* fetched every origin branch on 2026-11-15. D-069 is the highest on
 `main`, and D-070 and D-071 are held on open branches, so D-072 was the first free number.
+Re-checked when syncing with `main` before merge: D-070 and D-071 have since merged, and D-072
+is still held only here.
 *Agreement:* it settles X-04's run mode and C-21's open question, which @mbj1994 holds, so its pull
 request asks both @mbj1994 and @dalwalyk to agree.
 
@@ -1561,3 +1662,9 @@ assumed. First, whether `--token-auth` refuses the token-less CORS preflight tha
 whether a token visible in the client bundle is acceptable at all. Third, the order code as the
 access control: the deployed `app = create_app()` sets no `known_order_codes`, so today any
 non-empty code starts a paid GPU run.
+
+**O-006 · The expo date is unconfirmed: most likely Fri 2026-12-05.** (2026-11-11)
+Recorded as the team's working assumption, given by @TabeenRaoof on 2026-11-11, because nothing in
+the repository named a date. It falls the day after M7's code freeze (Dec 3–4), so what is shown
+at the expo is what is on `main` at the freeze. D-065 times C-23's revisit against it. Confirm it,
+and update this entry and D-065, once the date is known.
