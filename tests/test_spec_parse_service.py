@@ -22,7 +22,9 @@ def test_parse_spec_requires_buyer_key(tmp_path):
         spec_parser=lambda _prose: _reply({"features": [], "assumptions": []}),
     )
     with TestClient(app) as client:
-        response = client.post("/v1/spec/parse", json={"prose": "two holes within 2 mm"})
+        response = client.post(
+            "/v1/spec/parse", json={"prose": "two holes within 2 mm"}
+        )
 
     assert response.status_code == 401
     assert response.json()["code"] == "buyer_auth_required"
