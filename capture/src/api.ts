@@ -41,7 +41,6 @@ function authHeaders(authToken: string | undefined): Record<string, string> {
   return authToken === undefined ? {} : { Authorization: `Bearer ${authToken}` };
 }
 
-
 function buyerHeaders(buyerKey: string, authToken?: string): Record<string, string> {
   return {
     ...authHeaders(authToken),
