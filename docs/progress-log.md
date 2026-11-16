@@ -2464,5 +2464,6 @@ and capture links work from both `buyer.html` and `/buyer`.
 → create flow, and the returned order code/CAD size/capture link.
 **D-031:** #335's early-boundary R-34 merge is now explicitly recorded. #346 requests the same
 timing exception but still requires both other members to approve its final head before merge.
-**Close-out:** C-16 remains Claimed until @mbj1994 supplies the actual-hours figure required by
-D-038; no time is inferred from timestamps or the 5 h estimate.
+**Close-out:** owner-confirmed actual time is **2 h** against the 5 h estimate. C-16 and its index
+row are Done on the final close-out branch; both other members still approve that exact final head
+under D-031 before merge.
