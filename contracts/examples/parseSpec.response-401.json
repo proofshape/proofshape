@@ -1,0 +1,4 @@
+{
+  "code": "buyer_auth_required",
+  "message": "A valid buyer key is required to parse a spec."
+}

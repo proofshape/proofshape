@@ -189,30 +189,38 @@ decision the team has made. **Undecided.**
 
 ## 4 · Setting up an order — the buyer
 
-**Status: Partly works now.** R-34 provides the order store and API; C-16 (the buyer page),
-C-17 (the printable sheet with the order code) and the remaining inspection workflow are still
-planned.
+**Status: Works now for order setup.** R-34 provides the file-backed order store and C-16 provides
+the browser buyer page. C-17's printable sheet/QR code and the remaining inspection workflow are
+still planned.
 
-The intended flow:
+Open **`buyer.html`** in the capture app. On GitHub Pages the address is
+**`https://proofshape.github.io/proofshape/buyer.html`**; that hosted page can create real orders
+only when C-21 has configured a reachable reconstruction service. The buyer key is entered at
+runtime, kept only in that browser tab's `sessionStorage`, and is never built into the public
+bundle (D-070).
 
-1. **Create an order.** R-34 now exposes `POST /v1/orders`. It accepts an optional CAD
-   (STL/OBJ/GLB), an opaque JSON spec, an optional placement note and an optional buyer reference.
-   Order creation requires the server-held buyer key (D-070); the public capture app never embeds
-   that key.
-2. **Store the CAD and spec.** The CAD is validated by the existing CAD loader, then stored
-   byte-for-byte with its units and bounding box. The spec is stored without interpreting its
-   tolerance internals yet.
-3. **Use the generated order code.** The server returns a hard-to-guess, easy-to-type
-   `PO-` code with eight Crockford-base32 characters. `GET /v1/orders/{order_code}` reads the
-   stored order, and `createSession` now rejects codes that are not in the order store.
-4. **Planned buyer UI and inspection steps.** C-16 will provide the browser buyer page; I-09/I-10
-   will run the intake pre-check; C-17 will generate the printable sheet and QR code.
+The buyer flow is:
 
-There is still no buyer-facing page, so today an operator creates the order through the API and
-the supplier types or receives the returned order code (§5). The mock service still accepts only
-`PO-48213-A`; the real service now checks every code against the R-34 order store instead of
-accepting any non-empty value. A capture link can pre-fill the order code with `?order=<code>`
-(C-13).
+1. **Choose the CAD, if this order has one.** STL, OBJ and GLB are accepted. No CAD is valid but
+   means model-only: no inspection verdict (D-004).
+2. **Describe what matters or fill the table manually.** The optional A-03 assistant can turn prose
+   into the editable feature table. Its output is a proposal, never a hidden decision.
+3. **Review the table and assumptions.** Every feature has a name, kind, positive tolerance in mm
+   and critical flag. If the assistant could not find a numeric tolerance it leaves that cell
+   blank; the buyer must fill it before the order can be created. After filling a blank, review
+   the assumptions and remove any statement that is no longer true.
+4. **Add the placement note and buyer reference, then create the order.** R-34 stores the CAD/spec
+   and returns a server-generated `PO-` code.
+5. **Use the result.** The page shows the order code, the CAD dimensions read by the service (or
+   model-only when there is no CAD), and a supplier capture link with `?order=<code>` already
+   filled in.
+
+The page explicitly does **not** claim that any entered tolerance is achievable: I-09 has not yet
+checked tolerances against the measured noise floor (D-003). Parser/network failures keep the
+buyer's form intact and give a next step instead of exposing browser error text.
+
+The real service checks every supplier code against the R-34 order store. The mock keeps its
+existing `PO-48213-A` fixture and also supports the buyer order routes for local C-16 testing.
 
 **Planned** (C-17): the order code, a QR code and an orientation arrow in the sheet's margin, with
 the board itself unchanged. Where they sit is recorded as a decision when C-17 is built (D-034 left

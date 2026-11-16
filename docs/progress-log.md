@@ -2445,3 +2445,25 @@ checks it. `stories/G/G-03.md` records each feature's measured minus CAD.
 **Next:** @dalwalyk closes G-03 (D-038) with `State: Done` and the completion record. Two of the
 measurer's notes name a damaged corner that can't now be located: `g02_05`'s and `g02_06`'s. They
 stay as written.
+
+
+## 2026-11-16 — C-16 review corrections and D-031 timing record (PR #346)
+
+**Who:** @mbj1994; review by @TabeenRaoof.
+**What changed:** C-16's buyer page and server-side A-03 parser route were reviewed before closeout.
+The review caught a frozen-contract response bug: FastAPI was serializing top-level `spec: null`
+or `reason: null` even though the new v1.3 schema omits the inapplicable field. The route now
+removes only top-level null fields while preserving the meaningful nested
+`features[].tolerance_mm: null`. Contract-validation tests cover parsed, model-error and
+missing-key replies.
+**Buyer UX:** parser codes and browser network exceptions are translated into actionable text;
+parsed features no longer erase rows the buyer already typed; blank parser tolerances are tested
+to block order creation; the assumptions reminder tells the buyer to remove stale assumptions;
+and capture links work from both `buyer.html` and `/buyer`.
+**Manual:** §4 now documents the buyer page, runtime per-tab buyer key, parse → review → fill blanks
+→ create flow, and the returned order code/CAD size/capture link.
+**D-031:** #335's early-boundary R-34 merge is now explicitly recorded. #346 requests the same
+timing exception but still requires both other members to approve its final head before merge.
+**Close-out:** owner-confirmed actual time is **2 h** against the 5 h estimate. C-16 and its index
+row are Done on the final close-out branch; both other members still approve that exact final head
+under D-031 before merge.

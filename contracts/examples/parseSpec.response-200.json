@@ -1,0 +1,22 @@
+{
+  "status": "parsed",
+  "spec": {
+    "features": [
+      {
+        "name": "mounting holes",
+        "kind": "hole",
+        "tolerance_mm": 2,
+        "critical": true
+      },
+      {
+        "name": "sealing face",
+        "kind": "face",
+        "tolerance_mm": null,
+        "critical": true
+      }
+    ],
+    "assumptions": [
+      "No numeric tolerance was given for the sealing face."
+    ]
+  }
+}
