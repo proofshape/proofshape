@@ -1,0 +1,35 @@
+name: C-17 sample helper
+
+on:
+  pull_request:
+    paths:
+      - capture/src/order-sheet.ts
+      - capture/src/order-sheet.test.ts
+      - capture/package-lock.json
+      - .github/workflows/c17-sample-helper.yml
+
+permissions:
+  contents: read
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: capture/package-lock.json
+      - working-directory: capture
+        run: npm ci
+      - name: Generate deterministic C-17 sample
+        working-directory: capture
+        env:
+          PROOFSHAPE_WRITE_C17_SAMPLE: "1"
+        run: npx vitest run src/order-sheet.test.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: c17-order-sheet-sample
+          path: fixtures/order_sheet_PO-48213-A.pdf
+          if-no-files-found: error
