@@ -61,9 +61,7 @@ export function validateCadFile(file: File | undefined): string | null {
   if (file === undefined) return null;
   const dot = file.name.lastIndexOf(".");
   const suffix = dot >= 0 ? file.name.slice(dot).toLowerCase() : "";
-  return [".stl", ".obj", ".glb"].includes(suffix)
-    ? null
-    : "CAD file must be STL, OBJ, or GLB.";
+  return [".stl", ".obj", ".glb"].includes(suffix) ? null : "CAD file must be STL, OBJ, or GLB.";
 }
 
 export function captureLinkFor(locationHref: string, orderCode: string): string {
@@ -151,8 +149,8 @@ function readFeatureRows(tbody: HTMLTableSectionElement): FeatureDraft[] {
   return Array.from(tbody.querySelectorAll<HTMLTableRowElement>(".feature-row")).map((row) => ({
     name: row.querySelector<HTMLInputElement>('[data-field="name"]')?.value ?? "",
     kind:
-      (row.querySelector<HTMLSelectElement>('[data-field="kind"]')?.value as SpecKind | undefined) ??
-      "overall",
+      (row.querySelector<HTMLSelectElement>('[data-field="kind"]')?.value as
+        SpecKind | undefined) ?? "overall",
     tolerance: row.querySelector<HTMLInputElement>('[data-field="tolerance"]')?.value ?? "",
     critical: row.querySelector<HTMLInputElement>('[data-field="critical"]')?.checked ?? false,
   }));
