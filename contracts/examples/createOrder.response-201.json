@@ -1,0 +1,10 @@
+{
+  "order_code": "PO-7K2M9Q4R",
+  "created_at": "2026-11-15T03:15:00+00:00",
+  "has_cad": false,
+  "spec": {
+    "tolerance_mm": 4
+  },
+  "placement_note": "Place the marked face toward the board arrow.",
+  "buyer_reference": "BUYER-PO-42"
+}
