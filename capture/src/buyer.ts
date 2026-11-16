@@ -1,4 +1,5 @@
 import { createOrder, parseInspectionSpec } from "./api.js";
+import { describeNetworkError } from "./messages.js";
 import type { InspectionSpec, SpecFeature, SpecKind } from "./types.js";
 
 const SPEC_KINDS: SpecKind[] = ["hole", "face", "edge", "overall"];
@@ -66,7 +67,7 @@ export function validateCadFile(file: File | undefined): string | null {
 
 export function captureLinkFor(locationHref: string, orderCode: string): string {
   const url = new URL(locationHref);
-  url.pathname = url.pathname.replace(/buyer\.html$/, "");
+  url.pathname = url.pathname.replace(/buyer(\.html)?\/?$/, "");
   if (!url.pathname.endsWith("/")) url.pathname += "/";
   url.search = "";
   url.hash = "";
@@ -156,17 +157,47 @@ function readFeatureRows(tbody: HTMLTableSectionElement): FeatureDraft[] {
   }));
 }
 
-function replaceFeatureRows(tbody: HTMLTableSectionElement, features: SpecFeature[]): void {
-  tbody.replaceChildren(
-    ...features.map((feature) =>
-      featureRow({
-        name: feature.name,
-        kind: feature.kind,
-        tolerance: feature.tolerance_mm === null ? "" : String(feature.tolerance_mm),
-        critical: feature.critical,
-      }),
-    ),
+function draftFromFeature(feature: SpecFeature): FeatureDraft {
+  return {
+    name: feature.name,
+    kind: feature.kind,
+    tolerance: feature.tolerance_mm === null ? "" : String(feature.tolerance_mm),
+    critical: feature.critical,
+  };
+}
+
+function tableIsPristine(tbody: HTMLTableSectionElement): boolean {
+  const rows = readFeatureRows(tbody);
+  return (
+    rows.length === 1 &&
+    rows[0]?.name === "" &&
+    rows[0]?.tolerance === "" &&
+    rows[0]?.kind === "overall" &&
+    rows[0]?.critical === false
   );
+}
+
+function applyParsedFeatures(tbody: HTMLTableSectionElement, features: SpecFeature[]): void {
+  const parsedRows = features.map((feature) => featureRow(draftFromFeature(feature)));
+  if (tableIsPristine(tbody)) {
+    tbody.replaceChildren(...parsedRows);
+    return;
+  }
+  tbody.append(...parsedRows);
+}
+
+function parserReasonMessage(reason: string): string {
+  switch (reason) {
+    case "no_features":
+      return "The assistant did not find a feature to check. Describe at least one feature, or fill in the table yourself.";
+    case "missing_assumption_for_null_tolerance":
+      return "The assistant could not safely interpret one missing tolerance. Fill in the table yourself and record any assumption you need.";
+    case "missing_api_key":
+    case "model_error":
+    case "invalid_reply":
+    default:
+      return "The assistant could not read that description. Review or fill in the table yourself.";
+  }
 }
 
 export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): void {
@@ -283,18 +314,23 @@ export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): vo
         return;
       }
       if (parsed.body.status === "unparsed") {
-        status.textContent = `Could not parse requirements (${parsed.body.reason}). Use the manual table.`;
+        status.textContent = parserReasonMessage(parsed.body.reason);
         return;
       }
 
-      replaceFeatureRows(tbody, parsed.body.spec.features);
-      assumptionsInput.value = parsed.body.spec.assumptions.join("\n");
+      applyParsedFeatures(tbody, parsed.body.spec.features);
+      const parsedAssumptions = parsed.body.spec.assumptions.join("\n");
+      if (parsedAssumptions) {
+        assumptionsInput.value = assumptionsInput.value.trim()
+          ? `${assumptionsInput.value.trim()}\n${parsedAssumptions}`
+          : parsedAssumptions;
+      }
       const hasMissing = parsed.body.spec.features.some((feature) => feature.tolerance_mm === null);
       status.textContent = hasMissing
-        ? "Parsed. Fill every blank tolerance before creating the order."
-        : "Parsed. Review and edit every field before creating the order.";
+        ? "Parsed. Fill every blank tolerance, then review the assumptions and remove any that no longer apply."
+        : "Parsed. Review the added fields and assumptions before creating the order.";
     } catch (error) {
-      status.textContent = `Parser unavailable: ${String(error)}. Use the manual table.`;
+      status.textContent = `${describeNetworkError(error)} Use the manual table if the assistant stays unavailable.`;
     }
   };
   (requireElement(root, "#parse-spec") as HTMLButtonElement).addEventListener("click", () => {
@@ -363,7 +399,7 @@ export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): vo
       result.hidden = false;
       status.textContent = "Order created. Review the code and capture link below.";
     } catch (error) {
-      status.textContent = `Could not create order: ${String(error)}`;
+      status.textContent = `${describeNetworkError(error)} Check the form and try creating the order again.`;
     }
   };
   (requireElement(root, "#create-order") as HTMLButtonElement).addEventListener("click", () => {
