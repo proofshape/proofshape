@@ -8,8 +8,8 @@ import {
   validateCadFile,
 } from "./buyer.js";
 
-function required<T extends Element>(root: ParentNode, selector: string): T {
-  const element = root.querySelector<T>(selector);
+function required(root: ParentNode, selector: string): Element {
+  const element = root.querySelector(selector);
   if (element === null) throw new Error(`test setup missing ${selector}`);
   return element;
 }
@@ -81,16 +81,16 @@ describe("C-16 buyer setup", () => {
     document.body.append(root);
     mountBuyerPage(root, { baseUrl: "", locationHref: "https://example.test/buyer.html" });
 
-    const key = required<HTMLInputElement>(root, "#buyer-key");
+    const key = required(root, "#buyer-key") as HTMLInputElement;
     key.value = "wrong";
     key.dispatchEvent(new Event("input"));
-    required<HTMLInputElement>(root, '[data-field="name"]').value = "hole A";
-    required<HTMLInputElement>(root, '[data-field="tolerance"]').value = "2";
-    required<HTMLButtonElement>(root, "#create-order").click();
+    required(root, '[data-field="name"]') as HTMLInputElement.value = "hole A";
+    required(root, '[data-field="tolerance"]') as HTMLInputElement.value = "2";
+    required(root, "#create-order") as HTMLButtonElement.click();
     await vi.waitFor(() => {
       expect(root.querySelector("#buyer-status")?.textContent).toBe("Wrong buyer key.");
     });
-    expect(required<HTMLInputElement>(root, '[data-field="name"]').value).toBe("hole A");
+    expect(required(root, '[data-field="name"]') as HTMLInputElement.value).toBe("hole A");
   });
 
   it("shows order code, CAD size and capture link on success", async () => {
@@ -114,12 +114,12 @@ describe("C-16 buyer setup", () => {
       locationHref: "https://example.test/proofshape/buyer.html",
     });
 
-    const key = required<HTMLInputElement>(root, "#buyer-key");
+    const key = required(root, "#buyer-key") as HTMLInputElement;
     key.value = "buyer-key";
     key.dispatchEvent(new Event("input"));
-    required<HTMLInputElement>(root, '[data-field="name"]').value = "overall";
-    required<HTMLInputElement>(root, '[data-field="tolerance"]').value = "1";
-    required<HTMLButtonElement>(root, "#create-order").click();
+    required(root, '[data-field="name"]') as HTMLInputElement.value = "overall";
+    required(root, '[data-field="tolerance"]') as HTMLInputElement.value = "1";
+    required(root, "#create-order") as HTMLButtonElement.click();
 
     await vi.waitFor(() => {
       expect(root.querySelector("#buyer-result")?.textContent).toContain("PO-7K2M9Q4R");
