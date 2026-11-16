@@ -19,6 +19,12 @@ describe("C-17 order sheet", () => {
     expect(await sha256Hex(board)).toBe(BOARD_SHA256);
   });
 
+  it("refuses a changed calibration-board file", async () => {
+    await expect(createOrderSheetPdf(new Uint8Array([1, 2, 3]), SAMPLE_ORDER)).rejects.toThrow(
+      "calibration-board file changed",
+    );
+  });
+
   it("keeps every added mark inside the printable area and outside the board pattern", () => {
     const { printable, boardPattern, orderText, qr, arrow, scaleNote } = ORDER_SHEET_LAYOUT_MM;
     for (const mark of [orderText, qr, arrow, scaleNote]) {
