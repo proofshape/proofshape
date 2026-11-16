@@ -128,8 +128,12 @@ describe("C-16 buyer setup", () => {
     const key = required(root, "#buyer-key") as HTMLInputElement;
     key.value = "buyer-key";
     key.dispatchEvent(new Event("input"));
-    (required(root, '[data-field="name"]') as HTMLInputElement).value = "manual face";
-    (required(root, '[data-field="tolerance"]') as HTMLInputElement).value = "1";
+    const manualName = required(root, '[data-field="name"]') as HTMLInputElement;
+    manualName.value = "manual face";
+    manualName.dispatchEvent(new Event("input", { bubbles: true }));
+    const manualTolerance = required(root, '[data-field="tolerance"]') as HTMLInputElement;
+    manualTolerance.value = "1";
+    manualTolerance.dispatchEvent(new Event("input", { bubbles: true }));
     (required(root, "#buyer-prose") as HTMLTextAreaElement).value = "one hole within 2 mm";
     (required(root, "#parse-spec") as HTMLButtonElement).click();
 
