@@ -84,13 +84,13 @@ describe("C-16 buyer setup", () => {
     const key = required(root, "#buyer-key") as HTMLInputElement;
     key.value = "wrong";
     key.dispatchEvent(new Event("input"));
-    required(root, '[data-field="name"]') as HTMLInputElement.value = "hole A";
-    required(root, '[data-field="tolerance"]') as HTMLInputElement.value = "2";
-    required(root, "#create-order") as HTMLButtonElement.click();
+    (required(root, '[data-field="name"]') as HTMLInputElement).value = "hole A";
+    (required(root, '[data-field="tolerance"]') as HTMLInputElement).value = "2";
+    (required(root, "#create-order") as HTMLButtonElement).click();
     await vi.waitFor(() => {
       expect(root.querySelector("#buyer-status")?.textContent).toBe("Wrong buyer key.");
     });
-    expect(required(root, '[data-field="name"]') as HTMLInputElement.value).toBe("hole A");
+    expect((required(root, '[data-field="name"]') as HTMLInputElement).value).toBe("hole A");
   });
 
   it("shows order code, CAD size and capture link on success", async () => {
@@ -117,9 +117,9 @@ describe("C-16 buyer setup", () => {
     const key = required(root, "#buyer-key") as HTMLInputElement;
     key.value = "buyer-key";
     key.dispatchEvent(new Event("input"));
-    required(root, '[data-field="name"]') as HTMLInputElement.value = "overall";
-    required(root, '[data-field="tolerance"]') as HTMLInputElement.value = "1";
-    required(root, "#create-order") as HTMLButtonElement.click();
+    (required(root, '[data-field="name"]') as HTMLInputElement).value = "overall";
+    (required(root, '[data-field="tolerance"]') as HTMLInputElement).value = "1";
+    (required(root, "#create-order") as HTMLButtonElement).click();
 
     await vi.waitFor(() => {
       expect(root.querySelector("#buyer-result")?.textContent).toContain("PO-7K2M9Q4R");
