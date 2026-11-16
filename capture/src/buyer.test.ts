@@ -105,7 +105,7 @@ describe("C-16 buyer setup", () => {
       "Feature 2 needs a tolerance greater than 0 mm.",
     );
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/v1/spec/parse");
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe("/v1/spec/parse");
   });
 
   it("appends parsed features instead of deleting buyer-entered rows", async () => {
