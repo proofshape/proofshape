@@ -168,13 +168,10 @@ function draftFromFeature(feature: SpecFeature): FeatureDraft {
 
 function tableIsPristine(tbody: HTMLTableSectionElement): boolean {
   const rows = readFeatureRows(tbody);
-  return (
-    rows.length === 1 &&
-    rows[0]?.name === "" &&
-    rows[0]?.tolerance === "" &&
-    rows[0]?.kind === "overall" &&
-    rows[0]?.critical === false
-  );
+  if (rows.length !== 1) return false;
+  const row = rows[0];
+  if (row === undefined) return false;
+  return row.name === "" && row.tolerance === "" && row.kind === "overall" && !row.critical;
 }
 
 function applyParsedFeatures(tbody: HTMLTableSectionElement, features: SpecFeature[]): void {
