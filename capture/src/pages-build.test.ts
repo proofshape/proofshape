@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import type { OutputAsset, RollupOutput } from "rollup";
 import { build } from "vite";
@@ -38,5 +39,19 @@ describe("GitHub Pages production build", () => {
     expect(htmlAssets.get("index.html")).toContain("/proofshape/assets/");
     expect(htmlAssets.get("buyer.html")).toContain("/proofshape/assets/");
     expect(htmlAssets.get("report.html")).toContain("/proofshape/assets/");
+
+    const boardAsset = outputs.find(
+      (entry): entry is OutputAsset =>
+        entry.type === "asset" && entry.fileName === "charuco_board.pdf",
+    );
+    expect(boardAsset).toBeDefined();
+    const boardBytes =
+      typeof boardAsset?.source === "string"
+        ? new TextEncoder().encode(boardAsset.source)
+        : boardAsset?.source;
+    expect(boardBytes).toBeDefined();
+    expect(createHash("sha256").update(boardBytes ?? new Uint8Array()).digest("hex")).toBe(
+      "1b64d0328a7551da20fee6ccf5c6edacd5f48858be4004dffb093a60c9c9a354",
+    );
   });
 });
