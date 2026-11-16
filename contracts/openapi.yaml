@@ -2,7 +2,7 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.1.0"
+  version: "1.2.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
@@ -10,11 +10,72 @@ info:
     D-031. Versioned by the `/v1` path prefix, so a v2 can be introduced alongside this one
     rather than replacing it in place (D-032). 1.1.0 (A-11, D-056) is additive: an optional
     `vlm_feedback` on the upload response and two error codes; a v1.0 client is unaffected.
+    1.2.0 (R-34) additively introduces buyer orders, stored CAD metadata, and named order/verdict errors.
 
 servers:
   - url: /v1
 
 paths:
+  /orders:
+    post:
+      operationId: createOrder
+      summary: Create a buyer order
+      description: >
+        Creates the server-side order record that binds a supplier capture to the buyer's CAD
+        and inspection specification. The buyer key is supplied in the X-ProofShape-Buyer-Key
+        header and is never embedded in the public capture app.
+      parameters:
+        - name: X-ProofShape-Buyer-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "201":
+          description: Order created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "401":
+          description: Buyer authentication is absent or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "422":
+          description: The spec or CAD cannot be read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /orders/{order_code}:
+    get:
+      operationId: getOrder
+      summary: Fetch a buyer order
+      parameters:
+        - $ref: "#/components/parameters/OrderCode"
+      responses:
+        "200":
+          description: Stored order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: No order has that code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
   /sessions:
     post:
       operationId: createSession
@@ -155,6 +216,14 @@ paths:
 
 components:
   parameters:
+    OrderCode:
+      name: order_code
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Server-generated Crockford-base32 order code.
+
     SessionId:
       name: session_id
       in: path
@@ -254,6 +323,9 @@ components:
             - too_few_frames
             - order_code_unknown
             - no_cad_uploaded
+            - cad_unreadable
+            - verdict_not_available
+            - buyer_auth_required
             - malformed_request
             - internal_error
           description: >
@@ -272,6 +344,57 @@ components:
           items:
             type: integer
           description: Which uploaded frames the error applies to, when relevant.
+
+    CreateOrderRequest:
+      type: object
+      required: [spec]
+      properties:
+        cad:
+          type: string
+          contentEncoding: base64
+          description: Optional STL, OBJ or GLB buyer CAD. Stored byte-for-byte after validation.
+        spec:
+          type: object
+          additionalProperties: true
+          x-proofshape-extends-at: I-07
+          description: Opaque buyer inspection specification. R-34 stores it without interpreting tolerances.
+        placement_note:
+          type: string
+        buyer_reference:
+          type: string
+
+    Order:
+      type: object
+      required: [order_code, created_at, has_cad, spec]
+      properties:
+        order_code:
+          type: string
+          pattern: "^PO-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{8}$"
+        created_at:
+          type: string
+        has_cad:
+          type: boolean
+        cad_units:
+          type: string
+          enum: [mm, assumed_mm]
+        cad_bounding_box_mm:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: array
+            minItems: 3
+            maxItems: 3
+            items:
+              type: number
+        spec:
+          type: object
+          additionalProperties: true
+          x-proofshape-extends-at: I-07
+        placement_note:
+          type: string
+        buyer_reference:
+          type: string
 
     CreateSessionRequest:
       type: object

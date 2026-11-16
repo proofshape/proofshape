@@ -4,8 +4,8 @@
 In-process (R-14, on the Lightning Studio):
     python scripts/smoke_r14.py fixtures/data/golden_capture/s-04
 
-Against a deployed service (R-15), with the bearer token in an environment variable:
-    PROOFSHAPE_ENDPOINT_TOKEN=... python scripts/smoke_r14.py \
+Against a deployed service (R-15/R-34), with both secrets in environment variables:
+    PROOFSHAPE_ENDPOINT_TOKEN=... PROOFSHAPE_BUYER_KEY=... python scripts/smoke_r14.py \
         fixtures/data/golden_capture/s-04 --base-url https://<deployment-url>
 """
 
@@ -34,6 +34,7 @@ LOCAL_HOSTS = {"localhost", "127.0.0.1"}
 def drive_session(
     client: httpx.Client,
     frames: Sequence[Path],
+    order_code: str = SMOKE_ORDER_CODE,
     poll_timeout_s: float = REMOTE_POLL_TIMEOUT_S,
     poll_interval_s: float = REMOTE_POLL_INTERVAL_S,
     sleep: Callable[[float], None] = time.sleep,
@@ -43,7 +44,7 @@ def drive_session(
     if len(frames) < 3:
         raise ValueError(f"Smoke check needs at least 3 frames; found {len(frames)}.")
 
-    created = client.post("/v1/sessions", json={"order_code": SMOKE_ORDER_CODE})
+    created = client.post("/v1/sessions", json={"order_code": order_code})
     created.raise_for_status()
     session_id = created.json()["session_id"]
 
@@ -156,10 +157,11 @@ def run_remote_smoke(
     capture_dir: Path,
     base_url: str,
     token: str,
+    buyer_key: str,
     output_glb: Path,
     client_factory: Callable[..., httpx.Client] = httpx.Client,
 ) -> dict:
-    """Drive a deployed service over HTTP(S) with real frames and save the returned GLB."""
+    """Create an order, then drive a deployed service with real frames and save its GLB."""
     require_secure_base_url(base_url)
     frames = find_capture_frames(Path(capture_dir))
     output_glb = Path(output_glb)
@@ -168,10 +170,24 @@ def run_remote_smoke(
         headers={"Authorization": f"Bearer {token}"},
         timeout=120.0,
     ) as client:
-        result_body, glb = drive_session(client, frames)
+        created_order = client.post(
+            "/v1/orders",
+            headers={"X-ProofShape-Buyer-Key": buyer_key},
+            files={
+                "spec": (
+                    "spec.json",
+                    json.dumps({}),
+                    "application/json",
+                )
+            },
+        )
+        created_order.raise_for_status()
+        order_code = created_order.json()["order_code"]
+        result_body, glb = drive_session(client, frames, order_code=order_code)
     require_glb_url_scheme(base_url, result_body["glb_url"])
     output_glb.parent.mkdir(parents=True, exist_ok=True)
     output_glb.write_bytes(glb)
+    result_body["order_code"] = order_code
     result_body["downloaded_glb_bytes"] = len(glb)
     result_body["saved_glb"] = str(output_glb)
     return result_body
@@ -209,6 +225,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="environment variable holding the deployed service's bearer token",
     )
     parser.add_argument(
+        "--buyer-key-env",
+        default="PROOFSHAPE_BUYER_KEY",
+        help="environment variable holding the buyer key required by createOrder",
+    )
+    parser.add_argument(
         "--output-glb",
         type=Path,
         default=Path("/tmp/proofshape-r15-smoke/smoke-result.glb"),
@@ -226,8 +247,14 @@ def main() -> int:
                 f"{args.token_env} is not set. Export the endpoint token first; it is never "
                 "passed on the command line."
             )
+        buyer_key = os.environ.get(args.buyer_key_env, "").strip()
+        if not buyer_key:
+            raise SystemExit(
+                f"{args.buyer_key_env} is not set. Export the buyer key first; it is never "
+                "passed on the command line."
+            )
         result = run_remote_smoke(
-            args.capture_dir, args.base_url, token, args.output_glb
+            args.capture_dir, args.base_url, token, buyer_key, args.output_glb
         )
         label = f"R-15 SMOKE ({args.base_url})"
     else:

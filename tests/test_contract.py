@@ -80,6 +80,11 @@ def test_spec_is_valid_openapi(spec):
     validate_spec(spec)
 
 
+def test_info_description_has_no_literal_escape_sequences(spec):
+    """Folded YAML prose uses real line breaks, not visible backslash-n text."""
+    assert "\\n" not in spec["info"]["description"]
+
+
 def test_every_operation_has_an_example(spec):
     """Acceptance criterion 2: one example request and response per endpoint."""
     examples = _parse_example_filenames()

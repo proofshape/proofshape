@@ -32,10 +32,11 @@ COPY inspect/inspection/ inspect/inspection/
 COPY scripts/container_entrypoint.sh /usr/local/bin/container_entrypoint.sh
 RUN python -m pip install --no-cache-dir --no-deps . \
     && useradd --create-home --uid 1000 proofshape \
-    && mkdir -p /data/sessions /data/hf \
+    && mkdir -p /data/sessions /data/orders /data/hf \
     && chown -R proofshape:proofshape /data
 
 ENV PROOFSHAPE_DATA_DIR=/data/sessions \
+    PROOFSHAPE_ORDERS_DIR=/data/orders \
     HF_HOME=/data/hf \
     PYTHONUNBUFFERED=1
 
