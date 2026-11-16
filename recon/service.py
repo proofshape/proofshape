@@ -26,7 +26,12 @@ from pydantic import BaseModel, Field, field_validator
 # the macOS-only OMP_NUM_THREADS=1 guard as an import side effect; Linux is unchanged.
 from recon import runtime_env as _runtime_env  # noqa: F401
 from recon.order_store import OrderStore
-from recon.spec_parser import GeminiSpecParser, SpecParseResult, parse_spec_response, unparsed
+from recon.spec_parser import (
+    GeminiSpecParser,
+    SpecParseResult,
+    parse_spec_response,
+    unparsed,
+)
 from recon.vlm_check import VlmSupervisor
 
 MIN_FINISH_FRAMES = 3
