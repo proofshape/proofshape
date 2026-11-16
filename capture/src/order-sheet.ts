@@ -45,8 +45,14 @@ export function rectInside(inner: RectMm, outer: RectMm): boolean {
   );
 }
 
+function arrayBufferCopy(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  return buffer;
+}
+
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", arrayBufferCopy(bytes));
   return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join(
     "",
   );
@@ -204,7 +210,7 @@ export async function loadOrderSheetPdf(boardUrl: string, orderCode: string): Pr
 }
 
 export function downloadPdfBytes(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([bytes], { type: "application/pdf" });
+  const blob = new Blob([arrayBufferCopy(bytes)], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   try {
     const anchor = document.createElement("a");
