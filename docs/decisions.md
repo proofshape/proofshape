@@ -1742,6 +1742,83 @@ frame captures #356 reproduces on. Not re-investigated beyond this check.
 
 ---
 
+**D-075 · R-38: R-23's alignment solve now rejects per-frame outliers; the residual gate is
+8.0 mm, measured against all 11 real captures available.** (2026-11-16)
+`recon/metric_alignment.py`'s `solve_similarity` had no per-frame outlier rejection — found on
+G-04/PR #348 review (@TabeenRaoof), D-073: one bad frame (`g02_02`'s `IMG_4665`, median per-
+corner residual 124.8 mm) pulled the whole board-anchored fit's RMS residual to 23.3 mm, and
+`metric_alignment.main` printed `PASS` unconditionally, with no threshold at all.
+
+New `solve_similarity_rejecting_outlier_frames` (`recon/metric_alignment.py`): iteratively
+solves, takes each present frame's *median* point residual, MAD-trims across those per-frame
+medians (the same robust-fit style as `cad_size_check.fit_board_plane`), and drops the single
+worst frame if it clears `reject_sigma_k` MAD-widths above the group's median — repeating up to
+`DEFAULT_MAX_FRAME_REJECT_ITERATIONS=4` times, never below `MIN_FRAMES_AFTER_REJECTION=2`
+distinct frames. `align_board_geometry` now calls it instead of `solve_similarity` directly;
+`BoardAlignmentResult` gains `rejected_frame_names` and `per_frame_residual_mm` (written into
+`metric_alignment.json` too). `metric_alignment.main` gains `--max-residual-mm` and a real
+`FAIL`/exit-1 path instead of unconditional `PASS`.
+
+**The real sweep (`reject_sigma_k=8.0`, every available real capture, no VGGT re-run needed —
+all 11 already cached on disk):**
+
+| Capture | RMS before fix (mm) | RMS after fix (mm) | Rejected frame |
+|---|---:|---:|---|
+| s-01 | not separately measured | 2.101 | `IMG_3927.jpeg` |
+| s-02 | — | 3.019 | none |
+| s-03 | — | 1.608 | none |
+| s-04 | — | 2.080 | none |
+| s-05 | — | 2.351 | none |
+| g02_01 | — | 3.914 | none |
+| **g02_02** | **23.353** | **1.863** | **`IMG_4665.JPG`** |
+| g02_03 | — | 2.155 | none |
+| g02_04 | — | 2.732 | none |
+| g02_05 | — | 3.190 | none |
+| g02_06 | — | 3.789 | none |
+
+`g02_02`'s fix matches Tabeen's own manual estimate (RMS ≈1.86 mm after dropping `IMG_4665` by
+hand) almost exactly. **A second, smaller finding the real sweep surfaced, not assumed from the
+single known case:** `s-01` (golden set, previously thought clean) also has a real, if subtler,
+outlier frame — `IMG_3927.jpeg` read 7.1 mm median residual against 2–4 mm for every other frame
+there. Genuinely rejected, not a false positive from an over-aggressive `reject_sigma_k`: every
+other clean capture (9 of 11) rejects nothing at the same `k=8.0`.
+
+Every one of the 10 clean-after-fix results falls in **1.6–3.9 mm**. `DEFAULT_MAX_RESIDUAL_MM =
+8.0 mm`, about 2x the highest of those (3.914 mm) — comfortable margin above real clean results,
+while far below the ~23 mm the real g02_02 failure produced before rejection, so the gate would
+have caught it even without the rejection fix alone.
+
+*Why `reject_sigma_k=8.0`, not swept separately as its own parameter:* the same value correctly
+rejects both the real g02_02 case (124.8 mm, an extreme outlier) and the subtler s-01 case
+(7.1 mm vs 2–4 mm, a much smaller margin) without any false rejection on the other 9 captures —
+confirmed live, not assumed to generalize from one case.
+*Known limit, found and recorded, not hidden:* the per-frame rejection is a single-shot
+threshold on the initial (uncorrected) solve's residuals. If a single frame's corruption has
+enough leverage to distort that initial solve severely (confirmed separately: an extreme,
+~2x-true-depth synthetic corruption can collapse the fitted scale toward zero, at which point
+the corrupted frame's own residual can shrink rather than stand out), this design will not
+recover it. The real g02_02 failure (scale pulled to 0.83, not collapsed to near-zero) is well
+within what this design handles; a future, more severe failure mode is not guaranteed to be.
+*Design fork, decided explicitly (not assumed either way):* the residual-threshold failure is
+`metric_alignment.main`'s own new `FAIL`/exit-1, **not** wired into the `Unverifiable` verdict.
+No verdict-computation code exists anywhere in the repo today (`GET /v1/sessions/{id}/verdict`
+unconditionally 404s "not available yet"), so there is no existing intake-time setter to extend
+by analogy — expanding `Unverifiable`'s definition (`docs/glossary.md`, currently "declared at
+intake, before any photo") to also cover a post-reconstruction alignment failure would be a
+semantic/spec decision for whoever builds real verdict logic, not a code hookup this story can
+make safely. `recon/service.py`'s `VerdictResult.declared_at` already has an unused
+`"post_reconstruction"` enum value that looks purpose-built for exactly this — flagged for that
+future story, not acted on here.
+*What's given up:* none of G-04's own aggregate is re-run or changed by this story (explicitly
+out of scope per R-38's acceptance criteria) — `g02_02` could now rejoin it, but that is a
+follow-up, not done here. `s-01`'s newly-rejected frame means its `metric_alignment.json` output
+changes going forward; other stories' historical numbers computed from the old (unrejected) s-01
+alignment are not retroactively audited or corrected here.
+*Checked against D-028:* fetched all origin branches on 2026-11-16; D-074 (held on
+`capture/C-17-order-sheet-impl`) was highest anywhere, so D-075 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
