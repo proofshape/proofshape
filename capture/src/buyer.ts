@@ -166,17 +166,10 @@ function draftFromFeature(feature: SpecFeature): FeatureDraft {
   };
 }
 
-function tableIsPristine(tbody: HTMLTableSectionElement): boolean {
-  const rows = readFeatureRows(tbody);
-  if (rows.length !== 1) return false;
-  const row = rows[0];
-  if (row === undefined) return false;
-  return row.name === "" && row.tolerance === "" && row.kind === "overall" && !row.critical;
-}
-
 function applyParsedFeatures(tbody: HTMLTableSectionElement, features: SpecFeature[]): void {
   const parsedRows = features.map((feature) => featureRow(draftFromFeature(feature)));
-  if (tableIsPristine(tbody)) {
+  const rows = Array.from(tbody.querySelectorAll<HTMLTableRowElement>(".feature-row"));
+  if (rows.length === 1 && rows[0]?.dataset.placeholder === "true") {
     tbody.replaceChildren(...parsedRows);
     return;
   }
@@ -278,7 +271,18 @@ export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): vo
     else sessionStorage.removeItem(BUYER_KEY_STORAGE);
   });
 
-  tbody.append(featureRow({ name: "", kind: "overall", tolerance: "", critical: false }));
+  const starterRow = featureRow({ name: "", kind: "overall", tolerance: "", critical: false });
+  starterRow.dataset.placeholder = "true";
+  tbody.append(starterRow);
+
+  const markEdited = (event: Event): void => {
+    const target = event.target;
+    if (target instanceof HTMLElement) {
+      target.closest<HTMLTableRowElement>(".feature-row")?.removeAttribute("data-placeholder");
+    }
+  };
+  tbody.addEventListener("input", markEdited);
+  tbody.addEventListener("change", markEdited);
 
   root.querySelector("#add-feature")?.addEventListener("click", () => {
     tbody.append(featureRow({ name: "", kind: "overall", tolerance: "", critical: false }));
