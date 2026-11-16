@@ -1480,6 +1480,37 @@ so D-069 was free.
 
 ---
 
+**D-071 · X-02/M2: batch is the committed reconstruction mode; interactive is not built.**
+(2026-11-15)
+R-13's real measurement on the shared T4, `s-04`, 30 frames (`stories/R/R-13.md`, 2026-10-07):
+
+| Backbone | Total (s) | Dominant stage |
+|---|---:|---|
+| VGGT | 80.21 | `model_load_s`, 45.0% |
+| MASt3R | 265.90 | `alignment_s`, 79.6% |
+| COLMAP | 80.63 (refused, 28/30 registered) | `feature_extraction_s` + `mapping_s`, 92.2% |
+
+The proposal's own bar (§M2): "Interactive mode if a reconstruction update takes under ~2 s,
+otherwise every third frame." These totals include a one-time model load (VGGT's `model_load_s`
+is 36.12 s of the 80.21 s total, 45%) that a per-frame interactive update would not pay each
+time; without it, VGGT's 30-frame pass is about 44 s — still tens of seconds, nowhere near
+"nearly free," but no per-increment timing was measured, so the decision rests on that 44 s
+figure, not the raw total. R-32 also ran VGGT on the M2 Max (`mps`), 36–67 s for 30 frames —
+faster than the T4 in some runs, so this isn't "the fastest GPU this project has used"; the
+conclusion holds regardless of which GPU. Batch is confirmed as the only mode built; interactive
+mode is not built this semester.
+
+*Why:* the gate (`docs/sprint-plan.md` §7, Gate M2 · I2) exists to decide this with a real
+number instead of guessing, and the number is unambiguous — this isn't a close call the team
+needs to weigh.
+*What's given up:* nothing new. Batch was already the shipped path since M1 (proposal's own risk
+table: "GPU too slow for interactive mode → Batch mode ships at M1 and is always the fallback");
+this closes the M2 gate on real evidence rather than leaving the decision implicit.
+*Checked against D-028:* fetched all origin branches on 2026-11-15; D-070 (held on
+`recon/R-34-order-store`) was highest anywhere, so D-071 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
