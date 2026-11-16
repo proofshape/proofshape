@@ -82,7 +82,7 @@ heatmap, so gross defects are caught before the part ships.
 |---|---|
 | **Printed ChArUco reference sheet** | One sheet of A4 or US Letter. See §3 — printing it correctly matters more than it sounds. |
 | **The part** | Rigid and opaque. Roughly hand-sized — comparable to, or a little larger than, the printed pattern. See §3.4 on parts larger than the board, and §10 on transparent parts. |
-| **A smartphone** | With a working camera and gyroscope. No app install — capture runs in the browser over HTTPS. So far it has been checked on iPhones in Safari only; Android is untested (**Planned**, C-23). |
+| **A smartphone** | With a working camera and gyroscope. No app install — capture runs in the browser over HTTPS. So far it has been checked on iPhones in Safari only. Android is untested and parked until C-23 runs (D-065), so use an iPhone in Safari. |
 | **Digital calipers** *(recommended)* | For verifying the printed square size, and for the optional typed scale check (§7). Roughly $25. |
 | **The CAD file** *(buyer, optional)* | STL/OBJ/GLB. Required only if you want a verdict rather than just a model. |
 | **A flat, evenly lit surface** | Enough room to walk around the part, or to turn the sheet. |
