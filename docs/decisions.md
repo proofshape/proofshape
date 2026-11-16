@@ -1684,6 +1684,13 @@ nearest-rank) = 0.86 mm**, equal to `max_error_mm` here — with n = 5, nearest-
 maximum, reported alongside rather than implied to be a finer-grained percentile than 5 points
 support.
 
+*Run-to-run noise, found by the review's independent re-run, not investigated further here:*
+the reviewer's re-run agreed with these heights to within 0.03 mm on four of five specimens,
+but `g02_05` read +0.14 mm against this run's −0.14 mm — a 0.28 mm swing, plausibly the top-face
+search's 0.5 mm histogram bins. It doesn't change `sigma_floor_mm` here, but ~0.3 mm of run-to-
+run noise is a third of 0.86 mm, worth keeping in mind as a lower bound on how tight this figure
+can get without addressing the histogram bin width too.
+
 *Conditions this holds under:* landscape phone stills (G-08's capture convention), the board
 reference only (not app capture, not the sheet/card references — G-10's job), R-01's raw point
 cloud (not the R-07/R-08 mesh), **heights only — edges are an open gap, not covered**.
