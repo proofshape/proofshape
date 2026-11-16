@@ -42,9 +42,7 @@ describe("api against the contract stub", () => {
       baseUrl,
       {
         spec: {
-          features: [
-            { name: "mounting hole", kind: "hole", tolerance_mm: 2, critical: true },
-          ],
+          features: [{ name: "mounting hole", kind: "hole", tolerance_mm: 2, critical: true }],
           assumptions: [],
         },
         placementNote: "Arrow up",
@@ -56,9 +54,7 @@ describe("api against the contract stub", () => {
     if (result.ok) {
       expect(result.body.order_code).toMatch(/^PO-/);
       expect(result.body.spec).toEqual({
-        features: [
-          { name: "mounting hole", kind: "hole", tolerance_mm: 2, critical: true },
-        ],
+        features: [{ name: "mounting hole", kind: "hole", tolerance_mm: 2, critical: true }],
         assumptions: [],
       });
     }
