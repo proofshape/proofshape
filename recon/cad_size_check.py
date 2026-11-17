@@ -348,9 +348,7 @@ def _polygon_centroid(vertices_xy: np.ndarray) -> np.ndarray:
     twice_area = float(cross.sum())
     if abs(twice_area) < 1e-9:
         return vertices.mean(axis=0)
-    return ((vertices + shifted) * cross[:, None]).sum(axis=0) / (
-        3.0 * twice_area
-    )
+    return ((vertices + shifted) * cross[:, None]).sum(axis=0) / (3.0 * twice_area)
 
 
 def _approximate_hull_polygon(
@@ -401,8 +399,7 @@ def _pose_score(
     transformed edge with no observed wall also counts against the candidate.
     """
     transformed = [
-        (transform @ p0 + translation, transform @ p1 + translation)
-        for p0, p1 in edges
+        (transform @ p0 + translation, transform @ p1 + translation) for p0, p1 in edges
     ]
     observed_to_cad = _edge_segment_distances(blob_xy, transformed).min(axis=1)
 
@@ -412,10 +409,7 @@ def _pose_score(
     ]
     sample_t = np.linspace(0.0, 1.0, 9)
     cad_samples = np.concatenate(
-        [
-            p0[None, :] + sample_t[:, None] * (p1 - p0)[None, :]
-            for p0, p1 in transformed
-        ]
+        [p0[None, :] + sample_t[:, None] * (p1 - p0)[None, :] for p0, p1 in transformed]
     )
     cad_to_observed = _edge_segment_distances(
         cad_samples, hull_edges, slack_fraction=0.0
@@ -479,9 +473,7 @@ def _fit_rigid_2d(
         ):
             for shift in range(len(observed)):
                 target = np.roll(observed, -shift, axis=0)
-                transform, translation = _rigid_transform_no_scale(
-                    cad_vertices, target
-                )
+                transform, translation = _rigid_transform_no_scale(cad_vertices, target)
                 score = _pose_score(blob_xy, edges, transform, translation)
                 key = (score[0], score[1], reverse_index, shift)
                 if best is None or key < best[0]:
@@ -500,9 +492,7 @@ def _fit_rigid_2d(
         adjustment = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
         candidate_transform = adjustment @ transform
         candidate_translation = target_center - candidate_transform @ source_center
-        score = _pose_score(
-            blob_xy, edges, candidate_transform, candidate_translation
-        )
+        score = _pose_score(blob_xy, edges, candidate_transform, candidate_translation)
         key = (score[0], score[1], abs(delta))
         if refined is None or key < refined[0]:
             refined = (key, candidate_transform, candidate_translation)
@@ -510,8 +500,7 @@ def _fit_rigid_2d(
     assert refined is not None
     transform, translation = refined[1], refined[2]
     transformed = [
-        (transform @ p0 + translation, transform @ p1 + translation)
-        for p0, p1 in edges
+        (transform @ p0 + translation, transform @ p1 + translation) for p0, p1 in edges
     ]
     distances = _edge_line_distances(blob_xy, transformed)
     assignment = distances.argmin(axis=1)
@@ -534,17 +523,12 @@ def _fit_rigid_2d(
         raise ValueError(
             "Too few inlier points across distinct edge directions to fit the part's orientation."
         )
-    delta_translation, *_ = np.linalg.lstsq(
-        np.array(rows), np.array(rhs), rcond=None
-    )
+    delta_translation, *_ = np.linalg.lstsq(np.array(rows), np.array(rhs), rcond=None)
     translation = translation + delta_translation
     transformed = [
-        (transform @ p0 + translation, transform @ p1 + translation)
-        for p0, p1 in edges
+        (transform @ p0 + translation, transform @ p1 + translation) for p0, p1 in edges
     ]
-    residual = float(
-        np.median(_edge_line_distances(blob_xy, transformed).min(axis=1))
-    )
+    residual = float(np.median(_edge_line_distances(blob_xy, transformed).min(axis=1)))
     return transform, translation, residual, transformed
 
 
@@ -575,9 +559,7 @@ def _fit_wall_line(
         residuals = (points - center) @ normal
         median = float(np.median(residuals))
         mad = float(np.median(np.abs(residuals - median))) + 1e-9
-        updated = np.abs(residuals - median) < max(
-            1e-6, 3.0 * 1.4826 * mad
-        )
+        updated = np.abs(residuals - median) < max(1e-6, 3.0 * 1.4826 * mad)
         if updated.sum() < 5 or np.array_equal(updated, keep):
             break
         keep = updated
@@ -609,9 +591,7 @@ def _line_intersection(
             "Adjacent fitted wall lines are effectively parallel; cannot locate their corner."
         )
     delta = second_point - first_point
-    first_t = (
-        delta[0] * second_direction[1] - delta[1] * second_direction[0]
-    ) / cross
+    first_t = (delta[0] * second_direction[1] - delta[1] * second_direction[0]) / cross
     return first_point + first_t * first_direction
 
 
@@ -1049,9 +1029,7 @@ def measure_prism(
         normal = np.array([-unit_direction[1], unit_direction[0]])
         perpendicular = (band_xy[on_this_edge] - line_point) @ normal
         offset_mm = float(np.median(perpendicular))
-        spread_low, spread_high = np.percentile(
-            perpendicular - offset_mm, [10, 90]
-        )
+        spread_low, spread_high = np.percentile(perpendicular - offset_mm, [10, 90])
         edge_measurements.append(
             EdgeMeasurement(
                 cad_length_mm=cad_length_mm,
