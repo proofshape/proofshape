@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -416,7 +417,7 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
     monkeypatch.setattr(
         metric_alignment,
         "load_and_align",
-        lambda *args, **kwargs: {"scale": 1.0},
+        lambda *args, **kwargs: SimpleNamespace(scale=1.0, rms_residual_mm=2.0),
     )
     monkeypatch.setattr(
         metric_alignment, "write_alignment", lambda *args, **kwargs: None
@@ -483,7 +484,9 @@ def test_pipeline_maps_fuse_run_failures_to_a_named_fusion_error_not_a_generic_o
         lambda *args, **kwargs: {"status": "ok"},
     )
     monkeypatch.setattr(
-        metric_alignment, "load_and_align", lambda *args, **kwargs: {"scale": 1.0}
+        metric_alignment,
+        "load_and_align",
+        lambda *args, **kwargs: SimpleNamespace(scale=1.0, rms_residual_mm=2.0),
     )
     monkeypatch.setattr(
         metric_alignment, "write_alignment", lambda *args, **kwargs: None
@@ -500,6 +503,55 @@ def test_pipeline_maps_fuse_run_failures_to_a_named_fusion_error_not_a_generic_o
     assert excinfo.value.code == "metric_alignment_failed"
     assert "Fusion failed" in excinfo.value.message
     assert "run.json does not exist" in excinfo.value.message
+
+
+def test_pipeline_stops_before_fusion_when_alignment_residual_exceeds_the_gate(
+    tmp_path, monkeypatch
+):
+    # R-38/PR #358 review: load_and_align already rejects per-frame outliers before this point,
+    # but the live service never checked the final residual against any threshold -- the CLI's
+    # --max-residual-mm gate (metric_alignment.main) was never called by this pipeline, so a
+    # session this bad reached fusion (and the buyer) with no warning. fuse_run must never be
+    # called once this gate fires -- rejecting the whole session before spending GPU time on
+    # fusion it already knows isn't trustworthy is the point, not merely an optimisation.
+    from recon import board_pose, metric_alignment, reconstruction_runner, tsdf_fusion
+
+    capture_dir = tmp_path / "capture"
+    artifact_dir = tmp_path / "artifacts"
+    capture_dir.mkdir()
+
+    monkeypatch.setattr(
+        board_pose,
+        "estimate_board_poses",
+        lambda capture, out: {"posed_count": 3, "failure_counts": {}},
+    )
+    monkeypatch.setattr(
+        reconstruction_runner,
+        "run_on_capture",
+        lambda *args, **kwargs: {"status": "ok"},
+    )
+    monkeypatch.setattr(
+        metric_alignment,
+        "load_and_align",
+        lambda *args, **kwargs: SimpleNamespace(
+            scale=1.0,
+            rms_residual_mm=metric_alignment.DEFAULT_MAX_RESIDUAL_MM + 1.0,
+        ),
+    )
+    monkeypatch.setattr(
+        metric_alignment, "write_alignment", lambda *args, **kwargs: None
+    )
+    fuse_run_called = []
+    monkeypatch.setattr(
+        tsdf_fusion, "fuse_run", lambda *args, **kwargs: fuse_run_called.append(True)
+    )
+
+    with pytest.raises(service.ReconstructionFailure) as excinfo:
+        service.run_reconstruction_pipeline(capture_dir, artifact_dir)
+
+    assert excinfo.value.code == "metric_alignment_failed"
+    assert "residual" in excinfo.value.message
+    assert not fuse_run_called
 
 
 @pytest.mark.parametrize(

@@ -153,7 +153,7 @@ Full detail in each story file.
 | [R-13](R/R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Done | @TabeenRaoof |
 | [R-14](R/R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Done | @mbj1994 |
 | [R-15](R/R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Done | @TabeenRaoof |
-| [R-16](R/R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Claimed | @dalwalyk |
+| [R-16](R/R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Done | @dalwalyk |
 | [R-17](R/R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Done | @TabeenRaoof |
 | [R-18](R/R-18.md) | Produce and check TSDF-fused meshes on the golden set | 1 h | R-07 | Done | @dalwalyk |
 | [R-19](R/R-19.md) | Report per-vertex sigma distribution on the golden set | 1 h | R-10 | Done | @mbj1994 |
@@ -232,7 +232,7 @@ Full detail in each story file.
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Done | @dalwalyk |
 | [G-05](G/G-05.md) | Planted-defect parts: the control and the 4 mm hole shift | 4 h | nothing | Done | @TabeenRaoof |
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
-| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Ready | _unclaimed_ |
+| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Claimed | @dalwalyk |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Claimed | @TabeenRaoof |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Ready | _unclaimed_ |
@@ -457,7 +457,7 @@ Full detail in each story file.
 | [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Done | @dalwalyk |
 | [R-36](R/R-36.md) | Demo host: the reconstruction service on the M2 Max, rehearsed in the room (D-072) | 3 h | C-13, C-18, R-31 | Claimed | @TabeenRaoof |
 | [R-37](R/R-37.md) | cad_size_check: corner-to-corner edge measurement and a pose search that can't land wrong | 5 h | R-22 | Claimed | @mbj1994 |
-| [R-38](R/R-38.md) | R-23's alignment solve needs per-frame outlier rejection and a real residual gate | 4 h | R-23 | Claimed | @dalwalyk |
+| [R-38](R/R-38.md) | R-23's alignment solve needs per-frame outlier rejection and a real residual gate | 4 h | R-23 | Done | @dalwalyk |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Done | @mbj1994 |
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Claimed | @mbj1994 |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone | 3 h | C-13, C-20 | Done | @dalwalyk |
