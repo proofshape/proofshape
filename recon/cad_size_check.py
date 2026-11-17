@@ -1038,17 +1038,24 @@ def measure_prism(
     candidate_points = points[region]
     candidate_xy = candidate_points[:, :2]
     candidate_height = height[region]
+
+    # Preserve the pre-R-37 spatial isolation used by height detection: a compact, unrelated
+    # stray cluster can otherwise win the height histogram simply by containing more samples
+    # than the real top face. This deliberately uses the historical largest-connected-component
+    # rule with NO CAD-diameter plausibility gate; the latter is only for the mid-height pose
+    # cross-section and was shown by real g02_02 to be too aggressive before height detection.
+    height_blob_mask = _largest_connected_blob(candidate_xy)
+    candidate_points = candidate_points[height_blob_mask]
+    candidate_xy = candidate_xy[height_blob_mask]
+    candidate_height = candidate_height[height_blob_mask]
+
     footprint_rect = cv2.minAreaRect(prism.footprint_xy.astype(np.float32))
     expected_diameter_mm = math.hypot(
         float(footprint_rect[1][0]), float(footprint_rect[1][1])
     )
 
-    # Do not apply the footprint-diameter blob gate before detecting height. Real g02_02 has a
-    # valid, very dense part cloud whose candidate-region connectivity includes extra board/noise
-    # structure; the broad xy gate can otherwise select a tiny plausible-looking fragment and
-    # remove the true top face entirely. Height detection was already robust before R-37 and does
-    # not depend on 2-D pose. Apply the CAD-size plausibility gate only to the mid-height
-    # cross-section below, where outlier-connected blobs actually corrupt the pose fit.
+    # The CAD-size plausibility gate is still intentionally deferred until the mid-height
+    # cross-section below. Height uses only the historical connectivity filter above.
     # --- height: the densest height bin in the expected range is the top face --------------
     # Without confidence filtering, low-confidence stray points (R-17) pile up near the board
     # far more densely than the part itself, so searching the *whole* height range for the
