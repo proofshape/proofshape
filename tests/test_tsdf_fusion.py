@@ -974,12 +974,15 @@ def test_fuse_run_skips_a_frame_the_alignment_rejected(tmp_path):
     # R-38/PR #358 review: rejected_frame_names was written to metric_alignment.json but nothing
     # downstream read it, so a frame R-23's alignment rejected as an outlier (its own depth was
     # the problem) still reached fusion -- reintroducing exactly the bad data the rejection
-    # found, one stage later. frame_1's depth here is garbage (NaN everywhere); if it weren't
-    # skipped, it would corrupt the board-plane fit or crash outright. The result must match
+    # found, one stage later. frame_1's depth here is finite but 3mm wrong (not NaN), on purpose
+    # (mutation-tested, @TabeenRaoof's review): NaN depth is already excluded by np.isfinite
+    # regardless of the valid_depth[rejected]=False masking this test exists to cover, so an
+    # all-NaN bad frame passes this test even with that masking line deleted -- a finite,
+    # plausible-but-wrong frame is what actually exercises it. The result must match
     # test_fuse_run_writes_mesh_and_report's single-good-frame numbers exactly.
     run_dir = tmp_path / "run"
     good_depth = _board_and_part_depth()
-    bad_depth = np.full_like(good_depth, np.nan)
+    bad_depth = good_depth - 3.0
     depth = np.concatenate([good_depth, bad_depth], axis=0)
     extrinsic = np.concatenate([_SCENE_EXTRINSIC, _SCENE_EXTRINSIC], axis=0)
     intrinsic = np.concatenate([_SCENE_INTRINSIC, _SCENE_INTRINSIC], axis=0)

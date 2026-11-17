@@ -1868,9 +1868,11 @@ make safely. `recon/service.py`'s `VerdictResult.declared_at` already has an unu
 future story, not acted on here.
 *What's given up:* none of G-04's own aggregate is re-run or changed by this story (explicitly
 out of scope per R-38's acceptance criteria) — `g02_02` could now rejoin it, but that is a
-follow-up, not done here. `s-01`'s newly-rejected frame means its `metric_alignment.json` output
-changes going forward; other stories' historical numbers computed from the old (unrejected) s-01
-alignment are not retroactively audited or corrected here.
+follow-up, not done here. `s-01`'s newly-rejected frame changes more than its
+`metric_alignment.json`: its fused mesh and provenance output also now leave `IMG_3927.jpeg`
+out, the same as g02_02's does for `IMG_4665.JPG`. Other stories' historical numbers computed
+from the old (unrejected) s-01 alignment, fusion or provenance are not retroactively audited or
+corrected here.
 *Checked against D-028:* fetched all origin branches on 2026-11-16; D-074 (held on
 `capture/C-17-order-sheet-impl`) was highest anywhere, so D-075 was free.
 
