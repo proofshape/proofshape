@@ -1925,63 +1925,84 @@ corrected here.
 
 ---
 
-**D-077 · G-07: per-vertex sigma does not reliably predict per-vertex height error — k cannot be
-responsibly chosen from this curve.** (2026-11-17)
-`scripts/g07_reliability_curve.py` ran the R-07 (TSDF fusion) → R-08 (mesh cleanup) → R-09
-(provenance) → R-10 (uncertainty) chain fresh for every board-reference specimen with
-independent caliper height truth (`s-04`, `s-05` from G-06; `g02_01`–`g02_06` from G-03), pairing
-each near-top-face Observed vertex's own R-10 sigma with its height-above-board error against
-caliper truth — 1466 pairs across all 8 specimens.
+**D-077 · G-07: per-vertex sigma weakly but genuinely predicts per-vertex *scatter* — a
+provisional k ≈ 0.25, far below the planning prior of 3, not a negative result.** (2026-11-17,
+revised same day on review — PR #367, @TabeenRaoof and @mbj1994)
 
-*A real bug found and fixed first, from the numbers coming out wrong, not from guessing:* a
-first version fit the board plane from the served mesh's own vertices
-(`cad_size_check.fit_board_plane`) — but R-07 explicitly discards the board layer before meshing
-the part, so that mesh has few or no real board-level points to fit a plane from, and the fit was
-badly tilted/offset. Caught because per-vertex errors came out at 5–12 mm, ~10x G-04's own
-established 0.86 mm floor for the same feature — implausible as real noise. Fixed by reading the
-board plane R-07's own TSDF fusion already computed and re-anchored (R-30), from
-`mesh/tsdf_fusion.json`'s `board_surface` fields, instead of re-deriving one.
+`scripts/g07_reliability_curve.py` runs the R-04 (alignment) → R-07 (TSDF fusion) → R-08 (mesh
+cleanup) → R-09 (provenance) → R-10 (uncertainty) chain **fresh, every run** for every
+board-reference specimen with independent caliper height truth (`s-04`, `s-05` from G-06;
+`g02_01`–`g02_06` from G-03), pairing each near-top-face Observed vertex's own R-10 sigma with
+its *signed* height-above-board error against caliper truth — 1494 pairs across all 8 specimens.
 
-*The real result, once that was fixed:* most specimens land close to G-04's own figures — median
-|error| 0.15–0.86 mm for 7 of the 8 — except `g02_02` at 3.84 mm. That is the same `IMG_4665`
-bad-frame capture D-073/R-38 already found: R-38 patched `align_board_geometry` (R-23's
-board-anchored path), but `recon.tsdf_fusion.fuse_run` still places the mesh with the older,
-unpatched `align_camera_centres` path (`metric_alignment.json`) — confirmed here independently,
-via that same file's own `rms_residual_mm` (23.35 mm for `g02_02`, 2.08–3.91 mm for the other
-seven). Excluding `g02_02` (1373 pairs, 7 specimens): **k at 95% coverage = 0.87, Pearson
-r = −0.32.** Including it: k = 3.12 (coincidentally near the proposal's "planning prior of 3"),
-r = −0.22. Both correlations are weak and **negative** — the sigma bins' own mean |error| trends
-*down*, not up, as sigma increases (0.625 → 0.631 → 0.606 → 0.250 → 0.273 → 0.464 mm across six
-increasing-sigma bins, excluding `g02_02`).
+*Two real bugs found by review, independently reproduced here before touching any code, not
+taken on faith:*
 
-*Conclusion: sigma does not demonstrate a reliable positive relationship with real per-vertex
-height error in this measurement.* A numeric k is not chosen from this curve — doing so from a
-nonexistent-to-negative correlation would be exactly the "dressed-up tolerance" D-003 exists to
-prevent, k=3.12's superficial closeness to the planning prior notwithstanding. The proposal's "a
-planning prior of 3; the M3 measurement sets it" remains **unconfirmed**, not validated, by this
-story.
+1. **The first version's `g02_02` figure (3.84 mm) came from a stale cached alignment, not an
+   unpatched code path, as the first version of this decision wrongly claimed.** Checked
+   directly: `g02_02`'s cached `metric_alignment.json` carried `"alignment_anchor": "in-scene
+   ChArUco board geometry (R-23)"` — it *is* R-23's board-anchored output, just written before
+   R-38 merged. Re-running `metric_alignment.load_and_align` fresh gives **RMS residual
+   1.863 mm**, `IMG_4665.JPG` rejected — not 23.35 mm. `ensure_pipeline` silently trusted
+   whatever was already on disk. Fixed: it now calls `load_and_align` + `write_alignment`
+   unconditionally every run (the same two calls `recon/service.py`'s live path makes) and
+   rebuilds the entire mesh pipeline from that fresh alignment (`shutil.rmtree`s `mesh/` first).
+   No specimen needs excluding; the "legacy align_camera_centres path" claim in the first version
+   of this decision was simply wrong.
 
-*Caveats, stated not hidden, any of which could be masking or distorting a real relationship:*
-`error_mm` compares each vertex to **one** caliper reading per specimen (a single feature), while
-real top-face vertices span genuine surface geometry (tilt, print texture) that a single-point
-caliper reading cannot distinguish from reconstruction noise — some of what is counted as "error"
-here may be real shape, not noise. Near-top-face vertex selection is a percentile cut on each
+2. **The pooled correlation mixed each specimen's own systematic offset with its per-vertex
+   scatter, and sigma only claims to predict the scatter.** Independently reproduced: each
+   specimen sits at a near-constant *signed* offset from its own caliper height (`s-04` −0.73 mm,
+   `s-05` +0.46 mm, `g02_01` +0.23 mm, `g02_02` +0.12 mm, `g02_03` −0.51 mm, `g02_04` +0.15 mm,
+   `g02_05` +0.17 mm, `g02_06` +0.65 mm — all within D-073's 0.86 mm height floor), with much
+   smaller vertex-to-vertex scatter around that offset (MAD 0.04–0.25 mm). The two biggest
+   offsets (`s-04`, `g02_06`) happen to have the lowest median sigma, which is what made the
+   *pooled* absolute-error correlation negative (r = −0.30, reproduced here, close to the first
+   version's −0.22 to −0.32). R-10's sigma is the spread of depth residuals **at a vertex** — it
+   structurally cannot see a whole-part offset; that is `max(sigma, sigma_floor)`'s job (D-073),
+   specifically sigma_floor's. Removing each specimen's own median error before pooling
+   (`specimen_offsets_mm`/`scatter_pairs`) reverses the sign: **Pearson r = +0.24**, and mean
+   scatter rises across five of six increasing-sigma bins (0.053 → 0.111 → 0.100 → 0.156 → 0.186
+   → 0.243 mm — one small non-monotonic dip, not a clean monotone, but the overall trend is
+   clearly upward, not flat or falling).
+
+*The real conclusion: sigma shows a real, if modest, positive relationship with per-vertex
+scatter once the offset is removed — the first version's "weak negative correlation, sigma does
+not predict error" was an artefact of pooling offset and scatter together, not the honest result
+it was presented as.* **k at 95% coverage on the scatter-only pooling = 0.243.** This is a
+genuinely surprising direction: the planning prior of 3 assumed sigma *understates* real error,
+needing a 3x safety margin; this measurement says the opposite — sigma *overstates* real
+per-vertex scatter by roughly 4x. One concrete reason, independently reproduced: each fused
+vertex's sigma is the spread of a *single* depth residual, while each vertex typically averages
+25–29 of them (`residual_count`, read from `sigma_mm.npz`) going into its final position —
+dividing sigma by √(residual_count) gives r = +0.30 and a 95th-percentile ratio of 1.27, closer
+to (though still well below) 3. **Not proposed as `k`** — nothing downstream stores or serves a
+√(residual_count)-normalized sigma, only raw sigma — but it is the clearest available
+explanation for why the usable k differs from the planning prior by so much, and is worth
+carrying forward into whatever story next revisits this.
+
+**k ≈ 0.25 (measured: 0.243, scatter-only, 95% coverage, raw sigma) is this story's chosen
+value — provisional, not a settled calibration.** The evidence supporting it is real but modest:
+Pearson r = 0.24 (≈6% of variance), and within single specimens the sigma-scatter relationship
+is individually weak and mixed (ranging roughly −0.3 to +0.5 across the 8 specimens) — the pooled
+positive trend is a population-level signal across ~1500 vertices and 8 specimens, not a tight
+relationship any one specimen shows on its own. Whoever next revisits the verdict logic that
+consumes `k` should treat this as a first measurement worth re-running with more specimens, not
+a number to stop questioning.
+
+*Caveats, stated not hidden:* `error_mm` compares each vertex to **one** caliper reading per
+specimen; real top-face vertices span genuine surface geometry a single-point reading can't
+distinguish from reconstruction noise. Near-top-face vertex selection is a percentile cut on each
 mesh's own observed-height distribution (53–363 vertices per specimen after R-08's decimation +
-R-09's Observed-only filter), not `measure_prism`'s density-peak method used elsewhere in this
-codebase — simpler and necessary on data this sparse, but a different methodology than G-04's.
-The residual *scale* gap between the legacy alignment this mesh is placed with and R-23's
-board-anchored alignment (R-23's own measured range: sub-1%) is not corrected by reading
-`board_surface` — that only re-anchors tilt/offset, not scale.
+R-09's Observed-only filter), not `measure_prism`'s density-peak method — necessary on data this
+sparse (confirmed empirically: the density-peak search raises "too few points" on these meshes),
+but a different methodology than G-04's own. Only 8 specimens, ~1500 vertices total.
 
-*What this means going forward:* whoever next builds real verdict logic (the unused
-`declared_at: "post_reconstruction"` enum value in `recon/service.py` still looks purpose-built
-for exactly that) should not treat `k` as settled by this story, in either direction — not 3, not
-0.87. A future, better-powered or differently-instrumented repeat of this measurement is what
-would settle it, not this one.
-
-Recorded back in `stories/G/G-07.md`'s notes per this story's own acceptance criteria.
+Recorded back in `stories/G/G-07.md`'s notes, and in `stories/I/I-07.md` and `stories/I/I-09.md`
+(both now have a real `k` to cite instead of inheriting a silently-assumed one), per this
+story's own acceptance criteria.
 *Checked against D-028:* fetched all origin branches on 2026-11-17; D-076 (held on `main`) was
-highest anywhere, so D-077 was free.
+highest anywhere at the time of the first version of this decision, unchanged on this revision.
 
 ---
 

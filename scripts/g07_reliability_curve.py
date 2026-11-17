@@ -5,45 +5,55 @@ of 3; the M3 measurement sets it", D-032). Nothing has checked, until this story
 R-10's per-vertex sigma (`recon/uncertainty.py`) predicts real error at all -- `k` only means
 anything if it does.
 
-Runs the R-07 (TSDF fusion) -> R-08 (mesh cleanup) -> R-09 (provenance) -> R-10 (uncertainty)
-chain for every board-reference specimen with independent caliper height truth (`s-04`, `s-05`
-from G-06; `g02_01`..`g02_06` from G-03) -- idempotent, skipping stages whose output already
-exists, and CPU-only (R-01's `points.ply`/`poses.npz`/`depth.npz` are already cached, so this
-never re-runs VGGT). For each specimen, every near-top-face Observed vertex's own sigma
-(`uncertainty/sigma_mm.npz`) is paired with that same vertex's height-above-board error against
-the specimen's caliper height truth (`recon.cad_size_check.per_vertex_height_reliability`).
+Runs the R-04 (metric alignment) -> R-07 (TSDF fusion) -> R-08 (mesh cleanup) -> R-09
+(provenance) -> R-10 (uncertainty) chain fresh, every run, for every board-reference specimen
+with independent caliper height truth (`s-04`, `s-05` from G-06; `g02_01`..`g02_06` from G-03).
+For each specimen, every near-top-face Observed vertex's own sigma (`uncertainty/sigma_mm.npz`)
+is paired with that same vertex's *signed* height-above-board error against the specimen's
+caliper height truth (`recon.cad_size_check.per_vertex_height_reliability`).
 
-**A real bug found and fixed while building this (not from guessing, from the real numbers
-coming out wrong):** the board plane must be the one R-07's own TSDF fusion already computed and
-re-anchored (R-30's per-frame drift correction), written to `mesh/tsdf_fusion.json`'s
-`board_surface` -- *not* re-fit from the served/provenance mesh's own vertices. The TSDF-fused
-mesh only contains the segmented-out *part* (R-07 explicitly discards the board layer before
-meshing), so it has few or no real board-level points to fit a plane from at all; a first version
-of this script fit one anyway (`cad_size_check.fit_board_plane` on the mesh's own vertices) and
-it silently produced a badly tilted/offset plane -- caught because the resulting per-vertex
-height errors came out at 5-12 mm, roughly 10x G-04's own established ~0.86 mm floor for the same
-feature, which is implausible as real noise and was traced to this. `tsdf_fusion.json`'s
-`board_surface` fields (`slope_x`, `slope_y`, `z_at_origin_mm`) are the exact same
-`z = a*x + b*y + c` convention `cad_size_check.compute_height_above_board` expects, read directly
-rather than re-derived, guaranteeing consistency with how the mesh was actually built.
+**Two real bugs found and fixed while building this, from the numbers coming out wrong, not from
+guessing:**
 
-**A real, identified caveat, not fixed here:** the TSDF-fused mesh this story measures is placed
-using the legacy, unweighted R-04 `align_camera_centres` path (`metric_alignment.json`, read by
-`recon.tsdf_fusion.fuse_run`), not R-23's board-anchored `align_board_geometry` that G-04's own
-`measure_g04_board_error.py` uses (and that R-38 just patched with per-frame outlier rejection).
-These are two different alignment solves; R-23's own measured board_scale range (0.9971-0.9994
-across the golden set) suggests a *global scale* mismatch between them is a sub-1% effect, but it
-has not been measured for this mesh pipeline specifically (board_surface's own re-anchoring only
-corrects tilt/offset, not scale). Per-specimen error is reported alongside the pooled bins
-precisely so a systematic per-specimen offset (consistent with a residual scale effect) can be
-told apart from vertex-level scatter (what sigma should actually predict) by eye, rather than
-silently pooling the two together.
+1. The board plane must be the one R-07's own TSDF fusion already computed and re-anchored
+   (R-30's per-frame drift correction), written to `mesh/tsdf_fusion.json`'s `board_surface` --
+   *not* re-fit from the served/provenance mesh's own vertices. The TSDF-fused mesh only contains
+   the segmented-out *part* (R-07 discards the board layer before meshing), so it has few or no
+   real board-level points to fit a plane from at all. `tsdf_fusion.json`'s `board_surface`
+   fields (`slope_x`, `slope_y`, `z_at_origin_mm`) are the exact same `z = a*x + b*y + c`
+   convention `cad_size_check.compute_height_above_board` expects, read directly (`_read_board_
+   plane`) rather than re-derived.
+
+2. `ensure_pipeline` used to skip regenerating `metric_alignment.json` and the mesh pipeline when
+   their output already existed on disk -- but a *stale* cached `metric_alignment.json` (written
+   before R-38's per-frame outlier rejection merged) is indistinguishable from a fresh one by
+   that check alone. Caught on review (@TabeenRaoof, PR #367): `g02_02`'s cached file was R-23's
+   board-anchored output from before R-38, carrying a 23.35 mm RMS residual from the uncorrected
+   `IMG_4665` frame; the current code gives 1.863 mm with that frame rejected. This script now
+   regenerates the alignment unconditionally every run, the same two calls
+   `recon/service.py`'s live path makes (`metric_alignment.load_and_align` +
+   `metric_alignment.write_alignment`), and rebuilds the entire mesh pipeline fresh from it
+   (`ensure_pipeline` deletes `mesh/` before rebuilding) -- never R-01's own
+   `points.ply`/`poses.npz`/`depth.npz`, the one genuinely expensive step (VGGT), which this
+   script never touches.
+
+**Offset vs. scatter, not one pooled number (also from review):** each specimen sits at a
+near-constant *signed* offset from its own caliper height, with much smaller vertex-to-vertex
+scatter around that offset. R-10's sigma is the spread of depth residuals *at a vertex* -- it
+cannot see a whole-part systematic offset; that is `max(sigma, sigma_floor)`'s job (D-073),
+specifically sigma_floor's. Pooling raw absolute error across specimens mixes the two: if the
+specimens with the biggest offsets happen to have the lowest sigma (as they did before the
+fixes above), the pooled correlation can come out negative even though sigma genuinely tracks
+the scatter once the offset is removed. `specimen_offsets_mm`/`scatter_pairs` isolate that
+scatter; `pool_pairs` keeps the raw, offset-contaminated pooling for comparison. Both are
+reported; D-077 draws the conclusion from the scatter-only one, since that is what the story's
+own acceptance criteria ("does sigma predict error") actually asks about.
 
 `k` is reported as a measured figure (the coverage-fraction ratio of error to sigma, plus the
-pooled Pearson correlation between them) -- whether that figure means sigma reliably predicts
-error, or doesn't, is this story's own judgement call once the real numbers are in, not a
-threshold hardcoded here (same reason G-04's own aggregate is computed by script but interpreted
-in its decision entry, not auto-verdicted).
+Pearson correlation), on both poolings -- whether either means sigma reliably predicts error is
+this story's own judgement call once the real numbers are in, not a threshold hardcoded here
+(same reason G-04's own aggregate is computed by script but interpreted in its decision entry,
+not auto-verdicted).
 
     python scripts/g07_reliability_curve.py [--out PATH] [--bin-count N] [--coverage 0.95]
 """
@@ -52,6 +62,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import statistics
 import sys
 from pathlib import Path
@@ -59,6 +70,7 @@ from typing import Any
 
 import numpy as np
 
+from recon import metric_alignment
 from recon.cad_size_check import per_vertex_height_reliability
 from recon.mesh_cleanup import cleanup_run
 from recon.provenance import provenance_run
@@ -77,19 +89,12 @@ SPECIMEN_IDS = (
 )
 
 RECON_RUN_ROOT = Path("fixtures/data/recon_runs")
+BOARD_POSE_ROOT = Path("fixtures/data/board_poses")
 CALIPER_G03_PATH = Path("fixtures/caliper_g-03.json")
 CALIPER_G06_PATH = Path("fixtures/caliper_g-06.json")
 
 DEFAULT_BIN_COUNT = 6
 DEFAULT_COVERAGE = 0.95
-
-# The real observed range for this run's 8 specimens: 2.08-3.91mm for 7 of them, 23.35mm for
-# g02_02 -- the same IMG_4665 bad-frame issue D-073/R-38 found in R-23's board-anchored path,
-# still present here since R-38 only patched align_board_geometry, not this legacy
-# align_camera_centres path tsdf_fusion.fuse_run still reads from metric_alignment.json (see the
-# module docstring). 10mm is a generous threshold well above the normal range, not reverse-fit
-# tightly around g02_02's own value.
-MAX_LEGACY_ALIGNMENT_RMS_RESIDUAL_MM = 10.0
 
 
 def _caliper_height_truth_mm(specimen_id: str) -> float:
@@ -110,26 +115,34 @@ def _caliper_height_truth_mm(specimen_id: str) -> float:
 
 
 def ensure_pipeline(specimen_id: str) -> Path:
-    """Run R-07->R-10 for `specimen_id` if their outputs don't already exist, and return the
-    mesh dir (`tsdf_fusion.json`, `provenance/`, `uncertainty/`). Idempotent and CPU-only: R-01's
-    `points.ply`/`poses.npz`/`depth.npz` are already cached, so this never re-runs VGGT.
+    """Rebuild R-04 (alignment) -> R-07 -> R-08 -> R-09 -> R-10 for `specimen_id` fresh, every
+    run -- never trust a cached mesh or alignment that might predate the code that built them
+    (see the module docstring: a stale `metric_alignment.json` silently carried a pre-R-38
+    23.35 mm residual for `g02_02`). CPU-only: R-01's own `points.ply`/`poses.npz`/`depth.npz`
+    (the one genuinely expensive step, VGGT) are never touched or regenerated here.
     """
     run_dir = RECON_RUN_ROOT / specimen_id
+    board_pose_dir = BOARD_POSE_ROOT / specimen_id
     alignment_json = run_dir / "metric_alignment.json"
     mesh_dir = run_dir / "mesh"
+
+    # The same two calls recon/service.py's live path makes (metric_alignment.load_and_align +
+    # write_alignment) -- this script can never again drift from what production actually does.
+    alignment = metric_alignment.load_and_align(run_dir, board_pose_dir)
+    metric_alignment.write_alignment(alignment_json, alignment)
+
+    if mesh_dir.exists():
+        shutil.rmtree(mesh_dir)
+
     mesh_ply = mesh_dir / "mesh.ply"
     mesh_clean_glb = mesh_dir / "mesh_clean.glb"
     provenance_dir = mesh_dir / "provenance"
     uncertainty_dir = mesh_dir / "uncertainty"
 
-    if not mesh_ply.exists():
-        fuse_run(run_dir, alignment_json, mesh_dir)
-    if not mesh_clean_glb.exists():
-        cleanup_run(mesh_ply, mesh_clean_glb)
-    if not (provenance_dir / "mesh_provenance.glb").exists():
-        provenance_run(mesh_clean_glb, run_dir, alignment_json, provenance_dir)
-    if not (uncertainty_dir / "sigma_mm.npz").exists():
-        uncertainty_run(provenance_dir, uncertainty_dir)
+    fuse_run(run_dir, alignment_json, mesh_dir)
+    cleanup_run(mesh_ply, mesh_clean_glb)
+    provenance_run(mesh_clean_glb, run_dir, alignment_json, provenance_dir)
+    uncertainty_run(provenance_dir, uncertainty_dir)
     return mesh_dir
 
 
@@ -156,30 +169,77 @@ def measure_specimen(specimen_id: str) -> dict[str, Any]:
     board_plane = _read_board_plane(mesh_dir)
     caliper_height_truth_mm = _caliper_height_truth_mm(specimen_id)
 
-    alignment = json.loads(
-        (RECON_RUN_ROOT / specimen_id / "metric_alignment.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    legacy_alignment_rms_residual_mm = alignment["rms_residual_mm"]
-    legacy_alignment_ok = (
-        legacy_alignment_rms_residual_mm <= MAX_LEGACY_ALIGNMENT_RMS_RESIDUAL_MM
-    )
-
     pairs = per_vertex_height_reliability(
         served_glb, sigma_mm, board_plane, caliper_height_truth_mm
     )
-    errors_mm = [error for _sigma, error in pairs]
     return {
         "specimen_id": specimen_id,
         "caliper_height_truth_mm": caliper_height_truth_mm,
-        "legacy_alignment_rms_residual_mm": legacy_alignment_rms_residual_mm,
-        "legacy_alignment_ok": legacy_alignment_ok,
-        "vertex_count": len(pairs),
-        "median_abs_error_mm": statistics.median(errors_mm) if errors_mm else None,
-        "mean_abs_error_mm": statistics.fmean(errors_mm) if errors_mm else None,
         "pairs": pairs,
     }
+
+
+def pool_pairs(results: list[dict[str, Any]]) -> list[tuple[float, float]]:
+    """Pool every result's (sigma_mm, signed_error_mm) pairs into (sigma_mm, abs_error_mm) --
+    mixes each specimen's own systematic offset with its vertex-level scatter. Kept for
+    transparency/comparison with `scatter_pairs`, which removes the offset first; see the module
+    docstring for why that mixing can flip the sign of a pooled correlation."""
+    return [
+        (sigma, abs(error)) for result in results for sigma, error in result["pairs"]
+    ]
+
+
+def specimen_offsets_mm(results: list[dict[str, Any]]) -> dict[str, float]:
+    """Each specimen's own median *signed* error -- the systematic, whole-part offset R-10's
+    sigma cannot see (sigma is the spread of depth residuals at a vertex; a whole-part offset is
+    sigma_floor's job, D-073's `max(sigma, sigma_floor)`)."""
+    return {
+        result["specimen_id"]: statistics.median(
+            error for _sigma, error in result["pairs"]
+        )
+        for result in results
+        if result["pairs"]
+    }
+
+
+def specimen_summary(
+    results: list[dict[str, Any]], offsets: dict[str, float]
+) -> list[dict[str, Any]]:
+    """Per-specimen offset/scatter/sigma table: median signed error (the offset), median
+    absolute deviation from that offset (the scatter), median sigma."""
+    summary: list[dict[str, Any]] = []
+    for result in results:
+        pairs = result["pairs"]
+        offset = offsets.get(result["specimen_id"])
+        sigmas = [sigma for sigma, _error in pairs]
+        scatter = (
+            [abs(error - offset) for _sigma, error in pairs]
+            if offset is not None
+            else []
+        )
+        summary.append(
+            {
+                "specimen_id": result["specimen_id"],
+                "vertex_count": len(pairs),
+                "median_signed_error_mm": offset,
+                "mad_scatter_mm": statistics.median(scatter) if scatter else None,
+                "median_sigma_mm": statistics.median(sigmas) if sigmas else None,
+            }
+        )
+    return summary
+
+
+def scatter_pairs(
+    results: list[dict[str, Any]], offsets: dict[str, float]
+) -> list[tuple[float, float]]:
+    """(sigma_mm, abs(error_mm - that specimen's own offset)) -- isolates the per-vertex scatter
+    sigma actually claims to predict, with each specimen's whole-part offset removed first."""
+    return [
+        (sigma, abs(error - offsets[result["specimen_id"]]))
+        for result in results
+        if result["specimen_id"] in offsets
+        for sigma, error in result["pairs"]
+    ]
 
 
 def bin_by_sigma(
@@ -261,59 +321,44 @@ def build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def pool_pairs(
-    results: list[dict[str, Any]], *, require_legacy_alignment_ok: bool = False
-) -> list[tuple[float, float]]:
-    """Pool every result's (sigma_mm, abs_error_mm) pairs. When `require_legacy_alignment_ok`,
-    specimens whose legacy alignment's rms_residual_mm exceeded
-    `MAX_LEGACY_ALIGNMENT_RMS_RESIDUAL_MM` are skipped entirely -- their part measurement is
-    evidence the alignment failed for that one capture, not evidence about per-vertex
-    reliability (same reasoning G-04's own `aggregate()` uses for its own specimen exclusion)."""
-    return [
-        pair
-        for result in results
-        if not require_legacy_alignment_ok or result["legacy_alignment_ok"]
-        for pair in result["pairs"]
-    ]
-
-
 def main(argv: list[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
 
     results = []
     for specimen_id in SPECIMEN_IDS:
         print(f"G-07: measuring {specimen_id}...", file=sys.stderr)
-        results.append(measure_specimen(specimen_id))
+        result = measure_specimen(specimen_id)
+        results.append(result)
+        print(f"  {specimen_id}: n={len(result['pairs'])}", file=sys.stderr)
 
-    all_pairs = pool_pairs(results)
-    bins = bin_by_sigma(all_pairs, bin_count=args.bin_count)
-    k_estimate = measure_k(all_pairs, coverage=args.coverage)
+    offsets = specimen_offsets_mm(results)
+    summary = specimen_summary(results, offsets)
 
-    excluded_specimen_ids = [
-        result["specimen_id"] for result in results if not result["legacy_alignment_ok"]
-    ]
-    clean_pairs = pool_pairs(results, require_legacy_alignment_ok=True)
-    clean_bins = bin_by_sigma(clean_pairs, bin_count=args.bin_count)
-    clean_k_estimate = measure_k(clean_pairs, coverage=args.coverage)
+    pooled_pairs = pool_pairs(results)
+    pooled_bins = bin_by_sigma(pooled_pairs, bin_count=args.bin_count)
+    pooled_k = measure_k(pooled_pairs, coverage=args.coverage)
+
+    scattered_pairs = scatter_pairs(results, offsets)
+    scatter_bins = bin_by_sigma(scattered_pairs, bin_count=args.bin_count)
+    scatter_k = measure_k(scattered_pairs, coverage=args.coverage)
 
     evidence = {
         "story": "G-07",
-        "specimens": [
-            {k: v for k, v in result.items() if k != "pairs"}
-            | {"pair_count": len(result["pairs"])}
-            for result in results
-        ],
-        "pairs": all_pairs,
-        "bins": bins,
-        "k_estimate": k_estimate,
-        "excluded_specimen_ids": excluded_specimen_ids,
-        "clean_bins": clean_bins,
-        "clean_k_estimate": clean_k_estimate,
-        "clean_note": (
-            f"bins/k_estimate recomputed excluding specimens whose legacy "
-            f"metric_alignment.json rms_residual_mm exceeds "
-            f"{MAX_LEGACY_ALIGNMENT_RMS_RESIDUAL_MM}mm ({excluded_specimen_ids}) -- see the "
-            "module docstring for why this specific legacy-alignment path is still unpatched."
+        "specimen_summary": summary,
+        "pooled_pairs": pooled_pairs,
+        "pooled_bins": pooled_bins,
+        "pooled_k_estimate": pooled_k,
+        "pooled_note": (
+            "offset-contaminated: each specimen's own systematic offset is mixed in with its "
+            "vertex-level scatter. Kept for comparison; see scatter_* for what sigma actually "
+            "claims to predict."
+        ),
+        "scatter_pairs": scattered_pairs,
+        "scatter_bins": scatter_bins,
+        "scatter_k_estimate": scatter_k,
+        "scatter_note": (
+            "each specimen's own median signed error (its offset) is subtracted before "
+            "pooling -- isolates the per-vertex scatter sigma actually claims to predict."
         ),
     }
 
@@ -323,34 +368,33 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     print(
-        f"G-07 RELIABILITY: {len(all_pairs)} vertex pairs across {len(results)} specimens"
+        f"G-07 RELIABILITY: {len(pooled_pairs)} vertex pairs across {len(results)} specimens"
     )
-    for result in results:
+    print("  specimen | n | offset (signed) | scatter (MAD) | median sigma")
+    for row in summary:
         print(
-            f"  {result['specimen_id']}: n={result['vertex_count']}, "
-            f"median|error|={result['median_abs_error_mm']}, "
-            f"mean|error|={result['mean_abs_error_mm']}"
+            f"    {row['specimen_id']}: n={row['vertex_count']}, "
+            f"offset={row['median_signed_error_mm']}, "
+            f"scatter={row['mad_scatter_mm']}, "
+            f"median_sigma={row['median_sigma_mm']}"
         )
-    print("  sigma bins:")
-    for bin_ in bins:
+    print(
+        f"  pooled (offset+scatter mixed): k at {pooled_k['coverage']:.0%} coverage: "
+        f"{pooled_k['k_at_coverage']}, pearson r: {pooled_k['pearson_correlation']}"
+    )
+    for bin_ in pooled_bins:
         print(
-            f"    sigma in {bin_['sigma_range_mm']}: n={bin_['vertex_count']}, "
+            f"    pooled sigma in {bin_['sigma_range_mm']}: n={bin_['vertex_count']}, "
             f"mean|error|={bin_['mean_abs_error_mm']:.3f} mm, "
             f"p95|error|={bin_['p95_abs_error_mm']:.3f} mm"
         )
     print(
-        f"  k at {k_estimate['coverage']:.0%} coverage: {k_estimate['k_at_coverage']}, "
-        f"pearson r: {k_estimate['pearson_correlation']}"
+        f"  scatter-only (offset removed): k at {scatter_k['coverage']:.0%} coverage: "
+        f"{scatter_k['k_at_coverage']}, pearson r: {scatter_k['pearson_correlation']}"
     )
-    print(
-        f"  excluding known-bad legacy alignment ({excluded_specimen_ids}): "
-        f"{len(clean_pairs)} pairs, k at {clean_k_estimate['coverage']:.0%} coverage: "
-        f"{clean_k_estimate['k_at_coverage']}, pearson r: "
-        f"{clean_k_estimate['pearson_correlation']}"
-    )
-    for bin_ in clean_bins:
+    for bin_ in scatter_bins:
         print(
-            f"    clean sigma in {bin_['sigma_range_mm']}: n={bin_['vertex_count']}, "
+            f"    scatter sigma in {bin_['sigma_range_mm']}: n={bin_['vertex_count']}, "
             f"mean|error|={bin_['mean_abs_error_mm']:.3f} mm, "
             f"p95|error|={bin_['p95_abs_error_mm']:.3f} mm"
         )

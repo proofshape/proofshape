@@ -496,12 +496,12 @@ def test_per_vertex_height_reliability_pairs_sigma_with_height_error(
 
     assert len(pairs_full) >= 30
     sigmas = [s for s, _err in pairs_full]
-    errors = [err for _s, err in pairs_full]
+    errors = [err for _s, err in pairs_full]  # signed, not abs (D-077)
     # noise_mm=0.0, so the top 10% of this mesh's own observed heights sits very close to 60.0mm
-    # -- the 0.3mm gap to the 59.7mm caliper truth is most pairs' error.
+    # -- the +0.3mm gap to the 59.7mm caliper truth is most pairs' signed error.
     assert sigmas == pytest.approx([1.5] * len(pairs_full))
     assert np.median(errors) == pytest.approx(0.3, abs=0.1)
-    assert max(errors) < 5.0
+    assert max(abs(e) for e in errors) < 5.0
 
     # A NaN sigma (fewer than 2 observations, R-10's own convention) is dropped, not propagated.
     # Every other vertex, not a contiguous half: _synthesize_prism_points appends wall points
@@ -517,6 +517,36 @@ def test_per_vertex_height_reliability_pairs_sigma_with_height_error(
 
     assert len(pairs_alternating) < len(pairs_full)
     assert all(not math.isnan(s) for s, _err in pairs_alternating)
+
+
+def test_per_vertex_height_reliability_uses_a_nonlevel_board_plane(
+    tmp_path: Path,
+) -> None:
+    """Regression test for D-077: a first version of this function recommended re-fitting
+    board_plane on the served mesh's own (board-free) vertices, which silently produced a badly
+    tilted/offset plane. Every other test in this file passes board_plane=(0,0,0), which would
+    pass identically whether or not the plane argument is actually used -- this one passes a
+    plane with a real z-offset and asserts the resulting errors shift by exactly that offset,
+    which only holds if board_plane genuinely propagates through to the height computation."""
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    path = tmp_path / "mesh_uncertainty.glb"
+    vertices = _labelled_prism_glb(path, prism, rng=np.random.default_rng(22))
+    sigma_full = np.full(len(vertices), 1.5)
+
+    level_pairs = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.0, 0.0, 0.0), caliper_height_truth_mm=59.7
+    )
+    # z = a*x + b*y + c: compute_height_above_board's sign convention is
+    # height = -(z - (a*x+b*y+c)) = c - z, so raising c by 5mm raises every computed
+    # height-above-board (and so every error) by exactly 5mm too.
+    offset_pairs = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.0, 0.0, 5.0), caliper_height_truth_mm=59.7
+    )
+
+    assert len(level_pairs) == len(offset_pairs)
+    level_errors = sorted(err for _s, err in level_pairs)
+    offset_errors = sorted(err for _s, err in offset_pairs)
+    assert offset_errors == pytest.approx([e + 5.0 for e in level_errors], abs=1e-6)
 
 
 # --- G-04: board pitch correction, caliper truth ------------------------------------------------
