@@ -1815,21 +1815,41 @@ Separately, the MAD-trim threshold has no absolute floor — on a capture whose 
 happen to agree very tightly (`s-03`'s threshold is 4.62 mm), a frame only a few mm off could
 still be rejected. That costs a frame's worth of observations, not correctness, so it's left as
 is, not a bug.
-*Rejected frames are also skipped at fusion, not only at alignment (review on PR #358,
-@TabeenRaoof, caught after the first version of this fix only touched alignment):*
-`rejected_frame_names` was written to `metric_alignment.json` but nothing downstream read it, so
-a rejected frame's depth — exactly the bad data the rejection found — still reached
-`tsdf_fusion.fuse_run`. Confirmed live: once g02_02's alignment was fixed in isolation, fusion
-then failed outright on `IMG_4665`'s own depth (R-30's per-frame re-anchoring correctly refused
-it), with an error that didn't name the real cause — safer than silently fusing bad geometry,
-but not the recovery this decision originally described. `fuse_run` now drops any frame named in
-`rejected_frame_names` before any of its depth reaches the volume. Confirmed this actually lets
-g02_02 recover end to end (review, scratch test deleting `IMG_4665` from a copy of its
-`poses.npz`/`depth.npz`): alignment unchanged at 1.859 mm, fusion runs cleanly on the remaining
-29 frames, and `cad_size_check.build_report` then gives a board scale of 0.9989 and a height
-error of −0.17 mm against caliper truth — inside D-073's 0.86 mm σ_floor. `g02_02` rejoining
-G-04's aggregate (still a follow-up, not done in this story) now has real evidence it would land
-inside tolerance, not just a plausible guess that it might.
+*Rejected frames must stay excluded through every later stage too, not only alignment — this
+took two review rounds to get right, and both rounds' real findings are kept here, not
+smoothed over:*
+
+Round one (@TabeenRaoof): `rejected_frame_names` was written to `metric_alignment.json` but
+nothing downstream read it, so a rejected frame's depth — exactly the bad data the rejection
+found — still reached `tsdf_fusion.fuse_run`. Confirmed live: once g02_02's alignment was fixed
+in isolation, fusion then failed outright on `IMG_4665`'s own depth (R-30's per-frame
+re-anchoring correctly refused it), with an error that didn't name the real cause.
+
+**The first fix for this was itself wrong, and review caught it (round two, @TabeenRaoof and
+@mbj1994):** it removed the rejected frame from `fuse_run`'s arrays entirely, shrinking the frame
+axis. `provenance_run` and `completion.choose_view_frame` both index frames by *position* into
+`poses.npz`'s own full list, so this silently misaligned every frame after the rejected one —
+surfaced as `provenance_run` crashing on a `corrected_extrinsic.npz` shape mismatch, which is
+worse than the round-one bug (that one failed loudly at fusion; this one would have failed, or
+silently misattributed observations, one stage further in). Fixed properly: `fuse_run` and
+`provenance_run` both now mark a rejected frame's pixels untrusted (`valid_depth`/
+`trusted_pixel_mask` set `False` for its rows) without ever changing the frame axis's length —
+`reanchor_frames_to_board` gained a `skip_frame_indices` parameter so it doesn't also try (and
+correctly fail) to fit a per-frame correction on a frame already known bad. `corrected_
+extrinsic.npz` is now always written at the same length `poses.npz` has, rejected frame
+included, holding just its unreanchored global-alignment value.
+
+**Confirmed for real this time, the whole way through, not assumed from a scratch-file
+check:** ran `metric_alignment.load_and_align` → `tsdf_fusion.fuse_run` →
+`mesh_cleanup.cleanup_run` → `provenance.provenance_run` on g02_02's actual captured data, in
+that order, exactly as `run_reconstruction_pipeline` does. Alignment: 1.863 mm, `IMG_4665.JPG`
+rejected. Fusion: succeeds, `frame_count=30` (not shrunk). Provenance: succeeds,
+`extrinsic_source="reanchored"` (confirms it read fusion's real `corrected_extrinsic.npz` with
+no shape error), `observed_fraction≈0.887`. Separately, `cad_size_check.build_report` on this
+same alignment gives a board scale of 0.9989 and a height of −0.17 mm against caliper truth —
+inside D-073's 0.86 mm σ_floor. `g02_02` rejoining G-04's aggregate (still a follow-up, not done
+in this story) now has real evidence across the *entire* live chain, not just one downstream
+measurement script.
 *The live service never checked the residual either, only the CLI did (review on PR #358,
 @mbj1994):* `recon/service.py::run_reconstruction_pipeline` called `metric_alignment.load_and_
 align` directly and went straight to fusion, never through `metric_alignment.main`, so
