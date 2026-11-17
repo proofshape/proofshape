@@ -419,6 +419,7 @@ def _rigid_transform_no_scale(
     translation = target_center - transform @ source_center
     return transform, translation
 
+
 def _pose_score(
     blob_xy: np.ndarray,
     edges: list[tuple[np.ndarray, np.ndarray]],
