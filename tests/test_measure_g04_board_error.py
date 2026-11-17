@@ -115,6 +115,51 @@ def _result(
     }
 
 
+def test_measure_specimen_records_pose_and_raw_edges_for_r37(
+    tmp_path: Path, monkeypatch
+) -> None:
+    recon_dir = tmp_path / "recon"
+    board_dir = tmp_path / "board"
+    cad_path = tmp_path / "part.stl"
+    monkeypatch.setattr(
+        m,
+        "ensure_reconstruction",
+        lambda specimen_id, device: (recon_dir, board_dir),
+    )
+    monkeypatch.setattr(m, "_reference_cad_path", lambda specimen_id: cad_path)
+    monkeypatch.setattr(
+        m,
+        "build_report",
+        lambda *args, **kwargs: {
+            "board_scale": {"scale": 0.998, "rms_residual_mm": 2.1},
+            "prism": {
+                "rotation_deg": 37.25,
+                "alignment_residual_mm": 0.42,
+                "edges": [
+                    {"cad_length_mm": 30.0, "measured_length_mm": 29.95},
+                    {"cad_length_mm": 40.0, "measured_length_mm": 40.08},
+                ],
+                "caliper": {
+                    "edges": [{"caliper_error_mm": -0.05}],
+                    "height": {"caliper_error_mm": 0.1},
+                },
+            },
+        },
+    )
+
+    result = m.measure_specimen(
+        "g02_01",
+        "mps",
+        {"g02_01": []},
+        (160.16, 120.55),
+    )
+
+    assert result["prism_rotation_deg"] == pytest.approx(37.25)
+    assert result["prism_alignment_residual_mm"] == pytest.approx(0.42)
+    assert result["prism_edges"][0]["measured_length_mm"] == pytest.approx(29.95)
+    assert result["caliper"]["edges"][0]["caliper_error_mm"] == pytest.approx(-0.05)
+
+
 def test_aggregate_pools_only_heights_ignoring_edges() -> None:
     # Edges here are huge (-80/90 mm) and must never enter the aggregate -- only height does,
     # per review on PR #348 (measure_prism/_fit_rigid_2d aren't trustworthy for edges yet).
