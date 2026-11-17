@@ -49,6 +49,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Running this file directly sets sys.path[0] to scripts/, while importing it as a module sets
+# sys.path[0] to the repository root. Put the checked-out repository first explicitly so both
+# entry styles import the exact same recon package instead of a stale editable/site-packages copy.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+repo_root_text = str(REPO_ROOT)
+if not sys.path or sys.path[0] != repo_root_text:
+    sys.path.insert(0, repo_root_text)
+
 from recon import board_pose, metric_alignment, vggt_runner
 from recon.cad_size_check import build_report
 from recon.vggt_runner import DEFAULT_MIN_CONFIDENCE
