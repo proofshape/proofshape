@@ -27,6 +27,28 @@ without a justifying `assumptions` entry, but `recon/order_store.py` stores a bu
 spec as an opaque, unvalidated `dict` -- an order created any other way can still carry one). A
 null tolerance is refused outright, never defaulted to "ok" or "unverifiable" against a number
 that isn't there (the same "no invented number" discipline A-03 itself applies).
+
+**Feature kind matters, found on review (@mbj1994, PR #372): the height floor does not apply to
+every kind.** A-03's `SpecFeature.kind` is `Literal["hole", "face", "edge", "overall"]` --
+`"hole"` and `"edge"` are in-plane measurements (a diameter, a length), not the vertical,
+out-of-plane dimension D-073's 0.86 mm floor was actually measured against (G-04's top-face
+height-above-board). The first version of this module read no `kind` at all and applied the
+height floor to every feature regardless, which could under-flag an in-plane tolerance as `ok`.
+
+**Not fixed by switching to R-37's in-plane floor (D-078, 5.278 mm): that decision is on an
+unmerged, unreviewed branch (PR #364) as of this fix, not something to depend on yet.** Using an
+unreviewed number here would be exactly the kind of unverified figure D-003 warns against, just
+one layer removed. `"hole"`/`"edge"` are refused instead -- honest about not having a verified
+in-plane floor on `main` yet, rather than silently misapplying the height one. Revisit once
+PR #364 merges and `D-078` is stable.
+
+`"face"`/`"overall"` keep using the height floor, as a **named, stated assumption**, not a
+default nobody chose: a face or an overall-size check is read here as checking against the
+part's measured dimension in the same sense G-04's own height figure was measured (the
+dimension perpendicular to the board), which is the closest of the two measured floors to what
+those two kinds plausibly mean. This is an assumption, not a verified mapping -- revisit if a
+real per-kind convention is ever written down. An unrecognised or missing `kind` is refused,
+not assumed to be either tier.
 """
 
 from __future__ import annotations
@@ -44,6 +66,11 @@ D077_K = 0.70
 
 UNVERIFIABLE_THRESHOLD_MM = D077_K * D073_SIGMA_FLOOR_BOARD_MM
 
+# Kinds read here as out-of-plane (checked against the height floor, as a stated assumption --
+# see the module docstring) versus in-plane (no verified-on-main floor exists yet; refused).
+HEIGHT_LIKE_KINDS = frozenset({"face", "overall"})
+IN_PLANE_KINDS = frozenset({"hole", "edge"})
+
 
 def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """Check every feature in `spec["features"]` against the board tier's Unverifiable
@@ -58,6 +85,8 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
     for feature in spec.get("features", []):
         name = feature.get("name", "<unnamed feature>")
         tolerance_mm = feature.get("tolerance_mm")
+        kind = feature.get("kind")
+
         if tolerance_mm is None:
             results.append(
                 {
@@ -68,6 +97,36 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
             continue
+
+        if kind in IN_PLANE_KINDS:
+            results.append(
+                {
+                    "feature_name": name,
+                    "tolerance_mm": tolerance_mm,
+                    "status": "refused",
+                    "reason": (
+                        f"kind={kind!r} is an in-plane measurement; no verified in-plane "
+                        "sigma_floor exists on main yet (R-37/D-078 pending review, PR #364). "
+                        "Refused, not checked against the height floor."
+                    ),
+                }
+            )
+            continue
+
+        if kind not in HEIGHT_LIKE_KINDS:
+            results.append(
+                {
+                    "feature_name": name,
+                    "tolerance_mm": tolerance_mm,
+                    "status": "refused",
+                    "reason": (
+                        f"kind={kind!r} is unrecognised; refused rather than assumed to be "
+                        "either the height or the in-plane tier."
+                    ),
+                }
+            )
+            continue
+
         if tolerance_mm < UNVERIFIABLE_THRESHOLD_MM:
             results.append(
                 {

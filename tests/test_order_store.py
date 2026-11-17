@@ -332,11 +332,13 @@ def test_order_response_surfaces_intake_check_for_an_unverifiable_feature(tmp_pa
         buyer_key="buyer-secret",
     )
     with TestClient(app) as client:
+        # Both height-like kinds (face/overall) -- an in-plane kind (hole/edge) is refused, not
+        # checked against this threshold at all (see test_intake_check.py for that case).
         spec = {
             "features": [
                 {
-                    "name": "mounting_hole_A",
-                    "kind": "hole",
+                    "name": "top_face_A",
+                    "kind": "face",
                     "tolerance_mm": 0.1,
                     "critical": True,
                 },
@@ -358,7 +360,7 @@ def test_order_response_surfaces_intake_check_for_an_unverifiable_feature(tmp_pa
         checks = {
             r["feature_name"]: r["status"] for r in created.json()["intake_check"]
         }
-        assert checks == {"mounting_hole_A": "unverifiable", "overall_B": "ok"}
+        assert checks == {"top_face_A": "unverifiable", "overall_B": "ok"}
 
         fetched = client.get(f"/v1/orders/{created.json()['order_code']}")
         assert fetched.json()["intake_check"] == created.json()["intake_check"]
@@ -395,6 +397,38 @@ def test_order_response_refuses_a_null_tolerance_feature(tmp_path):
             "reason": "tolerance_mm is missing or null; refused, not defaulted.",
         }
     ]
+
+
+def test_order_response_refuses_an_in_plane_feature_rather_than_misapply_the_height_floor(
+    tmp_path,
+):
+    """The exact bug found on review (@mbj1994, PR #372): a 1.0mm edge tolerance was wrongly
+    "ok" against the height floor (1.0 >= 0.70*0.86 = 0.602mm), when no verified in-plane floor
+    exists on main to check it against at all (R-37/D-078 pending review, PR #364)."""
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [
+                {
+                    "name": "edge_1",
+                    "kind": "edge",
+                    "tolerance_mm": 1.0,
+                    "critical": True,
+                }
+            ]
+        }
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", json.dumps(spec), "application/json")},
+        )
+
+    checks = {r["feature_name"]: r["status"] for r in created.json()["intake_check"]}
+    assert checks == {"edge_1": "refused"}
 
 
 def test_order_response_is_empty_intake_check_when_spec_has_no_features(tmp_path):
