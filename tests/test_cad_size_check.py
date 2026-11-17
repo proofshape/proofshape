@@ -400,6 +400,54 @@ def test_measure_prism_reports_shrunk_dimensions_when_part_is_smaller() -> None:
         assert edge.ratio < 0.98  # must not be reported as full-size
 
 
+def test_measure_prism_perfect_edges_are_corner_to_corner_within_point_two_mm() -> None:
+    # R-37 regression: the old 2nd-98th-percentile extent reads a perfect uniformly sampled edge
+    # about 4% short by construction (30 mm -> ~28.8 mm). A caliper reads corner to corner, so a
+    # noiseless reconstruction-free prism must recover the actual CAD edge length instead.
+    for prism in (
+        _box_prism(side_mm=30.0, height_mm=60.0),
+        _triangle_prism(legs=(60.0, 26.0), height_mm=30.0),
+    ):
+        points = _synthesize_prism_points(
+            prism,
+            rotation_deg=23.7,
+            offset_xy=(70.0, 55.0),
+            noise_mm=0.0,
+            points_per_edge=2000,
+            rng=np.random.default_rng(31),
+        )
+
+        result = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+        measured = sorted(edge.measured_length_mm for edge in result.edges)
+        expected = sorted(float(np.linalg.norm(p1 - p0)) for p0, p1 in prism.edges)
+        assert measured == pytest.approx(expected, abs=0.2)
+
+
+def test_measure_prism_pose_is_repeatable_for_square_and_right_triangle() -> None:
+    # R-37's two reproduction shape classes. The exact same point cloud must not jump to a
+    # qualitatively different discrete pose on a second run.
+    for prism in (
+        _box_prism(side_mm=30.0, height_mm=60.0),
+        _triangle_prism(legs=(60.0, 26.0), height_mm=30.0),
+    ):
+        points = _synthesize_prism_points(
+            prism,
+            rotation_deg=37.0,
+            offset_xy=(70.0, 55.0),
+            noise_mm=0.3,
+            rng=np.random.default_rng(32),
+        )
+
+        first = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+        second = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+        assert second.rotation_deg == pytest.approx(first.rotation_deg, abs=1e-9)
+        assert [edge.measured_length_mm for edge in second.edges] == pytest.approx(
+            [edge.measured_length_mm for edge in first.edges], abs=1e-9
+        )
+
+
 def test_measure_prism_ignores_stray_point_cluster() -> None:
     prism = _box_prism(side_mm=30.0, height_mm=60.0)
     rng = np.random.default_rng(14)
@@ -413,6 +461,77 @@ def test_measure_prism_ignores_stray_point_cluster() -> None:
     assert result.height_mm == pytest.approx(60.0, abs=1.5)
     for edge in result.edges:
         assert edge.ratio == pytest.approx(1.0, abs=0.08)
+
+
+def test_measure_prism_rejects_sparse_bridge_to_oversized_outlier_blob() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    rng = np.random.default_rng(140)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=0.0,
+        offset_xy=(80.0, 60.0),
+        noise_mm=0.2,
+        rng=rng,
+    )
+
+    def sparse_segment(
+        start: tuple[float, float], end: tuple[float, float], spacing_mm: float = 1.2
+    ) -> np.ndarray:
+        p0 = np.asarray(start, dtype=np.float64)
+        p1 = np.asarray(end, dtype=np.float64)
+        count = max(2, int(np.linalg.norm(p1 - p0) / spacing_mm) + 1)
+        t = np.linspace(0.0, 1.0, count)
+        xy = p0 + t[:, None] * (p1 - p0)
+        return np.column_stack([xy, np.full(count, -30.0)])
+
+    # A huge sparse outline plus a one-cell-wide bridge touches the real part. The historical
+    # largest-occupied-component rule treats everything as one blob, so the convex hull spans
+    # most of the board and the 30 mm square measures absurdly large. The R-37 selector must use
+    # the dense physical part core instead without forcing its measured dimensions to CAD truth.
+    stray = np.concatenate(
+        [
+            sparse_segment((10.0, 10.0), (160.0, 10.0)),
+            sparse_segment((160.0, 10.0), (160.0, 110.0)),
+            sparse_segment((160.0, 110.0), (10.0, 110.0)),
+            sparse_segment((10.0, 110.0), (10.0, 10.0)),
+            sparse_segment((110.0, 75.0), (160.0, 75.0)),
+        ]
+    )
+    contaminated = np.concatenate([points, stray])
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(60.0, abs=1.5)
+    for edge in result.edges:
+        assert edge.measured_length_mm == pytest.approx(30.0, abs=3.0)
+        assert edge.ratio == pytest.approx(1.0, abs=0.10)
+
+
+def test_measure_prism_height_ignores_denser_spatially_separate_stray_cluster() -> None:
+    # Regression for the pre-R-37 spatial isolation guarantee. A compact stray cluster can have
+    # more samples in one height bin than the real top face; height detection must choose the
+    # real part's connected spatial component, not the densest histogram peak globally.
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    rng = np.random.default_rng(141)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=0.0,
+        offset_xy=(80.0, 60.0),
+        noise_mm=0.15,
+        top_points=1200,
+        rng=rng,
+    )
+
+    stray_xy = rng.uniform([20.0, 20.0], [24.0, 24.0], size=(2000, 2))
+    stray_height = rng.normal(45.0, 0.04, size=2000)
+    stray = np.column_stack([stray_xy, -stray_height])
+    contaminated = np.concatenate([points, stray])
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(60.0, abs=1.5)
+    for edge in result.edges:
+        assert edge.measured_length_mm == pytest.approx(30.0, abs=3.0)
 
 
 def test_measure_prism_rejects_too_few_candidate_points() -> None:
