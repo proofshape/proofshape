@@ -2562,8 +2562,8 @@ second-member checks (1222 passed).
 
 **Concluded:** G-08 gave G-04 its last input: G-03's calipers, G-06's board, G-08's photos and
 R-23's scale. This entry was first written with a `check_story_states.py --fix` flip of G-04 to
-Ready. G-04 then went from Ready to Done on its own (@dalwalyk, #348, D-073) before this PR merged,
-so the entry is now the record only. It was recorded late, on 2026-11-17, in #342.
+Ready. `main` reached that state without this PR. G-04 was then claimed and closed (@dalwalyk,
+#348, D-073) before this PR merged, so the entry is now the record only. It was recorded late, on 2026-11-17, in #342.
 
 **Next:** a small downloader-resilience follow-up would fix gdown being refused partway for both
 sets: retry and back off, or use Drive's plain download URL. Until then, fetch the specimen folders
