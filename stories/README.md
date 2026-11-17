@@ -232,7 +232,7 @@ Full detail in each story file.
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Done | @dalwalyk |
 | [G-05](G/G-05.md) | Planted-defect parts: the control and the 4 mm hole shift | 4 h | nothing | Done | @TabeenRaoof |
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
-| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Ready | _unclaimed_ |
+| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Claimed | @dalwalyk |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Ready | _unclaimed_ |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Ready | _unclaimed_ |
