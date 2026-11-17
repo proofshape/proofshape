@@ -7,6 +7,7 @@ import pytest
 
 from recon.board_pose import make_board
 from recon.metric_alignment import (
+    MIN_FRAMES_AFTER_REJECTION,
     BoardAlignmentResult,
     align_board_geometry,
     align_camera_centres,
@@ -14,8 +15,10 @@ from recon.metric_alignment import (
     apply_similarity_transform_to_extrinsic,
     camera_centres,
     load_and_align,
+    main,
     project_points_to_camera,
     solve_similarity,
+    solve_similarity_rejecting_outlier_frames,
     validate_known_size,
     write_alignment,
 )
@@ -161,6 +164,80 @@ def _synthetic_board_alignment_inputs(
         (height, width),
         frame_names.copy(),
         np.tile(np.array([[height, width]]), (3, 1)),
+        np.asarray(corner_frame_index),
+        np.asarray(corner_id),
+        np.asarray(corner_px),
+    )
+
+
+def _synthetic_board_alignment_inputs_many_frames(
+    corner_ids: range = range(8),
+) -> tuple[
+    list[str],
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    tuple[int, int],
+    list[str],
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """Seven straight-down cameras (R-38): a separate, larger fixture from
+    `_synthetic_board_alignment_inputs`'s three, so a single bad frame is a realistic ~14% of
+    frames, matching the real reproduction case (one bad frame among ~25-30), rather than the
+    33% a 3-frame fixture would make it -- an outlier-rejection test needs enough good frames
+    that the initial (uncorrected) fit isn't itself badly distorted by the one bad one.
+    """
+    nominal = make_board().getChessboardCorners()
+    corner_ids_list = list(corner_ids)
+    frame_names = [f"frame{i}.jpg" for i in range(7)]
+    height = width = 400
+    focal = 1000.0
+    principal = 150.0
+    distance = 1000.0
+    intrinsic_single = np.array(
+        [[focal, 0.0, principal], [0.0, focal, principal], [0.0, 0.0, 1.0]]
+    )
+    reconstruction_intrinsic = np.tile(intrinsic_single[None], (7, 1, 1))
+
+    translations = np.array(
+        [
+            [0.0, 0.0, distance],
+            [80.0, 20.0, distance],
+            [20.0, 100.0, distance],
+            [150.0, 60.0, distance],
+            [60.0, 150.0, distance],
+            [120.0, 120.0, distance],
+            [40.0, 40.0, distance],
+        ]
+    )
+    reconstruction_extrinsic = np.zeros((7, 3, 4), dtype=np.float64)
+    reconstruction_extrinsic[:, :, :3] = np.eye(3)
+    reconstruction_extrinsic[:, :, 3] = translations
+    depth = np.full((7, height, width), distance, dtype=np.float64)
+
+    corner_frame_index: list[int] = []
+    corner_id: list[int] = []
+    corner_px: list[list[float]] = []
+    for frame_index, translation in enumerate(translations):
+        for cid in corner_ids_list:
+            x, y, _z = nominal[cid]
+            u = focal * (x + translation[0]) / distance + principal
+            v = focal * (y + translation[1]) / distance + principal
+            corner_frame_index.append(frame_index)
+            corner_id.append(cid)
+            corner_px.append([u, v])
+
+    return (
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        (height, width),
+        frame_names.copy(),
+        np.tile(np.array([[height, width]]), (7, 1)),
         np.asarray(corner_frame_index),
         np.asarray(corner_id),
         np.asarray(corner_px),
@@ -491,6 +568,30 @@ def test_load_and_align_requires_pose_found_in_board_output(tmp_path) -> None:
         load_and_align(recon_dir, board_dir)
 
 
+def test_main_passes_when_residual_is_under_the_threshold(tmp_path, capsys) -> None:
+    recon_dir = tmp_path / "recon"
+    board_dir = tmp_path / "board"
+    _write_board_alignment_fixture(recon_dir, board_dir)
+
+    exit_code = main([str(recon_dir), str(board_dir)])
+
+    assert exit_code == 0
+    assert "R-04 ALIGNMENT: PASS" in capsys.readouterr().out
+
+
+def test_main_fails_when_residual_exceeds_the_threshold(tmp_path, capsys) -> None:
+    recon_dir = tmp_path / "recon"
+    board_dir = tmp_path / "board"
+    _write_board_alignment_fixture(recon_dir, board_dir)
+
+    # The clean synthetic fixture's own residual is ~0 mm; a negative threshold forces a FAIL
+    # deterministically, without needing a second, separately-corrupted fixture just for this.
+    exit_code = main([str(recon_dir), str(board_dir), "--max-residual-mm", "-1.0"])
+
+    assert exit_code == 1
+    assert "R-04 ALIGNMENT: FAIL" in capsys.readouterr().err
+
+
 def test_write_alignment_records_board_anchor_metadata(tmp_path) -> None:
     result = BoardAlignmentResult(
         scale=1.0,
@@ -500,6 +601,8 @@ def test_write_alignment_records_board_anchor_metadata(tmp_path) -> None:
         frame_count=3,
         residuals_mm=np.array([0.1, 0.2]),
         rms_residual_mm=0.158,
+        rejected_frame_names=["bad.jpg"],
+        per_frame_residual_mm={"a.jpg": 0.1, "b.jpg": 0.2},
     )
 
     report = write_alignment(tmp_path / "metric_alignment.json", result)
@@ -511,6 +614,8 @@ def test_write_alignment_records_board_anchor_metadata(tmp_path) -> None:
     assert on_disk["board_corner_observation_count"] == 42
     assert on_disk["scale"] == pytest.approx(1.0)
     assert on_disk["translation_mm"] == [1.0, 2.0, 3.0]
+    assert on_disk["rejected_frame_names"] == ["bad.jpg"]
+    assert on_disk["per_frame_residual_mm"] == {"a.jpg": 0.1, "b.jpg": 0.2}
 
 
 def test_board_anchor_recovers_nontrivial_similarity() -> None:
@@ -603,6 +708,134 @@ def test_board_anchor_ignores_frames_without_trusted_board_pose() -> None:
     assert result.frame_count == 2
     assert result.observation_count == 30
     assert result.scale == pytest.approx(1.0, abs=1e-6)
+
+
+def _frame_points_and_targets(
+    n_frames: int = 7, points_per_frame: int = 4
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    """`n_frames` synthetic frames of `points_per_frame` scattered, non-collinear points each,
+    satisfying target = 2*source + [5,0,0] exactly. Seven frames by default, not three: a single
+    bad frame then stays a realistic ~14% of frames, matching the real reproduction case (one
+    bad frame among ~25-30), rather than the 33% a 3-frame fixture would make it -- with only a
+    few frames total, one badly corrupted frame distorts even the *initial* (uncorrected) fit
+    enough that its residual no longer stands out from the clean frames' own (confirmed: a
+    3-frame/33%-corrupted version of this fixture does not get rejected at any reasonable
+    reject_sigma_k, not because the algorithm is wrong, but because that proportion is a harder
+    problem than this function is designed for)."""
+    rng = np.random.default_rng(0)
+    source = rng.uniform(-2.0, 2.0, size=(n_frames * points_per_frame, 3))
+    target = 2.0 * source + np.array([5.0, 0.0, 0.0])
+    frame_of_point = np.repeat(np.arange(n_frames), points_per_frame)
+    frame_names = [f"frame{i}.jpg" for i in range(n_frames)]
+    return source, target, frame_of_point, frame_names
+
+
+def test_solve_similarity_rejecting_outlier_frames_drops_the_bad_frame() -> None:
+    source, target, frame_of_point, frame_names = _frame_points_and_targets()
+    # Frame 3 ("IMG_4665"-style failure): its own points are wrong by a large, consistent
+    # offset, while every other frame agrees exactly with the true transform.
+    corrupted_target = target.copy()
+    corrupted_target[frame_of_point == 3] += np.array([100.0, 0.0, 0.0])
+
+    scale, rotation, translation, _residuals, _included, rejected = (
+        solve_similarity_rejecting_outlier_frames(
+            source, corrupted_target, frame_of_point, frame_names
+        )
+    )
+
+    assert rejected == ["frame3.jpg"]
+    assert scale == pytest.approx(2.0, rel=1e-6)
+    assert rotation == pytest.approx(np.eye(3), abs=1e-6)
+    assert translation == pytest.approx([5.0, 0.0, 0.0], abs=1e-5)
+
+
+def test_solve_similarity_rejecting_outlier_frames_rejects_nothing_when_clean() -> None:
+    source, target, frame_of_point, frame_names = _frame_points_and_targets()
+
+    scale, _rotation, _translation, _residuals, included, rejected = (
+        solve_similarity_rejecting_outlier_frames(
+            source, target, frame_of_point, frame_names
+        )
+    )
+
+    assert rejected == []
+    assert included.all()
+    assert scale == pytest.approx(2.0, rel=1e-6)
+
+
+def test_solve_similarity_rejecting_outlier_frames_never_drops_below_the_floor() -> (
+    None
+):
+    assert MIN_FRAMES_AFTER_REJECTION == 2
+    source, target, frame_of_point, frame_names = _frame_points_and_targets()
+    # Only two frames -- dropping either would leave one, below the floor, so even a badly
+    # corrupted frame 1 must be left in rather than rejected.
+    two_frame_mask = frame_of_point < 2
+    source = source[two_frame_mask]
+    target = target[two_frame_mask].copy()
+    frame_of_point = frame_of_point[two_frame_mask]
+    frame_names = frame_names[:2]
+    target[frame_of_point == 1] += np.array([100.0, 0.0, 0.0])
+
+    _scale, _rotation, _translation, _residuals, included, rejected = (
+        solve_similarity_rejecting_outlier_frames(
+            source, target, frame_of_point, frame_names
+        )
+    )
+
+    assert rejected == []
+    assert included.all()
+
+
+def test_board_anchor_rejects_a_frame_with_corrupted_depth_even_without_pose_found_false() -> (
+    None
+):
+    (
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+    ) = _synthetic_board_alignment_inputs_many_frames()
+
+    # Unlike test_board_anchor_ignores_frames_without_trusted_board_pose, pose_found is not set
+    # to False here -- R-02 posed this frame cleanly, same as IMG_4665 really was; only its
+    # depth (and so its lifted 3D points) is wrong, which only residual-based rejection catches.
+    # Seven frames (not three): see _synthetic_board_alignment_inputs_many_frames's own docstring
+    # for why a realistic frame count matters here. A 30% depth error (not an extreme 10x one):
+    # the real g02_02 failure pulled board scale to 0.83, not to near-zero -- an extreme enough
+    # single-frame corruption has so much leverage on the global SVD solve that it can distort
+    # the *whole* fit into a near-degenerate scale, which this single-shot-threshold design
+    # genuinely isn't built to recover from (confirmed separately, not this story's problem to
+    # solve); a realistic corruption magnitude is the one worth testing against.
+    depth[3] = 1300.0
+
+    result = align_board_geometry(
+        frame_names,
+        reconstruction_extrinsic,
+        reconstruction_intrinsic,
+        depth,
+        processed_size_hw,
+        board_frame_names,
+        board_image_size_hw,
+        corner_frame_index,
+        corner_id,
+        corner_px,
+        preprocess_geometry=_identity_preprocess_geometry(frame_names),
+        board_pose_found=np.ones(7, dtype=bool),
+    )
+
+    assert result.rejected_frame_names == ["frame3.jpg"]
+    assert result.frame_count == 6
+    assert result.scale == pytest.approx(1.0, abs=1e-5)
+    assert set(result.per_frame_residual_mm) == {
+        name for name in frame_names if name != "frame3.jpg"
+    }
 
 
 def test_camera_centres_rejects_bad_shape() -> None:

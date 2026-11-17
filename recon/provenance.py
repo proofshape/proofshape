@@ -950,6 +950,7 @@ def provenance_run(
     vertices_mm, faces = _read_mesh(mesh_path)
 
     with np.load(reconstruction_run_dir / "poses.npz") as poses:
+        frame_names = [str(name) for name in poses["frame_names"]]
         extrinsic = poses["extrinsic"].astype(np.float64)
         intrinsic = poses["intrinsic"].astype(np.float64)
     with np.load(reconstruction_run_dir / "depth.npz") as depth_data:
@@ -966,6 +967,22 @@ def provenance_run(
     scale = float(alignment_json["scale"])
     rotation = np.asarray(alignment_json["rotation"], dtype=np.float64)
     translation = np.asarray(alignment_json["translation_mm"], dtype=np.float64)
+
+    # R-38 (review on PR #358, @TabeenRaoof): fuse_run already keeps a rejected frame's depth
+    # out of the mesh's own shape, but provenance reprojects the mesh into *every* camera frame
+    # independently, including a rejected one -- without this, that frame's own (already-known-
+    # bad) depth could still vote a vertex Observed by coincidence, which is the exact kind of
+    # untrustworthy evidence the rejection exists to exclude. Marked untrusted here, not removed
+    # from the frame axis, for the same reason fuse_run doesn't shrink it: completion's own
+    # choose_view_frame indexes frames by position into this same poses.npz list.
+    rejected_frame_names = set(alignment_json.get("rejected_frame_names", []))
+    if rejected_frame_names:
+        rejected_frame_indices = [
+            index
+            for index, name in enumerate(frame_names)
+            if name in rejected_frame_names
+        ]
+        trusted_pixel_mask[rejected_frame_indices] = False
 
     corrected_extrinsic_path = (
         fusion_dir / "corrected_extrinsic.npz" if fusion_dir else None

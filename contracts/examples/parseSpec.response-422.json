@@ -1,0 +1,4 @@
+{
+  "code": "malformed_request",
+  "message": "The buyer prose must not be blank."
+}

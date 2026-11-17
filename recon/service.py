@@ -5,16 +5,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import threading
 import time
 import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import BackgroundTasks, FastAPI, File, Request, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -23,6 +25,13 @@ from pydantic import BaseModel, Field, field_validator
 # R-31: import the process guard before agent_tools -> provenance -> Open3D. The module applies
 # the macOS-only OMP_NUM_THREADS=1 guard as an import side effect; Linux is unchanged.
 from recon import runtime_env as _runtime_env  # noqa: F401
+from recon.order_store import OrderStore
+from recon.spec_parser import (
+    GeminiSpecParser,
+    SpecParseResult,
+    parse_spec_response,
+    unparsed,
+)
 from recon.vlm_check import VlmSupervisor
 
 MIN_FINISH_FRAMES = 3
@@ -50,6 +59,9 @@ ErrorCode = Literal[
     "too_few_frames",
     "order_code_unknown",
     "no_cad_uploaded",
+    "cad_unreadable",
+    "verdict_not_available",
+    "buyer_auth_required",
     # Contract v1.1 (A-11, D-056).
     "malformed_request",
     "internal_error",
@@ -74,10 +86,25 @@ class CreateSessionRequest(BaseModel):
     order_code: str
 
 
+class SpecParseRequest(BaseModel):
+    prose: str = Field(min_length=1)
+
+
 class SessionResponse(BaseModel):
     session_id: str
     order_code: str
     status: Literal["capturing", "finished"]
+
+
+class OrderResponse(BaseModel):
+    order_code: str
+    created_at: str
+    has_cad: bool
+    cad_units: Literal["mm", "assumed_mm"] | None = None
+    cad_bounding_box_mm: list[list[float]] | None = None
+    spec: dict[str, Any]
+    placement_note: str | None = None
+    buyer_reference: str | None = None
 
 
 class VlmFeedback(BaseModel):
@@ -460,6 +487,17 @@ def run_reconstruction_pipeline(
         metric_alignment.write_alignment(alignment_path, alignment)
     except (FileNotFoundError, ValueError) as exc:
         raise _map_alignment_error(exc) from exc
+    # R-38: load_and_align already rejects per-frame outliers before this point, but the
+    # live service never checked the *final* residual against any threshold at all -- found on
+    # review (PR #358): the CLI's --max-residual-mm gate only existed in metric_alignment.main,
+    # which this pipeline never calls. A session whose alignment is still this bad once rejection
+    # has already done what it can is exactly the case the gate exists to stop before fusion.
+    if alignment.rms_residual_mm > metric_alignment.DEFAULT_MAX_RESIDUAL_MM:
+        raise ReconstructionFailure(
+            "metric_alignment_failed",
+            f"Board-anchored alignment residual {alignment.rms_residual_mm:.3f} mm exceeds "
+            f"{metric_alignment.DEFAULT_MAX_RESIDUAL_MM} mm after outlier-frame rejection.",
+        )
     stage_timings_s["metric_alignment"] = time.perf_counter() - started
 
     started = time.perf_counter()
@@ -564,6 +602,9 @@ def create_app(
     pipeline_runner: PipelineRunner = run_reconstruction_pipeline,
     known_order_codes: set[str] | None = None,
     vlm_supervisor: VlmSupervisor | None = None,
+    orders_dir: Path | None = None,
+    buyer_key: str | None = None,
+    spec_parser: Callable[[str], Any] | None = None,
 ) -> FastAPI:
     # R-31: keep agent_tools lazy so the runtime guard above has already run before its
     # provenance dependency can import Open3D.
@@ -573,7 +614,20 @@ def create_app(
         data_dir or os.environ.get("PROOFSHAPE_DATA_DIR", "proofshape-data/sessions")
     )
     store = SessionStore(root)
-    supervisor = vlm_supervisor or VlmSupervisor(os.environ.get("GEMINI_API_KEY", ""))
+    orders_root = Path(
+        orders_dir or os.environ.get("PROOFSHAPE_ORDERS_DIR", "proofshape-data/orders")
+    )
+    order_store = OrderStore(orders_root)
+    configured_buyer_key = (
+        buyer_key
+        if buyer_key is not None
+        else os.environ.get("PROOFSHAPE_BUYER_KEY", "")
+    )
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    supervisor = vlm_supervisor or VlmSupervisor(gemini_key)
+    configured_spec_parser = spec_parser
+    if configured_spec_parser is None and gemini_key:
+        configured_spec_parser = GeminiSpecParser(gemini_key)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -583,7 +637,7 @@ def create_app(
             supervisor.close()
 
     app = FastAPI(
-        title="ProofShape reconstruction service", version="1.1.0", lifespan=lifespan
+        title="ProofShape reconstruction service", version="1.3.0", lifespan=lifespan
     )
     # C-13: capture/ is served from a different origin than this service (D-042 left this
     # decision to whichever story first connected them). A wildcard origin is deliberate, not an
@@ -601,6 +655,7 @@ def create_app(
     )
     app.state.vlm_supervisor = supervisor
     app.state.store = store
+    app.state.order_store = order_store
     app.state.orphaned_pending_failed = store.fail_orphaned_pending()
 
     def error(status_code: int, detail: ErrorDetail) -> JSONResponse:
@@ -633,7 +688,232 @@ def create_app(
                     code="malformed_request", message="The request body is malformed."
                 ),
             )
+        if request.method == "POST" and request.url.path.endswith("/v1/orders"):
+            return error(
+                422,
+                ErrorDetail(
+                    code="malformed_request",
+                    message="The order request is malformed; a JSON spec part is required.",
+                ),
+            )
+        if request.method == "POST" and request.url.path.endswith("/v1/spec/parse"):
+            return error(
+                422,
+                ErrorDetail(
+                    code="malformed_request",
+                    message="The spec-parser request needs non-empty buyer prose.",
+                ),
+            )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+    def order_response(record: dict[str, Any]) -> OrderResponse:
+        cad = record.get("cad")
+        return OrderResponse(
+            order_code=record["order_code"],
+            created_at=record["created_at"],
+            has_cad=bool(record["has_cad"]),
+            cad_units=None if cad is None else cad.get("units"),
+            cad_bounding_box_mm=None if cad is None else cad.get("bounding_box_mm"),
+            spec=record["spec"],
+            placement_note=record.get("placement_note"),
+            buyer_reference=record.get("buyer_reference"),
+        )
+
+    def buyer_key_authorized(value: str | None) -> bool:
+        return bool(
+            configured_buyer_key
+            and value is not None
+            and secrets.compare_digest(value, configured_buyer_key)
+        )
+
+    def spec_parse_response(result: SpecParseResult) -> JSONResponse:
+        # C-16: the contract omits top-level fields that do not apply, but a nested
+        # feature.tolerance_mm=null is meaningful A-03 evidence and must survive.
+        content = {
+            key: value
+            for key, value in result.model_dump(mode="json").items()
+            if value is not None
+        }
+        return JSONResponse(content=content)
+
+    @app.post(
+        "/v1/spec/parse",
+        response_model=SpecParseResult,
+        responses={
+            401: {"model": ErrorDetail},
+            422: {"model": ErrorDetail},
+        },
+        operation_id="parseSpec",
+    )
+    def parse_spec(
+        body: SpecParseRequest,
+        x_proofshape_buyer_key: Annotated[str | None, Header()] = None,
+    ):
+        if not buyer_key_authorized(x_proofshape_buyer_key):
+            return error(
+                401,
+                ErrorDetail(
+                    code="buyer_auth_required",
+                    message="A valid buyer key is required to parse a spec.",
+                ),
+            )
+        prose = body.prose.strip()
+        if not prose:
+            return error(
+                422,
+                ErrorDetail(
+                    code="malformed_request",
+                    message="The buyer prose must not be blank.",
+                ),
+            )
+        if configured_spec_parser is None:
+            return spec_parse_response(unparsed("missing_api_key"))
+        try:
+            response = configured_spec_parser(prose)
+        except Exception:
+            logger.exception("Spec parser call failed")
+            return spec_parse_response(unparsed("model_error"))
+        return spec_parse_response(parse_spec_response(response))
+
+    @app.post(
+        "/v1/orders",
+        status_code=201,
+        response_model=OrderResponse,
+        response_model_exclude_none=True,
+        responses={
+            401: {"model": ErrorDetail},
+            422: {"model": ErrorDetail},
+        },
+        operation_id="createOrder",
+    )
+    def create_order(
+        spec: Annotated[UploadFile, File()],
+        cad: Annotated[UploadFile | None, File()] = None,
+        placement_note: Annotated[str | None, Form()] = None,
+        buyer_reference: Annotated[str | None, Form()] = None,
+        x_proofshape_buyer_key: Annotated[str | None, Header()] = None,
+    ):
+        if not buyer_key_authorized(x_proofshape_buyer_key):
+            return error(
+                401,
+                ErrorDetail(
+                    code="buyer_auth_required",
+                    message="A valid buyer key is required to create an order.",
+                ),
+            )
+
+        try:
+            raw_spec = spec.file.read()
+            parsed_spec = json.loads(raw_spec.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return error(
+                422,
+                ErrorDetail(
+                    code="malformed_request",
+                    message="The spec part must contain a JSON object.",
+                ),
+            )
+        if not isinstance(parsed_spec, dict):
+            return error(
+                422,
+                ErrorDetail(
+                    code="malformed_request",
+                    message="The spec part must contain a JSON object.",
+                ),
+            )
+
+        def normalized_optional_text(value: str | None) -> str | None:
+            if value is None:
+                return None
+            stripped = value.strip()
+            return stripped or None
+
+        cad_name = None
+        cad_source_path = None
+        cad_units = None
+        cad_bbox_mm = None
+        if cad is not None and cad.filename:
+            from inspection.cad import load_mesh
+
+            cad_name = Path(cad.filename).name
+            cad_bytes = cad.file.read()
+            if not cad_bytes:
+                return error(
+                    422,
+                    ErrorDetail(
+                        code="cad_unreadable",
+                        message="The uploaded CAD file is empty or unreadable.",
+                    ),
+                )
+            suffix = Path(cad_name).suffix.lower()
+            if suffix not in {".stl", ".obj", ".glb"}:
+                return error(
+                    422,
+                    ErrorDetail(
+                        code="cad_unreadable",
+                        message="The CAD file must be STL, OBJ, or GLB.",
+                    ),
+                )
+
+            validate_dir = orders_root / ".validate"
+            validate_dir.mkdir(parents=True, exist_ok=True)
+            cad_source_path = validate_dir / f"{uuid.uuid4().hex}{suffix}"
+            cad_source_path.write_bytes(cad_bytes)
+            try:
+                vertices, _faces, cad_units = load_mesh(cad_source_path)
+                mins = vertices.min(axis=0).astype(float).tolist()
+                maxs = vertices.max(axis=0).astype(float).tolist()
+                cad_bbox_mm = [mins, maxs]
+            except (
+                AttributeError,
+                IndexError,
+                KeyError,
+                OSError,
+                TypeError,
+                ValueError,
+            ):
+                cad_source_path.unlink(missing_ok=True)
+                return error(
+                    422,
+                    ErrorDetail(
+                        code="cad_unreadable",
+                        message="The CAD file could not be read.",
+                    ),
+                )
+
+        try:
+            record = order_store.create(
+                created_at=datetime.now(UTC).isoformat(),
+                spec=parsed_spec,
+                placement_note=normalized_optional_text(placement_note),
+                buyer_reference=normalized_optional_text(buyer_reference),
+                cad_name=cad_name,
+                cad_source_path=cad_source_path,
+                cad_units=cad_units,
+                cad_bbox_mm=cad_bbox_mm,
+            )
+        finally:
+            if cad_source_path is not None:
+                cad_source_path.unlink(missing_ok=True)
+        return order_response(record)
+
+    @app.get(
+        "/v1/orders/{order_code}",
+        response_model=OrderResponse,
+        response_model_exclude_none=True,
+        responses={404: {"model": ErrorDetail}},
+        operation_id="getOrder",
+    )
+    def get_order(order_code: str):
+        record = order_store.load(order_code)
+        if record is None:
+            return error(
+                404,
+                ErrorDetail(
+                    code="order_code_unknown", message="The order code is unknown."
+                ),
+            )
+        return order_response(record)
 
     @app.post(
         "/v1/sessions",
@@ -644,9 +924,12 @@ def create_app(
     )
     def create_session(body: CreateSessionRequest):
         order_code = body.order_code.strip()
-        if not order_code or (
-            known_order_codes is not None and order_code not in known_order_codes
-        ):
+        known = (
+            order_code in known_order_codes
+            if known_order_codes is not None
+            else order_store.exists(order_code)
+        )
+        if not order_code or not known:
             return error(
                 400,
                 ErrorDetail(
@@ -856,11 +1139,20 @@ def create_app(
                     code="session_not_found", message="No session with that id."
                 ),
             )
+        order = order_store.load(record["order_code"])
+        if order is None or not order.get("has_cad"):
+            return error(
+                404,
+                ErrorDetail(
+                    code="no_cad_uploaded",
+                    message="No CAD was supplied for this session — no verdict exists.",
+                ),
+            )
         return error(
             404,
             ErrorDetail(
-                code="no_cad_uploaded",
-                message="No CAD was supplied for this session — no verdict exists.",
+                code="verdict_not_available",
+                message="A CAD is stored for this order, but verdict logic is not available yet.",
             ),
         )
 

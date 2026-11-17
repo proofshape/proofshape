@@ -2273,6 +2273,28 @@ clean.
 **Next:** G-05's control part, `g05_00`, also printed on the 2026-11-10 visit. Its record goes in
 G-05.
 
+## 2026-11-11 — P-33 Android device testing parked until the expo (D-065, O-006)
+
+**Who:** @TabeenRaoof (PR #324). The claim was #310.
+
+**What changed:**
+- **D-065 parks the Android check (C-23)** rather than cutting it. It stays written, `Ready` and
+  unclaimed, and is revisited before the expo if time allows: decided at the Dec 2 boundary at
+  the latest, with any fix landing before M7's code freeze on Dec 4.
+- **O-006 records the expo date** as the team's unconfirmed working assumption, most likely Fri
+  2026-12-05, the day after the freeze.
+- **X-04 (I4) no longer depends on C-23.** It runs on the iPhone, adding Android only if C-23 has
+  run. As written, it could never have started, and the backup demo (X-05) waits on it.
+- **The manual's §2** now says Android is untested and parked, so suppliers use an iPhone in
+  Safari. The sprint plan's S6 line and the capture section point at D-065.
+
+**Result:** the proposal's §12 rule ("Tier 1 must pass on both") is unmet while D-065 stands,
+stated as its cost. `check_story_states.py` is consistent. P-33 closed at 0.5 h actual, the
+owner's figure. No code.
+
+**Next:** the Nov 13 boundary call confirms the carry. Confirm the expo date and update O-006.
+Revisit C-23 at the Dec 2 boundary if someone has an Android phone.
+
 ## 2026-11-11 — P-32 Done: the WIP cap counts active stories only (D-064, PR #307); A-05 claimed (#308)
 
 **Who:** @TabeenRaoof. #307 approved by @mbj1994 and @dalwalyk, #308 by @dalwalyk.
@@ -2424,6 +2446,94 @@ checks it. `stories/G/G-03.md` records each feature's measured minus CAD.
 measurer's notes name a damaged corner that can't now be located: `g02_05`'s and `g02_06`'s. They
 stay as written.
 
+
+## 2026-11-16 — C-16 review corrections and D-031 timing record (PR #346)
+
+**Who:** @mbj1994; review by @TabeenRaoof.
+**What changed:** C-16's buyer page and server-side A-03 parser route were reviewed before closeout.
+The review caught a frozen-contract response bug: FastAPI was serializing top-level `spec: null`
+or `reason: null` even though the new v1.3 schema omits the inapplicable field. The route now
+removes only top-level null fields while preserving the meaningful nested
+`features[].tolerance_mm: null`. Contract-validation tests cover parsed, model-error and
+missing-key replies.
+**Buyer UX:** parser codes and browser network exceptions are translated into actionable text;
+parsed features no longer erase rows the buyer already typed; blank parser tolerances are tested
+to block order creation; the assumptions reminder tells the buyer to remove stale assumptions;
+and capture links work from both `buyer.html` and `/buyer`.
+**Manual:** §4 now documents the buyer page, runtime per-tab buyer key, parse → review → fill blanks
+→ create flow, and the returned order code/CAD size/capture link.
+**D-031:** #335's early-boundary R-34 merge is now explicitly recorded. #346 requests the same
+timing exception but still requires both other members to approve its final head before merge.
+**Close-out:** owner-confirmed actual time is **2 h** against the 5 h estimate. C-16 and its index
+row are Done on the final close-out branch; both other members still approve that exact final head
+under D-031 before merge.
+
+## 2026-11-16 — R-36 home pre-check: the demo path runs on the M2 Max (PR #340)
+
+**Who:** @TabeenRaoof
+**What changed:** no code. R-36's story records the measurement runs, and its runbook criterion
+gains the order step that R-34 and C-16 made necessary.
+**Result:** on `main` at `5407b7d`, with the service on the M2 Max and an iPhone in Safari through
+`npm run dev:device` on home Wi-Fi:
+- golden s-04 through the HTTP smoke flow: 30 frames reconstructed in 47–50 s;
+- three real iPhone sessions of s-04: 31–51 s from Finish to model, metric on the board;
+- the clean 23-frame run against nominal CAD: height 0.947, edges 0.95–1.04, fit residual 2.32 mm,
+  comparable to golden;
+- the same main wide lens in every frame;
+- the live Gemini check: it flagged a screen photo at frame 5, and the tip reached the phone;
+- stopping the service mid-session twice (91 s, 138 s): the session continued and finished both
+  times.
+
+Seven gaps are listed in R-36's notes for their own issues, among them the raw outage message,
+Safari backgrounding losing the session, a screen frame getting into the model, and
+`cad_size_check`'s blob selection.
+**Next:** the rehearsal in the defense room, and the runbook in `recon/README.md`.
+
+## 2026-11-15 — G-05 Done: the control and the 4 mm shift printed and calipered; printed shift 4.00 mm (PR #347)
+
+**Who:** @TabeenRaoof. Claimed in #273; cut to two parts by D-069 (#331); readings in #332.
+
+**What changed:** `stories/G/G-05.md` records the print and the result.
+- The print record was read from the sliced files: the lab's only A1 mini, grey, one spool, G-01's
+  settings, Bambu Studio 02.09.01.70, and each file's SHA-256.
+- Both parts printed unrotated: `g05_00`'s placement comes from its project, `g05_02`'s from its
+  G-code.
+
+**Measured, not judged** (#332's readings, 2026-11-13):
+- The hole centres are 11.91 mm (control, CAD 12) and 15.91 mm (shift, CAD 16).
+- That puts **the printed shift at 4.00 mm** against 4.00 in CAD.
+- An independent repeat on 2026-11-15 gave 4.005 mm, with each centre within 0.025 mm.
+
+**Result:** G-05 is Done at 6 h actual (est 4). `check_story_states.py --fix` makes G-09 Ready.
+
+**Next:** G-09 photographs the two parts under G-08's conditions, and X-03 uses `g05-02` once I-07
+exists.
+
+## 2026-11-16 — P-34: the 16 open issues reconciled with stories (PR #369)
+
+**Who:** @TabeenRaoof. Claimed in #368.
+**What changed:** no code. Of the 16 open issues, only #157 (I-07) had an open story. Each one now
+has a story, a home in an existing story, or a recorded reason to wait (`stories/P/P-34.md`).
+- **New stories:**
+  - C-24, the outage message and a session that survives a reload (#351, #352);
+  - C-25, the blur gate checked against a real blurred frame (#355);
+  - A-14, the VLM hints for frame 0 and orbit motion, plus the sampling fork (#353 and #354's
+    sampling half);
+  - R-39, `cad_size_check`'s blob selection (#356), Blocked on R-37;
+  - R-40, mesh cleanup that terminates and stays manifold (#263, #300), which also re-checks #247.
+- **A-02** gains #354's veto and frame-exclusion criterion: 3 h becomes 4 h, and it now depends on
+  A-14.
+- **No story:**
+  - #181 and #200 still wait on team decisions;
+  - #107 waits on D-072's public path;
+  - #246 and #292 are known limitations;
+  - #231 is fully owned and closes by hand, pointing to #292.
+
+**Capacity:** +18 h, so 65.5 h of open estimates become 83.5 h. S6 (the last sprint for code)
+has 52 h in the sprint table, or 46 h in its own heading. The suggested order for the Dec 2 call
+is R-40, C-24, A-14, then C-25.
+**Next:** after merge, comment on each mapped issue and close #231 by hand.
+
 ## 2026-11-15 — G-08 Done: the six specimens photographed and hash-locked (PR #339)
 
 **Who:** @TabeenRaoof (claim #336, work #339), approved by @dalwalyk, who also ran the
@@ -2450,12 +2560,12 @@ second-member checks (1222 passed).
     swapped in a partial sample.
 - **Hours:** 4 h actual (est 4), the owner's figure.
 
-**Concluded:** G-04 has everything it needs: G-03's calipers, G-06's board, G-08's photos and
-R-23's scale. `check_story_states.py --fix` flips G-04 to Ready in this entry's PR.
+**Concluded:** G-08 gave G-04 its last input: G-03's calipers, G-06's board, G-08's photos and
+R-23's scale. This entry was first written with a `check_story_states.py --fix` flip of G-04 to
+Ready. G-04 then went from Ready to Done on its own (@dalwalyk, #348, D-073) before this PR merged,
+so the entry is now the record only. It was recorded late, on 2026-11-17, in #342.
 
-**Next:**
-- **Claim G-04 (σ_floor), the critical path to M3.** Until gdown downloads the whole set reliably,
-  fetch the specimen folders as browser zips and unzip them into
-  `fixtures/data/specimen_capture/`. The manifest hashes still verify them.
-- **A small downloader-resilience follow-up** (retry and back off, or Drive's plain download URL)
-  would fix this for both sets.
+**Next:** a small downloader-resilience follow-up would fix gdown being refused partway for both
+sets: retry and back off, or use Drive's plain download URL. Until then, fetch the specimen folders
+as browser zips and unzip them into `fixtures/data/specimen_capture/`. The manifest hashes still
+verify them.
