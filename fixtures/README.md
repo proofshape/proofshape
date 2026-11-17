@@ -54,6 +54,11 @@ shifted-hole, pocket and bump variants, written by `scripts/make_g05_defect_ladd
 are planted-defect parts for M4 and the proposal's §12 test, not σ_floor specimens, and
 deliberately not prisms; `stories/G/G-05.md` has the design and why.
 
+G-11's thin-walled part, `g11_01_thin_wall_pentagon_r22x25mm.stl`, is `g02_04` hollowed into an
+open-top tray with 1.2 mm walls. It is written by `scripts/make_g11_thin_wall.py`. G-11's glossy
+and dark parts are `g02_04` itself, printed in another filament, so they have no file of their
+own. `stories/G/G-11.md` has the design.
+
 ## G-08 specimen capture
 
 The six G-02 specimens (`g02_01` to `g02_06`) were photographed for G-04's accuracy runs. The
