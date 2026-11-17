@@ -613,27 +613,70 @@ def _line_intersection(
 
 
 def _largest_connected_blob(
-    xy_mm: np.ndarray, cell_mm: float = 1.0, min_points_per_cell: int = 1
+    xy_mm: np.ndarray,
+    cell_mm: float = 1.0,
+    min_points_per_cell: int = 1,
+    expected_diameter_mm: float | None = None,
 ) -> np.ndarray:
-    """Boolean mask keeping only the points in the largest 8-connected cluster of occupied grid
-    cells -- the same "largest connected cluster of occupied voxels" idea R-17 used to separate
-    a part from stray points, applied here in 2D to an xy slice rather than 3D to the whole cloud.
+    """Return the most plausible connected part blob in an xy slice.
 
-    The default keeps any occupied cell, not just a densely-populated one: the noise rejection
-    here comes from keeping only the *largest* component, which already discards an isolated
-    stray cluster regardless of its own per-cell density. Requiring several points per cell was
-    tried first and is fragile exactly where it matters most -- a thin line of wall points (an
-    edge seen nearly edge-on, or a narrow mid-height band) can have many occupied cells with only
-    one or two points each by chance, and a stricter threshold fragments that single wall into
-    several small components instead of one connected edge.
+    The original implementation always kept the largest 8-connected component of occupied
+    1 mm cells. Real G-04 data showed why that is too permissive: a chain of sparse stray cells
+    can connect the real part to a much larger cloud, so the resulting convex hull spans most of
+    the board and a 20 mm square can be measured as 70--150 mm.
+
+    When expected_diameter_mm is supplied, inspect components at several density thresholds.
+    A one-cell dilation puts sparse wall samples immediately next to a dense core back into the
+    candidate, while single-point bridges disappear at the higher thresholds. Components whose
+    minimum-area-rectangle diagonal is between 0.35x and 2.5x the CAD footprint diameter are
+    considered physically plausible; among those, keep the one containing the most original
+    points. The gate is intentionally very broad so it rejects catastrophic non-part blobs
+    without forcing the measured part to equal the CAD size. If no component passes that broad
+    gate, fall back to the historical largest-component rule rather than fabricating a result.
     """
     xy_mm = np.asarray(xy_mm, dtype=np.float64)
+    if xy_mm.ndim != 2 or xy_mm.shape[1] != 2 or len(xy_mm) == 0:
+        raise ValueError(f"xy_mm must have shape (N,2) with N>0, got {xy_mm.shape}")
+
     origin = xy_mm.min(axis=0)
     grid = np.floor((xy_mm - origin) / cell_mm).astype(np.int64)
     width = int(grid[:, 0].max()) + 1
     height = int(grid[:, 1].max()) + 1
     occupancy = np.zeros((height, width), dtype=np.int32)
     np.add.at(occupancy, (grid[:, 1], grid[:, 0]), 1)
+
+    def components(threshold: int) -> list[np.ndarray]:
+        binary = (occupancy >= threshold).astype(np.uint8)
+        component_count, labels, _stats, _ = cv2.connectedComponentsWithStats(
+            binary, connectivity=8
+        )
+        masks: list[np.ndarray] = []
+        kernel = np.ones((3, 3), dtype=np.uint8)
+        for label in range(1, component_count):
+            core = (labels == label).astype(np.uint8)
+            if int(core.sum()) == 0:
+                continue
+            support = cv2.dilate(core, kernel, iterations=1)
+            point_mask = support[grid[:, 1], grid[:, 0]] > 0
+            if int(point_mask.sum()) >= 30:
+                masks.append(point_mask)
+        return masks
+
+    if expected_diameter_mm is not None and expected_diameter_mm > 0:
+        plausible: list[tuple[int, np.ndarray]] = []
+        start_threshold = max(1, min_points_per_cell)
+        for threshold in range(start_threshold, max(start_threshold, 4) + 1):
+            for point_mask in components(threshold):
+                selected = xy_mm[point_mask].astype(np.float32)
+                _center, (rect_width, rect_height), _angle = cv2.minAreaRect(selected)
+                diameter = math.hypot(float(rect_width), float(rect_height))
+                ratio = diameter / expected_diameter_mm
+                if 0.35 <= ratio <= 2.5:
+                    plausible.append((int(point_mask.sum()), point_mask))
+        if plausible:
+            plausible.sort(key=lambda item: -item[0])
+            return plausible[0][1]
+
     binary = (occupancy >= min_points_per_cell).astype(np.uint8)
     component_count, labels, stats, _ = cv2.connectedComponentsWithStats(
         binary, connectivity=8
@@ -952,7 +995,13 @@ def measure_prism(
     candidate_points = points[region]
     candidate_xy = candidate_points[:, :2]
     candidate_height = height[region]
-    blob_mask = _largest_connected_blob(candidate_xy)
+    footprint_rect = cv2.minAreaRect(prism.footprint_xy.astype(np.float32))
+    expected_diameter_mm = math.hypot(
+        float(footprint_rect[1][0]), float(footprint_rect[1][1])
+    )
+    blob_mask = _largest_connected_blob(
+        candidate_xy, expected_diameter_mm=expected_diameter_mm
+    )
     candidate_points = candidate_points[blob_mask]
     candidate_xy = candidate_xy[blob_mask]
     candidate_height = candidate_height[blob_mask]
@@ -989,7 +1038,9 @@ def measure_prism(
             "Too few points in the mid-height band to measure the cross-section."
         )
     band_xy = candidate_xy[band]
-    band_mask = _largest_connected_blob(band_xy)
+    band_mask = _largest_connected_blob(
+        band_xy, expected_diameter_mm=expected_diameter_mm
+    )
     band_xy = band_xy[band_mask]
     if len(band_xy) < 30:
         raise ValueError(
