@@ -2592,3 +2592,15 @@ I-09 records 5 h actual and depends on R-37.
 **Concluded:** feature-kind-specific measured floors prevent an in-plane edge from being
 under-flagged by the height floor; malformed opaque specs no longer crash the response.
 **Next:** request fresh review and approval on the synced PR head.
+
+## 2026-11-17 — I-09 follows merged D-078 and refuses malformed tolerances (PR #372)
+
+**Who:** @dalwalyk
+**What changed:** synced R-37/D-078 from `main`; `hole`/`edge` now use the measured 5.278 mm
+in-plane floor, while `face`/`overall` retain D-073's measured height floor. Invalid tolerances are
+refused, with pure and endpoint regression tests.
+**Result:** 1,337 tests passed, 4 skipped, 6 warnings; Ruff, format, and story-state checks passed.
+I-09 remains Done with 5 h actual and now depends on R-37.
+**Concluded:** both measured board floors are used only for their corresponding feature kinds;
+malformed opaque order specs are refused safely.
+**Next:** @mbj1994 to re-review PR #372's current head.
