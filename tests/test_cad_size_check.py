@@ -519,8 +519,8 @@ def test_measure_prism_prefers_real_top_over_larger_low_stray_blob() -> None:
         rotation_deg=0.0,
         offset_xy=(90.0, 70.0),
         noise_mm=0.15,
-        points_per_edge=300,
-        top_points=700,
+        points_per_edge=600,
+        top_points=1200,
         rng=rng,
     )
 
