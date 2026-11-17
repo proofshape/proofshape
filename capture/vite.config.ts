@@ -67,6 +67,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         capture: fileURLToPath(new URL("./index.html", import.meta.url)),
+        buyer: fileURLToPath(new URL("./buyer.html", import.meta.url)),
         report: fileURLToPath(new URL("./report.html", import.meta.url)),
       },
     },

@@ -169,6 +169,38 @@ def prism_from_cad(vertices: np.ndarray) -> PrismCAD:
     return PrismCAD(footprint_xy=footprint, height_mm=height_mm, edges=edges)
 
 
+# --- Board pitch correction (G-04) --------------------------------------------------------------
+
+
+def apply_board_pitch_correction(
+    points_board_frame_mm: np.ndarray,
+    measured_span_across_mm: float,
+    measured_span_down_mm: float,
+    nominal_span_across_mm: float = DEFAULT_FOOTPRINT_MM[0],
+    nominal_span_down_mm: float = DEFAULT_FOOTPRINT_MM[1],
+) -> np.ndarray:
+    """Correct board-frame x/y for G-06's measured board pitch, which is anisotropic (the
+    printed sheet is not exactly square): +0.10% across vs +0.46% down from D-034's nominal
+    20 mm squares. ``lift_board_corner_observations``'s fit target is an exact nominal grid, so
+    R-04/R-23's board-frame coordinates are expressed in nominal-grid units; since the true
+    board spans ``measured_span`` physical mm over that same nominal interval, each axis is
+    scaled by its own ``measured / nominal`` ratio. A single scalar from the similarity fit
+    can't represent two different axis ratios at once, so this stays a deterministic, scoped
+    correction here rather than a change to the shared alignment in ``recon/metric_alignment.py``
+    (which R-23's live alignment also depends on). z (height above the board) is untouched --
+    G-06 only calipered the board's x/y plane, not its flatness.
+    """
+    points = np.asarray(points_board_frame_mm, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError(
+            f"points_board_frame_mm must have shape (N,3), got {points.shape}"
+        )
+    corrected = points.copy()
+    corrected[:, 0] *= measured_span_across_mm / nominal_span_across_mm
+    corrected[:, 1] *= measured_span_down_mm / nominal_span_down_mm
+    return corrected
+
+
 # --- Board plane ------------------------------------------------------------------------------
 
 
@@ -853,6 +885,101 @@ def measure_prism(
     )
 
 
+# --- Caliper truth (G-04) ------------------------------------------------------------------------
+
+
+def match_caliper_edge_truth(
+    prism: PrismCAD,
+    edge_caliper_features: list[dict[str, Any]],
+    length_atol_mm: float = 0.1,
+    conflict_atol_mm: float = 0.05,
+) -> list[float | None]:
+    """Match each of ``prism.edges`` to caliper truth by CAD edge *length*, and return a
+    ``mean_mm`` per ``prism.edges`` index (``None`` where no caliper feature's length matches).
+
+    Matching is by length, not by a single edge's identity, because a caliper reading may
+    represent every edge of the same nominal length at once -- e.g. a rectangle's two long
+    sides measured once (``fixtures/caliper_g-0*.json``'s own "this is the length of the two
+    long sides" readings) applies to both of that rectangle's long edges, not just the one
+    whose ``cad_vertices`` happen to be given. ``length_atol_mm`` only needs to separate
+    genuinely distinct CAD lengths (tens of mm apart in every specimen here), not to resolve
+    measurement noise.
+
+    This also makes a genuine ambiguity visible rather than silently guessed: if more than one
+    caliper feature's length matches a prism edge's length, and those features' ``mean_mm``
+    values differ by more than ``conflict_atol_mm`` (tight -- tighter than the caliper's own
+    0.1 mm resolution, since a real conflict here is always much larger in practice: g02_01's
+    square reads 19.9 vs 19.81 mm, g02_04's near-regular pentagon and g02_05's near-regular
+    hexagon read five/six distinct values each, all several caliper-resolution-steps apart),
+    every edge in that length class is left unmatched (``None``) rather than assigned an
+    arbitrary one of the conflicting readings -- these are several distinct physical-side
+    readings for edges the CAD treats as identical, with no record of which numbered/lettered
+    side is which reconstructed edge. Features that agree within ``conflict_atol_mm`` are
+    averaged, not treated as a conflict.
+    """
+    edge_features = [
+        feature
+        for feature in edge_caliper_features
+        if feature.get("kind") == "edge" and feature.get("cad_vertices") is not None
+    ]
+    feature_lengths = [
+        float(
+            np.linalg.norm(
+                np.asarray(feature["cad_vertices"])[1]
+                - np.asarray(feature["cad_vertices"])[0]
+            )
+        )
+        for feature in edge_features
+    ]
+
+    truth_mm: list[float | None] = []
+    for p0, p1 in prism.edges:
+        edge_length = float(np.linalg.norm(p1 - p0))
+        matching_means = [
+            float(feature["mean_mm"])
+            for feature, feature_length in zip(edge_features, feature_lengths)
+            if abs(feature_length - edge_length) <= length_atol_mm
+        ]
+        if not matching_means:
+            truth_mm.append(None)
+        elif max(matching_means) - min(matching_means) <= conflict_atol_mm:
+            truth_mm.append(sum(matching_means) / len(matching_means))
+        else:
+            truth_mm.append(None)
+    return truth_mm
+
+
+def caliper_edge_errors(
+    measurement: PrismMeasurement, caliper_truth_mm: list[float | None]
+) -> list[dict[str, Any]]:
+    """Per edge with known caliper truth: bias (``caliper_error_mm`` = measured - truth) kept
+    apart from the existing ``perpendicular_spread_mm`` (R-22's Finding 2). Edges with no caliper
+    truth are omitted, not reported as zero error.
+    """
+    if len(caliper_truth_mm) != len(measurement.edges):
+        raise ValueError(
+            f"caliper_truth_mm has {len(caliper_truth_mm)} entries, expected "
+            f"{len(measurement.edges)} (one per prism edge)."
+        )
+    results: list[dict[str, Any]] = []
+    for edge_index, (edge, truth_mm) in enumerate(
+        zip(measurement.edges, caliper_truth_mm)
+    ):
+        if truth_mm is None:
+            continue
+        results.append(
+            {
+                "edge_index": edge_index,
+                "caliper_truth_mm": truth_mm,
+                "measured_length_mm": edge.measured_length_mm,
+                "caliper_error_mm": edge.measured_length_mm - truth_mm,
+                "caliper_ratio": edge.measured_length_mm / truth_mm,
+                "perpendicular_spread_mm": edge.perpendicular_spread_mm,
+            }
+        )
+    return results
+
+
 # --- Board scale: the printed pattern as an in-scene ruler -------------------------------------
 
 
@@ -1126,11 +1253,20 @@ def build_report(
     cad_path: Path | None = None,
     min_confidence: float = 0.0,
     observed_glb: Path | None = None,
+    caliper_features: list[dict[str, Any]] | None = None,
+    board_pitch_mm: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     """Run the board-ruler check, and the CAD check if a CAD path is given.
 
     Every figure here is a measurement, never a pass/fail or a tolerance comparison (D-003) --
     that judgement, once a real tolerance exists, is R-16's job, not this one's.
+
+    ``caliper_features``/``board_pitch_mm`` are G-04's extension: when both are given (requires
+    ``cad_path`` too, since caliper truth is matched onto the CAD-derived prism's edges),
+    ``board_pitch_mm`` (measured_span_across_mm, measured_span_down_mm) corrects the board-frame
+    cloud for G-06's measured, anisotropic board pitch before fitting, and the report gains
+    ``prism.caliper`` -- each edge's measured length against caliper truth (G-03/G-06) rather
+    than CAD, bias kept apart from the existing per-edge spread (R-22 Finding 2).
     """
     bundle = load_bundle(recon_run_dir, board_pose_dir)
     board_scale = measure_board_scale(bundle)
@@ -1192,11 +1328,20 @@ def build_report(
             bundle.alignment_rotation,
             bundle.alignment_translation_mm,
         )
+        if board_pitch_mm is not None:
+            points_board = apply_board_pitch_correction(
+                points_board, board_pitch_mm[0], board_pitch_mm[1]
+            )
         board_plane = fit_board_plane(points_board)
         measurement = measure_prism(points_board, prism, board_plane)
         report["prism"] = {
             "cad_path": str(cad_path),
             "min_confidence": min_confidence,
+            "board_pitch_mm": (
+                {"across": board_pitch_mm[0], "down": board_pitch_mm[1]}
+                if board_pitch_mm is not None
+                else None
+            ),
             "board_plane": {
                 "a": board_plane[0],
                 "b": board_plane[1],
@@ -1230,6 +1375,39 @@ def build_report(
                 "profiles report signed CAD-wall offset by height, lean and p10-p90 thickness."
             ),
         }
+
+        if caliper_features is not None:
+            caliper_truth_mm = match_caliper_edge_truth(prism, caliper_features)
+            height_features = [
+                f
+                for f in caliper_features
+                if f.get("kind") == "height" and f.get("mean_mm") is not None
+            ]
+            height_caliper_mm = (
+                float(height_features[0]["mean_mm"])
+                if len(height_features) == 1
+                else None
+            )
+            report["prism"]["caliper"] = {
+                "edges": caliper_edge_errors(measurement, caliper_truth_mm),
+                "height": (
+                    {
+                        "caliper_truth_mm": height_caliper_mm,
+                        "measured_height_mm": measurement.height_mm,
+                        "caliper_error_mm": measurement.height_mm - height_caliper_mm,
+                    }
+                    if height_caliper_mm is not None
+                    else None
+                ),
+                "note": (
+                    "G-04: each edge's measured length against caliper truth (G-03/G-06), not "
+                    "CAD -- caliper_error_mm is the edge's bias, perpendicular_spread_mm (same "
+                    "value as the CAD-relative edges above) is its spread, kept apart per R-22 "
+                    "Finding 2. Edges with no matching caliper feature are omitted, not zeroed. "
+                    "height has no such ambiguity (there is only one height per specimen), so "
+                    "it is reported even for specimens whose edges are all excluded."
+                ),
+            }
 
         if observed_glb is not None:
             observed_points = load_observed_surface_points(Path(observed_glb))

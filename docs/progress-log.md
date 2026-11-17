@@ -2446,6 +2446,49 @@ checks it. `stories/G/G-03.md` records each feature's measured minus CAD.
 measurer's notes name a damaged corner that can't now be located: `g02_05`'s and `g02_06`'s. They
 stay as written.
 
+
+## 2026-11-16 — C-16 review corrections and D-031 timing record (PR #346)
+
+**Who:** @mbj1994; review by @TabeenRaoof.
+**What changed:** C-16's buyer page and server-side A-03 parser route were reviewed before closeout.
+The review caught a frozen-contract response bug: FastAPI was serializing top-level `spec: null`
+or `reason: null` even though the new v1.3 schema omits the inapplicable field. The route now
+removes only top-level null fields while preserving the meaningful nested
+`features[].tolerance_mm: null`. Contract-validation tests cover parsed, model-error and
+missing-key replies.
+**Buyer UX:** parser codes and browser network exceptions are translated into actionable text;
+parsed features no longer erase rows the buyer already typed; blank parser tolerances are tested
+to block order creation; the assumptions reminder tells the buyer to remove stale assumptions;
+and capture links work from both `buyer.html` and `/buyer`.
+**Manual:** §4 now documents the buyer page, runtime per-tab buyer key, parse → review → fill blanks
+→ create flow, and the returned order code/CAD size/capture link.
+**D-031:** #335's early-boundary R-34 merge is now explicitly recorded. #346 requests the same
+timing exception but still requires both other members to approve its final head before merge.
+**Close-out:** owner-confirmed actual time is **2 h** against the 5 h estimate. C-16 and its index
+row are Done on the final close-out branch; both other members still approve that exact final head
+under D-031 before merge.
+
+## 2026-11-16 — R-36 home pre-check: the demo path runs on the M2 Max (PR #340)
+
+**Who:** @TabeenRaoof
+**What changed:** no code. R-36's story records the measurement runs, and its runbook criterion
+gains the order step that R-34 and C-16 made necessary.
+**Result:** on `main` at `5407b7d`, with the service on the M2 Max and an iPhone in Safari through
+`npm run dev:device` on home Wi-Fi:
+- golden s-04 through the HTTP smoke flow: 30 frames reconstructed in 47–50 s;
+- three real iPhone sessions of s-04: 31–51 s from Finish to model, metric on the board;
+- the clean 23-frame run against nominal CAD: height 0.947, edges 0.95–1.04, fit residual 2.32 mm,
+  comparable to golden;
+- the same main wide lens in every frame;
+- the live Gemini check: it flagged a screen photo at frame 5, and the tip reached the phone;
+- stopping the service mid-session twice (91 s, 138 s): the session continued and finished both
+  times.
+
+Seven gaps are listed in R-36's notes for their own issues, among them the raw outage message,
+Safari backgrounding losing the session, a screen frame getting into the model, and
+`cad_size_check`'s blob selection.
+**Next:** the rehearsal in the defense room, and the runbook in `recon/README.md`.
+
 ## 2026-11-15 — G-05 Done: the control and the 4 mm shift printed and calipered; printed shift 4.00 mm (PR #347)
 
 **Who:** @TabeenRaoof. Claimed in #273; cut to two parts by D-069 (#331); readings in #332.

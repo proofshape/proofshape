@@ -255,6 +255,12 @@ between the story and the sprint plan.
 *Checked against D-028 at write time:* D-031 and D-032 were free on every open branch, `main`
 included, as of 2026-09-13 — thirteen branches checked, highest claimed anywhere was D-030.
 
+*Timing exception record (2026-11-16):* R-34 / PR #335 was merged before the Dec 2 sprint boundary
+after the team explicitly reviewed the early-boundary exception. C-16 / PR #346 is proposed under
+that same exception because it is the buyer UI for R-34 and adds only the server-side `parseSpec`
+route needed to land A-03 safely. C-16 still must receive both other members' approvals on its
+final head before merge; this note records the exception, not an approval.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
@@ -1519,7 +1525,6 @@ part.
 *Checked against D-028:* fetched all origin branches on 2026-11-12; D-068 was highest anywhere,
 so D-069 was free.
 
-
 **D-070 · Orders are file-backed, use server-generated Crockford codes, and createOrder is guarded by a server-held buyer key.** (2026-11-15)
 R-34 stores each order under `PROOFSHAPE_ORDERS_DIR` (default
 `proofshape-data/orders`) as `<order_code>/order.json`, with an uploaded CAD beside it as
@@ -1577,6 +1582,163 @@ table: "GPU too slow for interactive mode → Batch mode ships at M1 and is alwa
 this closes the M2 gate on real evidence rather than leaving the decision implicit.
 *Checked against D-028:* fetched all origin branches on 2026-11-15; D-070 (held on
 `recon/R-34-order-store`) was highest anywhere, so D-071 was free.
+
+**D-072 · The demo's reconstruction service runs on the M2 Max, reached from the phone over the
+local network; a public URL comes later only if four conditions hold.** (2026-11-15)
+This covers the integration runs (X-03, X-04), the Dec 2 backup recording (X-05) and the live
+defense. They all run against `recon.service` on @TabeenRaoof's M2 Max (32 GB). The phone reaches
+it through the capture dev server's HTTPS proxy (`npm run dev:device` with
+`PROOFSHAPE_RECON_PROXY`, D-049), as C-13 and C-18 did. R-36 owns the runbook and the rehearsal.
+The hosted GitHub Pages app (C-21) stays fail-closed. It calls a public service only once all four
+of these hold:
+- Lightning Deployments work again;
+- credits are allocated to the teamspace;
+- a cost guard that actually stops an idle deployment exists (#107);
+- O-005 is answered and R-34's order-code gate is merged.
+
+*Why:*
+- **Lightning is unavailable twice over.** Its credits ran out on 2026-10-07, after a deployment
+  was left running for about 28.5 h (R-15). C-21's close-out notes (2026-11-15, not yet on `main`)
+  report a Lightning platform security incident, with Deployments still down. And `--max-runtime`
+  doesn't stop a deployment, so nothing caps the cost today (#107).
+- **The Mac path is proven where it counts.**
+  - It completed real iPhone sessions: C-13 with 19 frames, and C-18's pass on 2026-11-11 with
+    20 frames.
+  - It takes about a minute per session (R-31: 56 s through uvicorn), comparable to a T4.
+  - The M2 Max runs 30-frame sessions; uncapped, 19 frames peaked at about 17 GB.
+- **Nothing in the plan needs a public URL.** X-03 asks for "the real service" and X-05 for one
+  recording. The sprint plan's own stand-in for a GPU service is "natively on Apple Silicon;
+  rented pod as backup" (D6), and the recording is the plan of record if anything fails (M8).
+- **It costs nothing, and nothing generative is lost.** The Lightning image has no completion
+  runner either (D-058), so shape completion is `unavailable` on both hosts.
+
+*What it changes:*
+- X-04's open question about its run mode is settled: local dev mode on the Mac, so C-21 is not a
+  dependency.
+- C-21's "which service the hosted page calls" is answered for this term by the four conditions
+  above.
+- S6's "rehearse losing the pod and bringing it back" becomes losing the Mac service
+  mid-session and bringing it back (R-36).
+
+*Limits, stated plainly:*
+- **One machine.** If the M2 Max fails on the day, the recording is the demo.
+- **The network.** The phone and the Mac must reach each other on the room's network. Campus Wi-Fi
+  may block that, which is why R-36 rehearses in the room, with the iPhone's personal hotspot as
+  the fallback. The sprint plan's rule stands: never demo live on a laptop not tested in the room.
+- **Memory on smaller Macs.** A teammate's 18 GB Mac fits about 14 frames. That was measured on
+  #146 with Metal capped to match an 18 GB machine; 16 and 19 frames ran out of memory. So a
+  fallback laptop caps sessions there.
+*Checked against D-028:* fetched every origin branch on 2026-11-15. D-069 is the highest on
+`main`, and D-070 and D-071 are held on open branches, so D-072 was the first free number.
+Re-checked when syncing with `main` before merge: D-070 and D-071 have since merged, and D-072
+is still held only here.
+*Agreement:* it settles X-04's run mode and C-21's open question, which @mbj1994 holds, so its pull
+request asks both @mbj1994 and @dalwalyk to agree.
+
+---
+
+**D-073 · G-04: the board reference's σ_floor, from heights only, is 0.86 mm — edges are not
+yet trustworthy enough to include.** (2026-11-16, corrected same-day on review)
+Real chain (R-01 → R-02 → R-04/R-23 → `cad_size_check.build_report`, extended for caliper truth
+and G-06's measured board pitch) run on all six G-02 specimens (`fixtures/data/g04_board_error/
+g04-board-error-evidence.json`), confidence filter `--min-confidence 1.0001` (D-045).
+
+**This decision originally reported σ_floor = 7.52 mm from pooled edges and heights.** Review
+on PR #348 (@TabeenRaoof) re-ran the identical chain on the identical photos and got different
+edge numbers (board scale agreed to 4 decimals; edges did not) and traced it to two real,
+pre-existing bugs this story's extension newly depends on, neither invented by this review:
+
+1. `measure_prism`'s edge length is the 2nd–98th-percentile point extent along the edge, which
+   reads a perfect, noiseless, reconstruction-free prism about 4% short of its true corner-to-
+   corner length by construction (confirmed by sampling each G-02 CAD's own walls densely with
+   no noise at all and running `measure_prism` on that alone). A caliper reads corner to corner;
+   this convention mismatch alone explains most of g02_06's "consistent" negative edge errors.
+2. `_fit_rigid_2d`'s exhaustive discrete pose search can land in a visibly wrong pose for a
+   right triangle (g02_03) and the square (g02_01), confirmed against the point cloud directly,
+   and is not stable run to run on identical input — tiny reconstruction differences can flip
+   which discrete candidate scores best, landing a qualitatively different pose, not just a
+   numerically close one. This is why the original run and the review's re-run disagreed by
+   whole millimetres on individual edges while agreeing on the (robust, averaged) board scale.
+
+Both make every edge-level number untrustworthy right now, for every specimen, not only the
+symmetric/near-regular ones this decision originally named. **Fixing them — corner-to-corner
+edge measurement via fitted-wall-line intersection, and a pose search that cannot land wrong on
+these shapes — is real, open work, filed as R-37, not attempted here** (per the review's own
+suggested path: report what can be trusted, record the gap honestly, rather than ship a number
+from a known fitting artifact).
+
+**Height has no such dependency** (it comes from the top-face point-density peak, computed
+before `_fit_rigid_2d` ever runs) and is the only feature this decision now trusts:
+
+| Specimen | Board scale | Height error (mm) |
+|---|---:|---:|
+| g02_01 (square, 15 mm) | 0.9947 | −0.76 |
+| g02_02 (rect, 25 mm) | 0.8311 | **excluded entirely** — see below |
+| g02_03 (triangle, 20 mm) | 0.9984 | −0.40 |
+| g02_04 (pentagon, 25 mm) | 0.9976 | +0.86 |
+| g02_05 (hexagon, 35 mm) | 0.9970 | −0.14 |
+| g02_06 (rect, 40 mm) | 0.9959 | +0.61 |
+
+Pooled over the 5 included heights: mean error **+0.03 mm**, **σ_floor_mm (95th percentile,
+nearest-rank) = 0.86 mm**, equal to `max_error_mm` here — with n = 5, nearest-rank p95 is the
+maximum, reported alongside rather than implied to be a finer-grained percentile than 5 points
+support.
+
+*Run-to-run noise, found by the review's independent re-run, not investigated further here:*
+the reviewer's re-run agreed with these heights to within 0.03 mm on four of five specimens,
+but `g02_05` read +0.14 mm against this run's −0.14 mm — a 0.28 mm swing, plausibly the top-face
+search's 0.5 mm histogram bins. It doesn't change `sigma_floor_mm` here, but ~0.3 mm of run-to-
+run noise is a third of 0.86 mm, worth keeping in mind as a lower bound on how tight this figure
+can get without addressing the histogram bin width too.
+
+*Conditions this holds under:* landscape phone stills (G-08's capture convention), the board
+reference only (not app capture, not the sheet/card references — G-10's job), R-01's raw point
+cloud (not the R-07/R-08 mesh), **heights only — edges are an open gap, not covered**.
+*Why not the originally-reported 7.52 mm:* that number was itself a measurement artifact (the
+two bugs above), not a real, reproducible finding about the board reference — reporting it
+without the review's reproduction attempt would have been reporting noise as signal. 0.86 mm is
+the smallest the real evidence currently supports; it is likely optimistic (n = 5, no edges),
+not a claim that the board reference's true floor is this good.
+*What 0.86 mm covers, stated precisely because R-16 and I-07 will read this literally:* 0.86 mm
+is σ_floor **for out-of-plane (height) features on the board reference only.** It says nothing
+about in-plane features — edge lengths, wall positions — which **have no measured floor yet**,
+pending R-37. Concretely:
+- **R-16** judges in-plane comparisons (e.g. s-04's B–C leg, a 60 mm in-plane length) as
+  **insufficient-evidence**, not within/out-of-tolerance against 0.86 mm — that story's own
+  criteria already provide for this case.
+- **I-07**'s `max(σ, σ_floor)` does **not** apply 0.86 to in-plane deviation (most Observed
+  vertices are wall vertices, i.e. in-plane) until R-37 lands and a real in-plane figure exists.
+- "Does not trigger M3's fallback" holds **for height tolerances only** — M3 ("every demo
+  tolerance is set from it") is met for height, not for in-plane, which remains ungated.
+- One interim bound for in-plane *scale* (not edge localisation) exists already in the board-
+  scale column above: 0.9947–0.9984, i.e. −0.16% to −0.53% over the board's own span. That is a
+  separate, smaller claim than an edge-localisation σ_floor and is not this decision's result.
+*g02_02, with the real root cause named (not "the alignment didn't converge"):* one frame,
+`IMG_4665`, has a median per-corner residual of 124.8 mm against every other frame's single
+digits; R-23's unweighted least-squares has no per-frame outlier rejection, and
+`metric_alignment.main` prints `PASS` with no residual threshold at all, so this failure would
+reach the live service silently today. Dropping that one frame gives board scale ≈0.99, in line
+with every other specimen — confirming the raw reconstruction is fine and the fault is R-23's
+solve. **Filed as R-38**: a per-frame-rejecting R-23 solve, plus a real residual threshold
+(`metric_alignment.main` stops printing unconditional `PASS`), with the question of whether that
+threshold should also expand the `Unverifiable` verdict beyond its current intake-time-only use
+(`docs/glossary.md`) left as R-38's own explicit design fork, not assumed here either way. This
+matters beyond G-04: R-36 serves live sessions through this exact chain.
+*Design note, scoped deliberately:* the pitch correction for G-06's measured (anisotropic)
+board pitch is applied only inside `cad_size_check.py`'s new `apply_board_pitch_correction`,
+never inside `recon/metric_alignment.py`, which R-23's live alignment also depends on — a future
+story touching R-23's alignment should see this rather than rediscover it. Unaffected by the
+edge-measurement finding above (pitch correction is a pre-`_fit_rigid_2d` coordinate scale, not
+part of either buggy step).
+*Checked against D-028:* fetched all origin branches on 2026-11-16; D-072 (held on
+`recon/R-36-demo-host`) was highest anywhere, so D-073 was free.
+*Related, checked, not a problem here:* GitHub issue #356 (@TabeenRaoof, found during R-36's
+pre-check) found `cad_size_check`'s candidate-region blob selection can pick a low pile of
+stray points instead of the part on low-resolution, few-frame phone-style captures. Checked
+G-04's own six runs against it: every measured height lands in the right ballpark for its
+specimen (a stray-point blob would read near zero), and none raised the error #356 reproduces.
+Likely because G-08's captures (5712×4284, 25–30 stills) are far denser than the 480×640/10–16-
+frame captures #356 reproduces on. Not re-investigated beyond this check.
 
 ---
 
