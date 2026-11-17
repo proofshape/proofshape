@@ -1789,6 +1789,142 @@ reference.
 
 ---
 
+**D-075 · R-38: R-23's alignment solve now rejects per-frame outliers; the residual gate is
+8.0 mm, measured against all 11 real captures available.** (2026-11-16)
+`recon/metric_alignment.py`'s `solve_similarity` had no per-frame outlier rejection — found on
+G-04/PR #348 review (@TabeenRaoof), D-073: one bad frame (`g02_02`'s `IMG_4665`, median per-
+corner residual 124.8 mm) pulled the whole board-anchored fit's RMS residual to 23.3 mm, and
+`metric_alignment.main` printed `PASS` unconditionally, with no threshold at all.
+
+New `solve_similarity_rejecting_outlier_frames` (`recon/metric_alignment.py`): iteratively
+solves, takes each present frame's *median* point residual, MAD-trims across those per-frame
+medians (the same robust-fit style as `cad_size_check.fit_board_plane`), and drops the single
+worst frame if it clears `reject_sigma_k` MAD-widths above the group's median — repeating up to
+`DEFAULT_MAX_FRAME_REJECT_ITERATIONS=4` times, never below `MIN_FRAMES_AFTER_REJECTION=2`
+distinct frames. `align_board_geometry` now calls it instead of `solve_similarity` directly;
+`BoardAlignmentResult` gains `rejected_frame_names` and `per_frame_residual_mm` (written into
+`metric_alignment.json` too). `metric_alignment.main` gains `--max-residual-mm` and a real
+`FAIL`/exit-1 path instead of unconditional `PASS`.
+
+**The real sweep (`reject_sigma_k=8.0`, every available real capture, no VGGT re-run needed —
+all 11 already cached on disk). "Worst/threshold" is the worst frame's own median residual
+divided by the first-iteration MAD-trim threshold — how close each capture came to rejecting
+anything, not just whether it did:**
+
+| Capture | RMS before fix (mm) | RMS after fix (mm) | Rejected frame | Worst/threshold |
+|---|---:|---:|---|---:|
+| **s-01** | **2.545** | **2.101** | **`IMG_3927.jpeg`** | **1.04** |
+| s-02 | 3.019 | 3.019 | none | 0.56 |
+| s-03 | 1.608 | 1.608 | none | 0.62 |
+| s-04 | 2.080 | 2.080 | none | 0.51 |
+| s-05 | 2.351 | 2.351 | none | 0.64 |
+| g02_01 | 3.914 | 3.914 | none | 0.56 |
+| **g02_02** | **23.353** | **1.863** | **`IMG_4665.JPG`** | **8.38** |
+| g02_03 | 2.155 | 2.155 | none | 0.68 |
+| g02_04 | 2.732 | 2.732 | none | 0.65 |
+| g02_05 | 3.190 | 3.190 | none | 0.45 |
+| g02_06 | 3.789 | 3.789 | none | 0.42 |
+
+`g02_02`'s fix matches Tabeen's own manual estimate (RMS ≈1.86 mm after dropping `IMG_4665` by
+hand) almost exactly, and the worst/threshold ratio (8.38) separates it by a wide margin from
+every other capture.
+
+**`s-01` is a genuine but borderline rejection, not a second confirmed-clean-margin case like
+g02_02 — stated precisely, not oversold.** Its worst frame (`IMG_3927.jpeg`, 7.15 mm) clears the
+threshold (6.88 mm) by only ~4%, a 1.04 ratio against every other clean capture's 0.42–0.68.
+Review on PR #358 re-ran this independently and got 7.16/6.99 = 1.02 — close enough to confirm
+the same conclusion, but the two runs' own ~0.01–0.03 mm-level differences (consistent with the
+~0.3 mm run-to-run noise D-073 already noted for `measure_prism`'s top-face search, a different
+but related floating-point/VGGT non-determinism) mean a future re-run could plausibly land
+`s-01` on either side of the line. The effect either way is small and harmless: `s-01`'s scale
+moves about +0.13% and its RMS goes from 2.545 to 2.101 mm. Kept as a rejection here because it
+clears the line as measured, not because it's an obviously-bad frame the way `IMG_4665` is.
+
+Every clean-after-fix result falls in **1.6–3.9 mm**. `DEFAULT_MAX_RESIDUAL_MM = 8.0 mm`, about
+2x the highest of those (3.914 mm) — comfortable margin above real clean results, while far
+below the ~23 mm the real g02_02 failure produced before rejection, so the gate would have
+caught it even without the rejection fix alone.
+
+*Why `reject_sigma_k=8.0`, not swept separately as its own parameter:* the same value correctly
+separates the real g02_02 case (124.8 mm, worst/threshold 8.38, an unambiguous outlier) from the
+9 unambiguously-clean captures (worst/threshold 0.42–0.68) without any false rejection among
+them. `s-01` sits right at the boundary (1.04) rather than cleanly on either side — confirmed
+live, not assumed to generalize from one case, and not claimed to be a crisp separation in every
+instance.
+*Known limit, found and recorded, not hidden:* the per-frame rejection is a single-shot
+threshold on the initial (uncorrected) solve's residuals. If a single frame's corruption has
+enough leverage to distort that initial solve severely (confirmed separately: an extreme,
+~2x-true-depth synthetic corruption can collapse the fitted scale toward zero, at which point
+the corrupted frame's own residual can shrink rather than stand out), this design will not
+recover it. The real g02_02 failure (scale pulled to 0.83, not collapsed to near-zero) is well
+within what this design handles; a future, more severe failure mode is not guaranteed to be.
+Separately, the MAD-trim threshold has no absolute floor — on a capture whose own clean frames
+happen to agree very tightly (`s-03`'s threshold is 4.62 mm), a frame only a few mm off could
+still be rejected. That costs a frame's worth of observations, not correctness, so it's left as
+is, not a bug.
+*Rejected frames must stay excluded through every later stage too, not only alignment — this
+took two review rounds to get right, and both rounds' real findings are kept here, not
+smoothed over:*
+
+Round one (@TabeenRaoof): `rejected_frame_names` was written to `metric_alignment.json` but
+nothing downstream read it, so a rejected frame's depth — exactly the bad data the rejection
+found — still reached `tsdf_fusion.fuse_run`. Confirmed live: once g02_02's alignment was fixed
+in isolation, fusion then failed outright on `IMG_4665`'s own depth (R-30's per-frame
+re-anchoring correctly refused it), with an error that didn't name the real cause.
+
+**The first fix for this was itself wrong, and review caught it (round two, @TabeenRaoof and
+@mbj1994):** it removed the rejected frame from `fuse_run`'s arrays entirely, shrinking the frame
+axis. `provenance_run` and `completion.choose_view_frame` both index frames by *position* into
+`poses.npz`'s own full list, so this silently misaligned every frame after the rejected one —
+surfaced as `provenance_run` crashing on a `corrected_extrinsic.npz` shape mismatch, which is
+worse than the round-one bug (that one failed loudly at fusion; this one would have failed, or
+silently misattributed observations, one stage further in). Fixed properly: `fuse_run` and
+`provenance_run` both now mark a rejected frame's pixels untrusted (`valid_depth`/
+`trusted_pixel_mask` set `False` for its rows) without ever changing the frame axis's length —
+`reanchor_frames_to_board` gained a `skip_frame_indices` parameter so it doesn't also try (and
+correctly fail) to fit a per-frame correction on a frame already known bad. `corrected_
+extrinsic.npz` is now always written at the same length `poses.npz` has, rejected frame
+included, holding just its unreanchored global-alignment value.
+
+**Confirmed for real this time, the whole way through, not assumed from a scratch-file
+check:** ran `metric_alignment.load_and_align` → `tsdf_fusion.fuse_run` →
+`mesh_cleanup.cleanup_run` → `provenance.provenance_run` on g02_02's actual captured data, in
+that order, exactly as `run_reconstruction_pipeline` does. Alignment: 1.863 mm, `IMG_4665.JPG`
+rejected. Fusion: succeeds, `frame_count=30` (not shrunk). Provenance: succeeds,
+`extrinsic_source="reanchored"` (confirms it read fusion's real `corrected_extrinsic.npz` with
+no shape error), `observed_fraction≈0.887`. Separately, `cad_size_check.build_report` on this
+same alignment gives a board scale of 0.9989 and a height of −0.17 mm against caliper truth —
+inside D-073's 0.86 mm σ_floor. `g02_02` rejoining G-04's aggregate (still a follow-up, not done
+in this story) now has real evidence across the *entire* live chain, not just one downstream
+measurement script.
+*The live service never checked the residual either, only the CLI did (review on PR #358,
+@mbj1994):* `recon/service.py::run_reconstruction_pipeline` called `metric_alignment.load_and_
+align` directly and went straight to fusion, never through `metric_alignment.main`, so
+`--max-residual-mm` only ever existed on the command line. A live session whose post-rejection
+RMS still exceeds `DEFAULT_MAX_RESIDUAL_MM` now raises the pipeline's existing
+`metric_alignment_failed` error right after alignment, before fusion ever starts.
+*Design fork, decided explicitly (not assumed either way):* the residual-threshold failure is
+`metric_alignment.main`'s own new `FAIL`/exit-1, **not** wired into the `Unverifiable` verdict.
+No verdict-computation code exists anywhere in the repo today (`GET /v1/sessions/{id}/verdict`
+unconditionally 404s "not available yet"), so there is no existing intake-time setter to extend
+by analogy — expanding `Unverifiable`'s definition (`docs/glossary.md`, currently "declared at
+intake, before any photo") to also cover a post-reconstruction alignment failure would be a
+semantic/spec decision for whoever builds real verdict logic, not a code hookup this story can
+make safely. `recon/service.py`'s `VerdictResult.declared_at` already has an unused
+`"post_reconstruction"` enum value that looks purpose-built for exactly this — flagged for that
+future story, not acted on here.
+*What's given up:* none of G-04's own aggregate is re-run or changed by this story (explicitly
+out of scope per R-38's acceptance criteria) — `g02_02` could now rejoin it, but that is a
+follow-up, not done here. `s-01`'s newly-rejected frame changes more than its
+`metric_alignment.json`: its fused mesh and provenance output also now leave `IMG_3927.jpeg`
+out, the same as g02_02's does for `IMG_4665.JPG`. Other stories' historical numbers computed
+from the old (unrejected) s-01 alignment, fusion or provenance are not retroactively audited or
+corrected here.
+*Checked against D-028:* fetched all origin branches on 2026-11-16; D-074 (held on
+`capture/C-17-order-sheet-impl`) was highest anywhere, so D-075 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**

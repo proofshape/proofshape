@@ -771,6 +771,34 @@ def test_reanchor_frames_to_board_raises_when_a_frame_has_too_few_candidates():
         )
 
 
+def test_reanchor_frames_to_board_skips_a_rejected_frame_instead_of_raising():
+    # R-38: a frame already known bad (an alignment-level outlier rejection) must not be asked
+    # to pass this function's own candidate-count check -- skip_frame_indices leaves it exactly
+    # as given, no fit attempted, no raise.
+    target = _flat_board_surface()
+    board_frame_points = np.zeros((1, 1, 5, 3))
+    board_frame_points[
+        0, 0, :, 2
+    ] = -2.0  # on-plane, but only 5 points -- too few to fit
+    valid_depth = np.ones((1, 1, 5), dtype=bool)
+    board_extrinsic = np.tile(np.eye(3, 4), (1, 1, 1))
+
+    corrected_points, corrected_extrinsic, reports = (
+        tsdf_fusion.reanchor_frames_to_board(
+            board_frame_points,
+            board_extrinsic,
+            valid_depth,
+            target,
+            min_frame_board_points=100,
+            skip_frame_indices=frozenset({0}),
+        )
+    )
+
+    assert corrected_points == pytest.approx(board_frame_points)
+    assert corrected_extrinsic == pytest.approx(board_extrinsic)
+    assert reports == []
+
+
 def test_reanchor_frames_to_board_extrinsic_round_trips_a_real_point():
     # The correction's whole point: the *same* physical depth measurement must reproject
     # identically whether expressed as (original point, original extrinsic) or (corrected point,
@@ -940,6 +968,62 @@ def test_fuse_run_writes_mesh_and_report(tmp_path):
     assert len(faces) == report["face_count"]
     on_disk_report = json.loads((out_dir / "tsdf_fusion.json").read_text())
     assert on_disk_report == report
+
+
+def test_fuse_run_skips_a_frame_the_alignment_rejected(tmp_path):
+    # R-38/PR #358 review: rejected_frame_names was written to metric_alignment.json but nothing
+    # downstream read it, so a frame R-23's alignment rejected as an outlier (its own depth was
+    # the problem) still reached fusion -- reintroducing exactly the bad data the rejection
+    # found, one stage later. frame_1's depth here is finite but 3mm wrong (not NaN), on purpose
+    # (mutation-tested, @TabeenRaoof's review): NaN depth is already excluded by np.isfinite
+    # regardless of the valid_depth[rejected]=False masking this test exists to cover, so an
+    # all-NaN bad frame passes this test even with that masking line deleted -- a finite,
+    # plausible-but-wrong frame is what actually exercises it. The result must match
+    # test_fuse_run_writes_mesh_and_report's single-good-frame numbers exactly.
+    run_dir = tmp_path / "run"
+    good_depth = _board_and_part_depth()
+    bad_depth = good_depth - 3.0
+    depth = np.concatenate([good_depth, bad_depth], axis=0)
+    extrinsic = np.concatenate([_SCENE_EXTRINSIC, _SCENE_EXTRINSIC], axis=0)
+    intrinsic = np.concatenate([_SCENE_INTRINSIC, _SCENE_INTRINSIC], axis=0)
+    _write_synthetic_run(run_dir, depth, extrinsic=extrinsic, intrinsic=intrinsic)
+    alignment_json = run_dir / "metric_alignment.json"
+    alignment_json.write_text(
+        json.dumps(
+            {
+                "scale": 1.0,
+                "rotation": np.eye(3).tolist(),
+                "translation_mm": [0.0, 0.0, 0.0],
+                "rejected_frame_names": ["frame_1.jpg"],
+            }
+        )
+    )
+    out_dir = tmp_path / "mesh_out"
+
+    report = tsdf_fusion.fuse_run(
+        run_dir,
+        alignment_json,
+        out_dir,
+        voxel_size_mm=10.0,
+        footprint_mm=(160.0, 120.0),
+        max_part_height_mm=100.0,
+        min_kept_points=0,
+    )
+
+    # frame_count reflects every frame poses.npz has, not just the kept ones -- the frame axis
+    # must stay the same length in every stage (provenance/completion both index frames by
+    # position into poses.npz's own full list), so the rejected frame is masked out of this
+    # run's contribution, not removed from the count. The voxel/board-surface numbers below are
+    # what actually proves its NaN depth never reached the volume or either board-plane fit:
+    # they match test_fuse_run_writes_mesh_and_report's single-good-frame values exactly.
+    assert report["frame_count"] == 2
+    assert report["total_voxel_count"] == 16 * 12 * 10
+    assert report["board_surface"]["offset_mm"] == pytest.approx(-10.0, abs=0.5)
+    # The exact invariant a first version of this fix violated (review on PR #358): provenance
+    # and completion both index frames by position into poses.npz's own full list, so
+    # corrected_extrinsic.npz must stay at that same length, never shrunk to the kept frames.
+    with np.load(out_dir / "corrected_extrinsic.npz") as corrected:
+        assert corrected["extrinsic"].shape == (2, 3, 4)
 
 
 def test_fuse_run_grid_top_follows_the_fitted_plane(tmp_path):
