@@ -1027,13 +1027,13 @@ def measure_prism(
     expected_diameter_mm = math.hypot(
         float(footprint_rect[1][0]), float(footprint_rect[1][1])
     )
-    blob_mask = _largest_connected_blob(
-        candidate_xy, expected_diameter_mm=expected_diameter_mm
-    )
-    candidate_points = candidate_points[blob_mask]
-    candidate_xy = candidate_xy[blob_mask]
-    candidate_height = candidate_height[blob_mask]
 
+    # Do not apply the footprint-diameter blob gate before detecting height. Real g02_02 has a
+    # valid, very dense part cloud whose candidate-region connectivity includes extra board/noise
+    # structure; the broad xy gate can otherwise select a tiny plausible-looking fragment and
+    # remove the true top face entirely. Height detection was already robust before R-37 and does
+    # not depend on 2-D pose. Apply the CAD-size plausibility gate only to the mid-height
+    # cross-section below, where outlier-connected blobs actually corrupt the pose fit.
     # --- height: the densest height bin in the expected range is the top face --------------
     # Without confidence filtering, low-confidence stray points (R-17) pile up near the board
     # far more densely than the part itself, so searching the *whole* height range for the
