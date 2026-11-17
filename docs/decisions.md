@@ -1740,6 +1740,31 @@ specimen (a stray-point blob would read near zero), and none raised the error #3
 Likely because G-08's captures (5712×4284, 25–30 stills) are far denser than the 480×640/10–16-
 frame captures #356 reproduces on. Not re-investigated beyond this check.
 
+**D-076 · R-16: R-04's one recorded known-size comparison (s-04's B-C leg) is judged
+insufficient-evidence — no in-plane tolerance exists yet to judge it against.** (2026-11-17)
+`scripts/judge_known_size_tolerance.py` reads G-04's measured `sigma_floor_mm` from
+`fixtures/data/g04_board_error/g04-board-error-evidence.json` (0.86 mm, height/out-of-plane
+only, D-073) and judges every known reconstruction-vs-caliper comparison against it by declared
+`feature_kind`. R-04's only recorded comparison (PR #39: s-04's triangular face, B-C leg,
+reconstruction 60.27 mm vs. caliper mean 60.011 mm, difference +0.259 mm) is an edge length — an
+in-plane feature. D-073 already states explicitly that in-plane features have no measured floor
+yet (pending R-37), so this is not judged against the 0.86 mm height floor, which does not
+measure what an edge-length difference needs: the real, honest verdict is
+**insufficient_evidence**, not a pass dressed up from a tolerance this story would otherwise
+have to invent (D-003).
+*No other specimen comparison exists to judge.* G-03 produces caliper-vs-CAD readings (fabrication
+accuracy, not a reconstruction comparison); G-04's own six `g02_*` height-error figures
+(D-073's table) are the data `sigma_floor_mm` was computed *from* — judging them against a
+threshold derived from themselves would be circular, not a real validation, so they are not
+treated as additional specimen comparisons here. R-22's older s-04/s-05 shrinkage comparison used
+the pre-R-23 camera-centre alignment, superseded by R-04/R-23's board-anchored one; it is closed
+investigative work, not a current known-size comparison.
+*Recorded back in `stories/R-04.md`'s notes* per this story's own acceptance criteria, so R-04's
+known-size acceptance criterion has a final, traceable answer instead of a permanent forward
+reference.
+*Checked against D-028:* fetched all origin branches on 2026-11-17; D-075 (held on
+`recon/R-38-per-frame-rejection`, unmerged) was highest anywhere, so D-076 was free.
+
 ---
 
 ## Open — not yet decided
