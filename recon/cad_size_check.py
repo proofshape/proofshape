@@ -376,15 +376,48 @@ def _approximate_hull_polygon(
 def _rigid_transform_no_scale(
     source_xy: np.ndarray, target_xy: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Least-squares orthogonal map from source to target, deliberately with no scale."""
+    """Map one ordered polygon correspondence with rotation/reflection but no scale.
+
+    A generic SVD/Kabsch fit is ambiguous for a perfect square because its two planar singular
+    values are equal: it can preserve the centroid while losing the specific edge-to-edge
+    correspondence. R-37 instead maps the first corresponding edge direction exactly and uses
+    the polygons' signed winding to choose whether the perpendicular axis is reflected. The
+    candidate scorer still decides which cyclic/reversed correspondence is best.
+    """
     source_center = source_xy.mean(axis=0)
     target_center = target_xy.mean(axis=0)
-    covariance = (source_xy - source_center).T @ (target_xy - target_center)
-    left, _singular_values, right_t = np.linalg.svd(covariance)
-    transform = right_t.T @ left.T
+
+    source_direction = source_xy[1] - source_xy[0]
+    target_direction = target_xy[1] - target_xy[0]
+    source_direction = source_direction / np.linalg.norm(source_direction)
+    target_direction = target_direction / np.linalg.norm(target_direction)
+
+    source_perpendicular = np.array([-source_direction[1], source_direction[0]])
+    target_perpendicular = np.array([-target_direction[1], target_direction[0]])
+
+    source_shifted = np.roll(source_xy, -1, axis=0)
+    target_shifted = np.roll(target_xy, -1, axis=0)
+    source_area = float(
+        (
+            source_xy[:, 0] * source_shifted[:, 1]
+            - source_shifted[:, 0] * source_xy[:, 1]
+        ).sum()
+    )
+    target_area = float(
+        (
+            target_xy[:, 0] * target_shifted[:, 1]
+            - target_shifted[:, 0] * target_xy[:, 1]
+        ).sum()
+    )
+    handedness = 1.0 if source_area * target_area >= 0 else -1.0
+
+    source_basis = np.column_stack((source_direction, source_perpendicular))
+    target_basis = np.column_stack(
+        (target_direction, handedness * target_perpendicular)
+    )
+    transform = target_basis @ source_basis.T
     translation = target_center - transform @ source_center
     return transform, translation
-
 
 def _pose_score(
     blob_xy: np.ndarray,
