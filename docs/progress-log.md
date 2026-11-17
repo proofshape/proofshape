@@ -2533,3 +2533,39 @@ has a story, a home in an existing story, or a recorded reason to wait (`stories
 has 52 h in the sprint table, or 46 h in its own heading. The suggested order for the Dec 2 call
 is R-40, C-24, A-14, then C-25.
 **Next:** after merge, comment on each mapped issue and close #231 by hand.
+
+## 2026-11-15 — G-08 Done: the six specimens photographed and hash-locked (PR #339)
+
+**Who:** @TabeenRaoof (claim #336, work #339), approved by @dalwalyk, who also ran the
+second-member checks (1222 passed).
+
+**What changed:**
+- **The photos.** 25–30 landscape stills of each G-02 specimen, on the same G-06-calipered board
+  sheet and table as the golden set, under lighting condition A. iPhone 16 main camera,
+  5712 × 4284. They're on the golden set's Drive and never committed.
+- **`fixtures/specimen_capture_manifest.json`** holds frames (29, 30, 25, 27, 29, 29), aggregate
+  bytes and a `content_sha256` per sample, plus each sample's G-02 STL.
+- **The lock.** `specimen_capture_manifest.sha256` locks the manifest, and `.gitignore` now tracks
+  top-level `fixtures/*.sha256` files.
+- **Tests:** both manifests' locks, the specimen manifest's contents, and the ignore rule.
+
+**Result:**
+- **Board pose:** R-02 posed the board in every frame, at 2.0–2.4 px median RMS against golden
+  s-04's 2.48 px.
+- **One frame dropped:** an ultra-wide-lens frame in `g02_03` was deleted before hashing.
+- **Byte-for-byte agreement:** the owner's original photos hash to all six manifest values.
+- **The downloader end to end:**
+  - `g02_01` to `g02_03` verified on the owner's Mac, and `g02_01` again on @dalwalyk's.
+  - Both runs then hit gdown being refused by Drive partway through. The script correctly never
+    swapped in a partial sample.
+- **Hours:** 4 h actual (est 4), the owner's figure.
+
+**Concluded:** G-08 gave G-04 its last input: G-03's calipers, G-06's board, G-08's photos and
+R-23's scale. This entry was first written with a `check_story_states.py --fix` flip of G-04 to
+Ready. `main` reached that state without this PR. G-04 was then claimed and closed (@dalwalyk,
+#348, D-073) before this PR merged, so the entry is now the record only. It was recorded late, on 2026-11-17, in #342.
+
+**Next:** a small downloader-resilience follow-up would fix gdown being refused partway for both
+sets: retry and back off, or use Drive's plain download URL. Until then, fetch the specimen folders
+as browser zips and unzip them into `fixtures/data/specimen_capture/`. The manifest hashes still
+verify them.
