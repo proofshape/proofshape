@@ -425,7 +425,7 @@ mapping and the capacity note.
 3. **A-14** (the VLM tips a supplier sees, and the screen-photo gate);
 4. **C-25**.
 
-R-39 waits on R-37, and A-02 waits on I-07.
+R-39 is now Ready after R-37 completed; A-02 still waits on I-07.
 
 Issues per story:
 - C-24 #351, #352
@@ -454,7 +454,7 @@ Full detail in each story file.
 | [C-24](C/C-24.md) | Capture survives interruptions: a plain outage message, and a session that survives a reload | 5 h | C-13, C-18 | Ready | _unclaimed_ |
 | [C-25](C/C-25.md) | Frame gate: check the blur threshold against a real motion-blurred frame | 2 h | C-06 | Ready | _unclaimed_ |
 | [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Ready | _unclaimed_ |
-| [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Blocked | _unclaimed_ |
+| [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Ready | _unclaimed_ |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Ready | _unclaimed_ |
 
 ---
