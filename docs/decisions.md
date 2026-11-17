@@ -1740,6 +1740,53 @@ specimen (a stray-point blob would read near zero), and none raised the error #3
 Likely because G-08's captures (5712×4284, 25–30 stills) are far denser than the 480×640/10–16-
 frame captures #356 reproduces on. Not re-investigated beyond this check.
 
+**D-076 · R-16: known-size heights are within tolerance on two independent golden parts;
+in-plane comparisons remain insufficient-evidence.** (2026-11-17, revised same day on review)
+`scripts/judge_known_size_tolerance.py` judges every known reconstruction-vs-caliper comparison
+against D-073's measured height tolerance (0.86 mm, the team-agreed figure recorded as a named
+constant, `D073_HEIGHT_SIGMA_FLOOR_MM` — not re-read from a local, gitignored G-04 evidence file
+by default, since different machines' own re-runs give slightly different figures from
+run-to-run noise; `--evidence PATH` recomputes from one when wanted) by each comparison's
+declared `feature_kind`.
+
+*Heights: within tolerance, on two independent parts.* Review on PR #363 (@TabeenRaoof) found
+that `fixtures/caliper_g-06.json` already has calipered heights for `s-04` and `s-05` — both on
+the board reference, both out-of-plane, both with golden-set reconstructions, and neither in
+G-04's `g02_*` set, so judging them against D-073's floor is not circular. Reproduced
+independently here (`cad_size_check.build_report` with G-06's caliper features and board pitch,
+the same call G-04 uses, on the current board-anchored `load_and_align`): `s-04` board_scale
+0.9987, rms 2.078 mm, height error **−0.515 mm**; `s-05` board_scale 0.9982, rms 2.349 mm, height
+error **−0.207 mm** — matching the reviewer's own −0.52/−0.21 mm. Both fall inside 0.86 mm, so
+R-04's known-size criterion now has a real two-part answer: **heights within tolerance on two
+independent golden parts; in-plane insufficient-evidence pending R-37.** Caveat, stated not
+hidden: `s-04`'s −0.515 mm sits only 0.345 mm inside the floor, while D-073 separately notes
+about 0.3 mm of run-to-run noise in the top-face search the height comes from — and two parts is
+two parts, not a study.
+
+*In-plane: insufficient-evidence, now including every known comparison, not just one.* R-04's
+original comparison (PR #39: s-04's B-C leg, reconstruction 60.27 mm vs. caliper mean 60.011 mm,
++0.259 mm) is an edge length. G-06's own edges — s-04's three legs (nominal 26/60/65 mm) and
+s-05's four wall edges (nominal 30 mm each) — are comparisons too, listed so they're shown
+considered rather than missed; their real `cad_size_check.build_report` differences run from
+−0.36 mm to −8.76 mm, confirming (not just by tolerance-absence but by D-073's own independently
+flagged `measure_prism`/`_fit_rigid_2d` bugs, pending R-37) that these numbers aren't trustworthy
+regardless of what any floor said. All eight land **insufficient_evidence**: D-073 has no
+in-plane floor yet, so the only honest verdict is that one, never a pass/fail dressed up from a
+tolerance this story would otherwise have to invent (D-003).
+
+*No other specimen comparison exists to judge.* G-03 produces caliper-vs-CAD readings
+(fabrication accuracy, not a reconstruction comparison); G-04's own six `g02_*` height-error
+figures (D-073's table) are the data `sigma_floor_mm` was computed *from* — judging them against
+a threshold derived from themselves would be circular, not a real validation, so they are not
+treated as additional specimen comparisons here. R-22's older s-04/s-05 shrinkage comparison used
+the pre-R-23 camera-centre alignment, superseded by R-04/R-23's board-anchored one; it is closed
+investigative work, not a current known-size comparison.
+*Recorded back in `stories/R-04.md`'s notes* per this story's own acceptance criteria, so R-04's
+known-size acceptance criterion has a final, traceable answer instead of a permanent forward
+reference.
+*Checked against D-028:* fetched all origin branches on 2026-11-17; D-075 (held on
+`recon/R-38-per-frame-rejection`, unmerged) was highest anywhere, so D-076 was free.
+
 ---
 
 **D-075 · R-38: R-23's alignment solve now rejects per-frame outliers; the residual gate is
