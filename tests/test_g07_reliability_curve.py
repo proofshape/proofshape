@@ -1,10 +1,10 @@
 """Unit tests for G-07's reliability-curve analysis functions.
 
-Only the pure analysis functions (`bin_by_sigma`, `measure_k`, `pool_pairs`,
-`specimen_offsets_mm`, `specimen_summary`, `scatter_pairs`, `_read_board_plane`) are tested here,
-on synthetic (sigma, error) pairs -- the script's own pipeline orchestration (`ensure_pipeline`,
-`measure_specimen`) needs the real cached recon fixtures (`fixtures/data/`, gitignored) and is
-exercised by actually running the script, not by a test, same convention
+Only the pure analysis functions (`bin_by_sigma`, `measure_k`, `measure_k_against_sigma_floor`,
+`pool_pairs`, `specimen_offsets_mm`, `specimen_summary`, `scatter_pairs`, `_read_board_plane`)
+are tested here, on synthetic (sigma, error) pairs -- the script's own pipeline orchestration
+(`ensure_pipeline`, `measure_specimen`) needs the real cached recon fixtures (`fixtures/data/`,
+gitignored) and is exercised by actually running the script, not by a test, same convention
 `test_measure_g04_board_error.py` already established for its own aggregate-only testing.
 """
 
@@ -20,6 +20,7 @@ from scripts.g07_reliability_curve import (
     _read_board_plane,
     bin_by_sigma,
     measure_k,
+    measure_k_against_sigma_floor,
     pool_pairs,
     scatter_pairs,
     specimen_offsets_mm,
@@ -93,6 +94,64 @@ def test_measure_k_handles_every_sigma_being_zero() -> None:
 
     assert result["k_at_coverage"] is None
     assert "cannot be computed" in result["note"]
+
+
+def test_measure_k_against_sigma_floor_matches_measure_k_above_the_floor() -> None:
+    # Every sigma here is already above sigma_floor, so max(sigma, sigma_floor) == sigma --
+    # the two functions must agree exactly when the floor never binds.
+    rng = np.random.default_rng(3)
+    sigma_mm = rng.uniform(1.0, 2.0, size=500)
+    error_mm = 0.7 * sigma_mm
+    pairs = list(zip(sigma_mm.tolist(), error_mm.tolist()))
+
+    plain = measure_k(pairs, coverage=0.95)
+    floored = measure_k_against_sigma_floor(pairs, sigma_floor_mm=0.86, coverage=0.95)
+
+    assert floored["k_at_coverage"] == pytest.approx(plain["k_at_coverage"])
+
+
+def test_measure_k_against_sigma_floor_clamps_sigma_below_the_floor() -> None:
+    # A vertex whose own sigma is below sigma_floor gets max(sigma, sigma_floor) = sigma_floor
+    # in the denominator -- a *larger* denominator than raw sigma, so a *smaller* ratio than
+    # measure_k would compute for the same pair. This is the exact max(sigma, sigma_floor)
+    # behavior I-07/I-09's own formulas need (D-073), which measure_k alone does not give.
+    pairs = [(0.5, 0.5)]  # sigma=0.5 < sigma_floor=0.86
+
+    floored = measure_k_against_sigma_floor(pairs, sigma_floor_mm=0.86, coverage=0.95)
+
+    assert floored["k_at_coverage"] == pytest.approx(0.5 / 0.86)
+    # Not the same as treating raw sigma as the denominator (which would give error/sigma = 1.0).
+    assert floored["k_at_coverage"] != pytest.approx(1.0)
+
+
+def test_measure_k_against_sigma_floor_demonstrates_the_scatter_k_mismatch() -> None:
+    """Regression test for the review-round-two finding: a k fit on scatter alone (offset
+    removed) is too small once plugged into a formula that compares TOTAL error against
+    max(sigma, sigma_floor) -- exactly the mismatch D-077 records between scatter_k_estimate
+    (~0.25) and consumable_k_estimate (~0.70)."""
+    # Two specimens, each with its own offset and a little scatter around it -- same shape as
+    # the real data (s-04's offset dwarfs its own scatter).
+    offset_a, offset_b = -0.7, 0.6
+    pairs = [
+        (1.2, offset_a + 0.05),
+        (1.3, offset_a - 0.04),
+        (1.1, offset_b + 0.03),
+        (1.4, offset_b - 0.02),
+    ]
+    sigma_floor_mm = 0.86
+
+    scatter_k = measure_k(
+        [
+            (sigma, abs(error - (offset_a if error < 0 else offset_b)))
+            for sigma, error in pairs
+        ]
+    )
+    total_k = measure_k_against_sigma_floor(pairs, sigma_floor_mm)
+
+    # The scatter-only k is tiny (the scatter itself is a few hundredths of a mm); the consumable
+    # k has to cover the much larger offsets too, against the (here, binding) sigma_floor.
+    assert scatter_k["k_at_coverage"] < 0.1
+    assert total_k["k_at_coverage"] > 0.5
 
 
 def _result(specimen_id: str, pairs: list[tuple[float, float]]) -> dict:

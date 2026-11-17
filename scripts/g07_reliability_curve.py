@@ -27,15 +27,19 @@ guessing:**
 2. `ensure_pipeline` used to skip regenerating `metric_alignment.json` and the mesh pipeline when
    their output already existed on disk -- but a *stale* cached `metric_alignment.json` (written
    before R-38's per-frame outlier rejection merged) is indistinguishable from a fresh one by
-   that check alone. Caught on review (@TabeenRaoof, PR #367): `g02_02`'s cached file was R-23's
-   board-anchored output from before R-38, carrying a 23.35 mm RMS residual from the uncorrected
-   `IMG_4665` frame; the current code gives 1.863 mm with that frame rejected. This script now
-   regenerates the alignment unconditionally every run, the same two calls
+   that check alone. Caught on review (@TabeenRaoof and @mbj1994, PR #367): `g02_02`'s cached
+   file was R-23's board-anchored output from before R-38, carrying a 23.35 mm RMS residual from
+   the uncorrected `IMG_4665` frame; the current code gives 1.863 mm with that frame rejected.
+   This script now regenerates the alignment unconditionally every run, the same two calls
    `recon/service.py`'s live path makes (`metric_alignment.load_and_align` +
-   `metric_alignment.write_alignment`), and rebuilds the entire mesh pipeline fresh from it
-   (`ensure_pipeline` deletes `mesh/` before rebuilding) -- never R-01's own
-   `points.ply`/`poses.npz`/`depth.npz`, the one genuinely expensive step (VGGT), which this
-   script never touches.
+   `metric_alignment.write_alignment`), and rebuilds the entire mesh pipeline fresh from it.
+   Everything this regenerates is written to this story's own `G07_OUTPUT_ROOT`
+   (`fixtures/data/g07_reliability/<specimen_id>/`), never into the shared
+   `RECON_RUN_ROOT` in place -- an earlier version of this fix overwrote
+   `recon_runs/<id>/metric_alignment.json` and `rmtree`'d its `mesh/`, which would silently
+   delete another story's own cached R-07 outputs on a machine that keeps them there (caught on
+   review, round two). R-01's own `points.ply`/`poses.npz`/`depth.npz`, the one genuinely
+   expensive step (VGGT), are only ever read, from `RECON_RUN_ROOT`, never written to.
 
 **Offset vs. scatter, not one pooled number (also from review):** each specimen sits at a
 near-constant *signed* offset from its own caliper height, with much smaller vertex-to-vertex
@@ -45,15 +49,27 @@ specifically sigma_floor's. Pooling raw absolute error across specimens mixes th
 specimens with the biggest offsets happen to have the lowest sigma (as they did before the
 fixes above), the pooled correlation can come out negative even though sigma genuinely tracks
 the scatter once the offset is removed. `specimen_offsets_mm`/`scatter_pairs` isolate that
-scatter; `pool_pairs` keeps the raw, offset-contaminated pooling for comparison. Both are
-reported; D-077 draws the conclusion from the scatter-only one, since that is what the story's
-own acceptance criteria ("does sigma predict error") actually asks about.
+scatter; `pool_pairs` keeps the raw, offset-contaminated pooling for comparison.
 
-`k` is reported as a measured figure (the coverage-fraction ratio of error to sigma, plus the
-Pearson correlation), on both poolings -- whether either means sigma reliably predicts error is
-this story's own judgement call once the real numbers are in, not a threshold hardcoded here
-(same reason G-04's own aggregate is computed by script but interpreted in its decision entry,
-not auto-verdicted).
+**Three `k` figures are reported, and they answer different questions -- conflating them is
+itself a bug this script used to have (caught on review, round two):**
+
+- `scatter_k_estimate` -- sigma vs. scatter, offset removed, raw sigma. The honest answer to
+  this story's own research question ("does sigma predict error") in isolation.
+- `pooled_k_estimate` -- sigma vs. total error, offset included, raw sigma. Kept for
+  transparency/comparison; not usable downstream on its own.
+- `consumable_k_estimate` -- `max(sigma, sigma_floor)` vs. total error, offset included. **This
+  is the k I-07's Fail/Pass rows and I-09's Unverifiable row actually need**, because those
+  formulas apply `k` to total deviation against `max(sigma, sigma_floor)`, never to scatter
+  alone against raw sigma. Plugging `scatter_k_estimate` into those formulas instead understates
+  the real margin: checked directly on this run's own data, a `k` fit on scatter alone is
+  violated by half the vertices in I-07's Fail condition (100% on the two specimens with the
+  largest offsets), because it never accounts for the offset `max(sigma, sigma_floor)` is
+  supposed to cover.
+
+None of the three decide on their own whether `k` is "reliable" -- that judgement belongs in the
+decision entry, once the real numbers are in (same reason G-04's own aggregate is computed by
+script but interpreted in its decision entry, not auto-verdicted).
 
     python scripts/g07_reliability_curve.py [--out PATH] [--bin-count N] [--coverage 0.95]
 """
@@ -90,11 +106,18 @@ SPECIMEN_IDS = (
 
 RECON_RUN_ROOT = Path("fixtures/data/recon_runs")
 BOARD_POSE_ROOT = Path("fixtures/data/board_poses")
+G07_OUTPUT_ROOT = Path("fixtures/data/g07_reliability")
 CALIPER_G03_PATH = Path("fixtures/caliper_g-03.json")
 CALIPER_G06_PATH = Path("fixtures/caliper_g-06.json")
 
 DEFAULT_BIN_COUNT = 6
 DEFAULT_COVERAGE = 0.95
+
+# G-04's measured height sigma_floor_mm (D-073) -- not re-derived here, per this story's own
+# acceptance criteria ("sigma_floor is G-04's, not this story's"). Used only to compute the k
+# figure I-07/I-09 actually consume (max(sigma, sigma_floor) against total error), never to
+# judge a tolerance itself (D-003).
+SIGMA_FLOOR_MM = 0.86
 
 
 def _caliper_height_truth_mm(specimen_id: str) -> float:
@@ -119,20 +142,29 @@ def ensure_pipeline(specimen_id: str) -> Path:
     run -- never trust a cached mesh or alignment that might predate the code that built them
     (see the module docstring: a stale `metric_alignment.json` silently carried a pre-R-38
     23.35 mm residual for `g02_02`). CPU-only: R-01's own `points.ply`/`poses.npz`/`depth.npz`
-    (the one genuinely expensive step, VGGT) are never touched or regenerated here.
+    (the one genuinely expensive step, VGGT) are read from `RECON_RUN_ROOT` but never written to.
+
+    Every output this function writes (the regenerated alignment, mesh, provenance, uncertainty)
+    goes to this story's own `G07_OUTPUT_ROOT`, not into `RECON_RUN_ROOT` in place (flagged on
+    review, @TabeenRaoof, PR #367): overwriting a shared `recon_runs/<id>/metric_alignment.json`
+    and `rmtree`ing its `mesh/` would silently delete another story's own cached R-07 outputs on
+    a machine that keeps them there.
     """
     run_dir = RECON_RUN_ROOT / specimen_id
     board_pose_dir = BOARD_POSE_ROOT / specimen_id
-    alignment_json = run_dir / "metric_alignment.json"
-    mesh_dir = run_dir / "mesh"
+    out_dir = G07_OUTPUT_ROOT / specimen_id
+
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True)
+
+    alignment_json = out_dir / "metric_alignment.json"
+    mesh_dir = out_dir / "mesh"
 
     # The same two calls recon/service.py's live path makes (metric_alignment.load_and_align +
     # write_alignment) -- this script can never again drift from what production actually does.
     alignment = metric_alignment.load_and_align(run_dir, board_pose_dir)
     metric_alignment.write_alignment(alignment_json, alignment)
-
-    if mesh_dir.exists():
-        shutil.rmtree(mesh_dir)
 
     mesh_ply = mesh_dir / "mesh.ply"
     mesh_clean_glb = mesh_dir / "mesh_clean.glb"
@@ -309,6 +341,47 @@ def measure_k(
     }
 
 
+def measure_k_against_sigma_floor(
+    pairs: list[tuple[float, float]],
+    sigma_floor_mm: float,
+    coverage: float = DEFAULT_COVERAGE,
+) -> dict[str, Any]:
+    """Like `measure_k`, but against `max(sigma_mm, sigma_floor_mm)` -- the exact denominator
+    I-07's Fail/Pass rows and I-09's Unverifiable row actually use (D-073's
+    `max(sigma, sigma_floor)`), on TOTAL error (offset included, same as `pool_pairs`'s
+    pairs), not the scatter-only relationship `measure_k`/`scatter_pairs` report.
+
+    Found on review (@TabeenRaoof, PR #367, round two): `scatter_k_estimate`'s k is fit on
+    scatter with each specimen's own offset removed, against raw sigma -- but I-07/I-09 apply
+    `k` to *total* deviation (offset included), against `max(sigma, sigma_floor)`, never raw
+    sigma alone. Plugging the scatter-only k into those formulas understates the real margin
+    needed: checked directly on this run's own 1494 vertices, a k of 0.25 in I-07's Fail
+    condition is violated by half of them, 100% on the two specimens with the largest offsets.
+    This function reports the k those formulas actually need.
+    """
+    sigma_mm = np.array([sigma for sigma, _error in pairs])
+    error_mm = np.array([error for _sigma, error in pairs])
+    max_sigma = np.maximum(sigma_mm, sigma_floor_mm)
+    ratios = np.abs(error_mm) / max_sigma
+    k_at_coverage = float(np.percentile(ratios, coverage * 100))
+    correlation = (
+        float(np.corrcoef(max_sigma, np.abs(error_mm))[0, 1])
+        if len(max_sigma) > 1
+        else None
+    )
+    return {
+        "k_at_coverage": k_at_coverage,
+        "coverage": coverage,
+        "sigma_floor_mm": sigma_floor_mm,
+        "pearson_correlation": correlation,
+        "note": (
+            f"Smallest k such that abs_error_mm <= k * max(sigma_mm, {sigma_floor_mm}) holds "
+            f"for {coverage:.0%} of vertices, pooled across every specimen, on TOTAL (offset "
+            "included) error -- this is the k I-07/I-09 should consume, not scatter_k_estimate."
+        ),
+    }
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -337,6 +410,9 @@ def main(argv: list[str] | None = None) -> int:
     pooled_pairs = pool_pairs(results)
     pooled_bins = bin_by_sigma(pooled_pairs, bin_count=args.bin_count)
     pooled_k = measure_k(pooled_pairs, coverage=args.coverage)
+    consumable_k = measure_k_against_sigma_floor(
+        pooled_pairs, SIGMA_FLOOR_MM, coverage=args.coverage
+    )
 
     scattered_pairs = scatter_pairs(results, offsets)
     scatter_bins = bin_by_sigma(scattered_pairs, bin_count=args.bin_count)
@@ -350,15 +426,26 @@ def main(argv: list[str] | None = None) -> int:
         "pooled_k_estimate": pooled_k,
         "pooled_note": (
             "offset-contaminated: each specimen's own systematic offset is mixed in with its "
-            "vertex-level scatter. Kept for comparison; see scatter_* for what sigma actually "
-            "claims to predict."
+            "vertex-level scatter, against raw sigma. Kept for comparison; see scatter_* for "
+            "what sigma actually claims to predict, and consumable_k_estimate for what "
+            "I-07/I-09 should actually consume."
+        ),
+        "consumable_k_estimate": consumable_k,
+        "consumable_note": (
+            "k against max(sigma, sigma_floor) on TOTAL (offset included) error -- the exact "
+            "denominator and error I-07's Fail/Pass rows and I-09's Unverifiable row use "
+            "(D-073). This is the k those stories should cite, not scatter_k_estimate (found "
+            "on review, @TabeenRaoof, PR #367 round two: plugging the scatter-only k into those "
+            "formulas understates the real margin needed)."
         ),
         "scatter_pairs": scattered_pairs,
         "scatter_bins": scatter_bins,
         "scatter_k_estimate": scatter_k,
         "scatter_note": (
             "each specimen's own median signed error (its offset) is subtracted before "
-            "pooling -- isolates the per-vertex scatter sigma actually claims to predict."
+            "pooling -- isolates the per-vertex scatter sigma actually claims to predict. This "
+            "is the answer to this story's own research question ('does sigma predict error'), "
+            "not the k I-07/I-09 should consume -- see consumable_k_estimate for that."
         ),
     }
 
@@ -379,8 +466,8 @@ def main(argv: list[str] | None = None) -> int:
             f"median_sigma={row['median_sigma_mm']}"
         )
     print(
-        f"  pooled (offset+scatter mixed): k at {pooled_k['coverage']:.0%} coverage: "
-        f"{pooled_k['k_at_coverage']}, pearson r: {pooled_k['pearson_correlation']}"
+        f"  pooled (offset+scatter mixed, raw sigma): k at {pooled_k['coverage']:.0%} "
+        f"coverage: {pooled_k['k_at_coverage']}, pearson r: {pooled_k['pearson_correlation']}"
     )
     for bin_ in pooled_bins:
         print(
@@ -389,8 +476,14 @@ def main(argv: list[str] | None = None) -> int:
             f"p95|error|={bin_['p95_abs_error_mm']:.3f} mm"
         )
     print(
-        f"  scatter-only (offset removed): k at {scatter_k['coverage']:.0%} coverage: "
-        f"{scatter_k['k_at_coverage']}, pearson r: {scatter_k['pearson_correlation']}"
+        f"  CONSUMABLE (what I-07/I-09 should cite): k at {consumable_k['coverage']:.0%} "
+        f"coverage against max(sigma, {SIGMA_FLOOR_MM}): {consumable_k['k_at_coverage']}, "
+        f"pearson r: {consumable_k['pearson_correlation']}"
+    )
+    print(
+        f"  scatter-only (offset removed, this story's own research question): "
+        f"k at {scatter_k['coverage']:.0%} coverage: {scatter_k['k_at_coverage']}, "
+        f"pearson r: {scatter_k['pearson_correlation']}"
     )
     for bin_ in scatter_bins:
         print(

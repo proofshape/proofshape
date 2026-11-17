@@ -1925,9 +1925,9 @@ corrected here.
 
 ---
 
-**D-077 · G-07: per-vertex sigma weakly but genuinely predicts per-vertex *scatter* — a
-provisional k ≈ 0.25, far below the planning prior of 3, not a negative result.** (2026-11-17,
-revised same day on review — PR #367, @TabeenRaoof and @mbj1994)
+**D-077 · G-07: per-vertex sigma weakly but genuinely predicts per-vertex *scatter* (k ≈ 0.25) —
+but I-07/I-09 need a different, larger k ≈ 0.70 for the total-error formula they actually use.**
+(2026-11-17, revised twice on review — PR #367, @TabeenRaoof and @mbj1994)
 
 `scripts/g07_reliability_curve.py` runs the R-04 (alignment) → R-07 (TSDF fusion) → R-08 (mesh
 cleanup) → R-09 (provenance) → R-10 (uncertainty) chain **fresh, every run** for every
@@ -1981,14 +1981,39 @@ to (though still well below) 3. **Not proposed as `k`** — nothing downstream s
 explanation for why the usable k differs from the planning prior by so much, and is worth
 carrying forward into whatever story next revisits this.
 
-**k ≈ 0.25 (measured: 0.243, scatter-only, 95% coverage, raw sigma) is this story's chosen
-value — provisional, not a settled calibration.** The evidence supporting it is real but modest:
-Pearson r = 0.24 (≈6% of variance), and within single specimens the sigma-scatter relationship
-is individually weak and mixed (ranging roughly −0.3 to +0.5 across the 8 specimens) — the pooled
-positive trend is a population-level signal across ~1500 vertices and 8 specimens, not a tight
-relationship any one specimen shows on its own. Whoever next revisits the verdict logic that
-consumes `k` should treat this as a first measurement worth re-running with more specimens, not
-a number to stop questioning.
+**Third real problem, found on the second review round (@TabeenRaoof): the scatter-only k=0.25
+and the formulas I-07/I-09 actually use don't match.** D-077's first revision fit `k` on scatter
+(offset removed) against raw sigma, and proposed 0.25 as *the* chosen `k`. But I-07's Fail row
+(`deviation > tolerance + k·max(sigma, sigma_floor)`) and Pass row (`sigma ≤ tolerance / k`), and
+I-09's Unverifiable row (`tolerance < k·sigma_floor`), all apply `k` to **total** deviation
+(offset included) against `max(sigma, sigma_floor)` — never to scatter alone against raw sigma.
+Checked directly, independently, on this run's own 1494 vertices: a `k` of 0.25 in I-07's Fail
+condition is violated by **50% of all vertices, 100% on `s-04` and `g02_06`** (the two largest
+offsets) — because `0.25 × sigma` (0.29–0.64 mm per specimen) is smaller than the offsets
+themselves (up to 0.73 mm). I-09's Unverifiable threshold would fall to `0.25 × 0.86 = 0.215 mm`,
+below every offset this study measured — undoing exactly what `sigma_floor` exists to cover.
+
+**Two numbers, not one, answer two different questions:**
+
+- **k ≈ 0.25** (measured: 0.243, scatter-only, 95% coverage, raw sigma) answers this story's own
+  research question — does sigma predict per-vertex scatter — in isolation. Real but modest
+  evidence: Pearson r = 0.24 (≈6% of variance), within-specimen correlations individually weak
+  and mixed (roughly −0.3 to +0.5 across the 8 specimens).
+- **k ≈ 0.70** (measured: 0.688, `consumable_k_estimate`, **total** error against
+  `max(sigma, sigma_floor)`, 95% coverage) is the number I-07's Fail/Pass rows and I-09's
+  Unverifiable row should actually consume, since that is the exact quantity their formulas use
+  — the smallest change that keeps the proposal's §7.2 table and I-07's acceptance criteria as
+  written (option 1 of three @TabeenRaoof offered; a formula redesign splitting offset and
+  scatter into separate additive terms was also on the table, but changes I-07's own acceptance
+  criteria and needs its own decision, not a line here). **I-09 still has a residual gap even at
+  k = 0.70**: `0.70 × 0.86 = 0.60 mm`, still below `s-04`'s own 0.73 mm offset — flagged
+  explicitly in `I-09.md`, not resolved here, since fixing it is either a higher `k`, a higher
+  `sigma_floor`, or a design change to the Unverifiable row itself, each a real tradeoff for
+  whoever claims I-09.
+
+Both are provisional, not settled calibrations — the evidence behind either is a first
+measurement (8 specimens, ~1500 vertices), worth re-running with more data, not a number to stop
+questioning.
 
 *Caveats, stated not hidden:* `error_mm` compares each vertex to **one** caliper reading per
 specimen; real top-face vertices span genuine surface geometry a single-point reading can't
@@ -1996,11 +2021,15 @@ distinguish from reconstruction noise. Near-top-face vertex selection is a perce
 mesh's own observed-height distribution (53–363 vertices per specimen after R-08's decimation +
 R-09's Observed-only filter), not `measure_prism`'s density-peak method — necessary on data this
 sparse (confirmed empirically: the density-peak search raises "too few points" on these meshes),
-but a different methodology than G-04's own. Only 8 specimens, ~1500 vertices total.
+but a different methodology than G-04's own. Only 8 specimens, ~1500 vertices total. The script's
+own regenerated alignment/mesh/provenance/uncertainty outputs are written to this story's own
+`fixtures/data/g07_reliability/<specimen_id>/`, not into the shared `fixtures/data/recon_runs/`
+in place (an earlier revision did exactly that, risking silently deleting another story's own
+cached R-07 outputs on a machine that keeps them there — caught on review, round two).
 
 Recorded back in `stories/G/G-07.md`'s notes, and in `stories/I/I-07.md` and `stories/I/I-09.md`
-(both now have a real `k` to cite instead of inheriting a silently-assumed one), per this
-story's own acceptance criteria.
+(both now cite `k ≈ 0.70`, not the scatter-only 0.25, with I-09's own residual gap stated
+explicitly), per this story's own acceptance criteria.
 *Checked against D-028:* fetched all origin branches on 2026-11-17; D-076 (held on `main`) was
 highest anywhere at the time of the first version of this decision, unchanged on this revision.
 

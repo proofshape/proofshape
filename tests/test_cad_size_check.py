@@ -549,6 +549,32 @@ def test_per_vertex_height_reliability_uses_a_nonlevel_board_plane(
     assert offset_errors == pytest.approx([e + 5.0 for e in level_errors], abs=1e-6)
 
 
+def test_per_vertex_height_reliability_does_not_swap_the_slope_axes(
+    tmp_path: Path,
+) -> None:
+    """A second regression test alongside the z-offset one above: a pure c-offset test alone
+    would not catch an a/b (x-slope/y-slope) mix-up, since it never exercises the slope terms at
+    all. Uses a small slope (0.002 mm per mm -- tiny enough not to disturb which vertices the
+    90th-percentile top-face cut selects) and asserts swapping a and b changes the result -- the
+    synthetic prism's own asymmetric placement (_synthesize_prism_points' default offset_xy is
+    (80, 60), not square) means a correct implementation cannot give the same answer both ways."""
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    path = tmp_path / "mesh_uncertainty.glb"
+    vertices = _labelled_prism_glb(path, prism, rng=np.random.default_rng(23))
+    sigma_full = np.full(len(vertices), 1.5)
+
+    pairs_ab = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.002, -0.001, 0.0), caliper_height_truth_mm=59.7
+    )
+    pairs_ba = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(-0.001, 0.002, 0.0), caliper_height_truth_mm=59.7
+    )
+
+    errors_ab = sorted(err for _s, err in pairs_ab)
+    errors_ba = sorted(err for _s, err in pairs_ba)
+    assert errors_ab != pytest.approx(errors_ba, abs=1e-9)
+
+
 # --- G-04: board pitch correction, caliper truth ------------------------------------------------
 
 
