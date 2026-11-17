@@ -613,6 +613,8 @@ def _line_intersection(
         delta[0] * second_direction[1] - delta[1] * second_direction[0]
     ) / cross
     return first_point + first_t * first_direction
+
+
 def _largest_connected_blob(
     xy_mm: np.ndarray, cell_mm: float = 1.0, min_points_per_cell: int = 1
 ) -> np.ndarray:
