@@ -375,7 +375,9 @@ def _edge_pattern_error_mm(source_xy: np.ndarray, target_xy: np.ndarray) -> floa
         return float("inf")
     source_fraction = source_lengths / source_perimeter
     target_fraction = target_lengths / target_perimeter
-    return 0.5 * source_perimeter * float(np.abs(source_fraction - target_fraction).sum())
+    return (
+        0.5 * source_perimeter * float(np.abs(source_fraction - target_fraction).sum())
+    )
 
 def _rigid_transform_no_scale(
     source_xy: np.ndarray, target_xy: np.ndarray
@@ -504,7 +506,9 @@ def _fit_rigid_2d(
     cad_vertices = np.array([p0 for p0, _p1 in edges])
     observed_vertices = _approximate_hull_polygon(blob_xy, len(cad_vertices))
 
-    best: tuple[tuple[float, float, float, int, int], np.ndarray, np.ndarray] | None = None
+    best: tuple[tuple[float, float, float, int, int], np.ndarray, np.ndarray] | None = (
+        None
+    )
     if observed_vertices is not None:
         for reverse_index, observed in enumerate(
             (observed_vertices, observed_vertices[::-1])
