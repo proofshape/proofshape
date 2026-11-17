@@ -323,23 +323,6 @@ def _edge_segment_distances(
     return distances
 
 
-def _longest_hull_edges(
-    blob_xy: np.ndarray, max_candidates: int = 6
-) -> list[tuple[np.ndarray, np.ndarray]]:
-    """The blob's convex-hull edges, longest first, capped at ``max_candidates``.
-
-    A part's cross-section band, apart from noise, outlines a convex polygon that is literally
-    the part's hull -- so its longest hull edges are the most trustworthy direction candidates to
-    match against the CAD's own edges below.
-    """
-    hull = cv2.convexHull(blob_xy.astype(np.float32)).reshape(-1, 2).astype(np.float64)
-    if len(hull) < 2:
-        raise ValueError("Point blob's convex hull has fewer than 2 vertices.")
-    edges = [(hull[i], hull[(i + 1) % len(hull)]) for i in range(len(hull))]
-    edges.sort(key=lambda edge: -float(np.linalg.norm(edge[1] - edge[0])))
-    return edges[:max_candidates]
-
-
 def _polygon_centroid(vertices_xy: np.ndarray) -> np.ndarray:
     """Area centroid of an ordered polygon, with a mean fallback for a degenerate outline."""
     vertices = np.asarray(vertices_xy, dtype=np.float64)
