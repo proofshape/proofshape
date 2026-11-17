@@ -398,6 +398,55 @@ def test_measure_prism_reports_shrunk_dimensions_when_part_is_smaller() -> None:
         assert edge.ratio < 0.98  # must not be reported as full-size
 
 
+def test_measure_prism_perfect_edges_are_corner_to_corner_within_point_two_mm() -> None:
+    # R-37 regression: the old 2nd-98th-percentile extent reads a perfect uniformly sampled edge
+    # about 4% short by construction (30 mm -> ~28.8 mm). A caliper reads corner to corner, so a
+    # noiseless reconstruction-free prism must recover the actual CAD edge length instead.
+    for prism in (
+        _box_prism(side_mm=30.0, height_mm=60.0),
+        _triangle_prism(legs=(60.0, 26.0), height_mm=30.0),
+    ):
+        points = _synthesize_prism_points(
+            prism,
+            rotation_deg=23.7,
+            offset_xy=(70.0, 55.0),
+            noise_mm=0.0,
+            rng=np.random.default_rng(31),
+        )
+
+        result = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+        measured = sorted(edge.measured_length_mm for edge in result.edges)
+        expected = sorted(
+            float(np.linalg.norm(p1 - p0)) for p0, p1 in prism.edges
+        )
+        assert measured == pytest.approx(expected, abs=0.2)
+
+
+def test_measure_prism_pose_is_repeatable_for_square_and_right_triangle() -> None:
+    # R-37's two reproduction shape classes. The exact same point cloud must not jump to a
+    # qualitatively different discrete pose on a second run.
+    for prism in (
+        _box_prism(side_mm=30.0, height_mm=60.0),
+        _triangle_prism(legs=(60.0, 26.0), height_mm=30.0),
+    ):
+        points = _synthesize_prism_points(
+            prism,
+            rotation_deg=37.0,
+            offset_xy=(70.0, 55.0),
+            noise_mm=0.3,
+            rng=np.random.default_rng(32),
+        )
+
+        first = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+        second = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+        assert second.rotation_deg == pytest.approx(first.rotation_deg, abs=1e-9)
+        assert [edge.measured_length_mm for edge in second.edges] == pytest.approx(
+            [edge.measured_length_mm for edge in first.edges], abs=1e-9
+        )
+
+
 def test_measure_prism_ignores_stray_point_cluster() -> None:
     prism = _box_prism(side_mm=30.0, height_mm=60.0)
     rng = np.random.default_rng(14)
