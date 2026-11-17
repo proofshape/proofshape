@@ -221,6 +221,20 @@ def test_aggregate_in_plane_pools_edges_without_changing_height_summary() -> Non
     assert height_summary["mean_error_mm"] == pytest.approx((9.0 - 8.0 + 7.0) / 3)
 
 
+def test_aggregate_in_plane_uses_true_nearest_rank_p95_for_twelve_edges() -> None:
+    # Nearest-rank p95 with N=12 is ceil(0.95 * 12) = 12: the largest observation.
+    # The previous round(0.95 * (N - 1)) formula selected index 10 and incorrectly returned 0.
+    results = [
+        _result([0.0] * 11 + [10.0], height_error_mm=0.0, specimen_id="g02_01"),
+    ]
+
+    summary = m.aggregate_in_plane(results)
+
+    assert summary["feature_count"] == 12
+    assert summary["sigma_floor_mm"] == pytest.approx(10.0)
+    assert summary["max_error_mm"] == pytest.approx(10.0)
+
+
 def test_aggregate_in_plane_excludes_failed_alignment_and_reports_no_evidence() -> None:
     results = [
         _result(
