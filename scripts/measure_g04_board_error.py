@@ -166,6 +166,12 @@ def measure_specimen(
         "board_scale_rms_residual_mm": report["board_scale"]["rms_residual_mm"],
         "board_alignment_ok": board_alignment_ok,
         "exclusion_reason": exclusion_reason,
+        # R-37 real-data evidence: these let two runs prove the square/triangle pose and raw
+        # corner-to-corner edge measurements are stable even when a caliper length class is
+        # ambiguous and therefore absent from prism.caliper.edges.
+        "prism_rotation_deg": report["prism"]["rotation_deg"],
+        "prism_alignment_residual_mm": report["prism"]["alignment_residual_mm"],
+        "prism_edges": report["prism"]["edges"],
         "caliper": report["prism"]["caliper"],
     }
 
