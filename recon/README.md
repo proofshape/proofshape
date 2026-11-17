@@ -29,9 +29,10 @@ R-04 → R-07 → R-08 → R-09 → R-10 chain in a FastAPI background task. The
 URL returned by `getReconstruction`. R-25 makes R-09 require a signed camera-facing surface
 normal as well as trusted depth agreement, records how many otherwise-eligible observations the
 depth gate rejected, and makes `observed_fraction` an area-weighted share from R-10's final
-post-downgrade labels — the same labels encoded in the served GLB. Order-code validation is injectable because buyer/order
-storage does not exist yet; the default service accepts any non-empty code rather than inventing
-a buyer database.
+post-downgrade labels — the same labels encoded in the served GLB. Order codes are checked
+against R-34's order store (`PROOFSHAPE_ORDERS_DIR`, default `proofshape-data/orders`), so a
+session can only start for an order created through `createOrder`. Tests can still inject the set
+of known codes.
 
 The frozen `ReconstructionResult` schema has no structured failure object for `status: failed`.
 R-14 therefore keeps the R-02/R-04 `ErrorDetail` code and message in the persisted session record
@@ -39,6 +40,149 @@ and returns a contract-valid failed result with the same code/message in `warnin
 wire schema would require the D-031 contract-change process. Optional metadata such as
 `observed_fraction` and `scale_agreement` is omitted when the pipeline has no measured value
 rather than fabricated.
+
+## R-36 · demo day on the M2 Max (runbook)
+
+D-072 runs the demo's reconstruction service on @TabeenRaoof's M2 Max (32 GB). The phone reaches
+it through the capture app's HTTPS dev server on the local network (D-049). That covers the
+integration runs, the Dec 2 backup recording and the live defense. Every step below was run at
+home on 2026-11-15 and 2026-11-16 (the figures are in `stories/R/R-36.md`). The defense-room
+rehearsal, which records which network works there, is still to come.
+
+**Type each command block as shown.** zsh doesn't treat `#` as a comment at an interactive prompt,
+so the explanations are kept in the text, not in the commands.
+
+### What to bring
+- The M2 Max and its charger.
+- The iPhone, using Safari.
+- A printed reference sheet: the G-06-calipered board.
+- The part, and its CAD file on the Mac (s-04's is
+  `fixtures/reference_cad/s04_triangular_prism_60-26-65x30mm.stl`).
+- A Gemini API key, if the live VLM tip is part of the demo.
+- A network where the phone can reach the Mac. Campus Wi-Fi often blocks devices from seeing each
+  other. The fallback is the iPhone's Personal Hotspot, with the Mac joined to it.
+
+### One-time setup, from a clean checkout
+`scripts/bootstrap_dev_env.sh` makes `.venv` and installs `requirements.txt`. Use Python 3.11:
+the pinned open3d 0.18 has no wheel for 3.12 or later (#200). torch and torchvision go in before
+VGGT, which is the only line in `requirements-gpu.txt`. VGGT fails without torchvision (R-17). The versions below are the ones the M2 Max ran on
+2026-11-16. `npm ci` installs the capture app.
+
+```bash
+bash scripts/bootstrap_dev_env.sh
+.venv/bin/python -m pip install torch==2.14.1 torchvision==0.29.1
+.venv/bin/python -m pip install -r requirements-gpu.txt
+(cd capture && npm ci)
+```
+
+Check that Metal is visible (this prints `True`), then fetch the VGGT weights once. They take
+4.7 GB under `~/.cache/huggingface` and are never committed. `HF_HUB_DISABLE_XET=1` makes the
+download use plain HTTP: R-17's first download failed after 80 minutes on a Hugging Face Xet CDN
+error.
+
+```bash
+.venv/bin/python -c "import torch; print(torch.backends.mps.is_available())"
+HF_HUB_DISABLE_XET=1 PYTHONPATH=.:inspect .venv/bin/python -c "from vggt.models.vggt import VGGT; VGGT.from_pretrained('facebook/VGGT-1B')"
+```
+
+The warm-up run below uses golden s-04's frames. Fetch them with
+`bash fixtures/download_golden_capture.sh`, or unzip the s-04 folder from Drive into
+`fixtures/data/golden_capture/s-04`.
+
+Make a buyer key and keep it in a file outside the repository, readable only by you. Make a new
+one if it's ever shown on a projector or pasted anywhere.
+
+```bash
+openssl rand -hex 16 > ~/.proofshape_buyer_key
+chmod 600 ~/.proofshape_buyer_key
+```
+
+### Before the session
+1. **Restart the Mac and close every other app.** A 30-frame run peaks around 17 GB. The first
+   run on a Mac that had been up for days, with swap almost full, took 113.5 s instead of
+   31–51 s.
+2. **Join the network** the phone will use: the room's Wi-Fi, or the iPhone's Personal Hotspot.
+3. **Terminal 1, the service**, from the repository root. The Gemini line is optional: it asks for
+   the key without echoing it. Without the key, frames are recorded as `unchecked` and no tip is
+   shown. The service sets `OMP_NUM_THREADS=1` itself on macOS (R-31).
+
+   ```bash
+   export PROOFSHAPE_BUYER_KEY=$(cat ~/.proofshape_buyer_key)
+   read -rs 'GEMINI_API_KEY?Gemini API key: '; export GEMINI_API_KEY
+   PROOFSHAPE_RECON_DEVICE=mps PYTHONPATH=.:inspect .venv/bin/uvicorn recon.service:app --host 127.0.0.1 --port 8000 --workers 1
+   ```
+
+4. **Terminal 2, the warm-up run**, from the repository root. It sends golden s-04 through the
+   same HTTP flow the phone uses, creating its own order. The script requires
+   `PROOFSHAPE_ENDPOINT_TOKEN` to be set, but the local service ignores its value. On 2026-11-15,
+   30 frames took 47–50 s here. Leave this terminal open for the fallback below.
+
+   ```bash
+   export PROOFSHAPE_BUYER_KEY=$(cat ~/.proofshape_buyer_key)
+   export PROOFSHAPE_ENDPOINT_TOKEN=local
+   PYTHONPATH=.:inspect .venv/bin/python scripts/smoke_r14.py fixtures/data/golden_capture/s-04 --base-url http://127.0.0.1:8000
+   ```
+
+5. **Terminal 3, the phone path**, in `capture/`. It prints `https://<LAN-IP>:5173/`, the Mac's
+   address on the current network.
+
+   ```bash
+   cd capture
+   PROOFSHAPE_RECON_PROXY=http://127.0.0.1:8000 npm run dev:device
+   ```
+
+6. **Create the order.** The service refuses any code that isn't in its order store, and
+   `PO-48213-A` works only against the contract stub.
+   - Open `https://<LAN-IP>:5173/buyer.html` on the Mac.
+   - Paste the buyer key (`pbcopy < ~/.proofshape_buyer_key` puts it on the clipboard without
+     showing it).
+   - Choose **the CAD of the part being scanned**, and create the order.
+   - The page shows the order code and a capture link ending in `?order=PO-…`.
+
+   A CAD for a different part is accepted, and silently measures the wrong shape: one home run
+   had the hexagon's CAD on an s-04 order.
+
+   **Fallback,** if the page misbehaves: create the order from terminal 2, then open
+   `https://<LAN-IP>:5173/?order=<order_code>` with the code it returns.
+
+   ```bash
+   printf '{}' > /tmp/proofshape-spec.json
+   curl -s -H "X-ProofShape-Buyer-Key: $PROOFSHAPE_BUYER_KEY" -F 'spec=@/tmp/proofshape-spec.json;type=application/json' -F 'cad=@fixtures/reference_cad/s04_triangular_prism_60-26-65x30mm.stl' http://127.0.0.1:8000/v1/orders
+   ```
+
+7. **On the iPhone,** open the capture link in Safari. The dev server's certificate is
+   self-signed, so Safari warns that the connection isn't private. Choose *Show Details*, then
+   *visit this website*, and confirm. Do this again if Safari asks after the dev server restarts.
+   Then allow the camera and motion access.
+8. **Capture 25–30 frames** around the part until coverage reads 13/13, then press Finish.
+   **Don't switch apps mid-session:** iOS reloads the page, and the session is lost (#352, fixed
+   by C-24). At home, the model was back 31–51 s after Finish, and the report link opens from the
+   result.
+
+### If something goes wrong
+- **The phone shows "uploadFrame: response body was not valid JSON (status 500)".** The service
+  is down. Vite's proxy answers for it with an empty 500 (#351, reworded by C-24). Run terminal
+  1's last command again, then capture again on the phone: the same session continues, and
+  frames already accepted are kept. That was tested after 91 s and 138 s outages.
+- **The page reloaded and the session is gone.** Open the same capture link again and start a new
+  session. An order can be used for more than one session.
+- **The phone can't load the page at all.** The network keeps devices apart. Move both onto the
+  iPhone's Personal Hotspot, then restart terminal 3, because the LAN address changes.
+- **The first run is very slow.** Memory: see step 1, and the ceiling below.
+
+### Memory ceiling
+The demo needs the 32 GB M2 Max. On the 18 GB fallback Mac, a session fits only about 14 phone
+frames (measured on #146). The app doesn't cap frames, so the supplier has to stop there by hand.
+VGGT reloads for every session (14–26 s at home), and the service drops to about 0.2 GB between
+sessions.
+
+### Shutting down
+1. Ctrl-C terminal 3 first: it's the one on the LAN.
+2. Ctrl-C terminal 1.
+3. In each terminal still open, run `unset GEMINI_API_KEY PROOFSHAPE_BUYER_KEY`.
+4. Turn Personal Hotspot off if it was used.
+5. Sessions and orders stay in `proofshape-data/` (gitignored). Delete them if they shouldn't be
+   kept.
 
 ## R-15 · container and deploy (runbook)
 

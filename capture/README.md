@@ -76,8 +76,10 @@ the process started on the next line.
   not mounted at all, and the `?viewer-demo=` links, which need the stub's canned GLBs, will 404.
   A malformed value stops the dev server at start-up rather than quietly falling back to the stub.
 - Stop both with Ctrl-C when the check is done. The service only listens on `127.0.0.1`, but the
-  dev server is on the LAN for as long as it runs, and the service accepts any non-empty order
-  code.
+  dev server is on the LAN for as long as it runs.
+- Since R-34, the service refuses an order code that isn't in its order store, so `?order=PO-TEST`
+  is refused. Create a real order first, as the demo-day runbook in `recon/README.md` describes
+  (R-36).
 
 ### Lightning (not used by C-13)
 
