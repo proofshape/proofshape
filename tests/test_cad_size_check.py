@@ -417,9 +417,7 @@ def test_measure_prism_perfect_edges_are_corner_to_corner_within_point_two_mm() 
         result = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
 
         measured = sorted(edge.measured_length_mm for edge in result.edges)
-        expected = sorted(
-            float(np.linalg.norm(p1 - p0)) for p0, p1 in prism.edges
-        )
+        expected = sorted(float(np.linalg.norm(p1 - p0)) for p0, p1 in prism.edges)
         assert measured == pytest.approx(expected, abs=0.2)
 
 
