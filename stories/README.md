@@ -153,7 +153,7 @@ Full detail in each story file.
 | [R-13](R/R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Done | @TabeenRaoof |
 | [R-14](R/R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Done | @mbj1994 |
 | [R-15](R/R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Done | @TabeenRaoof |
-| [R-16](R/R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Ready | _unclaimed_ |
+| [R-16](R/R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Claimed | @dalwalyk |
 | [R-17](R/R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Done | @TabeenRaoof |
 | [R-18](R/R-18.md) | Produce and check TSDF-fused meshes on the golden set | 1 h | R-07 | Done | @dalwalyk |
 | [R-19](R/R-19.md) | Report per-vertex sigma distribution on the golden set | 1 h | R-10 | Done | @mbj1994 |
