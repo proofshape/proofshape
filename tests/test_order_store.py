@@ -319,3 +319,103 @@ def test_verdict_distinguishes_no_cad_from_not_available(tmp_path):
             client.get(f"/v1/sessions/{sid_with_cad}/verdict").json()["code"]
             == "verdict_not_available"
         )
+
+
+def test_order_response_surfaces_intake_check_for_an_unverifiable_feature(tmp_path):
+    """I-09: a feature whose tolerance sits below the board tier's k*sigma_floor is flagged
+    Unverifiable in both the createOrder and getOrder responses -- the same endpoint round
+    trip test_create_order_round_trip_and_session_gate already exercises, with a real
+    A-03-shaped spec this time."""
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [
+                {
+                    "name": "mounting_hole_A",
+                    "kind": "hole",
+                    "tolerance_mm": 0.1,
+                    "critical": True,
+                },
+                {
+                    "name": "overall_B",
+                    "kind": "overall",
+                    "tolerance_mm": 5.0,
+                    "critical": False,
+                },
+            ]
+        }
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", json.dumps(spec), "application/json")},
+        )
+
+        assert created.status_code == 201
+        checks = {
+            r["feature_name"]: r["status"] for r in created.json()["intake_check"]
+        }
+        assert checks == {"mounting_hole_A": "unverifiable", "overall_B": "ok"}
+
+        fetched = client.get(f"/v1/orders/{created.json()['order_code']}")
+        assert fetched.json()["intake_check"] == created.json()["intake_check"]
+
+
+def test_order_response_refuses_a_null_tolerance_feature(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [
+                {
+                    "name": "edge_C",
+                    "kind": "edge",
+                    "tolerance_mm": None,
+                    "critical": True,
+                }
+            ]
+        }
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", json.dumps(spec), "application/json")},
+        )
+
+    # response_model_exclude_none=True drops tolerance_mm (null) from the JSON entirely.
+    assert created.json()["intake_check"] == [
+        {
+            "feature_name": "edge_C",
+            "status": "refused",
+            "reason": "tolerance_mm is missing or null; refused, not defaulted.",
+        }
+    ]
+
+
+def test_order_response_is_empty_intake_check_when_spec_has_no_features(tmp_path):
+    # Existing orders (and R-34's own placeholder-shaped specs, e.g. {"tolerance_mm": 4.0})
+    # have no "features" key at all -- D-004, nothing to check yet, not an error.
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": (
+                    "spec.json",
+                    json.dumps({"tolerance_mm": 4.0}),
+                    "application/json",
+                )
+            },
+        )
+
+    assert created.json()["intake_check"] == []

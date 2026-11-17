@@ -320,6 +320,24 @@ components:
           type: boolean
           description: True if any two of the compared sources disagreed by more than the D-007 threshold.
 
+    IntakeCheckResult:
+      type: object
+      description: >
+        I-09: one spec feature's Unverifiable-at-intake check, against the board tier's
+        measured k*sigma_floor (D-073/D-077). `tolerance_mm` is omitted, not zero, when the
+        feature's own tolerance was missing or null -- refused, never defaulted.
+      required: [feature_name, status]
+      properties:
+        feature_name:
+          type: string
+        tolerance_mm:
+          type: number
+        status:
+          type: string
+          enum: [ok, unverifiable, refused]
+        reason:
+          type: string
+
     Region:
       type: object
       description: One named critical region or surface area, as used by the verdict and the deviation heatmap.
@@ -493,6 +511,14 @@ components:
           type: string
         buyer_reference:
           type: string
+        intake_check:
+          type: array
+          description: >
+            I-09: each spec feature's Unverifiable-at-intake check, board tier only
+            (sigma_floor measured by G-04, k measured by G-07; sheet/card tiers are an
+            explicit, named gap pending G-10). Computed fresh on every read, not persisted.
+          items:
+            $ref: "#/components/schemas/IntakeCheckResult"
 
     CreateSessionRequest:
       type: object
