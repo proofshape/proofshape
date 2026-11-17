@@ -157,6 +157,46 @@ def test_aggregate_excludes_specimens_with_failed_board_alignment() -> None:
     assert summary["sigma_floor_mm"] == pytest.approx(0.05)
 
 
+def test_aggregate_in_plane_pools_edges_without_changing_height_summary() -> None:
+    results = [
+        _result([-0.10, 0.20], height_error_mm=9.0, specimen_id="g02_01"),
+        _result([0.30], height_error_mm=-8.0, specimen_id="g02_03"),
+        _result([-0.05], height_error_mm=7.0, specimen_id="g02_04"),
+    ]
+
+    edge_summary = m.aggregate_in_plane(results)
+    height_summary = m.aggregate(results)
+
+    assert edge_summary["measurable"] is True
+    assert edge_summary["feature_count"] == 4
+    assert edge_summary["mean_error_mm"] == pytest.approx(0.0875)
+    assert edge_summary["sigma_floor_mm"] == pytest.approx(0.30)
+    assert edge_summary["max_error_mm"] == pytest.approx(0.30)
+    assert height_summary["feature_count"] == 3
+    assert height_summary["mean_error_mm"] == pytest.approx((9.0 - 8.0 + 7.0) / 3)
+
+
+def test_aggregate_in_plane_excludes_failed_alignment_and_reports_no_evidence() -> None:
+    results = [
+        _result(
+            [12.0, -11.0],
+            height_error_mm=0.1,
+            board_alignment_ok=False,
+            specimen_id="g02_02",
+        ),
+        _result([], height_error_mm=0.2, specimen_id="g02_05"),
+    ]
+
+    summary = m.aggregate_in_plane(results)
+
+    assert summary["measurable"] is False
+    assert summary["feature_count"] == 0
+    assert summary["excluded_specimen_ids"] == ["g02_02"]
+    assert summary["mean_error_mm"] is None
+    assert summary["sigma_floor_mm"] is None
+    assert summary["max_error_mm"] is None
+
+
 def test_aggregate_rejects_empty_input() -> None:
     with pytest.raises(ValueError, match="No specimen"):
         m.aggregate([_result([], height_error_mm=None)])
