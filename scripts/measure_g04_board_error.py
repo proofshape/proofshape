@@ -223,6 +223,56 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def aggregate_in_plane(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pool the fixed corner-to-corner edge errors for R-37's in-plane floor check.
+
+    This deliberately stays separate from G-04's historical height-only aggregate above, so the
+    corrected D-073 result is not silently redefined. Only edge entries that caliper_edge_errors
+    could match unambiguously are present in each specimen's report. A failed board alignment
+    excludes the whole specimen for the same reason as the height aggregate.
+    """
+    errors_mm: list[float] = []
+    excluded_specimen_ids: list[str] = []
+    for result in results:
+        if not result["board_alignment_ok"]:
+            excluded_specimen_ids.append(result["specimen_id"])
+            continue
+        errors_mm.extend(
+            float(edge["caliper_error_mm"]) for edge in result["caliper"]["edges"]
+        )
+
+    definition = (
+        "95th percentile (nearest-rank) of |caliper_error_mm| across every unambiguous "
+        "corner-to-corner edge comparison from included board-reference specimens. "
+        "mean_error_mm is the signed mean (systematic bias). R-37 only: this is separate "
+        "from D-073's historical height-only sigma_floor."
+    )
+    if not errors_mm:
+        return {
+            "feature_count": 0,
+            "excluded_specimen_ids": excluded_specimen_ids,
+            "mean_error_mm": None,
+            "sigma_floor_mm": None,
+            "max_error_mm": None,
+            "sigma_floor_definition": definition,
+            "measurable": False,
+        }
+
+    absolute_errors_mm = sorted(abs(error) for error in errors_mm)
+    p95_index = max(
+        0, min(len(absolute_errors_mm) - 1, round(0.95 * (len(absolute_errors_mm) - 1)))
+    )
+    return {
+        "feature_count": len(errors_mm),
+        "excluded_specimen_ids": excluded_specimen_ids,
+        "mean_error_mm": statistics.fmean(errors_mm),
+        "sigma_floor_mm": absolute_errors_mm[p95_index],
+        "max_error_mm": absolute_errors_mm[-1],
+        "sigma_floor_definition": definition,
+        "measurable": True,
+    }
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--device", choices=("cuda", "mps"), default="mps")
@@ -256,12 +306,14 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     summary = aggregate(results)
+    in_plane_summary = aggregate_in_plane(results)
     evidence = {
         "story": "G-04",
         "board_pitch_mm": {"across": board_pitch_mm[0], "down": board_pitch_mm[1]},
         "min_confidence": DEFAULT_MIN_CONFIDENCE,
         "specimens": results,
         "summary": summary,
+        "in_plane_summary_r37": in_plane_summary,
     }
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -275,6 +327,15 @@ def main(argv: list[str] | None = None) -> int:
         f"sigma_floor (p95)={summary['sigma_floor_mm']:.3f} mm, "
         f"max={summary['max_error_mm']:.3f} mm"
     )
+    if in_plane_summary["measurable"]:
+        print(
+            f"R-37 IN-PLANE ERROR: {in_plane_summary['feature_count']} edge features, "
+            f"mean={in_plane_summary['mean_error_mm']:.3f} mm, "
+            f"sigma_floor (p95)={in_plane_summary['sigma_floor_mm']:.3f} mm, "
+            f"max={in_plane_summary['max_error_mm']:.3f} mm"
+        )
+    else:
+        print("R-37 IN-PLANE ERROR: not measurable; no unambiguous edge features.")
     print(f"Evidence written to {args.out}")
     return 0
 
