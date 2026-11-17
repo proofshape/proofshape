@@ -718,6 +718,92 @@ def _largest_connected_blob(
     return cell_labels == largest_label
 
 
+
+def _top_face_connected_blob(
+    xy_mm: np.ndarray,
+    height_mm: np.ndarray,
+    expected_height_mm: float,
+    *,
+    cell_mm: float = 1.0,
+    min_top_support: int = 30,
+) -> np.ndarray:
+    """Choose the connected XY component whose own top-face peak is highest.
+
+    R-39's phone captures exposed a failure in the historical size-first rule: a broad pile of
+    low stray points can occupy more 1 mm cells than the real part, so the largest-component
+    prefilter keeps the pile and discards the part before height detection even starts. Size is
+    therefore the wrong signal for this pre-height choice.
+
+    Each connected component is scored only inside the same broad CAD-relative height range
+    used by measure_prism. We find that component's densest 0.5 mm height bin, require at least
+    min_top_support points within the existing +/-1.75 mm top-face window, then choose the
+    component whose supported peak is highest. This preserves R-37's spatial isolation against
+    a denser but lower stray cluster without using the CAD-diameter plausibility gate that
+    regressed g02_02. If no component has a supported peak, fall back to the historical
+    largest-component rule so later measurement checks keep their existing failure behavior.
+    """
+    xy = np.asarray(xy_mm, dtype=np.float64)
+    heights = np.asarray(height_mm, dtype=np.float64)
+    if xy.ndim != 2 or xy.shape[1] != 2 or len(xy) == 0:
+        raise ValueError(f"xy_mm must have shape (N,2) with N>0, got {xy.shape}")
+    if heights.ndim != 1 or len(heights) != len(xy):
+        raise ValueError(
+            "height_mm must have shape (N,) and match xy_mm; "
+            f"got {heights.shape} for {len(xy)} xy points"
+        )
+    if expected_height_mm <= 0:
+        raise ValueError("expected_height_mm must be positive")
+
+    origin = xy.min(axis=0)
+    grid = np.floor((xy - origin) / cell_mm).astype(np.int64)
+    width = int(grid[:, 0].max()) + 1
+    height = int(grid[:, 1].max()) + 1
+    occupancy = np.zeros((height, width), dtype=np.uint8)
+    occupancy[grid[:, 1], grid[:, 0]] = 1
+
+    component_count, labels, _stats, _ = cv2.connectedComponentsWithStats(
+        occupancy, connectivity=8
+    )
+    if component_count <= 1:
+        raise ValueError(
+            "No connected blob of points found; check the candidate region."
+        )
+
+    point_labels = labels[grid[:, 1], grid[:, 0]]
+    search_lo = 0.5 * expected_height_mm
+    search_hi = 1.3 * expected_height_mm + 5.0
+    bins = np.arange(search_lo, search_hi + 0.5, 0.5)
+
+    candidates: list[tuple[float, int, int, np.ndarray]] = []
+    for label in range(1, component_count):
+        point_mask = point_labels == label
+        component_heights = heights[point_mask]
+        in_range = (component_heights >= search_lo) & (component_heights <= search_hi)
+        if int(in_range.sum()) == 0:
+            continue
+
+        counts, bin_edges = np.histogram(component_heights[in_range], bins=bins)
+        if len(counts) == 0 or int(counts.max()) == 0:
+            continue
+        peak_index = int(counts.argmax())
+        peak_center = float(bin_edges[peak_index] + 0.25)
+        top_support = int(
+            (np.abs(component_heights - peak_center) < 1.75).sum()
+        )
+        if top_support < min_top_support:
+            continue
+
+        candidates.append(
+            (peak_center, top_support, int(point_mask.sum()), point_mask)
+        )
+
+    if not candidates:
+        return _largest_connected_blob(xy, cell_mm=cell_mm)
+
+    candidates.sort(key=lambda item: (-item[0], -item[1], -item[2]))
+    return candidates[0][3]
+
+
 # --- Part measurement ---------------------------------------------------------------------------
 
 
@@ -1039,12 +1125,14 @@ def measure_prism(
     candidate_xy = candidate_points[:, :2]
     candidate_height = height[region]
 
-    # Preserve the pre-R-37 spatial isolation used by height detection: a compact, unrelated
-    # stray cluster can otherwise win the height histogram simply by containing more samples
-    # than the real top face. This deliberately uses the historical largest-connected-component
-    # rule with NO CAD-diameter plausibility gate; the latter is only for the mid-height pose
-    # cross-section and was shown by real g02_02 to be too aggressive before height detection.
-    height_blob_mask = _largest_connected_blob(candidate_xy)
+    # R-39: choose the spatial component by its own supported top-face height, not by XY area.
+    # Phone-style captures can contain a broad low pile of stray points that occupies more cells
+    # than the part; choosing the largest component first discards the real top before the
+    # height histogram runs. This intentionally does NOT use the CAD-diameter plausibility gate
+    # because R-37 showed that gate is too aggressive here on g02_02.
+    height_blob_mask = _top_face_connected_blob(
+        candidate_xy, candidate_height, prism.height_mm
+    )
     candidate_points = candidate_points[height_blob_mask]
     candidate_xy = candidate_xy[height_blob_mask]
     candidate_height = candidate_height[height_blob_mask]
