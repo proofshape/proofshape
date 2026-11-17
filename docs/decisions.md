@@ -1700,9 +1700,11 @@ without the review's reproduction attempt would have been reporting noise as sig
 the smallest the real evidence currently supports; it is likely optimistic (n = 5, no edges),
 not a claim that the board reference's true floor is this good.
 *What 0.86 mm covers, stated precisely because R-16 and I-07 will read this literally:* 0.86 mm
-is σ_floor **for out-of-plane (height) features on the board reference only.** It says nothing
-about in-plane features — edge lengths, wall positions — which **have no measured floor yet**,
-pending R-37. Concretely:
+is σ_floor **for out-of-plane (height) features on the board reference only.** At the time
+D-073 was recorded, in-plane features — edge lengths and wall positions — had no measured floor
+and were pending R-37. **D-078 now closes that gap with an independently rerun in-plane
+σ_floor of 5.278 mm; D-073 remains authoritative for heights only.** Concretely, the bullets
+below describe the historical pre-R-37 state and must not be read as the current in-plane rule:
 - **R-16** judges in-plane comparisons (e.g. s-04's B–C leg, a 60 mm in-plane length) as
   **insufficient-evidence**, not within/out-of-tolerance against 0.86 mm — that story's own
   criteria already provide for this case.
