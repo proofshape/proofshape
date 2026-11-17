@@ -487,6 +487,17 @@ def run_reconstruction_pipeline(
         metric_alignment.write_alignment(alignment_path, alignment)
     except (FileNotFoundError, ValueError) as exc:
         raise _map_alignment_error(exc) from exc
+    # R-38: load_and_align already rejects per-frame outliers before this point, but the
+    # live service never checked the *final* residual against any threshold at all -- found on
+    # review (PR #358): the CLI's --max-residual-mm gate only existed in metric_alignment.main,
+    # which this pipeline never calls. A session whose alignment is still this bad once rejection
+    # has already done what it can is exactly the case the gate exists to stop before fusion.
+    if alignment.rms_residual_mm > metric_alignment.DEFAULT_MAX_RESIDUAL_MM:
+        raise ReconstructionFailure(
+            "metric_alignment_failed",
+            f"Board-anchored alignment residual {alignment.rms_residual_mm:.3f} mm exceeds "
+            f"{metric_alignment.DEFAULT_MAX_RESIDUAL_MM} mm after outlier-frame rejection.",
+        )
     stage_timings_s["metric_alignment"] = time.perf_counter() - started
 
     started = time.perf_counter()

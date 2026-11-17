@@ -2488,3 +2488,48 @@ Seven gaps are listed in R-36's notes for their own issues, among them the raw o
 Safari backgrounding losing the session, a screen frame getting into the model, and
 `cad_size_check`'s blob selection.
 **Next:** the rehearsal in the defense room, and the runbook in `recon/README.md`.
+
+## 2026-11-15 — G-05 Done: the control and the 4 mm shift printed and calipered; printed shift 4.00 mm (PR #347)
+
+**Who:** @TabeenRaoof. Claimed in #273; cut to two parts by D-069 (#331); readings in #332.
+
+**What changed:** `stories/G/G-05.md` records the print and the result.
+- The print record was read from the sliced files: the lab's only A1 mini, grey, one spool, G-01's
+  settings, Bambu Studio 02.09.01.70, and each file's SHA-256.
+- Both parts printed unrotated: `g05_00`'s placement comes from its project, `g05_02`'s from its
+  G-code.
+
+**Measured, not judged** (#332's readings, 2026-11-13):
+- The hole centres are 11.91 mm (control, CAD 12) and 15.91 mm (shift, CAD 16).
+- That puts **the printed shift at 4.00 mm** against 4.00 in CAD.
+- An independent repeat on 2026-11-15 gave 4.005 mm, with each centre within 0.025 mm.
+
+**Result:** G-05 is Done at 6 h actual (est 4). `check_story_states.py --fix` makes G-09 Ready.
+
+**Next:** G-09 photographs the two parts under G-08's conditions, and X-03 uses `g05-02` once I-07
+exists.
+
+## 2026-11-16 — P-34: the 16 open issues reconciled with stories (PR #369)
+
+**Who:** @TabeenRaoof. Claimed in #368.
+**What changed:** no code. Of the 16 open issues, only #157 (I-07) had an open story. Each one now
+has a story, a home in an existing story, or a recorded reason to wait (`stories/P/P-34.md`).
+- **New stories:**
+  - C-24, the outage message and a session that survives a reload (#351, #352);
+  - C-25, the blur gate checked against a real blurred frame (#355);
+  - A-14, the VLM hints for frame 0 and orbit motion, plus the sampling fork (#353 and #354's
+    sampling half);
+  - R-39, `cad_size_check`'s blob selection (#356), Blocked on R-37;
+  - R-40, mesh cleanup that terminates and stays manifold (#263, #300), which also re-checks #247.
+- **A-02** gains #354's veto and frame-exclusion criterion: 3 h becomes 4 h, and it now depends on
+  A-14.
+- **No story:**
+  - #181 and #200 still wait on team decisions;
+  - #107 waits on D-072's public path;
+  - #246 and #292 are known limitations;
+  - #231 is fully owned and closes by hand, pointing to #292.
+
+**Capacity:** +18 h, so 65.5 h of open estimates become 83.5 h. S6 (the last sprint for code)
+has 52 h in the sprint table, or 46 h in its own heading. The suggested order for the Dec 2 call
+is R-40, C-24, A-14, then C-25.
+**Next:** after merge, comment on each mapped issue and close #231 by hand.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,28 @@ MIN_ALIGNMENT_FRAMES = 3
 # Inherited from R-22's board-ruler check: enough observations to avoid fitting scale from a
 # handful of corners while still allowing partial board visibility across trusted frames.
 MIN_BOARD_CORNER_OBSERVATIONS = 30
+
+# R-38: `solve_similarity` on its own has no per-frame outlier rejection, so one badly-posed
+# frame (found live: a VGGT depth failure on one frame's corners, not the frame's own detection
+# or pose) can pull the whole similarity fit off. `reject_sigma_k` sets how many MAD-widths a
+# frame's own median residual must exceed the group's median before it's dropped, mirroring
+# `cad_size_check.fit_board_plane`'s own MAD-trimmed robust fit. Never reject below 2 distinct
+# remaining frames, since `solve_similarity` needs real geometric spread to be well-posed.
+# k=8.0 confirmed against all 11 real captures available (see DEFAULT_MAX_RESIDUAL_MM below): it
+# catches both the real g02_02/IMG_4665 failure (124.8 mm median residual) and a second, subtler
+# one it surfaced on s-01/IMG_3927.jpeg (7.1 mm against 2-4 mm for every other frame there),
+# without rejecting anything on the other 9 clean captures.
+DEFAULT_FRAME_REJECT_SIGMA_K = 8.0
+DEFAULT_MAX_FRAME_REJECT_ITERATIONS = 4
+MIN_FRAMES_AFTER_REJECTION = 2
+
+# R-38: metric_alignment.main's final residual gate, after outlier-frame rejection above. A
+# measured decision (D-003): swept against all 11 real captures available (golden set s-01..
+# s-05, G-04's g02_01..g02_06) with the fixed rejection logic -- every clean result falls in
+# 1.6-3.9 mm; 8.0 mm is about 2x the highest of those, comfortable margin without being so loose
+# it would pass a result anywhere near the ~23 mm RMS the real g02_02/IMG_4665 failure produced
+# before rejection. See docs/decisions.md for the full sweep table.
+DEFAULT_MAX_RESIDUAL_MM = 8.0
 
 
 def validate_known_size(
@@ -75,6 +98,10 @@ class BoardAlignmentResult:
     frame_count: int
     residuals_mm: np.ndarray
     rms_residual_mm: float
+    # R-38: frames `solve_similarity_rejecting_outlier_frames` dropped before this solve, and
+    # each remaining frame's own median residual -- empty/empty when nothing was rejected.
+    rejected_frame_names: list[str]
+    per_frame_residual_mm: dict[str, float]
 
     def transform_points(self, points: np.ndarray) -> np.ndarray:
         """Map (N, 3) reconstruction-frame points into board-frame millimetres."""
@@ -231,6 +258,84 @@ def solve_similarity(
         raise ValueError("Solved similarity scale is not positive and finite.")
     translation = target_mean - scale * (rotation @ source_mean)
     return scale, rotation, translation
+
+
+def solve_similarity_rejecting_outlier_frames(
+    source: np.ndarray,
+    target: np.ndarray,
+    frame_of_point: np.ndarray,
+    frame_names: list[str],
+    *,
+    reject_sigma_k: float = DEFAULT_FRAME_REJECT_SIGMA_K,
+    max_iterations: int = DEFAULT_MAX_FRAME_REJECT_ITERATIONS,
+) -> tuple[float, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    """`solve_similarity`, but iteratively drops whole frames whose points are a clear outlier.
+
+    R-38: found live on a real capture where one frame's lifted corners were wrong by over
+    100 mm (a VGGT depth failure specific to that frame, not its detection or pose) while every
+    other frame agreed to within a few mm -- `solve_similarity` itself has no concept of "frame"
+    at all (every point is used unconditionally), so that one frame pulled the whole similarity
+    fit's scale off by double digits of percent.
+
+    Each iteration: solve on the currently-included points, take each present frame's *median*
+    point-to-fit residual (median, not mean, so a few genuinely sparse/noisy points within an
+    otherwise-good frame don't themselves look like an outlier frame), then MAD-trim across
+    those per-frame medians -- the same robust-fit style as `cad_size_check.fit_board_plane`.
+    The single worst frame is dropped if it exceeds the robust threshold; this repeats rather
+    than dropping every frame past the first iteration's threshold at once, since removing the
+    worst frame changes the fit enough that a borderline second frame may no longer look like an
+    outlier at all. Stops when nothing is rejected, `max_iterations` is reached, or rejecting
+    further would leave fewer than `MIN_FRAMES_AFTER_REJECTION` distinct frames.
+
+    Returns the final (scale, rotation, translation, residuals_mm over *all* points, the
+    boolean `included` mask the final solve actually used, rejected_frame_names) -- the mask
+    lets the caller aggregate per-frame stats (e.g. a median per included frame) consistently
+    with `residuals_mm`, without re-deriving which points were dropped. `residuals_mm`,
+    `included` and `rejected_frame_names` are new relative to `solve_similarity` itself, which
+    this function wraps rather than modifies.
+    """
+    source = np.asarray(source, dtype=np.float64)
+    target = np.asarray(target, dtype=np.float64)
+    frame_of_point = np.asarray(frame_of_point)
+    if not (len(source) == len(target) == len(frame_of_point)):
+        raise ValueError(
+            "source, target and frame_of_point must have equal length, got "
+            f"{len(source)}, {len(target)}, {len(frame_of_point)}."
+        )
+
+    included = np.ones(len(source), dtype=bool)
+    rejected_frame_names: list[str] = []
+    scale, rotation, translation = solve_similarity(source, target)
+    residuals = np.linalg.norm(
+        scale * (source @ rotation.T) + translation - target, axis=1
+    )
+
+    for _ in range(max_iterations):
+        present_frames = np.unique(frame_of_point[included])
+        if len(present_frames) <= MIN_FRAMES_AFTER_REJECTION:
+            break
+        per_frame_median = np.array(
+            [
+                float(np.median(residuals[included & (frame_of_point == frame_index)]))
+                for frame_index in present_frames
+            ]
+        )
+        mad = np.median(np.abs(per_frame_median - np.median(per_frame_median))) + 1e-9
+        threshold = np.median(per_frame_median) + reject_sigma_k * 1.4826 * mad
+        worst = int(np.argmax(per_frame_median))
+        if per_frame_median[worst] <= threshold:
+            break
+        worst_frame_index = int(present_frames[worst])
+        included &= frame_of_point != worst_frame_index
+        rejected_frame_names.append(frame_names[worst_frame_index])
+        scale, rotation, translation = solve_similarity(
+            source[included], target[included]
+        )
+        residuals = np.linalg.norm(
+            scale * (source @ rotation.T) + translation - target, axis=1
+        )
+
+    return scale, rotation, translation, residuals, included, rejected_frame_names
 
 
 def lift_board_corner_observations(
@@ -470,17 +575,28 @@ def align_board_geometry(
         preprocess_geometry,
         board_pose_found,
     )
-    scale, rotation, translation = solve_similarity(source, target)
-    predicted = scale * (source @ rotation.T) + translation
-    residuals = np.linalg.norm(predicted - target, axis=1)
+    scale, rotation, translation, residuals, included, rejected_frame_names = (
+        solve_similarity_rejecting_outlier_frames(
+            source, target, frame_of_point, frame_names
+        )
+    )
+    included_frame_of_point = frame_of_point[included]
+    per_frame_residual_mm = {
+        frame_names[int(frame_index)]: float(
+            np.median(residuals[included][included_frame_of_point == frame_index])
+        )
+        for frame_index in np.unique(included_frame_of_point)
+    }
     return BoardAlignmentResult(
         scale=scale,
         rotation=rotation,
         translation=translation,
-        observation_count=len(source),
-        frame_count=len(np.unique(frame_of_point)),
-        residuals_mm=residuals,
-        rms_residual_mm=float(np.sqrt(np.mean(residuals**2))),
+        observation_count=int(included.sum()),
+        frame_count=len(np.unique(included_frame_of_point)),
+        residuals_mm=residuals[included],
+        rms_residual_mm=float(np.sqrt(np.mean(residuals[included] ** 2))),
+        rejected_frame_names=rejected_frame_names,
+        per_frame_residual_mm=per_frame_residual_mm,
     )
 
 
@@ -628,9 +744,14 @@ def write_alignment(
                 "alignment_anchor": "in-scene ChArUco board geometry (R-23)",
                 "paired_frame_count": result.frame_count,
                 "board_corner_observation_count": result.observation_count,
+                "rejected_frame_names": result.rejected_frame_names,
+                "per_frame_residual_mm": result.per_frame_residual_mm,
                 "note": (
                     "R-23 anchors the similarity directly on lifted ChArUco corners and their "
-                    "known millimetre geometry, independent of board-pose camera-centre scale."
+                    "known millimetre geometry, independent of board-pose camera-centre scale. "
+                    "rejected_frame_names (R-38) lists any frame whose own median corner "
+                    "residual was a clear outlier against the rest and was dropped before the "
+                    "final solve -- see rms_residual_mm for the fit that excludes them."
                 ),
             }
         )
@@ -662,6 +783,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("reconstruction_run_dir", type=Path)
     parser.add_argument("board_pose_dir", type=Path)
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument(
+        "--max-residual-mm",
+        type=float,
+        default=DEFAULT_MAX_RESIDUAL_MM,
+        help=(
+            "fail if the final (post-outlier-rejection) RMS residual exceeds this (R-38, "
+            f"D-003 measured default {DEFAULT_MAX_RESIDUAL_MM} mm)"
+        ),
+    )
     return parser
 
 
@@ -670,10 +800,22 @@ def main(argv: list[str] | None = None) -> int:
     result = load_and_align(args.reconstruction_run_dir, args.board_pose_dir)
     out = args.out or args.reconstruction_run_dir / "metric_alignment.json"
     write_alignment(out, result)
+    rejected = (
+        f", rejected frames={result.rejected_frame_names}"
+        if isinstance(result, BoardAlignmentResult) and result.rejected_frame_names
+        else ""
+    )
+    if result.rms_residual_mm > args.max_residual_mm:
+        print(
+            f"R-04 ALIGNMENT: FAIL - RMS residual={result.rms_residual_mm:.3f} mm exceeds "
+            f"--max-residual-mm={args.max_residual_mm:.3f} mm{rejected}",
+            file=sys.stderr,
+        )
+        return 1
     print(
         f"R-04 ALIGNMENT: PASS - {result.frame_count} board frames, "
         f"{result.observation_count} corner observations, "
-        f"RMS residual={result.rms_residual_mm:.3f} mm"
+        f"RMS residual={result.rms_residual_mm:.3f} mm{rejected}"
     )
     return 0
 
