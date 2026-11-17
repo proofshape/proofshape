@@ -8,6 +8,7 @@ import math
 import sys
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -907,7 +908,9 @@ def _fake_upstream_stages(monkeypatch, source: completion.PipelineArtifacts) -> 
     monkeypatch.setattr(board_pose, "estimate_board_poses", fake_board)
     monkeypatch.setattr(reconstruction_runner, "run_on_capture", fake_reconstruction)
     monkeypatch.setattr(
-        metric_alignment, "load_and_align", lambda *a, **k: {"scale": 1.0}
+        metric_alignment,
+        "load_and_align",
+        lambda *a, **k: SimpleNamespace(scale=1.0, rms_residual_mm=2.0),
     )
     monkeypatch.setattr(metric_alignment, "write_alignment", lambda *a, **k: None)
     monkeypatch.setattr(tsdf_fusion, "fuse_run", fake_fusion)
