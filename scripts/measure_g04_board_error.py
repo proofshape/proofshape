@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -60,6 +61,19 @@ SPECIMEN_IDS = ("g02_01", "g02_02", "g02_03", "g02_04", "g02_05", "g02_06")
 # part measurement is not evidence about the part; it is evidence the alignment failed for that
 # one capture (not reverse-fit to any specific specimen found here).
 MAX_BOARD_SCALE_DEVIATION = 0.05
+
+
+def _nearest_rank_index(sample_count: int, percentile: float) -> int:
+    """Zero-based nearest-rank index for a non-empty sample.
+
+    Nearest-rank percentile P is ceil(P * N) in one-based indexing, so subtract 1 for Python's
+    zero-based indexing. Keeping this in one helper prevents the height and in-plane aggregates
+    from silently using different percentile conventions.
+    """
+    if sample_count <= 0:
+        raise ValueError("sample_count must be positive")
+    return max(0, min(sample_count - 1, math.ceil(percentile * sample_count) - 1))
+
 
 CAPTURE_ROOT = Path("fixtures/data/specimen_capture")
 RECON_RUN_ROOT = Path("fixtures/data/recon_runs")
@@ -208,9 +222,7 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
 
     absolute_errors_mm = sorted(abs(e) for e in errors_mm)
     mean_mm = statistics.fmean(errors_mm)
-    p95_index = max(
-        0, min(len(absolute_errors_mm) - 1, round(0.95 * (len(absolute_errors_mm) - 1)))
-    )
+    p95_index = _nearest_rank_index(len(absolute_errors_mm), 0.95)
     sigma_floor_mm = absolute_errors_mm[p95_index]
     return {
         "feature_count": len(errors_mm),
@@ -265,9 +277,7 @@ def aggregate_in_plane(results: list[dict[str, Any]]) -> dict[str, Any]:
         }
 
     absolute_errors_mm = sorted(abs(error) for error in errors_mm)
-    p95_index = max(
-        0, min(len(absolute_errors_mm) - 1, round(0.95 * (len(absolute_errors_mm) - 1)))
-    )
+    p95_index = _nearest_rank_index(len(absolute_errors_mm), 0.95)
     return {
         "feature_count": len(errors_mm),
         "excluded_specimen_ids": excluded_specimen_ids,
