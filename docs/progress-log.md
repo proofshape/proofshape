@@ -2508,3 +2508,28 @@ Safari backgrounding losing the session, a screen frame getting into the model, 
 
 **Next:** G-09 photographs the two parts under G-08's conditions, and X-03 uses `g05-02` once I-07
 exists.
+
+## 2026-11-16 — P-34: the 16 open issues reconciled with stories (PR TBD)
+
+**Who:** @TabeenRaoof. Claimed in #368.
+**What changed:** no code. Of the 16 open issues, only #157 (I-07) had an open story. Each one now
+has a story, a home in an existing story, or a recorded reason to wait (`stories/P/P-34.md`).
+- **New stories:**
+  - C-24, the outage message and a session that survives a reload (#351, #352);
+  - C-25, the blur gate checked against a real blurred frame (#355);
+  - A-14, the VLM hints for frame 0 and orbit motion, plus the sampling fork (#353 and #354's
+    sampling half);
+  - R-39, `cad_size_check`'s blob selection (#356), Blocked on R-37;
+  - R-40, mesh cleanup that terminates and stays manifold (#263, #300), which also re-checks #247.
+- **A-02** gains #354's veto and frame-exclusion criterion: 3 h becomes 4 h, and it now depends on
+  A-14.
+- **No story:**
+  - #181 and #200 still wait on team decisions;
+  - #107 waits on D-072's public path;
+  - #246 and #292 are known limitations;
+  - #231 is fully owned and closes by hand, pointing to #292.
+
+**Capacity:** +18 h, so 65.5 h of open estimates become 83.5 h. S6 (the last sprint for code)
+has 52 h in the sprint table, or 46 h in its own heading. The suggested order for the Dec 2 call
+is R-40, C-24, A-14, then C-25.
+**Next:** after merge, comment on each mapped issue and close #231 by hand.

@@ -329,7 +329,7 @@ Full detail in each story file.
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Done | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
-| [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
+| [A-02](A/A-02.md) | VLM verdict veto | 4 h | A-01, A-11, A-14, I-07 | Blocked | _unclaimed_ |
 | [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Done | @dalwalyk |
 | [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
@@ -408,6 +408,54 @@ Full detail in each story file.
 | [F-08](F/F-08.md) | Fixture and image safety: downloader verification, case-insensitive photo ignores, image path filters | 3 h | F-06, R-15 | Done | @dalwalyk |
 | [I-12](I/I-12.md) | Synthetic-generator tests that pin noise, seed and the board frame | 2 h | I-01 | Done | @dalwalyk |
 | [P-28](P/P-28.md) | Process tooling: checker exit codes, the decision-number snippet, a portable deck build | 3 h | nothing | Done | @dalwalyk |
+
+---
+
+## Open issues reconciled (P-34)
+
+On 2026-11-16, GitHub had 16 open issues, and only #157 (I-07) had an open story committed to it.
+Six came from R-36's home pre-check of the demo host (#351–#356, D-072); the rest are follow-ups
+from earlier stories. P-34 gives each one a story, a home in an existing story, or a recorded
+reason to wait. The new stories add 17 h, and A-02 grows by 1 h. `stories/P/P-34.md` has the full
+mapping and the capacity note.
+
+**Suggested order before the Dec 2 boundary:**
+1. **R-40** (the live path can hang or crash);
+2. **C-24** (an interruption ends a live demo);
+3. **A-14** (the VLM tips a supplier sees, and the screen-photo gate);
+4. **C-25**.
+
+R-39 waits on R-37, and A-02 waits on I-07.
+
+Issues per story:
+- C-24 #351, #352
+- C-25 #355
+- A-14 #353, the sampling half of #354
+- A-02 the veto half of #354 (a criterion added by P-34)
+- R-39 #356
+- R-40 #263, #300; it also re-checks #247
+- I-07 #157 (unchanged)
+
+**No story, and why:**
+- **#181 and #200 wait on a team decision**, as before (D-039 and D-047). #181's fix is a
+  prerequisite of X-03.
+- **#107 (a Lightning cost guard)** is one of D-072's four conditions for a public service. It
+  gets a story only if the team takes that path.
+- **#246 and #247 (the Poisson fallback)** are known limitations of a fallback the service never
+  runs (`fuse_run` defaults to marching cubes). R-40 re-checks #247.
+- **#292 (s-02's board skin)** is a known limitation. R-35 measured a partial fix and attributed
+  the rest to s-02's reflective padlock.
+- **#231** is fully owned (R-30, R-33, then #292) and closes by hand with a pointer to #292.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [C-24](C/C-24.md) | Capture survives interruptions: a plain outage message, and a session that survives a reload | 5 h | C-13, C-18 | Ready | _unclaimed_ |
+| [C-25](C/C-25.md) | Frame gate: check the blur threshold against a real motion-blurred frame | 2 h | C-06 | Ready | _unclaimed_ |
+| [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Ready | _unclaimed_ |
+| [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Blocked | _unclaimed_ |
+| [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Ready | _unclaimed_ |
 
 ---
 
