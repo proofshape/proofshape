@@ -2580,3 +2580,15 @@ Done; the story and backlog claim match.
 **Concluded:** the active claims are G-09 and C-24; R-36 and G-11 are explicitly waiting on
 external access/resources under D-064.
 **Next:** begin C-24 implementation; the claim is merged separately from its code PR.
+
+## 2026-11-17 — I-09 kind-aware intake pre-check reviewed (PR #372)
+
+**Who:** @dalwalyk; reviewed by @mbj1994.
+**What changed:** used D-078's merged 5.278 mm in-plane floor for `hole`/`edge`, retained
+D-073's 0.86 mm height floor for `face`/`overall`, and refused malformed tolerance values.
+Added regressions for in-plane below/at-or-above cases and malformed values through `createOrder`.
+**Result:** 1,337 tests passed, 4 skipped, 6 warnings; Ruff, format and story-state checks passed.
+I-09 records 5 h actual and depends on R-37.
+**Concluded:** feature-kind-specific measured floors prevent an in-plane edge from being
+under-flagged by the height floor; malformed opaque specs no longer crash the response.
+**Next:** request fresh review and approval on the synced PR head.
