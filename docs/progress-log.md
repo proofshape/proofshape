@@ -2508,3 +2508,64 @@ Safari backgrounding losing the session, a screen frame getting into the model, 
 
 **Next:** G-09 photographs the two parts under G-08's conditions, and X-03 uses `g05-02` once I-07
 exists.
+
+## 2026-11-16 — P-34: the 16 open issues reconciled with stories (PR #369)
+
+**Who:** @TabeenRaoof. Claimed in #368.
+**What changed:** no code. Of the 16 open issues, only #157 (I-07) had an open story. Each one now
+has a story, a home in an existing story, or a recorded reason to wait (`stories/P/P-34.md`).
+- **New stories:**
+  - C-24, the outage message and a session that survives a reload (#351, #352);
+  - C-25, the blur gate checked against a real blurred frame (#355);
+  - A-14, the VLM hints for frame 0 and orbit motion, plus the sampling fork (#353 and #354's
+    sampling half);
+  - R-39, `cad_size_check`'s blob selection (#356), Blocked on R-37;
+  - R-40, mesh cleanup that terminates and stays manifold (#263, #300), which also re-checks #247.
+- **A-02** gains #354's veto and frame-exclusion criterion: 3 h becomes 4 h, and it now depends on
+  A-14.
+- **No story:**
+  - #181 and #200 still wait on team decisions;
+  - #107 waits on D-072's public path;
+  - #246 and #292 are known limitations;
+  - #231 is fully owned and closes by hand, pointing to #292.
+
+**Capacity:** +18 h, so 65.5 h of open estimates become 83.5 h. S6 (the last sprint for code)
+has 52 h in the sprint table, or 46 h in its own heading. The suggested order for the Dec 2 call
+is R-40, C-24, A-14, then C-25.
+**Next:** after merge, comment on each mapped issue and close #231 by hand.
+
+## 2026-11-15 — G-08 Done: the six specimens photographed and hash-locked (PR #339)
+
+**Who:** @TabeenRaoof (claim #336, work #339), approved by @dalwalyk, who also ran the
+second-member checks (1222 passed).
+
+**What changed:**
+- **The photos.** 25–30 landscape stills of each G-02 specimen, on the same G-06-calipered board
+  sheet and table as the golden set, under lighting condition A. iPhone 16 main camera,
+  5712 × 4284. They're on the golden set's Drive and never committed.
+- **`fixtures/specimen_capture_manifest.json`** holds frames (29, 30, 25, 27, 29, 29), aggregate
+  bytes and a `content_sha256` per sample, plus each sample's G-02 STL.
+- **The lock.** `specimen_capture_manifest.sha256` locks the manifest, and `.gitignore` now tracks
+  top-level `fixtures/*.sha256` files.
+- **Tests:** both manifests' locks, the specimen manifest's contents, and the ignore rule.
+
+**Result:**
+- **Board pose:** R-02 posed the board in every frame, at 2.0–2.4 px median RMS against golden
+  s-04's 2.48 px.
+- **One frame dropped:** an ultra-wide-lens frame in `g02_03` was deleted before hashing.
+- **Byte-for-byte agreement:** the owner's original photos hash to all six manifest values.
+- **The downloader end to end:**
+  - `g02_01` to `g02_03` verified on the owner's Mac, and `g02_01` again on @dalwalyk's.
+  - Both runs then hit gdown being refused by Drive partway through. The script correctly never
+    swapped in a partial sample.
+- **Hours:** 4 h actual (est 4), the owner's figure.
+
+**Concluded:** G-08 gave G-04 its last input: G-03's calipers, G-06's board, G-08's photos and
+R-23's scale. This entry was first written with a `check_story_states.py --fix` flip of G-04 to
+Ready. `main` reached that state without this PR. G-04 was then claimed and closed (@dalwalyk,
+#348, D-073) before this PR merged, so the entry is now the record only. It was recorded late, on 2026-11-17, in #342.
+
+**Next:** a small downloader-resilience follow-up would fix gdown being refused partway for both
+sets: retry and back off, or use Drive's plain download URL. Until then, fetch the specimen folders
+as browser zips and unzip them into `fixtures/data/specimen_capture/`. The manifest hashes still
+verify them.

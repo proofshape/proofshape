@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 import pytest
 
-from recon import cad_size_check
+from recon import cad_size_check, mesh_cleanup, provenance
 from recon.board_pose import make_board
 from recon.cad_size_check import (
     PrismCAD,
@@ -26,11 +26,13 @@ from recon.cad_size_check import (
     caliper_edge_errors,
     compute_height_above_board,
     fit_board_plane,
+    load_observed_surface_vertex_indices,
     main,
     match_caliper_edge_truth,
     measure_board_scale,
     measure_legacy_camera_centre_board_scale,
     measure_prism,
+    per_vertex_height_reliability,
     prism_from_cad,
     read_ascii_stl,
     reconstruct_confidence_filtered_points,
@@ -510,6 +512,159 @@ def test_measure_prism_rejects_too_few_candidate_points() -> None:
     points = np.array([[80.0, 60.0, -30.0], [80.0, 60.0, -31.0]])
     with pytest.raises(ValueError, match="Too few candidate points"):
         measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+
+# --- G-07: per-vertex reliability --------------------------------------------------------------
+
+
+def _labelled_prism_glb(
+    path: Path, prism: PrismCAD, *, rng: np.random.Generator
+) -> np.ndarray:
+    """A synthetic provenance GLB whose vertices are a dense, noiseless prism point cloud (same
+    generator ``measure_prism``'s own tests use), all labelled Observed. Face topology is
+    arbitrary (``label_faces`` only reads the labels of the vertices a face references, not real
+    mesh geometry), so points are simply grouped into disjoint triples.
+    """
+    points = _synthesize_prism_points(prism, noise_mm=0.0, rng=rng)
+    usable = (len(points) // 3) * 3
+    vertices = points[:usable]
+    faces = np.arange(usable).reshape(-1, 3)
+    labels = np.full(len(vertices), provenance.LABEL_OBSERVED, dtype=object)
+    mesh_cleanup.write_glb(path, vertices, faces, provenance.labels_to_colors(labels))
+    return vertices
+
+
+def test_load_observed_surface_vertex_indices_returns_indices_and_positions(
+    tmp_path: Path,
+) -> None:
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [20.0, 20.0, 0.0],
+        ]
+    )
+    faces = np.array([[0, 1, 2], [1, 3, 4]])
+    labels = np.array(
+        [
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_UNOBSERVED,
+        ],
+        dtype=object,
+    )
+    path = tmp_path / "mesh_provenance.glb"
+    mesh_cleanup.write_glb(path, vertices, faces, provenance.labels_to_colors(labels))
+
+    indices, positions = load_observed_surface_vertex_indices(path)
+
+    # Vertex 3 is Observed, but its only face has an Unobserved corner, so it is left out too
+    # (R-09's conservative rule) -- same expectation as load_observed_surface_points's own test.
+    assert sorted(indices.tolist()) == [0, 1, 2]
+    assert sorted(map(tuple, positions)) == sorted(
+        tuple(vertices[i]) for i in (0, 1, 2)
+    )
+
+
+def test_per_vertex_height_reliability_pairs_sigma_with_height_error(
+    tmp_path: Path,
+) -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    path = tmp_path / "mesh_uncertainty.glb"
+    vertices = _labelled_prism_glb(path, prism, rng=np.random.default_rng(21))
+    vertex_count = len(vertices)
+
+    sigma_full = np.full(vertex_count, 1.5)
+    pairs_full = per_vertex_height_reliability(
+        path,
+        sigma_full,
+        board_plane=(0.0, 0.0, 0.0),
+        caliper_height_truth_mm=59.7,
+    )
+
+    assert len(pairs_full) >= 30
+    sigmas = [s for s, _err in pairs_full]
+    errors = [err for _s, err in pairs_full]  # signed, not abs (D-077)
+    # noise_mm=0.0, so the top 10% of this mesh's own observed heights sits very close to 60.0mm
+    # -- the +0.3mm gap to the 59.7mm caliper truth is most pairs' signed error.
+    assert sigmas == pytest.approx([1.5] * len(pairs_full))
+    assert np.median(errors) == pytest.approx(0.3, abs=0.1)
+    assert max(abs(e) for e in errors) < 5.0
+
+    # A NaN sigma (fewer than 2 observations, R-10's own convention) is dropped, not propagated.
+    # Every other vertex, not a contiguous half: _synthesize_prism_points appends wall points
+    # before top points, so a contiguous first/last half can miss the top-face vertices entirely.
+    sigma_alternating_nan = sigma_full.copy()
+    sigma_alternating_nan[::2] = np.nan
+    pairs_alternating = per_vertex_height_reliability(
+        path,
+        sigma_alternating_nan,
+        board_plane=(0.0, 0.0, 0.0),
+        caliper_height_truth_mm=59.7,
+    )
+
+    assert len(pairs_alternating) < len(pairs_full)
+    assert all(not math.isnan(s) for s, _err in pairs_alternating)
+
+
+def test_per_vertex_height_reliability_uses_a_nonlevel_board_plane(
+    tmp_path: Path,
+) -> None:
+    """Regression test for D-077: a first version of this function recommended re-fitting
+    board_plane on the served mesh's own (board-free) vertices, which silently produced a badly
+    tilted/offset plane. Every other test in this file passes board_plane=(0,0,0), which would
+    pass identically whether or not the plane argument is actually used -- this one passes a
+    plane with a real z-offset and asserts the resulting errors shift by exactly that offset,
+    which only holds if board_plane genuinely propagates through to the height computation."""
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    path = tmp_path / "mesh_uncertainty.glb"
+    vertices = _labelled_prism_glb(path, prism, rng=np.random.default_rng(22))
+    sigma_full = np.full(len(vertices), 1.5)
+
+    level_pairs = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.0, 0.0, 0.0), caliper_height_truth_mm=59.7
+    )
+    # z = a*x + b*y + c: compute_height_above_board's sign convention is
+    # height = -(z - (a*x+b*y+c)) = c - z, so raising c by 5mm raises every computed
+    # height-above-board (and so every error) by exactly 5mm too.
+    offset_pairs = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.0, 0.0, 5.0), caliper_height_truth_mm=59.7
+    )
+
+    assert len(level_pairs) == len(offset_pairs)
+    level_errors = sorted(err for _s, err in level_pairs)
+    offset_errors = sorted(err for _s, err in offset_pairs)
+    assert offset_errors == pytest.approx([e + 5.0 for e in level_errors], abs=1e-6)
+
+
+def test_per_vertex_height_reliability_does_not_swap_the_slope_axes(
+    tmp_path: Path,
+) -> None:
+    """A second regression test alongside the z-offset one above: a pure c-offset test alone
+    would not catch an a/b (x-slope/y-slope) mix-up, since it never exercises the slope terms at
+    all. Uses a small slope (0.002 mm per mm -- tiny enough not to disturb which vertices the
+    90th-percentile top-face cut selects) and asserts swapping a and b changes the result -- the
+    synthetic prism's own asymmetric placement (_synthesize_prism_points' default offset_xy is
+    (80, 60), not square) means a correct implementation cannot give the same answer both ways."""
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    path = tmp_path / "mesh_uncertainty.glb"
+    vertices = _labelled_prism_glb(path, prism, rng=np.random.default_rng(23))
+    sigma_full = np.full(len(vertices), 1.5)
+
+    pairs_ab = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.002, -0.001, 0.0), caliper_height_truth_mm=59.7
+    )
+    pairs_ba = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(-0.001, 0.002, 0.0), caliper_height_truth_mm=59.7
+    )
+
+    errors_ab = sorted(err for _s, err in pairs_ab)
+    errors_ba = sorted(err for _s, err in pairs_ba)
+    assert errors_ab != pytest.approx(errors_ba, abs=1e-9)
 
 
 # --- G-04: board pitch correction, caliper truth ------------------------------------------------
