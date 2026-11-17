@@ -2509,7 +2509,7 @@ Safari backgrounding losing the session, a screen frame getting into the model, 
 **Next:** G-09 photographs the two parts under G-08's conditions, and X-03 uses `g05-02` once I-07
 exists.
 
-## 2026-11-16 — P-34: the 16 open issues reconciled with stories (PR TBD)
+## 2026-11-16 — P-34: the 16 open issues reconciled with stories (PR #369)
 
 **Who:** @TabeenRaoof. Claimed in #368.
 **What changed:** no code. Of the 16 open issues, only #157 (I-07) had an open story. Each one now

@@ -625,7 +625,7 @@ Full detail in each story file.
 | [P-31](P/P-31.md) | Write up the remaining inspection, ground-truth, generative-AI and cross-cutting stories | — | nothing | Done | @dalwalyk |
 | [P-32](P/P-32.md) | The WIP cap counts active stories only (D-064) | — | nothing | Done | @TabeenRaoof |
 | [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Done | @TabeenRaoof |
-| [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Claimed | @TabeenRaoof |
+| [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Done | @TabeenRaoof |
 
 ---
 
