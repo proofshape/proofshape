@@ -254,6 +254,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+        "422":
+          description: >
+            A critical spec feature's tolerance_mm is missing or null -- refused, not
+            defaulted (A-03/I-09's own discipline; none of the four verdict values represents
+            an invalid spec).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
 
 components:
   parameters:
@@ -366,6 +375,7 @@ components:
             - no_cad_uploaded
             - cad_unreadable
             - verdict_not_available
+            - tolerance_missing
             - buyer_auth_required
             - malformed_request
             - internal_error
@@ -377,6 +387,9 @@ components:
             a photo; `internal_error` means the service failed for a reason unrelated to the
             photos, and its message never includes the server's internal error text. `vlm_veto`
             means only the VLM's semantic check (A-02), never a malformed upload.
+            `tolerance_missing` (I-07): a critical spec feature's `tolerance_mm` was missing or
+            null at verdict time -- refused, not defaulted; none of the four verdict values
+            represents an invalid spec.
         message:
           type: string
           description: Human-readable, safe to show to the supplier holding the phone.
