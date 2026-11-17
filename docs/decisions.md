@@ -1925,6 +1925,58 @@ corrected here.
 
 ---
 
+**D-078 · R-37: the board reference's measured in-plane σ_floor is 5.278 mm; D-073's
+out-of-plane height floor remains 0.86 mm.** (2026-11-17, PR #364)
+
+R-37 fixed the two edge-measurement defects that forced D-073 to leave in-plane features
+unmeasured: `measure_prism` now measures each footprint edge corner-to-corner from adjacent
+robust fitted-wall intersections, and `_fit_rigid_2d` uses a whole-outline pose search with a
+scale-free edge-length-pattern tie-breaker for scalene polygons. Real-data review also exposed
+and fixed two integration problems before this decision was accepted: sparse outlier bridges
+could make the largest 2-D connected blob span most of the board, and direct-script execution
+could import a stale `recon` package instead of the checked-out branch. The G-04 measurement
+entry point now pins imports to the checkout and refuses mixed/stale code.
+
+@dalwalyk reran the existing G-04 real-data chain on R-37 head `035baa2` twice using
+`python scripts/measure_g04_board_error.py ...`, then once more through the module-import
+entry style. **All three outputs were byte-identical.** All six G-02 specimens completed:
+
+| Specimen | Rotation | Edge ratios (measured/CAD) |
+|---|---:|---|
+| g02_01 (square) | 34.16° | 1.103, 0.849, 0.848, 0.932 |
+| g02_02 (rect) | −177.37° | 0.989, 0.955, 0.986, 0.951 |
+| g02_03 (triangle) | 44.60° | 1.070, 1.015, 1.115 |
+| g02_04 | 168.94° | 0.898, 0.931, 1.009, 0.955, 0.996 |
+| g02_05 | 25.96° | 0.901, 0.960, 0.933, 0.927, 0.944, 0.928 |
+| g02_06 | −174.68° | 0.966, 0.959, 0.954, 0.954 |
+
+The corrected `in_plane_summary_r37` contains **11 unambiguous edge comparisons**, no excluded
+specimens, signed mean error **−0.108 mm**, nearest-rank p95 absolute error
+**σ_floor_mm = 5.278 mm**, and **max_error_mm = 5.278 mm**. The p95 implementation itself was
+also corrected during review to the true nearest-rank index `ceil(0.95 * n) - 1`, with an
+N=12 regression that distinguishes it from the previous formula.
+
+The height result did not regress: the same run reports mean height error **−0.002 mm** and
+`sigma_floor_mm = 0.856 mm`, consistent with D-073's rounded **0.86 mm** out-of-plane floor.
+Therefore D-073 remains authoritative for board-reference heights, while **this decision
+supersedes only D-073's statement that in-plane features have no measured floor yet.**
+
+*Interpretation:* 5.278 mm is not a claim of high in-plane accuracy; it is the measured floor
+the evidence supports. Per the project rule, a large measured floor is recorded rather than
+tuned downward. Any downstream story that previously returned `insufficient_evidence` solely
+because D-073 lacked an in-plane floor (notably R-16/I-07 consumers) must rerun its own
+comparison against the fixed R-37 measurement path before changing a verdict; historical
+pre-R-37 edge numbers are not retroactively treated as valid.
+*Conditions:* same as G-04/D-073 — landscape phone stills, board reference, R-01 raw point cloud
+rather than the cleaned mesh, G-06 measured board pitch, and the current board-anchored
+alignment path including R-38's frame rejection.
+*Evidence:* PR #364 comment by @dalwalyk, 2026-11-17; owner-local
+`fixtures/data/g04_board_error/g04-board-error-evidence.json`.
+*Checked against D-028:* D-077 is held by G-07/PR #367; an open-PR search found no D-078 use,
+so D-078 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
