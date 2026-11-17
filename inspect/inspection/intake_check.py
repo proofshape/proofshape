@@ -9,18 +9,22 @@ discovering endless Rescans in the field.
 sheet and card, not yet measured). Nothing in this codebase derives which tier an order
 *requires* from its CAD size or anything else -- `reference_tier_used` (`recon/service.py`) is an
 *output* of capture, decided well after intake, and G-10's own story only measures the sheet/card
-floors, never addresses tier selection. This module uses D-073's measured height floor for
-`face`/`overall` and D-078's measured in-plane floor for `edge`/`hole`; the applicable floor is a
-named scope choice, not a silent assumption that every order uses the same measurement.
+floors, never addresses tier selection. This module uses D-078's measured in-plane floor for
+`edge`/`hole`, the only two kinds whose axis is unambiguous; the applicable floor is a named
+scope choice, not a silent assumption that every order uses the same measurement.
 
 **The residual gap is real and not fixed here.** D-077 found that even `D077_K` applied to
 `D073_SIGMA_FLOOR_BOARD_MM` (0.70 * 0.86 = 0.60 mm) sits below the largest whole-part offset its
 own measurement found (`s-04`, 0.73 mm) -- a tolerance between 0.60 mm and 0.73 mm on a part
 shaped like `s-04` would still not be flagged, even though the method's own measured reliability
-doesn't cover it. Raising `k` or `sigma_floor` to paper over that gap would be exactly the
-"dressed-up tolerance" D-003 exists to prevent; D-077 left it as a tradeoff for a team decision,
-not resolved by this story. Reported honestly: the numbers below are the real measured ones, not
-adjusted to make the gap disappear.
+doesn't cover it. D-078's in-plane floor has the same kind of gap, and a larger one: 5.278 mm is
+the nearest-rank p95 of only 11 real edge comparisons, so for that sample size it is also the
+*maximum* measured edge error -- at least one real edge was measured exactly at the reported
+floor, so `k * 5.278 = 3.6946 mm` sits below the worst edge error R-37 actually found. Raising
+`k` or `sigma_floor` to paper over either gap would be exactly the "dressed-up tolerance" D-003
+exists to prevent; both are left as a tradeoff for a team decision, not resolved by this story.
+Reported honestly: the numbers below are the real measured ones, not adjusted to make the gap
+disappear.
 
 A spec's `tolerance_mm` can be missing or null (A-03's own `InspectionSpec` would refuse that
 without a justifying `assumptions` entry, but `recon/order_store.py` stores a buyer-supplied
@@ -28,20 +32,29 @@ spec as an opaque, unvalidated `dict` -- an order created any other way can stil
 null tolerance is refused outright, never defaulted to "ok" or "unverifiable" against a number
 that isn't there (the same "no invented number" discipline A-03 itself applies).
 
-**Feature kind matters, found on review (@mbj1994, PR #372): the height floor does not apply to
+**Feature kind matters, found on review (@mbj1994, PR #372): a height floor does not apply to
 every kind.** A-03's `SpecFeature.kind` is `Literal["hole", "face", "edge", "overall"]` --
-`"hole"` and `"edge"` are in-plane measurements, not the vertical, out-of-plane dimension
-D-073's 0.86 mm floor measures. D-078 now supplies the separate 5.278 mm in-plane floor from
-R-37's 11 real edge comparisons. Use the height and in-plane floors for their respective kinds;
-do not apply either floor to an unrecognised kind.
+`"hole"` and `"edge"` are unambiguously in-plane measurements, checked against D-078's measured
+in-plane floor. `"face"`/`"overall"` are refused instead (found on a second review, @TabeenRaoof,
+PR #372): a face can be a top face (the out-of-plane dimension D-073 measures) or a side face
+(in-plane), and "overall" doesn't say which of a part's dimensions it means either. Nothing in
+this codebase derives which axis a `face`/`overall` feature checks, so picking either floor would
+be guessing, and picking the *smaller* one (as an earlier version of this module did, using
+D-073's height floor for both) understates how hard the feature actually is to verify -- the
+opposite of what an Unverifiable-at-intake check exists to catch. `D073_SIGMA_FLOOR_BOARD_MM` and
+`UNVERIFIABLE_THRESHOLD_HEIGHT_MM` stay in this module because they are real measured facts (and
+feed the gap analysis above), not because any `kind` is checked against them today. An
+unrecognised or missing `kind` is refused the same way, for the same reason: no measured floor is
+assumed for a kind that doesn't state its axis.
 
-`"face"`/`"overall"` keep using the height floor, as a **named, stated assumption**, not a
-default nobody chose: a face or an overall-size check is read here as checking against the
-part's measured dimension in the same sense G-04's own height figure was measured (the
-dimension perpendicular to the board), which is the closest of the two measured floors to what
-those two kinds plausibly mean. This is an assumption, not a verified mapping -- revisit if a
-real per-kind convention is ever written down. An unrecognised or missing `kind` is refused,
-not assumed to be either tier.
+**Malformed input is refused, not raised.** `recon/order_store.py` stores a spec as an opaque,
+unvalidated `dict` (found on review, @TabeenRaoof, PR #372): a `features` key that is present but
+not a list, or a list entry that is not an object, previously raised inside this function,
+which `recon/service.py` does not catch -- and because an order is saved before its response is
+built, a single malformed read corrupts every future read of that same order, not just the one
+request that created it. Both cases are refused instead, the same way a malformed `tolerance_mm`
+already was: a missing or null `features` key means nothing to check yet (`[]`); anything else
+malformed becomes one or more `"refused"` results, never an exception.
 """
 
 from __future__ import annotations
@@ -63,10 +76,24 @@ D077_K = 0.70
 UNVERIFIABLE_THRESHOLD_HEIGHT_MM = D077_K * D073_SIGMA_FLOOR_BOARD_MM
 UNVERIFIABLE_THRESHOLD_IN_PLANE_MM = D077_K * D078_SIGMA_FLOOR_IN_PLANE_MM
 
-# Kinds with their measured board-reference floor. `face`/`overall` as height-like remains a
-# named assumption; see the module docstring.
-HEIGHT_LIKE_KINDS = frozenset({"face", "overall"})
+# The only two kinds with an unambiguous axis, and so a measured board-reference floor.
 IN_PLANE_KINDS = frozenset({"hole", "edge"})
+# `face`/`overall` don't state which axis they check; see the module docstring. Refused the
+# same way an unrecognised kind is, not defaulted to either floor.
+AXIS_AMBIGUOUS_KINDS = frozenset({"face", "overall"})
+
+_MALFORMED_SPEC_NAME = "<malformed spec>"
+_MALFORMED_FEATURE_NAME = "<malformed feature>"
+_UNNAMED_FEATURE_NAME = "<unnamed feature>"
+
+
+def _refused(name: str, tolerance_mm: float | None, reason: str) -> dict[str, Any]:
+    return {
+        "feature_name": name,
+        "tolerance_mm": tolerance_mm,
+        "status": "refused",
+        "reason": reason,
+    }
 
 
 def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -75,36 +102,59 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
     `{"feature_name", "tolerance_mm", "status", "reason"}`, `status` one of
     `"ok"`/`"unverifiable"`/`"refused"`.
 
-    A spec with no `features` key, or an empty list, returns `[]` -- nothing to check yet
-    (D-004: no spec, no verdict machinery).
+    A spec with no `features` key, or a null one, returns `[]` -- nothing to check yet
+    (D-004: no spec, no verdict machinery). This never raises: `spec` is an opaque, unvalidated
+    dict (see the module docstring), and a malformed `features` list, or a malformed entry
+    inside it, is refused the same way a malformed `tolerance_mm` already was, not an exception
+    `recon/service.py` would have to catch.
     """
+    features = spec.get("features")
+    if features is None:
+        return []
+    if not isinstance(features, list):
+        return [
+            _refused(
+                _MALFORMED_SPEC_NAME,
+                None,
+                "spec['features'] must be a list; refused, not assumed.",
+            )
+        ]
+
     results: list[dict[str, Any]] = []
-    for feature in spec.get("features", []):
-        name = feature.get("name", "<unnamed feature>")
+    for feature in features:
+        if not isinstance(feature, dict):
+            results.append(
+                _refused(
+                    _MALFORMED_FEATURE_NAME,
+                    None,
+                    "feature entry is not an object; refused, not assumed.",
+                )
+            )
+            continue
+
+        name = feature.get("name")
+        if not isinstance(name, str) or not name.strip():
+            name = _UNNAMED_FEATURE_NAME
         tolerance_mm = feature.get("tolerance_mm")
         kind = feature.get("kind")
 
         if tolerance_mm is None:
             results.append(
-                {
-                    "feature_name": name,
-                    "tolerance_mm": None,
-                    "status": "refused",
-                    "reason": "tolerance_mm is missing or null; refused, not defaulted.",
-                }
+                _refused(
+                    name,
+                    None,
+                    "tolerance_mm is missing or null; refused, not defaulted.",
+                )
             )
             continue
 
         if isinstance(tolerance_mm, bool) or not isinstance(tolerance_mm, (int, float)):
             results.append(
-                {
-                    "feature_name": name,
-                    "tolerance_mm": None,
-                    "status": "refused",
-                    "reason": (
-                        "tolerance_mm must be a finite positive number; refused, not defaulted."
-                    ),
-                }
+                _refused(
+                    name,
+                    None,
+                    "tolerance_mm must be a finite positive number; refused, not defaulted.",
+                )
             )
             continue
         try:
@@ -113,46 +163,47 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
             numeric_tolerance_mm = math.inf
         if not math.isfinite(numeric_tolerance_mm) or numeric_tolerance_mm <= 0:
             results.append(
-                {
-                    "feature_name": name,
-                    "tolerance_mm": None,
-                    "status": "refused",
-                    "reason": (
-                        "tolerance_mm must be a finite positive number; refused, not defaulted."
-                    ),
-                }
+                _refused(
+                    name,
+                    None,
+                    "tolerance_mm must be a finite positive number; refused, not defaulted.",
+                )
             )
             continue
         tolerance_mm = numeric_tolerance_mm
 
         if not isinstance(kind, str):
             results.append(
-                {
-                    "feature_name": name,
-                    "tolerance_mm": tolerance_mm,
-                    "status": "refused",
-                    "reason": "kind is missing or not a string; refused, not assumed.",
-                }
+                _refused(
+                    name,
+                    tolerance_mm,
+                    "kind is missing or not a string; refused, not assumed.",
+                )
             )
             continue
 
         if kind in IN_PLANE_KINDS:
             sigma_floor_mm = D078_SIGMA_FLOOR_IN_PLANE_MM
             threshold_mm = UNVERIFIABLE_THRESHOLD_IN_PLANE_MM
-        elif kind in HEIGHT_LIKE_KINDS:
-            sigma_floor_mm = D073_SIGMA_FLOOR_BOARD_MM
-            threshold_mm = UNVERIFIABLE_THRESHOLD_HEIGHT_MM
+        elif kind in AXIS_AMBIGUOUS_KINDS:
+            results.append(
+                _refused(
+                    name,
+                    tolerance_mm,
+                    f"kind={kind!r} does not state which dimension is checked (height or "
+                    "in-plane), and only axis-specific floors are measured (D-073 height, "
+                    "D-078 in-plane); refused, not assumed.",
+                )
+            )
+            continue
         else:
             results.append(
-                {
-                    "feature_name": name,
-                    "tolerance_mm": tolerance_mm,
-                    "status": "refused",
-                    "reason": (
-                        f"kind={kind!r} is unrecognised; refused rather than assumed to be "
-                        "either the height or the in-plane tier."
-                    ),
-                }
+                _refused(
+                    name,
+                    tolerance_mm,
+                    f"kind={kind!r} is unrecognised; refused rather than assumed to be "
+                    "either the height or the in-plane tier.",
+                )
             )
             continue
 
