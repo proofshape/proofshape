@@ -379,6 +379,7 @@ def _edge_pattern_error_mm(source_xy: np.ndarray, target_xy: np.ndarray) -> floa
         0.5 * source_perimeter * float(np.abs(source_fraction - target_fraction).sum())
     )
 
+
 def _rigid_transform_no_scale(
     source_xy: np.ndarray, target_xy: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
