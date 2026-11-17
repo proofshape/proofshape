@@ -718,7 +718,6 @@ def _largest_connected_blob(
     return cell_labels == largest_label
 
 
-
 def _top_face_connected_blob(
     xy_mm: np.ndarray,
     height_mm: np.ndarray,
@@ -787,15 +786,11 @@ def _top_face_connected_blob(
             continue
         peak_index = int(counts.argmax())
         peak_center = float(bin_edges[peak_index] + 0.25)
-        top_support = int(
-            (np.abs(component_heights - peak_center) < 1.75).sum()
-        )
+        top_support = int((np.abs(component_heights - peak_center) < 1.75).sum())
         if top_support < min_top_support:
             continue
 
-        candidates.append(
-            (peak_center, top_support, int(point_mask.sum()), point_mask)
-        )
+        candidates.append((peak_center, top_support, int(point_mask.sum()), point_mask))
 
     if not candidates:
         return _largest_connected_blob(xy, cell_mm=cell_mm)

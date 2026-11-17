@@ -507,7 +507,6 @@ def test_measure_prism_rejects_sparse_bridge_to_oversized_outlier_blob() -> None
         assert edge.ratio == pytest.approx(1.0, abs=0.10)
 
 
-
 def test_measure_prism_prefers_real_top_over_larger_low_stray_blob() -> None:
     # R-39 reproduction of #356: on sparse phone-style scans, a broad low pile can occupy more
     # XY cells than the actual part. The historical largest-component prefilter therefore keeps
@@ -543,9 +542,7 @@ def test_measure_prism_prefers_real_top_over_larger_low_stray_blob() -> None:
         & (height > 1.5)
         & (height < max(prism.height_mm * 1.6, 40.0))
     )
-    historical_mask = cad_size_check._largest_connected_blob(
-        contaminated[region, :2]
-    )
+    historical_mask = cad_size_check._largest_connected_blob(contaminated[region, :2])
     # Prove the fixture actually reproduces the old failure instead of merely testing the fix.
     assert float(height[region][historical_mask].max()) < 0.5 * prism.height_mm
 
