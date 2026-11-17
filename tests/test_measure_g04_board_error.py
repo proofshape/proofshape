@@ -261,6 +261,12 @@ def test_aggregate_rejects_empty_input() -> None:
         m.aggregate([_result([], height_error_mm=None)])
 
 
+def test_measure_g04_uses_recon_from_checked_out_repository() -> None:
+    assert m.REPO_ROOT == Path(m.__file__).resolve().parents[1]
+    for module in (m.board_pose, m.metric_alignment, m.vggt_runner):
+        assert m.REPO_ROOT in Path(module.__file__).resolve().parents
+
+
 def test_measure_g04_board_error_module_is_importable() -> None:
     assert m.SPECIMEN_IDS == (
         "g02_01",
