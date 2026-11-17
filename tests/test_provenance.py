@@ -587,6 +587,39 @@ def test_provenance_run_trust_is_judged_per_frame_not_per_vertex(tmp_path):
     assert report["observation_count"] == 2
 
 
+def test_provenance_run_excludes_a_rejected_frames_pixels_even_if_confident(tmp_path):
+    # R-38 (review on PR #358, @TabeenRaoof): a frame R-23's alignment rejected as an outlier
+    # must not be allowed to vote a vertex Observed here either, even if its own depth
+    # confidence looks fine -- confidence and alignment-outlier rejection are different reasons
+    # to distrust a frame, and this one is deliberately the *confident* case (no untrusted_pixels
+    # at all) to prove rejection alone, not confidence, is what excludes it.
+    mesh_ply_path, run_dir, alignment_json = _write_two_frame_scene_run(tmp_path)
+    alignment_json.write_text(
+        json.dumps(
+            {
+                "scale": 1.0,
+                "rotation": np.eye(3).tolist(),
+                "translation_mm": [0.0, 0.0, 0.0],
+                "rejected_frame_names": ["frame_1.jpg"],
+            }
+        )
+    )
+
+    report = provenance.provenance_run(
+        mesh_ply_path, run_dir, alignment_json, tmp_path / "out"
+    )
+
+    observations = provenance.read_observations_npz(
+        tmp_path / "out" / "observations.npz"
+    )
+    assert 1 not in observations["frame_index"].tolist()
+    # Same shape as test_provenance_run_trust_is_judged_per_frame_not_per_vertex's result:
+    # losing frame 1 drops vertex 0 to Unobserved (one trusted view isn't two), leaving frame 0's
+    # 2 observations (vertex 0 and vertex 1) out of the unfiltered scene's 3.
+    assert report["observed_vertex_count"] == 0
+    assert report["observation_count"] == 2
+
+
 def test_provenance_run_excludes_nan_confidence_even_at_threshold_zero(tmp_path):
     # PR #128's lesson for fuse_run, applied here: 0.0 is not "skip the mask" --
     # confidence_keep_mask's isfinite check still refuses a NaN-confidence pixel at any threshold.
