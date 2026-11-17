@@ -399,6 +399,46 @@ def test_order_response_refuses_a_null_tolerance_feature(tmp_path):
     ]
 
 
+def test_order_response_refuses_a_non_numeric_tolerance_without_server_error(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": (
+                    "spec.json",
+                    json.dumps(
+                        {
+                            "features": [
+                                {
+                                    "name": "height",
+                                    "kind": "face",
+                                    "tolerance_mm": "1.0",
+                                    "critical": True,
+                                }
+                            ]
+                        }
+                    ),
+                    "application/json",
+                )
+            },
+        )
+
+    assert created.status_code == 201
+    assert created.json()["intake_check"] == [
+        {
+            "feature_name": "height",
+            "status": "refused",
+            "reason": "tolerance_mm must be a finite positive number; refused, not defaulted.",
+        }
+    ]
+
+
 def test_order_response_refuses_an_in_plane_feature_rather_than_misapply_the_height_floor(
     tmp_path,
 ):

@@ -128,6 +128,15 @@ def test_missing_kind_is_refused_not_assumed() -> None:
     assert results[0]["status"] == "refused"
 
 
+def test_non_string_kind_is_refused_not_assumed() -> None:
+    spec = {"features": [{"name": "bad_kind", "kind": [], "tolerance_mm": 5.0}]}
+
+    results = check_intake_spec(spec)
+
+    assert results[0]["status"] == "refused"
+    assert "kind is missing or not a string" in results[0]["reason"]
+
+
 def test_null_tolerance_is_refused_before_kind_is_even_checked() -> None:
     spec = {
         "features": [
@@ -154,6 +163,33 @@ def test_missing_tolerance_key_is_also_refused() -> None:
     results = check_intake_spec(spec)
 
     assert results[0]["status"] == "refused"
+
+
+def test_non_numeric_non_finite_and_non_positive_tolerances_are_refused() -> None:
+    for tolerance in (
+        "1.0",
+        True,
+        float("nan"),
+        float("inf"),
+        -float("inf"),
+        0.0,
+        -1.0,
+    ):
+        spec = {
+            "features": [
+                {
+                    "name": "height",
+                    "kind": "face",
+                    "tolerance_mm": tolerance,
+                    "critical": True,
+                }
+            ]
+        }
+
+        results = check_intake_spec(spec)
+
+        assert results[0]["status"] == "refused", repr(tolerance)
+        assert "finite positive number" in results[0]["reason"]
 
 
 def test_spec_with_no_features_key_produces_no_flags() -> None:

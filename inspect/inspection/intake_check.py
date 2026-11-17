@@ -53,6 +53,7 @@ not assumed to be either tier.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 # G-04's measured height sigma_floor_mm (D-073), board reference only.
@@ -94,6 +95,47 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
                     "tolerance_mm": None,
                     "status": "refused",
                     "reason": "tolerance_mm is missing or null; refused, not defaulted.",
+                }
+            )
+            continue
+
+        if isinstance(tolerance_mm, bool) or not isinstance(tolerance_mm, (int, float)):
+            results.append(
+                {
+                    "feature_name": name,
+                    "tolerance_mm": None,
+                    "status": "refused",
+                    "reason": (
+                        "tolerance_mm must be a finite positive number; refused, not defaulted."
+                    ),
+                }
+            )
+            continue
+        try:
+            numeric_tolerance_mm = float(tolerance_mm)
+        except OverflowError:
+            numeric_tolerance_mm = math.inf
+        if not math.isfinite(numeric_tolerance_mm) or numeric_tolerance_mm <= 0:
+            results.append(
+                {
+                    "feature_name": name,
+                    "tolerance_mm": None,
+                    "status": "refused",
+                    "reason": (
+                        "tolerance_mm must be a finite positive number; refused, not defaulted."
+                    ),
+                }
+            )
+            continue
+        tolerance_mm = numeric_tolerance_mm
+
+        if not isinstance(kind, str):
+            results.append(
+                {
+                    "feature_name": name,
+                    "tolerance_mm": tolerance_mm,
+                    "status": "refused",
+                    "reason": "kind is missing or not a string; refused, not assumed.",
                 }
             )
             continue
