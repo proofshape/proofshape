@@ -461,6 +461,50 @@ def test_measure_prism_ignores_stray_point_cluster() -> None:
         assert edge.ratio == pytest.approx(1.0, abs=0.08)
 
 
+def test_measure_prism_rejects_sparse_bridge_to_oversized_outlier_blob() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    rng = np.random.default_rng(140)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=0.0,
+        offset_xy=(80.0, 60.0),
+        noise_mm=0.2,
+        rng=rng,
+    )
+
+    def sparse_segment(
+        start: tuple[float, float], end: tuple[float, float], spacing_mm: float = 1.2
+    ) -> np.ndarray:
+        p0 = np.asarray(start, dtype=np.float64)
+        p1 = np.asarray(end, dtype=np.float64)
+        count = max(2, int(np.linalg.norm(p1 - p0) / spacing_mm) + 1)
+        t = np.linspace(0.0, 1.0, count)
+        xy = p0 + t[:, None] * (p1 - p0)
+        return np.column_stack([xy, np.full(count, -30.0)])
+
+    # A huge sparse outline plus a one-cell-wide bridge touches the real part. The historical
+    # largest-occupied-component rule treats everything as one blob, so the convex hull spans
+    # most of the board and the 30 mm square measures absurdly large. The R-37 selector must use
+    # the dense physical part core instead without forcing its measured dimensions to CAD truth.
+    stray = np.concatenate(
+        [
+            sparse_segment((10.0, 10.0), (160.0, 10.0)),
+            sparse_segment((160.0, 10.0), (160.0, 110.0)),
+            sparse_segment((160.0, 110.0), (10.0, 110.0)),
+            sparse_segment((10.0, 110.0), (10.0, 10.0)),
+            sparse_segment((110.0, 75.0), (160.0, 75.0)),
+        ]
+    )
+    contaminated = np.concatenate([points, stray])
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(60.0, abs=1.5)
+    for edge in result.edges:
+        assert edge.measured_length_mm == pytest.approx(30.0, abs=3.0)
+        assert edge.ratio == pytest.approx(1.0, abs=0.10)
+
+
 def test_measure_prism_rejects_too_few_candidate_points() -> None:
     prism = _box_prism(30.0, 60.0)
     points = np.array([[80.0, 60.0, -30.0], [80.0, 60.0, -31.0]])
