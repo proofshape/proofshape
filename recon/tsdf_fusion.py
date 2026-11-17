@@ -181,6 +181,7 @@ def reanchor_frames_to_board(
     sigma_clip: float = DEFAULT_BOARD_FIT_SIGMA_CLIP,
     max_fit_iterations: int = DEFAULT_BOARD_FIT_MAX_ITERATIONS,
     min_frame_board_points: int = DEFAULT_MIN_FRAME_BOARD_POINTS,
+    skip_frame_indices: frozenset[int] = frozenset(),
 ) -> tuple[np.ndarray, np.ndarray, list[FrameReanchorReport]]:
     """R-30: correct each frame's own board-plane drift before its points enter fusion.
 
@@ -202,14 +203,24 @@ def reanchor_frames_to_board(
     extrinsic below.
 
     Returns `(corrected_board_frame_points, corrected_board_extrinsic, reports)` -- one report
-    per frame, for the golden rerun to record (candidate count, tilt before correction, and the
-    z-shift applied at that frame's own candidate centroid).
+    per frame except any in `skip_frame_indices`, for the golden rerun to record (candidate
+    count, tilt before correction, and the z-shift applied at that frame's own candidate
+    centroid).
+
+    `skip_frame_indices` (R-38): frames already known to be untrustworthy (an alignment-level
+    outlier rejection, not this function's own candidate-count check) are left uncorrected --
+    their point in `corrected_board_frame_points`/`corrected_board_extrinsic` stays exactly the
+    global-alignment value passed in, no per-frame fit attempted or reported for them. Without
+    this, such a frame's own (already-known-bad) points would either starve the fit below
+    `min_frame_board_points` (raising, for a frame already excluded elsewhere -- a confusing
+    failure, not a real new finding) or, if enough happened to remain, get "corrected" from data
+    that was the problem in the first place.
 
     Raises:
-        ValueError: a frame has fewer than `min_frame_board_points` of its own valid, in-footprint,
-            near-the-assumed-board-height candidate points -- too little of this frame's own board
-            is visible to trust a per-frame fit, rather than silently skipping correction for it
-            or guessing.
+        ValueError: a frame not in `skip_frame_indices` has fewer than `min_frame_board_points`
+            of its own valid, in-footprint, near-the-assumed-board-height candidate points -- too
+            little of this frame's own board is visible to trust a per-frame fit, rather than
+            silently skipping correction for it or guessing.
     """
     board_frame_points = np.asarray(board_frame_points, dtype=np.float64)
     board_extrinsic = np.asarray(board_extrinsic, dtype=np.float64)
@@ -239,6 +250,8 @@ def reanchor_frames_to_board(
     reports: list[FrameReanchorReport] = []
 
     for frame_index in range(frame_count):
+        if frame_index in skip_frame_indices:
+            continue
         points_flat = board_frame_points[frame_index].reshape(-1, 3)
         x_mm, y_mm, z_mm = points_flat[:, 0], points_flat[:, 1], points_flat[:, 2]
         in_footprint = (
@@ -978,6 +991,7 @@ def fuse_run(
     )
 
     with np.load(reconstruction_run_dir / "poses.npz") as poses:
+        frame_names = [str(name) for name in poses["frame_names"]]
         extrinsic = poses["extrinsic"].astype(np.float64)
         intrinsic = poses["intrinsic"].astype(np.float64)
     with np.load(reconstruction_run_dir / "depth.npz") as depth_data:
@@ -1003,6 +1017,28 @@ def fuse_run(
     # Only pixels with a real depth measurement feed the board-plane fit -- an invalid pixel
     # (depth <= 0 or non-finite) unprojects to the camera centre, not a board point.
     valid_depth = np.isfinite(depth) & (depth > 0.0)
+
+    # R-38: a frame R-23's alignment rejected as an outlier (its own depth, not its detection or
+    # pose, was wrong) must not reach fusion either -- the alignment fix alone only stops that
+    # frame from corrupting the *scale*; its depth is still exactly the bad data the rejection
+    # found, and feeding it into the volume anyway reintroduces the same problem one stage later
+    # (confirmed live: review on PR #358 found the real g02_02 reproduction case fails fusion
+    # outright once the alignment itself is correct, with an error that doesn't name the real
+    # cause). Marked invalid here, not removed from the arrays: `provenance_run` and
+    # `completion.choose_view_frame` both index frames by position into `poses.npz`'s full list,
+    # so shrinking the frame axis here would silently misalign every frame after the rejected
+    # one downstream (found the hard way -- a first version of this fix did exactly that, and
+    # review caught the shape mismatch it caused in provenance). A rejected frame's pixels end
+    # up with `valid_depth=False` throughout, which already excludes them from both board-plane
+    # fits below and (via `segmented_mask`, built only at `flat_valid_depth` positions) from
+    # `fuse_tsdf`'s `keep_mask` -- no second masking needed at the voxel stage.
+    rejected_frame_names = set(alignment_json.get("rejected_frame_names", []))
+    rejected_frame_indices = frozenset(
+        index for index, name in enumerate(frame_names) if name in rejected_frame_names
+    )
+    if rejected_frame_indices:
+        valid_depth[sorted(rejected_frame_indices)] = False
+
     flat_valid_depth = valid_depth.reshape(-1)
     board_surface_before_reanchoring = measure_board_surface(
         board_frame_points.reshape(-1, 3)[flat_valid_depth],
@@ -1013,12 +1049,18 @@ def fuse_run(
 
     # R-30: correct each frame's own board-plane drift (D-060) before any of it feeds
     # segmentation or fusion -- see reanchor_frames_to_board's docstring for the derivation.
+    # skip_frame_indices (R-38): a rejected frame has zero valid candidates by construction
+    # above, which reanchor_frames_to_board would otherwise (correctly, for an unrejected frame)
+    # refuse to fit -- skip it explicitly instead of asking the fit to trust 0 points, and leave
+    # its extrinsic at this global-alignment value rather than attempt a per-frame correction on
+    # data already known to be bad.
     board_frame_points, board_extrinsic, reanchor_reports = reanchor_frames_to_board(
         board_frame_points,
         board_extrinsic,
         valid_depth,
         board_surface_before_reanchoring,
         footprint_mm,
+        skip_frame_indices=rejected_frame_indices,
     )
 
     # Re-fit after correction: the target plane is the same by construction, but this is the
