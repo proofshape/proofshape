@@ -232,7 +232,7 @@ Full detail in each story file.
 | [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Done | @dalwalyk |
 | [G-05](G/G-05.md) | Planted-defect parts: the control and the 4 mm hole shift | 4 h | nothing | Done | @TabeenRaoof |
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
-| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Claimed | @dalwalyk |
+| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Done | @dalwalyk |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Ready | _unclaimed_ |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Ready | _unclaimed_ |
@@ -279,9 +279,9 @@ Full detail in each story file.
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Done | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
 | [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Done | @dalwalyk |
-| [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Blocked | _unclaimed_ |
+| [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Ready | _unclaimed_ |
 | [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Blocked | _unclaimed_ |
-| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34 | Blocked | _unclaimed_ |
+| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34 | Ready | _unclaimed_ |
 | [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Blocked | _unclaimed_ |
 
 ---

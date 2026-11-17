@@ -722,12 +722,17 @@ def observed_glb_labels(glb_path: Path) -> str:
     return f"unrecognised file name {name!r}: labels as given"
 
 
-def load_observed_surface_points(provenance_glb: Path) -> np.ndarray:
-    """Return vertices participating in fully Observed faces of a provenance GLB.
+def load_observed_surface_vertex_indices(
+    provenance_glb: Path,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return (vertex_indices, vertex_positions) for vertices participating in fully Observed
+    faces of a provenance GLB.
 
     Imports provenance lazily so the normal raw-cloud CAD check keeps its lightweight import
     surface. R-09's conservative rule is preserved: a face counts only when all three vertices
-    are Observed.
+    are Observed. The indices are into the GLB's own vertex array -- the same array order
+    ``sigma_mm.npz`` (R-10) is indexed by, so callers that need each vertex's own sigma (G-07's
+    per-vertex reliability check, for one) can pair them directly.
     """
     from recon import mesh_cleanup, provenance
 
@@ -740,7 +745,17 @@ def load_observed_surface_points(provenance_glb: Path) -> np.ndarray:
     if len(observed_faces) == 0:
         raise ValueError(f"{provenance_glb} has no fully Observed faces.")
     observed_vertex_indices = np.unique(observed_faces.reshape(-1))
-    return vertices[observed_vertex_indices].astype(np.float64)
+    return observed_vertex_indices, vertices[observed_vertex_indices].astype(np.float64)
+
+
+def load_observed_surface_points(provenance_glb: Path) -> np.ndarray:
+    """Return vertices participating in fully Observed faces of a provenance GLB.
+
+    A thin wrapper around ``load_observed_surface_vertex_indices`` for callers that only need
+    positions, not indices.
+    """
+    _indices, positions = load_observed_surface_vertex_indices(provenance_glb)
+    return positions
 
 
 def measure_prism(
@@ -978,6 +993,58 @@ def caliper_edge_errors(
             }
         )
     return results
+
+
+def per_vertex_height_reliability(
+    served_glb: Path,
+    sigma_mm: np.ndarray,
+    board_plane: tuple[float, float, float],
+    caliper_height_truth_mm: float,
+    *,
+    top_region_percentile: float = 90.0,
+) -> list[tuple[float, float]]:
+    """Pair each near-top-face Observed vertex's own R-10 sigma with its height-above-board
+    error against an independent caliper height measurement (G-07).
+
+    ``served_glb`` should be R-10's post-downgrade labels (``mesh_uncertainty.glb``) -- the
+    labels that actually gate pass/fail in production, per ``observed_glb_labels``'s own
+    precedent (R-32). ``sigma_mm`` is R-10's per-vertex array (``uncertainty/sigma_mm.npz``),
+    indexed by the same vertex order as ``served_glb``'s own vertex array. ``board_plane`` should
+    be fit fresh from this mesh's own observed points (``fit_board_plane``), not reused from a
+    different alignment pass -- the mesh's own placement and the caliper-matching pipeline's
+    board-anchored alignment can come from two different solves (R-04's legacy camera-centre
+    path vs. R-23's board-anchored path), and re-fitting the plane from the mesh's own data
+    sidesteps needing those two to agree.
+
+    Vertices are selected by the top ``100 - top_region_percentile`` percent of this mesh's own
+    *observed* height distribution, not ``measure_prism``'s density-peak-bin search: a served GLB
+    is R-08's decimated, Observed-only vertex set -- a few hundred to low thousands of vertices
+    for a whole part (confirmed on s-04: 2075 total mesh vertices, 1611 Observed) -- orders of
+    magnitude sparser than the dense raw point clouds (``points.ply``, hundreds of thousands of
+    points) the density-peak search was tuned against; on a vertex set this sparse, a density
+    peak is not reliably findable (confirmed empirically: it raised "too few points on the
+    detected top face" on s-04's own served GLB). A percentile cut on the mesh's own observed
+    heights needs no density peak and adapts to whatever height range this specimen's mesh
+    actually reached, rather than assuming the CAD's own height is reached at all -- for a convex
+    prism, points this close to the maximum observed height are overwhelmingly on the top face,
+    not the walls (which only reach this close to the top at their very rim).
+
+    Returns a list of ``(sigma_mm, abs_error_mm)`` pairs, one per near-top-face Observed vertex
+    with a defined sigma -- a NaN sigma (fewer than 2 observations, R-10's own convention) is
+    dropped.
+    """
+    vertex_indices, vertex_positions = load_observed_surface_vertex_indices(served_glb)
+    height_mm = compute_height_above_board(vertex_positions, board_plane)
+    threshold_mm = np.percentile(height_mm, top_region_percentile)
+    top_region_mask = height_mm >= threshold_mm
+
+    abs_error_mm = np.abs(height_mm[top_region_mask] - caliper_height_truth_mm)
+    sigma_at_vertices = np.asarray(sigma_mm, dtype=np.float64)[
+        vertex_indices[top_region_mask]
+    ]
+
+    finite = np.isfinite(sigma_at_vertices)
+    return list(zip(sigma_at_vertices[finite].tolist(), abs_error_mm[finite].tolist()))
 
 
 # --- Board scale: the printed pattern as an in-scene ruler -------------------------------------

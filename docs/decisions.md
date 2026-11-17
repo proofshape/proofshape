@@ -1925,6 +1925,66 @@ corrected here.
 
 ---
 
+**D-077 · G-07: per-vertex sigma does not reliably predict per-vertex height error — k cannot be
+responsibly chosen from this curve.** (2026-11-17)
+`scripts/g07_reliability_curve.py` ran the R-07 (TSDF fusion) → R-08 (mesh cleanup) → R-09
+(provenance) → R-10 (uncertainty) chain fresh for every board-reference specimen with
+independent caliper height truth (`s-04`, `s-05` from G-06; `g02_01`–`g02_06` from G-03), pairing
+each near-top-face Observed vertex's own R-10 sigma with its height-above-board error against
+caliper truth — 1466 pairs across all 8 specimens.
+
+*A real bug found and fixed first, from the numbers coming out wrong, not from guessing:* a
+first version fit the board plane from the served mesh's own vertices
+(`cad_size_check.fit_board_plane`) — but R-07 explicitly discards the board layer before meshing
+the part, so that mesh has few or no real board-level points to fit a plane from, and the fit was
+badly tilted/offset. Caught because per-vertex errors came out at 5–12 mm, ~10x G-04's own
+established 0.86 mm floor for the same feature — implausible as real noise. Fixed by reading the
+board plane R-07's own TSDF fusion already computed and re-anchored (R-30), from
+`mesh/tsdf_fusion.json`'s `board_surface` fields, instead of re-deriving one.
+
+*The real result, once that was fixed:* most specimens land close to G-04's own figures — median
+|error| 0.15–0.86 mm for 7 of the 8 — except `g02_02` at 3.84 mm. That is the same `IMG_4665`
+bad-frame capture D-073/R-38 already found: R-38 patched `align_board_geometry` (R-23's
+board-anchored path), but `recon.tsdf_fusion.fuse_run` still places the mesh with the older,
+unpatched `align_camera_centres` path (`metric_alignment.json`) — confirmed here independently,
+via that same file's own `rms_residual_mm` (23.35 mm for `g02_02`, 2.08–3.91 mm for the other
+seven). Excluding `g02_02` (1373 pairs, 7 specimens): **k at 95% coverage = 0.87, Pearson
+r = −0.32.** Including it: k = 3.12 (coincidentally near the proposal's "planning prior of 3"),
+r = −0.22. Both correlations are weak and **negative** — the sigma bins' own mean |error| trends
+*down*, not up, as sigma increases (0.625 → 0.631 → 0.606 → 0.250 → 0.273 → 0.464 mm across six
+increasing-sigma bins, excluding `g02_02`).
+
+*Conclusion: sigma does not demonstrate a reliable positive relationship with real per-vertex
+height error in this measurement.* A numeric k is not chosen from this curve — doing so from a
+nonexistent-to-negative correlation would be exactly the "dressed-up tolerance" D-003 exists to
+prevent, k=3.12's superficial closeness to the planning prior notwithstanding. The proposal's "a
+planning prior of 3; the M3 measurement sets it" remains **unconfirmed**, not validated, by this
+story.
+
+*Caveats, stated not hidden, any of which could be masking or distorting a real relationship:*
+`error_mm` compares each vertex to **one** caliper reading per specimen (a single feature), while
+real top-face vertices span genuine surface geometry (tilt, print texture) that a single-point
+caliper reading cannot distinguish from reconstruction noise — some of what is counted as "error"
+here may be real shape, not noise. Near-top-face vertex selection is a percentile cut on each
+mesh's own observed-height distribution (53–363 vertices per specimen after R-08's decimation +
+R-09's Observed-only filter), not `measure_prism`'s density-peak method used elsewhere in this
+codebase — simpler and necessary on data this sparse, but a different methodology than G-04's.
+The residual *scale* gap between the legacy alignment this mesh is placed with and R-23's
+board-anchored alignment (R-23's own measured range: sub-1%) is not corrected by reading
+`board_surface` — that only re-anchors tilt/offset, not scale.
+
+*What this means going forward:* whoever next builds real verdict logic (the unused
+`declared_at: "post_reconstruction"` enum value in `recon/service.py` still looks purpose-built
+for exactly that) should not treat `k` as settled by this story, in either direction — not 3, not
+0.87. A future, better-powered or differently-instrumented repeat of this measurement is what
+would settle it, not this one.
+
+Recorded back in `stories/G/G-07.md`'s notes per this story's own acceptance criteria.
+*Checked against D-028:* fetched all origin branches on 2026-11-17; D-076 (held on `main`) was
+highest anywhere, so D-077 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
