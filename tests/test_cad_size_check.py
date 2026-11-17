@@ -411,6 +411,7 @@ def test_measure_prism_perfect_edges_are_corner_to_corner_within_point_two_mm() 
             rotation_deg=23.7,
             offset_xy=(70.0, 55.0),
             noise_mm=0.0,
+            points_per_edge=2000,
             rng=np.random.default_rng(31),
         )
 
