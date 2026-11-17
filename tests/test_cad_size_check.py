@@ -507,6 +507,33 @@ def test_measure_prism_rejects_sparse_bridge_to_oversized_outlier_blob() -> None
         assert edge.ratio == pytest.approx(1.0, abs=0.10)
 
 
+def test_measure_prism_height_ignores_denser_spatially_separate_stray_cluster() -> None:
+    # Regression for the pre-R-37 spatial isolation guarantee. A compact stray cluster can have
+    # more samples in one height bin than the real top face; height detection must choose the
+    # real part's connected spatial component, not the densest histogram peak globally.
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    rng = np.random.default_rng(141)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=0.0,
+        offset_xy=(80.0, 60.0),
+        noise_mm=0.15,
+        top_points=1200,
+        rng=rng,
+    )
+
+    stray_xy = rng.uniform([20.0, 20.0], [24.0, 24.0], size=(2000, 2))
+    stray_height = rng.normal(45.0, 0.04, size=2000)
+    stray = np.column_stack([stray_xy, -stray_height])
+    contaminated = np.concatenate([points, stray])
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(60.0, abs=1.5)
+    for edge in result.edges:
+        assert edge.measured_length_mm == pytest.approx(30.0, abs=3.0)
+
+
 def test_measure_prism_rejects_too_few_candidate_points() -> None:
     prism = _box_prism(30.0, 60.0)
     points = np.array([[80.0, 60.0, -30.0], [80.0, 60.0, -31.0]])
