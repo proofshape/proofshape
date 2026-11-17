@@ -356,6 +356,27 @@ def _approximate_hull_polygon(
     return exact[len(exact) // 2]
 
 
+def _edge_pattern_error_mm(source_xy: np.ndarray, target_xy: np.ndarray) -> float:
+    """Scale-free mismatch between two ordered polygons' edge-length sequences.
+
+    Cyclic shifts are geometrically indistinguishable for a square, but not for a scalene
+    triangle. Comparing perimeter-normalised edge lengths gives the correspondence search a
+    deterministic way to keep a 30/40/50 triangle's physical walls attached to the matching
+    CAD edge slots without fitting scale. The result is converted back to an mm-like penalty
+    using the CAD perimeter; it is only a correspondence tie-breaker, never a size estimate.
+    """
+    source_next = np.roll(source_xy, -1, axis=0)
+    target_next = np.roll(target_xy, -1, axis=0)
+    source_lengths = np.linalg.norm(source_next - source_xy, axis=1)
+    target_lengths = np.linalg.norm(target_next - target_xy, axis=1)
+    source_perimeter = float(source_lengths.sum())
+    target_perimeter = float(target_lengths.sum())
+    if source_perimeter <= 0 or target_perimeter <= 0:
+        return float("inf")
+    source_fraction = source_lengths / source_perimeter
+    target_fraction = target_lengths / target_perimeter
+    return 0.5 * source_perimeter * float(np.abs(source_fraction - target_fraction).sum())
+
 def _rigid_transform_no_scale(
     source_xy: np.ndarray, target_xy: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -483,7 +504,7 @@ def _fit_rigid_2d(
     cad_vertices = np.array([p0 for p0, _p1 in edges])
     observed_vertices = _approximate_hull_polygon(blob_xy, len(cad_vertices))
 
-    best: tuple[tuple[float, float, int, int], np.ndarray, np.ndarray] | None = None
+    best: tuple[tuple[float, float, float, int, int], np.ndarray, np.ndarray] | None = None
     if observed_vertices is not None:
         for reverse_index, observed in enumerate(
             (observed_vertices, observed_vertices[::-1])
@@ -492,7 +513,9 @@ def _fit_rigid_2d(
                 target = np.roll(observed, -shift, axis=0)
                 transform, translation = _rigid_transform_no_scale(cad_vertices, target)
                 score = _pose_score(blob_xy, edges, transform, translation)
-                key = (score[0], score[1], reverse_index, shift)
+                pattern_error_mm = _edge_pattern_error_mm(cad_vertices, target)
+                combined = score[0] + 0.25 * pattern_error_mm
+                key = (combined, score[0], score[1], reverse_index, shift)
                 if best is None or key < best[0]:
                     best = (key, transform, translation)
 
