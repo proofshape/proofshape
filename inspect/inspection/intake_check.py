@@ -5,13 +5,13 @@ the reference tier the purchase order requires, and anything below it is declare
 before a single photo is taken -- so the buyer routes it to a CMM knowingly instead of
 discovering endless Rescans in the field.
 
-**Board tier only.** `sigma_floor` is measured per reference tier (G-04: board; G-10: sheet and
-card, not yet measured). Nothing in this codebase derives which tier an order *requires* from
-its CAD size or anything else -- `reference_tier_used` (`recon/service.py`) is an *output* of
-capture, decided well after intake, and G-10's own story only measures the sheet/card floors,
-never addresses tier selection. This module checks every feature against the board tier's own
-measured floor, which is the only one that exists -- a named, stated scope limitation, not a
-silent assumption that every order uses the board.
+**Board tier only.** `sigma_floor` is measured per reference tier (G-04/R-37: board; G-10:
+sheet and card, not yet measured). Nothing in this codebase derives which tier an order
+*requires* from its CAD size or anything else -- `reference_tier_used` (`recon/service.py`) is an
+*output* of capture, decided well after intake, and G-10's own story only measures the sheet/card
+floors, never addresses tier selection. This module uses D-073's measured height floor for
+`face`/`overall` and D-078's measured in-plane floor for `edge`/`hole`; the applicable floor is a
+named scope choice, not a silent assumption that every order uses the same measurement.
 
 **The residual gap is real and not fixed here.** D-077 found that even `D077_K` applied to
 `D073_SIGMA_FLOOR_BOARD_MM` (0.70 * 0.86 = 0.60 mm) sits below the largest whole-part offset its
@@ -30,17 +30,10 @@ that isn't there (the same "no invented number" discipline A-03 itself applies).
 
 **Feature kind matters, found on review (@mbj1994, PR #372): the height floor does not apply to
 every kind.** A-03's `SpecFeature.kind` is `Literal["hole", "face", "edge", "overall"]` --
-`"hole"` and `"edge"` are in-plane measurements (a diameter, a length), not the vertical,
-out-of-plane dimension D-073's 0.86 mm floor was actually measured against (G-04's top-face
-height-above-board). The first version of this module read no `kind` at all and applied the
-height floor to every feature regardless, which could under-flag an in-plane tolerance as `ok`.
-
-**Not fixed by switching to R-37's in-plane floor (D-078, 5.278 mm): that decision is on an
-unmerged, unreviewed branch (PR #364) as of this fix, not something to depend on yet.** Using an
-unreviewed number here would be exactly the kind of unverified figure D-003 warns against, just
-one layer removed. `"hole"`/`"edge"` are refused instead -- honest about not having a verified
-in-plane floor on `main` yet, rather than silently misapplying the height one. Revisit once
-PR #364 merges and `D-078` is stable.
+`"hole"` and `"edge"` are in-plane measurements, not the vertical, out-of-plane dimension
+D-073's 0.86 mm floor measures. D-078 now supplies the separate 5.278 mm in-plane floor from
+R-37's 11 real edge comparisons. Use the height and in-plane floors for their respective kinds;
+do not apply either floor to an unrecognised kind.
 
 `"face"`/`"overall"` keep using the height floor, as a **named, stated assumption**, not a
 default nobody chose: a face or an overall-size check is read here as checking against the
@@ -58,6 +51,8 @@ from typing import Any
 
 # G-04's measured height sigma_floor_mm (D-073), board reference only.
 D073_SIGMA_FLOOR_BOARD_MM = 0.86
+# R-37's measured in-plane edge sigma_floor_mm (D-078), board reference only.
+D078_SIGMA_FLOOR_IN_PLANE_MM = 5.278
 
 # G-07's consumable_k_estimate (measured 0.688, D-077) -- the k figure fit against max(sigma,
 # sigma_floor) on total error, the exact quantity this story's Unverifiable row uses. Not the
@@ -65,10 +60,11 @@ D073_SIGMA_FLOOR_BOARD_MM = 0.86
 # using here).
 D077_K = 0.70
 
-UNVERIFIABLE_THRESHOLD_MM = D077_K * D073_SIGMA_FLOOR_BOARD_MM
+UNVERIFIABLE_THRESHOLD_HEIGHT_MM = D077_K * D073_SIGMA_FLOOR_BOARD_MM
+UNVERIFIABLE_THRESHOLD_IN_PLANE_MM = D077_K * D078_SIGMA_FLOOR_IN_PLANE_MM
 
-# Kinds read here as out-of-plane (checked against the height floor, as a stated assumption --
-# see the module docstring) versus in-plane (no verified-on-main floor exists yet; refused).
+# Kinds with their measured board-reference floor. `face`/`overall` as height-like remains a
+# named assumption; see the module docstring.
 HEIGHT_LIKE_KINDS = frozenset({"face", "overall"})
 IN_PLANE_KINDS = frozenset({"hole", "edge"})
 
@@ -141,21 +137,12 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
             continue
 
         if kind in IN_PLANE_KINDS:
-            results.append(
-                {
-                    "feature_name": name,
-                    "tolerance_mm": tolerance_mm,
-                    "status": "refused",
-                    "reason": (
-                        f"kind={kind!r} is an in-plane measurement; no verified in-plane "
-                        "sigma_floor exists on main yet (R-37/D-078 pending review, PR #364). "
-                        "Refused, not checked against the height floor."
-                    ),
-                }
-            )
-            continue
-
-        if kind not in HEIGHT_LIKE_KINDS:
+            sigma_floor_mm = D078_SIGMA_FLOOR_IN_PLANE_MM
+            threshold_mm = UNVERIFIABLE_THRESHOLD_IN_PLANE_MM
+        elif kind in HEIGHT_LIKE_KINDS:
+            sigma_floor_mm = D073_SIGMA_FLOOR_BOARD_MM
+            threshold_mm = UNVERIFIABLE_THRESHOLD_HEIGHT_MM
+        else:
             results.append(
                 {
                     "feature_name": name,
@@ -169,7 +156,7 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
             )
             continue
 
-        if tolerance_mm < UNVERIFIABLE_THRESHOLD_MM:
+        if tolerance_mm < threshold_mm:
             results.append(
                 {
                     "feature_name": name,
@@ -177,7 +164,8 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
                     "status": "unverifiable",
                     "reason": (
                         f"tolerance_mm ({tolerance_mm} mm) is below k*sigma_floor "
-                        f"({UNVERIFIABLE_THRESHOLD_MM:.3f} mm) for the board reference."
+                        f"({threshold_mm:.4f} mm; sigma_floor={sigma_floor_mm:.3f} mm, "
+                        f"k={D077_K:.2f}) for the {kind} feature on the board reference."
                     ),
                 }
             )

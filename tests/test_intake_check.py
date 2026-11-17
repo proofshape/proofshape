@@ -6,13 +6,16 @@ from __future__ import annotations
 from inspection.intake_check import (
     D073_SIGMA_FLOOR_BOARD_MM,
     D077_K,
-    UNVERIFIABLE_THRESHOLD_MM,
+    D078_SIGMA_FLOOR_IN_PLANE_MM,
+    UNVERIFIABLE_THRESHOLD_HEIGHT_MM,
+    UNVERIFIABLE_THRESHOLD_IN_PLANE_MM,
     check_intake_spec,
 )
 
 
 def test_threshold_matches_k_times_sigma_floor() -> None:
-    assert UNVERIFIABLE_THRESHOLD_MM == D077_K * D073_SIGMA_FLOOR_BOARD_MM
+    assert UNVERIFIABLE_THRESHOLD_HEIGHT_MM == D077_K * D073_SIGMA_FLOOR_BOARD_MM
+    assert UNVERIFIABLE_THRESHOLD_IN_PLANE_MM == D077_K * D078_SIGMA_FLOOR_IN_PLANE_MM
 
 
 def test_height_like_feature_below_threshold_is_unverifiable() -> None:
@@ -57,7 +60,7 @@ def test_height_like_feature_exactly_at_threshold_is_ok() -> None:
             {
                 "name": "face_C",
                 "kind": "face",
-                "tolerance_mm": UNVERIFIABLE_THRESHOLD_MM,
+                "tolerance_mm": UNVERIFIABLE_THRESHOLD_HEIGHT_MM,
                 "critical": True,
             }
         ]
@@ -68,13 +71,9 @@ def test_height_like_feature_exactly_at_threshold_is_ok() -> None:
     assert results[0]["status"] == "ok"
 
 
-def test_in_plane_edge_is_refused_not_checked_against_height_floor() -> None:
-    # Found on review (@mbj1994, PR #372): the height floor (0.602mm effective threshold) does
-    # not apply to an in-plane edge/hole tolerance. No verified-on-main in-plane floor exists
-    # yet (R-37/D-078 pending review, PR #364), so this is refused, not silently marked "ok" --
-    # a 1.0mm edge tolerance would be wrongly "ok" against the height floor (1.0 >= 0.602), but
-    # is well within D-078's own proposed in-plane range (0.602-3.695mm) that must not be
-    # under-flagged.
+def test_in_plane_edge_below_its_measured_floor_is_unverifiable() -> None:
+    # Found on review (@mbj1994, PR #372): a 1.0mm edge was wrongly ok against the height floor.
+    # D-078 now provides the measured in-plane floor (5.278mm), so this must use k*5.278=3.6946.
     spec = {
         "features": [
             {"name": "edge_1", "kind": "edge", "tolerance_mm": 1.0, "critical": True}
@@ -84,22 +83,32 @@ def test_in_plane_edge_is_refused_not_checked_against_height_floor() -> None:
     results = check_intake_spec(spec)
 
     assert len(results) == 1
-    assert results[0]["status"] == "refused"
-    assert "in-plane" in results[0]["reason"]
+    assert results[0]["status"] == "unverifiable"
+    assert "3.6946 mm" in results[0]["reason"]
 
 
-def test_in_plane_hole_is_refused_regardless_of_tolerance_size() -> None:
-    # Even a generous tolerance is refused, not passed -- there is no verified floor to check it
-    # against at all, not just a risk of a too-small one.
+def test_in_plane_edge_at_and_above_its_measured_floor_is_ok() -> None:
+    for tolerance in (UNVERIFIABLE_THRESHOLD_IN_PLANE_MM, 5.0):
+        spec = {
+            "features": [{"name": "edge_1", "kind": "edge", "tolerance_mm": tolerance}]
+        }
+
+        results = check_intake_spec(spec)
+
+        assert results[0]["status"] == "ok", repr(tolerance)
+
+
+def test_in_plane_hole_uses_the_measured_in_plane_floor() -> None:
     spec = {
         "features": [
-            {"name": "hole_1", "kind": "hole", "tolerance_mm": 50.0, "critical": True}
+            {"name": "hole_1", "kind": "hole", "tolerance_mm": 1.0, "critical": True}
         ]
     }
 
     results = check_intake_spec(spec)
 
-    assert results[0]["status"] == "refused"
+    assert results[0]["status"] == "unverifiable"
+    assert "3.6946 mm" in results[0]["reason"]
 
 
 def test_unrecognised_kind_is_refused_not_assumed() -> None:
@@ -238,5 +247,5 @@ def test_multiple_features_each_judged_independently() -> None:
         "ok_feature": "ok",
         "bad_feature": "unverifiable",
         "null_feature": "refused",
-        "edge_feature": "refused",
+        "edge_feature": "unverifiable",
     }

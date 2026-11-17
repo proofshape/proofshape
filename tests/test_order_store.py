@@ -442,9 +442,7 @@ def test_order_response_refuses_a_non_numeric_tolerance_without_server_error(tmp
 def test_order_response_refuses_an_in_plane_feature_rather_than_misapply_the_height_floor(
     tmp_path,
 ):
-    """The exact bug found on review (@mbj1994, PR #372): a 1.0mm edge tolerance was wrongly
-    "ok" against the height floor (1.0 >= 0.70*0.86 = 0.602mm), when no verified in-plane floor
-    exists on main to check it against at all (R-37/D-078 pending review, PR #364)."""
+    """The exact bug found on review (@mbj1994, PR #372): use D-078's in-plane floor, not height."""
     app = service.create_app(
         tmp_path / "sessions",
         orders_dir=tmp_path / "orders",
@@ -458,7 +456,13 @@ def test_order_response_refuses_an_in_plane_feature_rather_than_misapply_the_hei
                     "kind": "edge",
                     "tolerance_mm": 1.0,
                     "critical": True,
-                }
+                },
+                {
+                    "name": "edge_2",
+                    "kind": "edge",
+                    "tolerance_mm": 5.0,
+                    "critical": True,
+                },
             ]
         }
         created = client.post(
@@ -468,7 +472,7 @@ def test_order_response_refuses_an_in_plane_feature_rather_than_misapply_the_hei
         )
 
     checks = {r["feature_name"]: r["status"] for r in created.json()["intake_check"]}
-    assert checks == {"edge_1": "refused"}
+    assert checks == {"edge_1": "unverifiable", "edge_2": "ok"}
 
 
 def test_order_response_is_empty_intake_check_when_spec_has_no_features(tmp_path):
