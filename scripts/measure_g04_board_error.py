@@ -61,6 +61,14 @@ from recon import board_pose, metric_alignment, vggt_runner
 from recon.cad_size_check import build_report
 from recon.vggt_runner import DEFAULT_MIN_CONFIDENCE
 
+for _module in (board_pose, metric_alignment, vggt_runner):
+    module_path = Path(_module.__file__).resolve()
+    if REPO_ROOT not in module_path.parents:
+        raise RuntimeError(
+            f"G-04 imported {_module.__name__} from {module_path}, outside checked-out repo "
+            f"{REPO_ROOT}. Refusing to measure with mixed/stale code."
+        )
+
 SPECIMEN_IDS = ("g02_01", "g02_02", "g02_03", "g02_04", "g02_05", "g02_06")
 
 # R-23's own real-data range (its story: board scale 0.9971-0.9994 across the s-01..s-05 golden
