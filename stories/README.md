@@ -425,7 +425,7 @@ mapping and the capacity note.
 3. **A-14** (the VLM tips a supplier sees, and the screen-photo gate);
 4. **C-25**.
 
-R-39 waits on R-37, and A-02 waits on I-07.
+R-39 is now Ready after R-37 completed; A-02 still waits on I-07.
 
 Issues per story:
 - C-24 #351, #352
@@ -451,10 +451,10 @@ Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [C-24](C/C-24.md) | Capture survives interruptions: a plain outage message, and a session that survives a reload | 5 h | C-13, C-18 | Ready | _unclaimed_ |
+| [C-24](C/C-24.md) | Capture survives interruptions: a plain outage message, and a session that survives a reload | 5 h | C-13, C-18 | Claimed | @TabeenRaoof |
 | [C-25](C/C-25.md) | Frame gate: check the blur threshold against a real motion-blurred frame | 2 h | C-06 | Ready | _unclaimed_ |
 | [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Ready | _unclaimed_ |
-| [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Blocked | _unclaimed_ |
+| [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Ready | _unclaimed_ |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Ready | _unclaimed_ |
 
 ---
@@ -504,7 +504,7 @@ Full detail in each story file.
 | [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Done | @mbj1994 |
 | [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Done | @dalwalyk |
 | [R-36](R/R-36.md) | Demo host: the reconstruction service on the M2 Max, rehearsed in the room (D-072) | 3 h | C-13, C-18, R-31 | Claimed | @TabeenRaoof |
-| [R-37](R/R-37.md) | cad_size_check: corner-to-corner edge measurement and a pose search that can't land wrong | 5 h | R-22 | Claimed | @mbj1994 |
+| [R-37](R/R-37.md) | cad_size_check: corner-to-corner edge measurement and a pose search that can't land wrong | 5 h | R-22 | Done | @mbj1994 |
 | [R-38](R/R-38.md) | R-23's alignment solve needs per-frame outlier rejection and a real residual gate | 4 h | R-23 | Done | @dalwalyk |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Done | @mbj1994 |
 | [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Claimed | @mbj1994 |
