@@ -45,7 +45,13 @@ opposite of what an Unverifiable-at-intake check exists to catch. `D073_SIGMA_FL
 `UNVERIFIABLE_THRESHOLD_HEIGHT_MM` stay in this module because they are real measured facts (and
 feed the gap analysis above), not because any `kind` is checked against them today. An
 unrecognised or missing `kind` is refused the same way, for the same reason: no measured floor is
-assumed for a kind that doesn't state its axis.
+assumed for a kind that doesn't state its axis. I-10's order-level verdict handles one narrower
+case without changing that I-09 result: because I-07's v1 verdict evaluates every named feature
+against the same global out-of-plane and in-plane vertex pools, a critical `face`/`overall`
+feature with a valid tolerance below the larger measured `k * sigma_floor` threshold is already
+outside the current method path. I-10 may therefore declare that order Unverifiable while the
+feature's `intake_check` entry remains `refused`; malformed or unrecognised features are never
+relabelled this way.
 
 **Malformed input is refused, not raised.** `recon/order_store.py` stores a spec as an opaque,
 unvalidated `dict` (found on review, @TabeenRaoof, PR #372): a `features` key that is present but
@@ -75,6 +81,13 @@ D077_K = 0.70
 
 UNVERIFIABLE_THRESHOLD_HEIGHT_MM = D077_K * D073_SIGMA_FLOOR_BOARD_MM
 UNVERIFIABLE_THRESHOLD_IN_PLANE_MM = D077_K * D078_SIGMA_FLOOR_IN_PLANE_MM
+# I-10 / D-079: v1's post-reconstruction verdict applies both vertex pools to every named
+# feature, regardless of feature kind. For an axis-ambiguous face/overall, falling below the
+# larger of those two measured thresholds is therefore enough to know that the current verdict
+# path cannot produce Pass without guessing an axis at intake.
+UNVERIFIABLE_THRESHOLD_ANY_AXIS_MM = max(
+    UNVERIFIABLE_THRESHOLD_HEIGHT_MM, UNVERIFIABLE_THRESHOLD_IN_PLANE_MM
+)
 
 # The only two kinds with an unambiguous axis, and so a measured board-reference floor.
 IN_PLANE_KINDS = frozenset({"hole", "edge"})
@@ -230,3 +243,64 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
     return results
+
+
+# I-10 / D-079: derive the order-level intake verdict from I-09's per-feature checks.
+_INTAKE_UNVERIFIABLE_REASON_PREFIX = "intake_tolerance_below_k_sigma_floor:"
+_INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX = (
+    "intake_tolerance_below_method_floor_any_axis:"
+)
+
+
+def intake_unverifiable_verdict(spec: dict[str, Any]) -> dict[str, Any] | None:
+    """Return I-10's order-level Unverifiable VerdictResult payload, or None.
+
+    A critical I-09 "unverifiable" result blocks the whole order as before. One refused case
+    is also resolvable without guessing: a critical axis-ambiguous "face"/"overall" with a
+    valid tolerance below the largest measured threshold used by I-07's global v1 verdict path.
+    Its I-09 result remains "refused" because intake still does not know the feature's axis;
+    I-10 only records that the current method cannot reach Pass for that requirement. Other
+    refused or malformed features are never silently relabelled. Explicit critical:false
+    features never trigger an intake Unverifiable verdict.
+    """
+    features = spec.get("features")
+    if not isinstance(features, list):
+        return None
+
+    checks = check_intake_spec(spec)
+    reason_codes: list[str] = []
+    for index, (feature, check) in enumerate(zip(features, checks, strict=False)):
+        if not isinstance(feature, dict):
+            continue
+        if not bool(feature.get("critical", True)):
+            continue
+
+        feature_name = str(check.get("feature_name") or f"feature_{index}")
+        if check.get("status") == "unverifiable":
+            reason_codes.append(f"{_INTAKE_UNVERIFIABLE_REASON_PREFIX}{feature_name}")
+            continue
+
+        if (
+            check.get("status") == "refused"
+            and feature.get("kind") in AXIS_AMBIGUOUS_KINDS
+        ):
+            tolerance_mm = check.get("tolerance_mm")
+            if (
+                isinstance(tolerance_mm, (int, float))
+                and not isinstance(tolerance_mm, bool)
+                and float(tolerance_mm) < UNVERIFIABLE_THRESHOLD_ANY_AXIS_MM
+            ):
+                reason_codes.append(
+                    f"{_INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX}{feature_name}"
+                )
+
+    if not reason_codes:
+        return None
+
+    return {
+        "verdict": "Unverifiable",
+        "declared_at": "intake",
+        "orientation_ambiguous": False,
+        "regions": [],
+        "reason_codes": reason_codes,
+    }

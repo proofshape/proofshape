@@ -261,6 +261,15 @@ that same exception because it is the buyer UI for R-34 and adds only the server
 route needed to land A-03 safely. C-16 still must receive both other members' approvals on its
 final head before merge; this note records the exception, not an approval.
 
+*Timing exception record (2026-11-18, I-10 / PR #385):* @mbj1994 explicitly requested an
+early-boundary merge because the capstone schedule no longer has room to hold this additive
+contract change until Dec 2. This exception waives **only the sprint-boundary timing** for
+PR #385. It does **not** waive D-031's substantive review requirement: both other team members
+must still approve the final head, all required CI must be green, and any later code change
+invalidates those approvals in the normal way. The exception changes no runtime behavior or
+contract semantics; it only allows the already-reviewed I-10 contract addition to merge as soon
+as the final-head review gates are satisfied.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
@@ -2089,6 +2098,44 @@ so D-078 was free.
 
 ---
 
+**D-079 · One critical intake-floor failure makes the whole order Unverifiable; non-critical features do not trigger it at intake.** (2026-11-17, I-10)
+
+I-09 flags features independently, but the frozen `VerdictResult` has one verdict for the whole
+order/session. I-10 resolves that mismatch conservatively: if any critical `hole`/`edge` is
+below its measured `k * sigma_floor` threshold, the order-level verdict is `Unverifiable` at
+intake. The same outcome applies to a critical axis-ambiguous `face`/`overall` only when its
+valid tolerance is below the larger of the two measured thresholds used by I-07's global v1
+verdict path: `max(0.70 * 0.86, 0.70 * 5.278) = 3.6946 mm`. I-09 still reports that feature as
+`refused` because intake does not know its axis; I-10 is not choosing an axis, only recognizing
+that I-07 applies both vertex pools to every named feature and the current method path cannot
+reach Pass for that requirement. Other refused, malformed or unrecognised features are not
+relabelled. Every blocked critical feature is named in `reason_codes`; no geometry region
+contributes because no photo or reconstruction exists yet.
+
+A feature explicitly marked `critical: false` does **not** make the order Unverifiable at
+intake, even if its own `intake_check` entry is `unverifiable`. I-07 currently still evaluates
+any feature with a valid tolerance after capture, regardless of `critical`, so a non-critical
+feature can still affect a later post-reconstruction Rescan/Fail. I-10 does not change that I-07
+behavior; this sentence records the distinction instead of calling such features purely advisory.
+
+*Why:* returning Pass or Fail while one critical requirement is outside the method's measured
+capability would dress an incomplete inspection up as complete. Sending a requirement that the
+current method path cannot Pass into repeated capture would instead produce endless Rescans. The
+single overall enum has no honest partial-Pass state, so the whole critical inspection is routed
+to a CMM before capture.
+
+*D-004 still applies:* no CAD means no verdict. Creating a capture session is not blocked; if
+one is created anyway, `getVerdict` returns the same intake Unverifiable result immediately and
+reconstruction cannot upgrade it to Pass or Fail.
+
+*Contract effect:* I-10 adds optional `Order.verdict` using the existing `VerdictResult` schema.
+This is D-031-governed and needs both other members' approval plus the sprint-boundary merge
+rule, unless a separate exception is recorded.
+
+*Checked against D-028:* D-079 was unused on `main` and every open PR branch checked before
+this implementation.
+
+---
 **D-080 · v1 expresses D-005's hard rule mesh-wide, not per-feature: a hidden defect on
 Unobserved/Inferred geometry does not change a verdict a session's real, measured evidence
 would otherwise Pass.** (2026-11-18, PR #384)
