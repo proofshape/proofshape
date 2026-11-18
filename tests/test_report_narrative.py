@@ -17,19 +17,28 @@ from recon.report_narrative import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PASS_FIXTURE = json.loads(
-    (REPO_ROOT / "contracts" / "examples" / "getVerdict.response-200.json").read_text()
+
+
+def _load_verdict_input_fixture(path: Path) -> dict:
+    # A-09/D-082: these example files now also carry the real, computed `narrative` field
+    # (PR 2's wiring) -- stripped here since `VerdictInput` is deliberately "exactly what a
+    # narrative generator may see," which can never include an existing narrative.
+    data = json.loads(path.read_text())
+    data.pop("narrative", None)
+    return data
+
+
+PASS_FIXTURE = _load_verdict_input_fixture(
+    REPO_ROOT / "contracts" / "examples" / "getVerdict.response-200.json"
 )
-RESCAN_FIXTURE = json.loads(
-    (
-        REPO_ROOT
-        / "contracts"
-        / "examples"
-        / "getVerdict.response-200-rescan-unobserved.json"
-    ).read_text()
+RESCAN_FIXTURE = _load_verdict_input_fixture(
+    REPO_ROOT
+    / "contracts"
+    / "examples"
+    / "getVerdict.response-200-rescan-unobserved.json"
 )
-FAIL_FIXTURE = json.loads(
-    (REPO_ROOT / "capture" / "stub" / "fixtures" / "verdict-fail.json").read_text()
+FAIL_FIXTURE = _load_verdict_input_fixture(
+    REPO_ROOT / "capture" / "stub" / "fixtures" / "verdict-fail.json"
 )
 # I-10 landed on main while this PR was in review -- same payload shape its own
 # tests/test_verdict_endpoint.py asserts against a real session, not hand-invented.

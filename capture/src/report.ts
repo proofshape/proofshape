@@ -201,6 +201,11 @@ function renderVerdict(
     note.textContent = `Placement note: ${placementNote}`;
     note.hidden = false;
   }
+
+  // A-09/D-082: a deterministic, code-built summary -- never a model's. The fallback keeps
+  // this meaningful for a session served by an older backend without the field.
+  requireElement(root, "#report-narrative", HTMLElement).textContent =
+    result.narrative ?? "AI narrative slot (A-09) — not available yet.";
 }
 
 function renderModelOnly(root: HTMLElement): void {

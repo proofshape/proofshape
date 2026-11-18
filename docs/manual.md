@@ -462,8 +462,13 @@ snapshots the WebGL heatmap and copies its active legend so the exported page ke
 and the signed-mm scale. The one-page mobile print layout still needs the whole-system mobile
 check at X-04.
 
-The narrative section is a marked placeholder only. **Planned:** A-09 supplies the LLM narrative;
-C-15 does not generate one.
+The narrative section shows a short, plain-language summary of the verdict: which regions
+counted toward it, their measured deviation, the reason codes, and whether orientation is
+ambiguous. It is built deterministically from the verdict's own fields, in code — **not** by a
+model. A-09 originally planned an LLM-written narrative, but D-082 found no way to make one safe
+against the hard rule (a model's prose could end up stating an outcome the deterministic verdict
+disagreed with) across five rounds of review, so v1 serves the templated half only; the LLM path
+is kept as tested groundwork for a future story.
 
 ---
 
