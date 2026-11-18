@@ -44,7 +44,7 @@ ALL_FIXTURES = [PASS_FIXTURE, FAIL_FIXTURE, RESCAN_FIXTURE, UNVERIFIABLE_FIXTURE
 FIXTURE_IDS = ["pass", "fail", "rescan", "unverifiable"]
 
 
-def reply(text="A short narrative.", finish_reason="STOP", block_reason=None):
+def reply(text="A short explanation.", finish_reason="STOP", block_reason=None):
     return SimpleNamespace(
         text=text,
         model_version="returned-model-version",
@@ -67,14 +67,16 @@ def raising_narrator(exc):
 
 
 @pytest.mark.parametrize("fixture", ALL_FIXTURES, ids=FIXTURE_IDS)
-def test_llm_reply_is_used_when_valid(fixture):
+def test_llm_explanation_is_appended_after_the_deterministic_verdict(fixture):
     verdict_input = VerdictInput.model_validate(fixture)
-    # The template's own output never invents a figure, so reusing it as the "model's reply"
-    # proves the guard accepts a legitimate reply instead of only ever falling back.
-    safe_text = template_narrative(verdict_input)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(safe_text)))
+    # A safe explanation: it names only facts already in the input and states no outcome in
+    # either direction -- exactly what the system instruction asks the model for.
+    safe_explanation = "This follows from the regions and reason codes listed above."
+    result = generate_narrative(
+        verdict_input, narrator=narrator(reply(safe_explanation))
+    )
     assert result.source == "llm"
-    assert result.text == safe_text
+    assert result.text == f"{template_narrative(verdict_input)} {safe_explanation}"
     assert result.model_version == "returned-model-version"
     assert result.reason is None
 
@@ -137,17 +139,29 @@ def test_invalid_envelope_falls_back_to_template(response, expected_reason):
     assert result.text == template_narrative(verdict_input)
 
 
-@pytest.mark.parametrize(
-    "text",
-    [
-        "The system achieves 98% accuracy.",
-        "The measurement sigma was low.",
-        "Confidence is high, σ is small.",
-    ],
-)
-def test_invented_figure_or_banned_word_falls_back_to_template(text):
-    verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+def test_model_is_a_pinned_snapshot_not_latest():
+    assert MODEL == "gemini-3.5-flash-lite"
+    assert "latest" not in MODEL
+
+
+# Review round 1, PR #387 (@TabeenRaoof): figure-check holes -- rounding let an invented
+# tolerance through, a spelled-out or unrecognised unit bypassed the mm pattern, and a bare
+# decimal with no unit at all wasn't checked.
+def test_rounding_exploit_is_closed():
+    # FAIL_FIXTURE's mounting_hole_A really deviates by 1.8 mm -- "2 mm" is a different number,
+    # not that same figure rounded (the original bug: f"{1.8:.0f}" == "2" was accepted).
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
+    result = generate_narrative(
+        verdict_input,
+        narrator=narrator(reply("Hole A is 1.8 mm out from its nominal position.")),
+    )
+    assert result.source == "llm"
+    result = generate_narrative(
+        verdict_input,
+        narrator=narrator(
+            reply("Hole A deviated by 1.8 mm, and a second figure of 2 mm.")
+        ),
+    )
     assert result.source == "template"
     assert result.reason == "unmeasured_claim"
 
@@ -155,15 +169,16 @@ def test_invented_figure_or_banned_word_falls_back_to_template(text):
 @pytest.mark.parametrize(
     "text",
     [
-        "This is within tolerance.",
-        "Confidence is high due to good precision.",
+        "The gap here is 0.5 millimetres, a figure not seen elsewhere.",
+        "A value of about 0.86 is cited with no unit at all.",
+        "Hole A's own figure is restated as 0.002 inches.",
     ],
 )
-def test_plain_language_without_a_figure_is_accepted(text):
-    verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
+def test_other_unit_or_unitless_figures_fall_back_to_template(text):
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
     result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
-    assert result.source == "llm"
-    assert result.text == text
+    assert result.source == "template"
+    assert result.reason == "unmeasured_claim"
 
 
 def test_invented_mm_figure_falls_back_to_template():
@@ -171,7 +186,7 @@ def test_invented_mm_figure_falls_back_to_template():
     verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
     result = generate_narrative(
         verdict_input,
-        narrator=narrator(reply("The sealing face deviated by 0.30 mm.")),
+        narrator=narrator(reply("A figure of 0.30 mm is cited here.")),
     )
     assert result.source == "template"
     assert result.reason == "unmeasured_claim"
@@ -182,10 +197,19 @@ def test_real_measured_mm_figure_is_accepted():
     result = generate_narrative(
         verdict_input,
         narrator=narrator(
-            reply("The mounting hole deviated by 0.14 mm, which passed.")
+            reply("The mounting hole's own recorded figure was 0.14 mm.")
         ),
     )
     assert result.source == "llm"
+
+
+def test_percent_figure_falls_back_to_template():
+    verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
+    result = generate_narrative(
+        verdict_input, narrator=narrator(reply("A figure of 98% is cited here."))
+    )
+    assert result.source == "template"
+    assert result.reason == "unmeasured_claim"
 
 
 @pytest.mark.parametrize("fixture", ALL_FIXTURES, ids=FIXTURE_IDS)
@@ -193,9 +217,6 @@ def test_template_mentions_only_given_facts(fixture):
     verdict_input = VerdictInput.model_validate(fixture)
     text = template_narrative(verdict_input)
     assert verdict_input.verdict in text
-    lowered = text.lower()
-    assert "sigma" not in lowered and "σ" not in lowered
-    assert "%" not in text
     for region in verdict_input.regions:
         if region.contributes_to_verdict:
             assert region.name in text
@@ -203,48 +224,56 @@ def test_template_mentions_only_given_facts(fixture):
         assert code in text
 
 
-def test_model_is_a_pinned_snapshot_not_latest():
-    assert MODEL == "gemini-3.5-flash-lite"
-    assert "latest" not in MODEL
-
-
-# Review findings, PR #387 (@TabeenRaoof): a narrative that states a different verdict than the
-# one given approves/condemns a part on a model's words, exactly what AGENTS.md's hard rule
-# forbids -- reachable even without the model misbehaving on its own, since a region's name is
-# buyer-supplied text an injection attempt could target.
+# Review round 3, PR #387 (@TabeenRaoof): the per-verdict word/phrase ban from rounds 1-2 never
+# converges against free text -- negation ("no defects", "does not conform") and synonyms
+# ("good part", "in spec") always find another way around a list scoped to one direction. These
+# are the reviewer's own 12 probe rows, reproduced directly as regression tests.
 @pytest.mark.parametrize(
     "verdict_input_fixture,text",
     [
-        (FAIL_FIXTURE, "The part passed inspection and can be shipped."),
-        (RESCAN_FIXTURE, "The part failed and should be rejected."),
-        (RESCAN_FIXTURE, "Good news: this component is approved."),
+        (FAIL_FIXTURE, "The part meets its specification and is good to use."),
+        (FAIL_FIXTURE, "Everything checks out; the part conforms to the drawing."),
+        (FAIL_FIXTURE, "No defects were found on this part."),
+        (FAIL_FIXTURE, "The part is acceptable as delivered."),
+        (FAIL_FIXTURE, "Hole A deviates by 1.8 mm, which is in spec."),
+        (PASS_FIXTURE, "The part is defective and should be scrapped."),
+        (PASS_FIXTURE, "This part does not conform to the drawing."),
+        (
+            PASS_FIXTURE,
+            "The part is out of spec and should be returned to the supplier.",
+        ),
+        (RESCAN_FIXTURE, "The part is fine; no issues were found."),
+        (RESCAN_FIXTURE, "The part is defective."),
+        (UNVERIFIABLE_FIXTURE, "The bore was checked and is fine."),
+        (UNVERIFIABLE_FIXTURE, "The part conforms to its specification."),
     ],
 )
-def test_verdict_contradiction_falls_back_to_template(verdict_input_fixture, text):
-    verdict_input = VerdictInput.model_validate(verdict_input_fixture)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
-    assert result.source == "template"
-    assert result.reason == "verdict_contradiction"
-
-
-# Second review round, PR #387 (@mbj1994): the word ban alone misses a plain-English direction
-# phrase that implies a different verdict without using its label at all.
-@pytest.mark.parametrize(
-    "verdict_input_fixture,text",
-    [
-        (FAIL_FIXTURE, "This part is within tolerance."),
-        (PASS_FIXTURE, "This part is outside tolerance."),
-        (PASS_FIXTURE, "The measured value exceeds its tolerance."),
-        (PASS_FIXTURE, "The part is out of tolerance on this feature."),
-    ],
-)
-def test_direction_phrase_contradiction_falls_back_to_template(
+def test_outcome_language_falls_back_regardless_of_direction(
     verdict_input_fixture, text
 ):
     verdict_input = VerdictInput.model_validate(verdict_input_fixture)
     result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "template"
-    assert result.reason == "verdict_contradiction"
+    assert result.reason == "outcome_language"
+
+
+# Review rounds 1-2's original probe rows, kept as regression tests under the round-3 design --
+# all still banned, now via the single verdict-independent list instead of a per-verdict one.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The part passed inspection and can be shipped.",
+        "The part failed and should be rejected.",
+        "Good news: this component is approved.",
+        "This part is within tolerance.",
+        "This part is outside tolerance.",
+    ],
+)
+def test_earlier_round_probe_rows_still_fall_back(text):
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
+    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    assert result.source == "template"
+    assert result.reason == "outcome_language"
 
 
 def test_injected_region_name_echoed_into_reply_still_falls_back():
@@ -265,54 +294,40 @@ def test_injected_region_name_echoed_into_reply_still_falls_back():
         }
     )
     # Simulates a model that dutifully reports the (adversarial) region name back verbatim --
-    # the contradiction check does not care whether the model "meant" to say it.
-    reply_text = (
-        f"The region '{verdict_input.regions[0].name}' was checked and found fine."
-    )
+    # the ban does not care whether the model "meant" to say it.
+    reply_text = f"The region '{verdict_input.regions[0].name}' was checked."
     result = generate_narrative(verdict_input, narrator=narrator(reply(reply_text)))
     assert result.source == "template"
-    assert result.reason == "verdict_contradiction"
-
-
-# Review findings, PR #387: the figure check had three real holes -- rounding let an invented
-# tolerance through, a spelled-out or unrecognised unit bypassed the mm pattern entirely, and a
-# bare decimal with no unit at all wasn't checked.
-def test_rounding_exploit_is_closed():
-    # FAIL_FIXTURE's mounting_hole_A really deviates by 1.8 mm -- "2 mm" is a different number,
-    # not that same figure rounded (the original bug: f"{1.8:.0f}" == "2" was accepted).
-    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(
-        verdict_input,
-        narrator=narrator(reply("Hole A is 1.8 mm out, beyond its 2 mm tolerance.")),
-    )
-    assert result.source == "template"
-    assert result.reason == "unmeasured_claim"
+    assert result.reason == "outcome_language"
 
 
 @pytest.mark.parametrize(
     "text",
     [
-        "The tolerance here is 0.5 millimetres, which was exceeded.",
-        "The method's precision is about 0.86.",
-        "Hole A deviates by 0.002 inches.",
-    ],
-)
-def test_other_unit_or_unitless_figures_fall_back_to_template(text):
-    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
-    assert result.source == "template"
-    assert result.reason == "unmeasured_claim"
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "Measured to within two millimetres; the standard deviation was small.",
+        "The measurement sigma was low.",
+        "Confidence is high, σ is small.",
+        "Measured against the board's own standard deviation.",
         "This is confirmed, as the photographs and 3D model clearly show.",
     ],
 )
-def test_newly_banned_words_fall_back_to_template(text):
+def test_non_outcome_banned_words_fall_back_to_template(text):
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
     result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "template"
-    assert result.reason == "unmeasured_claim"
+    assert result.reason == "outcome_language"
+
+
+# Review round 3's other finding: a word boundary on both sides, not a stem wildcard, so a bare
+# word like "ship"/"pass" does not also match inside an unrelated larger word.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The hole's relationship to the edge was measured directly.",
+        "A narrow passage through the part was noted separately.",
+    ],
+)
+def test_substring_of_a_banned_word_inside_another_word_is_not_flagged(text):
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
+    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    assert result.source == "llm"
+    assert result.text == f"{template_narrative(verdict_input)} {text}"
