@@ -2602,3 +2602,28 @@ C-17 waiting on its physical print/caliper check.
 **Result:** CI passed (ruff, TypeScript, pytest). No implementation code is included.
 **Concluded:** the claim and D-064 WIP accounting are consistent on the reviewed head.
 **Next:** begin R-39 implementation after the claim merges.
+
+## 2026-11-18 — G-11 parts photographed and calipered; the thin wall prints at 1.10 mm (PR #nn)
+
+**Who:** @TabeenRaoof.
+
+**What changed:**
+- `fixtures/robustness_capture_manifest.json` and its `.sha256` lock: the glossy, dark and
+  thin-walled pentagons, 30, 30 and 29 frames, on their own Drive folder.
+- `fixtures/caliper_g-11.json`: 70 readings, the height and one edge of each part and the tray's
+  wall.
+- `stories/G/G-11.md` records the print, the photos and the measurements. The story stays
+  Claimed.
+
+**Measurement runs:**
+- **Photos:** R-02 posed the board in every frame (median reprojection RMS 2.00–2.22 px), and
+  no frame was softer than the golden set's softest. Every Drive file matched its local original
+  by name and size.
+- **Reshoot:** the glossy part and the tray were reshot after a pen label turned up on a side
+  face the camera saw.
+- **Calipers:** the glossy and dark parts match the grey `g02_04` control within 0.07 mm. The
+  tray's 1.2 mm wall reads 1.10 mm in all ten placements.
+
+**Next:** the `.3mf` files, the screen-photo and wrong-part stills, and each part through
+reconstruction.
+
