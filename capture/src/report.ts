@@ -39,7 +39,9 @@ export function describeReasonCode(code: string): string {
     return `${feature || "Critical feature"}: the requested tolerance is below ProofShape's measured method floor for this inspection.`;
   }
   if (code.startsWith(INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX)) {
-    const feature = code.slice(INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX.length).trim();
+    const feature = code
+      .slice(INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX.length)
+      .trim();
     return `${feature || "Critical feature"}: the requested tolerance is below a measured method floor that the current verdict path applies to every feature.`;
   }
   return REASON_TEXT[code] ?? code;
