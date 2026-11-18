@@ -217,9 +217,7 @@ describe("C-15 report page", () => {
     expect(describeReasonCode("intake_tolerance_below_k_sigma_floor:hole_A")).toContain(
       "hole_A: the requested tolerance is below ProofShape's measured method floor",
     );
-    expect(
-      describeReasonCode("intake_tolerance_below_method_floor_any_axis:face_A"),
-    ).toContain(
+    expect(describeReasonCode("intake_tolerance_below_method_floor_any_axis:face_A")).toContain(
       "face_A: the requested tolerance is below a measured method floor",
     );
     expect(describeReasonCode("future_reason_code")).toBe("future_reason_code");
