@@ -492,11 +492,25 @@ C-15 does not generate one.
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
 | `malformed_request` | The request itself was broken: a session request whose body can't be read, or an upload with an empty photo, a missing part or an unreadable gyro reading (D-056). It is not about the order code or what the photo shows. | Retry; if it repeats, tell the team, since it points at an app bug. |
 
-**Not a contract code — the phone never reached the service at all (works now, C-18):**
+**Not a contract code — the phone couldn't reach the service (works now, C-18 and C-24):**
 
 | What you see | What happened | What to do |
 |---|---|---|
 | "No connection to the service — check your network and try again." | Starting, uploading, finishing or polling a session all go over the network; this covers any of them failing before a response came back at all (Wi-Fi dropped, the dev server stopped). The browser's own wording for this ("Load failed" on Safari, "Failed to fetch" on Chrome) is deliberately replaced, since it names no next step. | Check the connection and try again. |
+| "The service isn't reachable right now — wait a moment and try again." | The phone reached the server in front of the service, but not the service itself: for example, the reconstruction service on the demo Mac was stopped or restarting, and the capture dev server answered for it with an empty error (C-24, #351). It used to show raw text ending "response body was not valid JSON (status 500)". | Wait, then capture again. The session carries on where it stopped. |
+| Either message after an upload ends with "Frames already accepted are kept." | The upload failed for one of the two reasons above, not because of the photo. The frames the service already accepted are saved on its side. | Retry from the same spot once the connection or the service is back. |
+
+**After the page reloads mid-session (works now, C-24):** iOS can reload Safari's page when you
+come back from another app. The capture page keeps the session in that tab and offers it back:
+
+| What you see | What to do |
+|---|---|
+| "An unfinished session is saved in this tab: … Continue it, or start a new one." | Tap **Continue session**. The camera and motion prompts may appear again. The coverage count comes back, and the next frame goes into the same session. **Start new** drops it instead. |
+| "Session … was finished. Its reconstruction may still be running." | Tap **Show result**: it picks up the reconstruction where the page left off. |
+| After continuing, "This session can't take more frames — start a new session." | The service no longer has that session, or it was already finished. Start a new session with the same order code. |
+
+Opening the capture link in a new tab starts fresh: the saved session belongs to the tab it was
+started in. Keep to one tab during a capture.
 
 **From the reconstruction, after you finish (works now):**
 
