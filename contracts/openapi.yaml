@@ -2,7 +2,7 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.5.0"
+  version: "1.6.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
@@ -12,9 +12,12 @@ info:
     `vlm_feedback` on the upload response and two error codes; a v1.0 client is unaffected.
     1.2.0 (R-34) additively introduces buyer orders, stored CAD metadata, and named order/verdict errors.
     1.3.0 (C-16) additively exposes A-03's server-side prose-to-spec parser to the buyer page.
-    1.4.0 (I-07, PR #379) additively adds the `tolerance_missing` error and getVerdict's 422
-    response. 1.5.0 (I-09) additively adds `Order.intake_check`/`IntakeCheckResult`, taken after
-    1.4.0 since both PRs changed the contract the same day -- see each story's own notes.
+    1.5.0 (I-09, PR #372) additively adds `Order.intake_check`/`IntakeCheckResult`. PR #372 and
+    PR #379 both changed this file the same day and originally planned 1.4.0/1.5.0 in PR-creation
+    order (I-07.md's/I-09.md's own notes); #372 merged first, so it took 1.5.0 and 1.4.0 was
+    never shipped. 1.6.0 (I-07, PR #379) additively adds the `tolerance_missing` error and
+    getVerdict's 422 response, for a critical spec feature whose tolerance_mm is missing, null,
+    or not a finite positive number at verdict time.
 
 servers:
   - url: /v1
@@ -252,7 +255,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/VerdictResult"
         "404":
-          description: No CAD was supplied for this session — no verdict exists (D-004).
+          description: >
+            No verdict exists yet, distinguished by `ErrorDetail.code`: `no_cad_uploaded`
+            (D-004, no CAD was supplied for this session), or `verdict_not_available`
+            (reconstruction/measurement hasn't finished, or the spec has no feature that can
+            actually be judged).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "422":
+          description: >
+            A critical spec feature's tolerance_mm is missing, null, or not a finite positive
+            number -- refused, not defaulted or coerced (A-03/I-09's own discipline; none of
+            the four verdict values represents an invalid spec).
           content:
             application/json:
               schema:
@@ -391,6 +407,7 @@ components:
             - no_cad_uploaded
             - cad_unreadable
             - verdict_not_available
+            - tolerance_missing
             - buyer_auth_required
             - malformed_request
             - internal_error
@@ -402,6 +419,12 @@ components:
             a photo; `internal_error` means the service failed for a reason unrelated to the
             photos, and its message never includes the server's internal error text. `vlm_veto`
             means only the VLM's semantic check (A-02), never a malformed upload.
+            `tolerance_missing` (I-07): a critical spec feature's `tolerance_mm` was missing,
+            null, or not a finite positive number at verdict time -- refused, not defaulted or
+            coerced; none of the four verdict values represents an invalid spec.
+            `verdict_not_available` also covers a spec with no feature actually judged against
+            a Pass/Fail/Rescan rule (no features, or every feature non-critical with no valid
+            tolerance) -- there is as little a verdict to serve as when measurement hasn't run.
         message:
           type: string
           description: Human-readable, safe to show to the supplier holding the phone.
