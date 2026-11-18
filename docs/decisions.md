@@ -2122,6 +2122,37 @@ identical-output comparison (PR #384).
 
 ---
 
+**D-081 · A-09's report-narrative generator independently pins Gemini Flash-Lite, and builds
+only the generator, not the contract wiring.** (2026-11-18)
+`recon/report_narrative.py` pins `gemini-3.5-flash-lite` as its own `MODEL` constant, following
+A-01/A-03/A-13's own precedent (D-055, D-067, D-068): a stable Developer API snapshot, never
+`-latest`, named independently rather than importing another story's constant, even though all
+four currently agree on the same snapshot. On an invalid, blocked, timed-out or failed reply --
+or a reply containing an invented tolerance/accuracy/sigma figure, checked by the generator
+itself rather than trusted from the prompt alone -- it falls back to a deterministic templated
+paragraph built from the same `VerdictResult` fields, distinguished from a real model narrative
+only by `NarrativeResult.source`/`reason`. This story is split into two pull requests: this one
+builds the generator and its tests only; a second, separate pull request will add the actual
+`contracts/openapi.yaml` field, the `recon.service` wiring, and the frontend render, raised as
+its own explicit D-031 request.
+*Why:* `VerdictResult`'s only `x-proofshape-extends-at` marker (D-032) is scoped to the tolerance
+table/`k`/`σ_floor`, not narrative text, so serving this narrative at all is a genuine contract
+change needing both other members' approval at a sprint boundary (D-031) -- not something to fold
+unilaterally into the story that also builds the generator. Splitting lets the generator (which
+touches no frozen file) merge now under the ordinary one-approval rule, while the contract
+change is raised properly and on its own. A narrative is never simply withheld on failure (unlike
+A-01/A-03's checked/unchecked results) because the report's slot must always show something; the
+in-code figure check exists because a system-instruction request is not proof the model complied,
+and a quiet wrong number in a report is worse than a loud refusal (AGENTS.md's "no silent
+failures").
+*Conditions:* A-09's own acceptance criteria ("lands exactly in C-15's reserved slot") are not met
+by this pull request alone -- the story's `State` stays `Claimed` until the second pull request
+lands the wiring.
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-080 (held by `main` and
+several other branches) was highest anywhere, so D-081 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
