@@ -2602,3 +2602,30 @@ C-17 waiting on its physical print/caliper check.
 **Result:** CI passed (ruff, TypeScript, pytest). No implementation code is included.
 **Concluded:** the claim and D-064 WIP accounting are consistent on the reviewed head.
 **Next:** begin R-39 implementation after the claim merges.
+
+## 2026-11-18 — C-24 Done: a plain outage message, and a capture session that survives a reload (PR #375)
+
+**Who:** @TabeenRaoof.
+**What changed:** two capture-side fixes from R-36's home pre-check, with no contract change.
+- **#351:** a 5xx with a non-JSON body (Vite's empty 500 for a stopped service, or a proxy's HTML
+  502) now reads "The service isn't reachable right now — wait a moment and try again." A failed
+  upload adds "Frames already accepted are kept."
+- **#352:** the session id, the accepted count and the gyro readings are kept in `sessionStorage`.
+  After a reload, the page offers Continue session, or Show result once Finish has succeeded.
+
+`docs/manual.md` §9 covers both.
+**Command / how to reproduce:** `cd capture && npm test`. For the device check, R-36's runbook,
+then switch apps mid-session and stop uvicorn mid-session.
+**Result:**
+- 324 capture tests pass, 41 of them new or changed. `tsc`, ESLint, Prettier and the build are
+  clean.
+- Three mutation checks each failed the new tests.
+- On the iPhone (`sess_71afa24c2640`, 18 frames), the session continued across an app switch
+  (frame 7 to 8) and a service restart (frame 9 to 10) with no gap in frame numbers. It finished
+  complete, metric, with observed fraction 0.910.
+- 6 h actual against 5.
+**Concluded:** neither interruption ends a live demo any more. The rule is to stay in one Safari
+tab.
+**Next:** R-36's runbook (#371) drops its "don't switch apps" warning and the old 500 text once
+this merges. An abandoned `capturing` session still never expires on the server (#352's second
+point), with no story.
