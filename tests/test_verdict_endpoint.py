@@ -246,7 +246,12 @@ def test_i10_getverdict_returns_intake_unverifiable_before_reconstruction(tmp_pa
     with TestClient(app) as client:
         spec = {
             "features": [
-                {"name": "hole_A", "kind": "hole", "tolerance_mm": 1.0, "critical": True}
+                {
+                    "name": "hole_A",
+                    "kind": "hole",
+                    "tolerance_mm": 1.0,
+                    "critical": True,
+                }
             ]
         }
         created = client.post(
@@ -257,7 +262,9 @@ def test_i10_getverdict_returns_intake_unverifiable_before_reconstruction(tmp_pa
                 "cad": ("part.stl", ASYMMETRIC_PART.read_bytes(), "model/stl"),
             },
         ).json()
-        session_id = client.post("/v1/sessions", json={"order_code": created["order_code"]}).json()["session_id"]
+        session_id = client.post(
+            "/v1/sessions", json={"order_code": created["order_code"]}
+        ).json()["session_id"]
         response = client.get(f"/v1/sessions/{session_id}/verdict")
     assert response.status_code == 200
     assert response.json() == {

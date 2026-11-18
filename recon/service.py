@@ -733,9 +733,7 @@ def create_app(
         )
 
         intake_verdict = (
-            intake_unverifiable_verdict(record["spec"])
-            if record["has_cad"]
-            else None
+            intake_unverifiable_verdict(record["spec"]) if record["has_cad"] else None
         )
         return OrderResponse(
             order_code=record["order_code"],

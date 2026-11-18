@@ -606,7 +606,11 @@ def test_i10_order_resolves_unverifiable_at_intake_before_any_session_exists(tmp
             "/v1/orders",
             headers={"x-proofshape-buyer-key": "buyer-secret"},
             files={
-                "spec": ("spec.json", json.dumps(_i10_blocked_edge_spec()), "application/json"),
+                "spec": (
+                    "spec.json",
+                    json.dumps(_i10_blocked_edge_spec()),
+                    "application/json",
+                ),
                 "cad": ("part.stl", _ascii_stl(), "model/stl"),
             },
         )
@@ -631,9 +635,24 @@ def test_i10_mixed_order_blocks_only_on_critical_unverifiable_features(tmp_path)
     )
     spec = {
         "features": [
-            {"name": "hole_A", "kind": "hole", "tolerance_mm": 1.0, "critical": True},
-            {"name": "edge_B", "kind": "edge", "tolerance_mm": 5.0, "critical": True},
-            {"name": "hole_advisory", "kind": "hole", "tolerance_mm": 1.0, "critical": False},
+            {
+                "name": "hole_A",
+                "kind": "hole",
+                "tolerance_mm": 1.0,
+                "critical": True,
+            },
+            {
+                "name": "edge_B",
+                "kind": "edge",
+                "tolerance_mm": 5.0,
+                "critical": True,
+            },
+            {
+                "name": "hole_advisory",
+                "kind": "hole",
+                "tolerance_mm": 1.0,
+                "critical": False,
+            },
         ]
     }
     with TestClient(app) as client:
@@ -646,7 +665,11 @@ def test_i10_mixed_order_blocks_only_on_critical_unverifiable_features(tmp_path)
             },
         )
     body = created.json()
-    assert [item["status"] for item in body["intake_check"]] == ["unverifiable", "ok", "unverifiable"]
+    assert [item["status"] for item in body["intake_check"]] == [
+        "unverifiable",
+        "ok",
+        "unverifiable",
+    ]
     assert body["verdict"]["reason_codes"] == ["intake_tolerance_below_k_sigma_floor:hole_A"]
 
 
@@ -659,7 +682,11 @@ def test_i10_noncritical_only_floor_failure_has_no_overall_verdict(tmp_path):
             "/v1/orders",
             headers={"x-proofshape-buyer-key": "buyer-secret"},
             files={
-                "spec": ("spec.json", json.dumps(_i10_blocked_edge_spec(critical=False)), "application/json"),
+                "spec": (
+                    "spec.json",
+                    json.dumps(_i10_blocked_edge_spec(critical=False)),
+                    "application/json",
+                ),
                 "cad": ("part.stl", _ascii_stl(), "model/stl"),
             },
         )
@@ -677,7 +704,11 @@ def test_i10_preserves_d004_no_cad_no_verdict(tmp_path):
             "/v1/orders",
             headers={"x-proofshape-buyer-key": "buyer-secret"},
             files={
-                "spec": ("spec.json", json.dumps(_i10_blocked_edge_spec()), "application/json")
+                "spec": (
+                    "spec.json",
+                    json.dumps(_i10_blocked_edge_spec()),
+                    "application/json",
+                )
             },
         )
     body = created.json()
