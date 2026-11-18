@@ -1756,6 +1756,11 @@ describe("mountAppShell", () => {
     expect(reloaded.state.sessionId).toBeNull();
     expect(reloaded.button.disabled).toBe(false);
     expect(reloaded.finishButton.disabled).toBe(true);
+    // Review (@dalwalyk, PR #375): the camera and gyro are still live here, so only the missing
+    // session keeps Capture disabled.
+    expect(reloaded.state.cameraPlaying).toBe(true);
+    expect(reloaded.state.latestGyro).not.toBeNull();
+    expect(reloaded.captureButton.disabled).toBe(true);
   });
 
   it("C-24: keeps a finished session saved while reconstruction is still pending", async () => {

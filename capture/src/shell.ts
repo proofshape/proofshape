@@ -308,9 +308,16 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // (TabeenRaoof's PR #137 review). Also gated on uploadInFlight (TabeenRaoof's PR #139 review) --
   // without it, a deviceorientation reading arriving a few milliseconds after a tap disabled this
   // button would immediately re-enable it, mid-upload.
+  // C-24 review (@dalwalyk, PR #375): Capture also needs a live session, as Finish does. Dropping
+  // a dead session nulls `state.sessionId` while the camera and gyro stay live, and Capture
+  // stayed clickable with nothing to upload to. The click handler's "Start a session first."
+  // guard remains as the backstop.
   function updateCaptureAvailability(): void {
     captureButton.disabled =
-      uploadInFlight || sessionFinishing || !(state.cameraPlaying && state.latestGyro !== null);
+      uploadInFlight ||
+      sessionFinishing ||
+      state.sessionId === null ||
+      !(state.cameraPlaying && state.latestGyro !== null);
   }
 
   // Finish must not run while an upload is still in flight (TabeenRaoof's PR #139 review): a tap
@@ -382,6 +389,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         activeSession = { ...start.saved, acceptedGyro: [...start.saved.acceptedGyro] };
         orderCodeInput.value = start.saved.orderCode;
         setStatus(sessionStatus, describeContinuedSession(start.saved), "info");
+        updateCaptureAvailability();
         updateFinishAvailability();
         sessionOk = true;
       } else if (sessionPromise !== null) {
@@ -402,6 +410,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
               acceptedGyro: [],
             };
             persistActiveSession();
+            updateCaptureAvailability();
             updateFinishAvailability();
             sessionOk = true;
           }
