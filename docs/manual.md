@@ -407,13 +407,25 @@ boundary is still expected and is the hard rule working, not a defect.
 
 ### 8.2 The four verdicts
 
-**Status: Planned in the real service** (I-07 verdict logic, I-08 unobserved-geometry rule,
-I-10 Unverifiable path). The C-15 report page is built against the frozen contract examples, but
-today a real verdict request still answers `no_cad_uploaded`, because there is no way to upload a
-CAD yet (R-34).
+**Status: Works now for CAD-backed orders** (I-07 verdict logic, I-09 intake pre-check, I-10
+Unverifiable path). R-34 stores the buyer's CAD and spec, and the service can return a real
+post-reconstruction verdict for a finished session.
 
-There are exactly four. No fifth value can be added without a recorded decision, because the hard
-rule's guarantees are stated in terms of this closed set.
+I-10 also makes **Unverifiable available before any capture begins**. When an order has CAD and
+I-09 finds that any **critical** feature's tolerance is below the measured method floor,
+`createOrder` and `getOrder` include an order-level `verdict: "Unverifiable"` with
+`declared_at: "intake"`. Its reason codes name the blocked critical feature(s), and its
+`regions` list is empty because no geometry has been captured yet. If a session is created for
+that order anyway, `getVerdict` returns the same intake verdict immediately, before
+reconstruction; reconstruction cannot turn that method-capability result into Pass or Fail.
+
+D-079 settles mixed specs conservatively: **one Unverifiable critical feature makes the whole
+order Unverifiable**. A feature explicitly marked non-critical can still be flagged in
+`intake_check`, but it does not block the overall order. D-004 still applies: an order without
+CAD has no verdict, even if its spec's intake check contains an Unverifiable flag.
+
+There are exactly four verdict values. No fifth value can be added without a recorded decision,
+because the hard rule's guarantees are stated in terms of this closed set.
 
 | Verdict | What it means | What to do |
 |---|---|---|
@@ -428,9 +440,11 @@ unobserved region into either a Pass or a Fail — if it could not see it, it sa
 
 ### 8.3 The report
 
-**Status: Works now against the contract mock** (C-14 heatmap rendering, C-15 report page).
-The real deviation/verdict backend is still Planned (I-06/I-07), so today's real service normally
-shows the model-only path described in §8.2.
+**Status: Works now** (C-14 heatmap rendering, C-15 report page, I-06/I-07 real
+deviation/verdict backend). For CAD-backed orders, the report can render the real verdict returned
+by the service. For an I-10 intake-time Unverifiable result, the report explains the named feature
+whose tolerance is below the measured method floor and directs the buyer to a CMM. Orders without
+CAD still use the model-only path described in §8.2.
 
 After a reconstruction completes, choose **Open condition report**. You can also open
 `report.html?session=<id>` directly for a known session. The page shows the contract verdict and

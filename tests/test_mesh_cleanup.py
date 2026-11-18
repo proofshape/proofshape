@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 
 import numpy as np
 import pygltflib
@@ -22,6 +23,19 @@ _TETRAHEDRON_FACES_CLOSED = np.array(
 _TETRAHEDRON_FACES_OPEN = _TETRAHEDRON_FACES_CLOSED[
     :3
 ]  # drop face (0,2,3) -> one open triangle
+
+# A minimal non-orientable manifold: 5 vertices on a ring, each face (i, i+1, i+2 mod 5). Every
+# edge has exactly 2 owners (manifold -- drop_non_manifold_faces leaves it untouched), but the
+# winding can't be made consistent by any combination of per-face flips (confirmed by hand
+# against _find_orientation_conflict while writing this fix). Vertex positions are arbitrary --
+# this is a purely combinatorial defect, not a geometric one.
+_NON_ORIENTABLE_RING_VERTICES = np.array(
+    [[np.cos(2 * np.pi * i / 5), np.sin(2 * np.pi * i / 5), 0.0] for i in range(5)],
+    dtype=np.float32,
+)
+_NON_ORIENTABLE_RING_FACES = np.array(
+    [[i, (i + 1) % 5, (i + 2) % 5] for i in range(5)], dtype=np.int32
+)
 
 
 def _pentagon_cone(radius: float = 1.0):
@@ -86,6 +100,75 @@ def test_drop_non_manifold_faces_leaves_a_manifold_mesh_untouched():
 def test_drop_non_manifold_faces_rejects_bad_shape():
     with pytest.raises(ValueError, match="faces"):
         mesh_cleanup.drop_non_manifold_faces(np.zeros((3, 3)), np.zeros((1, 4)))
+
+
+# --- orientation (#300's other half, found on review @TabeenRaoof) ------------------------------
+
+
+def test_find_orientation_conflict_detects_the_non_orientable_ring():
+    conflict = mesh_cleanup._find_orientation_conflict(_NON_ORIENTABLE_RING_FACES)
+
+    assert conflict is not None
+
+
+def test_find_orientation_conflict_is_none_for_a_closed_manifold():
+    assert mesh_cleanup._find_orientation_conflict(_TETRAHEDRON_FACES_CLOSED) is None
+    assert mesh_cleanup._find_orientation_conflict(_TETRAHEDRON_FACES_OPEN) is None
+
+
+def test_drop_faces_until_orientable_resolves_the_non_orientable_ring():
+    _kept_vertices, kept_faces, dropped_count = (
+        mesh_cleanup.drop_faces_until_orientable(
+            _NON_ORIENTABLE_RING_VERTICES, _NON_ORIENTABLE_RING_FACES
+        )
+    )
+
+    assert (
+        dropped_count == 2
+    )  # the ring resolves by dropping exactly one conflicting pair
+    assert len(kept_faces) == len(_NON_ORIENTABLE_RING_FACES) - 2
+    assert mesh_cleanup._find_orientation_conflict(kept_faces) is None
+    assert _max_edge_owners(kept_faces) <= 2
+
+
+def test_drop_faces_until_orientable_leaves_an_already_orientable_mesh_untouched():
+    kept_vertices, kept_faces, dropped_count = mesh_cleanup.drop_faces_until_orientable(
+        _TETRAHEDRON_VERTICES, _TETRAHEDRON_FACES_CLOSED
+    )
+
+    assert dropped_count == 0
+    np.testing.assert_array_equal(kept_faces, _TETRAHEDRON_FACES_CLOSED)
+    np.testing.assert_array_equal(kept_vertices, _TETRAHEDRON_VERTICES)
+
+
+def test_drop_faces_until_orientable_raises_once_past_the_dropped_fraction_cap():
+    # Found on review (@TabeenRaoof, PR #381): two independent non-orientable rings need two
+    # separate drops (4 faces of 10 total); a 10% cap only allows one.
+    second_ring_offset = len(_NON_ORIENTABLE_RING_VERTICES)
+    vertices = np.vstack(
+        [
+            _NON_ORIENTABLE_RING_VERTICES,
+            _NON_ORIENTABLE_RING_VERTICES + np.array([5.0, 0.0, 0.0]),
+        ]
+    )
+    faces = np.vstack(
+        [
+            _NON_ORIENTABLE_RING_FACES,
+            _NON_ORIENTABLE_RING_FACES + second_ring_offset,
+        ]
+    )
+
+    with pytest.raises(ValueError, match="faces dropped"):
+        mesh_cleanup.drop_faces_until_orientable(
+            vertices, faces, max_dropped_fraction=0.1
+        )
+
+
+def test_drop_faces_until_orientable_rejects_non_positive_fraction():
+    with pytest.raises(ValueError, match="max_dropped_fraction"):
+        mesh_cleanup.drop_faces_until_orientable(
+            _TETRAHEDRON_VERTICES, _TETRAHEDRON_FACES_CLOSED, max_dropped_fraction=0.0
+        )
 
 
 # --- keep_largest_connected_component -----------------------------------------------------------
@@ -424,7 +507,7 @@ def test_write_glb_with_size_limit_redecimates_until_under_limit(tmp_path):
     baseline_size = baseline.stat().st_size
 
     out = tmp_path / "limited.glb"
-    limited_vertices, limited_faces, size_bytes, rounds = (
+    limited_vertices, limited_faces, size_bytes, rounds, dropped, oriented_dropped = (
         mesh_cleanup.write_glb_with_size_limit(
             out,
             vertices,
@@ -437,6 +520,8 @@ def test_write_glb_with_size_limit_redecimates_until_under_limit(tmp_path):
     assert size_bytes <= int(baseline_size * 0.75)
     assert len(limited_faces) < len(faces)
     assert len(limited_vertices) <= len(vertices)
+    assert dropped == 0  # a plain flat grid never goes non-manifold under decimation
+    assert oriented_dropped == 0  # nor non-orientable
 
 
 def test_write_glb_with_size_limit_raises_when_limit_is_impossible(tmp_path):
@@ -448,6 +533,183 @@ def test_write_glb_with_size_limit_raises_when_limit_is_impossible(tmp_path):
             max_file_size_bytes=1,
             min_triangle_count=len(_TETRAHEDRON_FACES_CLOSED),
         )
+
+
+def _edge_owner_counts(faces: np.ndarray) -> dict[tuple[int, int], int]:
+    counts: dict[tuple[int, int], int] = {}
+    for triangle in np.asarray(faces):
+        for i in range(3):
+            a, b = int(triangle[i]), int(triangle[(i + 1) % 3])
+            key = (a, b) if a < b else (b, a)
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _max_edge_owners(faces: np.ndarray) -> int:
+    """The largest number of faces sharing any one undirected edge -- >2 means non-manifold."""
+    return max(_edge_owner_counts(faces).values(), default=0)
+
+
+def _run_stalled_decimation_in_subprocess(
+    path_str: str,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    max_file_size_bytes: int,
+    result_queue,
+) -> None:
+    """Module-level (picklable) subprocess target for the #263 regression below.
+
+    Patches decimate_mesh *inside this process* -- pytest's monkeypatch fixture only touches
+    the parent process's copy of the module, which a spawned child never sees. Reports the
+    outcome through result_queue rather than letting a real infinite loop hang this process
+    with no way for the parent to tell what happened.
+    """
+    from pathlib import Path
+
+    from recon import mesh_cleanup
+
+    def _stalled_decimate(vertices, faces, target_triangle_count):
+        return vertices, faces
+
+    mesh_cleanup.decimate_mesh = _stalled_decimate
+    try:
+        mesh_cleanup.write_glb_with_size_limit(
+            Path(path_str), vertices, faces, max_file_size_bytes=max_file_size_bytes
+        )
+        result_queue.put(("ok", None))
+    except ValueError as exc:
+        result_queue.put(("value_error", str(exc)))
+    except Exception as exc:  # noqa: BLE001 -- defensive: report any crash, don't re-raise
+        result_queue.put(("other_error", str(exc)))
+
+
+def test_write_glb_with_size_limit_raises_instead_of_looping_forever_on_a_stalled_decimation(
+    tmp_path,
+):
+    # #263 reproduction: decimate_mesh that never reduces the face count would otherwise make
+    # the while-True loop in write_glb_with_size_limit spin forever. Run it in a real OS
+    # process, not a thread: a thread stuck in an infinite loop cannot be killed, and
+    # concurrent.futures joins its worker threads at interpreter exit regardless of any
+    # future.result() timeout, so a regression there would still hang the whole test run. A
+    # process can be terminated outright, so a regression here fails this one test instead.
+    vertices, faces = _flat_grid(n=20)
+    out = tmp_path / "stalled.glb"
+    result_queue: multiprocessing.Queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_run_stalled_decimation_in_subprocess,
+        args=(str(out), vertices, faces, 1, result_queue),
+    )
+    process.start()
+    process.join(timeout=5.0)
+    if process.is_alive():
+        process.terminate()
+        process.join()
+        pytest.fail(
+            "write_glb_with_size_limit looped past the 5s timeout -- #263 regression"
+        )
+
+    assert not result_queue.empty(), "subprocess exited without reporting an outcome"
+    outcome, message = result_queue.get()
+    assert outcome == "value_error", (outcome, message)
+    assert "cannot be decimated further" in message
+
+
+def test_write_glb_with_size_limit_restores_manifoldness_after_each_round(
+    tmp_path, monkeypatch
+):
+    # #300 reproduction, built synthetically (the story's own Tests section allows this):
+    # decimate_mesh here stands in for fast_simplification actually doing this on real meshes.
+    # It still decimates for real, then injects one extra face onto an already-shared edge --
+    # pushing that edge from 2 owners to 3, the same shape of damage a real edge collapse can
+    # cause -- while leaving the rest of the mesh untouched, so the drop afterward only has to
+    # remove a handful of faces, not the whole mesh.
+    vertices, faces = _flat_grid(n=20)
+    baseline = tmp_path / "baseline.glb"
+    mesh_cleanup.write_glb(baseline, vertices, faces)
+    baseline_size = baseline.stat().st_size
+    real_decimate_mesh = mesh_cleanup.decimate_mesh
+
+    def _decimate_then_add_a_third_owner_on_a_shared_edge(
+        vertices, faces, target_triangle_count
+    ):
+        new_vertices, new_faces = real_decimate_mesh(
+            vertices, faces, target_triangle_count
+        )
+        shared_edge = next(
+            edge for edge, count in _edge_owner_counts(new_faces).items() if count == 2
+        )
+        a, b = shared_edge
+        third_vertex = int(new_faces[0][0])
+        if third_vertex in (a, b):
+            third_vertex = int(new_faces[0][1])
+        extra_face = np.array([[a, b, third_vertex]], dtype=new_faces.dtype)
+        corrupted_faces = np.vstack([new_faces, extra_face])
+        assert _max_edge_owners(corrupted_faces) >= 3  # confirms the repro is real
+        return new_vertices, corrupted_faces
+
+    monkeypatch.setattr(
+        mesh_cleanup, "decimate_mesh", _decimate_then_add_a_third_owner_on_a_shared_edge
+    )
+    out = tmp_path / "cleaned.glb"
+
+    _, result_faces, size_bytes, rounds, dropped, _oriented_dropped = (
+        mesh_cleanup.write_glb_with_size_limit(
+            out, vertices, faces, max_file_size_bytes=int(baseline_size * 0.75)
+        )
+    )
+
+    assert rounds >= 1
+    assert size_bytes <= int(baseline_size * 0.75)
+    assert _max_edge_owners(result_faces) <= 2
+    assert dropped > 0  # confirms the per-round non-manifold drop actually ran
+
+
+def test_write_glb_with_size_limit_restores_orientability_after_each_round(
+    tmp_path, monkeypatch
+):
+    # Found on review (@TabeenRaoof, PR #381), on R-32's real MASt3R s-05 "all" run: decimation
+    # can leave an already-manifold mesh non-orientable. Reproduced synthetically by decimating
+    # for real, then grafting the non-orientable ring onto 5 brand-new vertices -- isolated from
+    # the rest of the mesh, the same way the existing non-manifold-injection test above adds
+    # disconnected junk rather than reusing real grid vertices.
+    vertices, faces = _flat_grid(n=20)
+    baseline = tmp_path / "baseline.glb"
+    mesh_cleanup.write_glb(baseline, vertices, faces)
+    baseline_size = baseline.stat().st_size
+    real_decimate_mesh = mesh_cleanup.decimate_mesh
+
+    def _decimate_then_graft_a_non_orientable_ring(
+        vertices, faces, target_triangle_count
+    ):
+        new_vertices, new_faces = real_decimate_mesh(
+            vertices, faces, target_triangle_count
+        )
+        ring_vertex_offset = len(new_vertices)
+        grafted_vertices = np.vstack(
+            [new_vertices, _NON_ORIENTABLE_RING_VERTICES + np.array([0, 0, 100.0])]
+        )
+        grafted_ring_faces = _NON_ORIENTABLE_RING_FACES + ring_vertex_offset
+        grafted_faces = np.vstack([new_faces, grafted_ring_faces]).astype(
+            new_faces.dtype
+        )
+        assert mesh_cleanup._find_orientation_conflict(grafted_faces) is not None
+        return grafted_vertices.astype(np.float32), grafted_faces
+
+    monkeypatch.setattr(
+        mesh_cleanup, "decimate_mesh", _decimate_then_graft_a_non_orientable_ring
+    )
+    out = tmp_path / "cleaned.glb"
+
+    _, result_faces, size_bytes, rounds, _dropped, oriented_dropped = (
+        mesh_cleanup.write_glb_with_size_limit(
+            out, vertices, faces, max_file_size_bytes=int(baseline_size * 0.75)
+        )
+    )
+
+    assert rounds >= 1
+    assert size_bytes <= int(baseline_size * 0.75)
+    assert oriented_dropped > 0
+    assert mesh_cleanup._find_orientation_conflict(result_faces) is None
 
 
 def test_mesh_cleanup_cli_returns_nonzero_for_impossible_size_limit(tmp_path, capsys):
@@ -512,6 +774,97 @@ def test_cleanup_run_writes_glb_and_report(tmp_path):
     assert len(read_vertices) == report["vertex_count"]
     on_disk_report = json.loads(out_path.with_suffix(".json").read_text())
     assert on_disk_report == report
+
+
+def test_cleanup_run_restores_manifoldness_after_its_own_decimation(
+    tmp_path, monkeypatch
+):
+    # #300 reproduction at cleanup_run's own decimate_mesh call site (line 679's original, not
+    # write_glb_with_size_limit's re-decimation loop), built synthetically the same way as the
+    # write_glb_with_size_limit case above.
+    vertices, faces = _flat_grid(n=20)
+    mesh_ply_path = tmp_path / "mesh.ply"
+    tsdf_fusion.write_mesh_ply(mesh_ply_path, vertices, faces)
+    out_path = tmp_path / "mesh_clean.glb"
+    real_decimate_mesh = mesh_cleanup.decimate_mesh
+
+    def _decimate_then_add_a_third_owner_on_a_shared_edge(
+        vertices, faces, target_triangle_count
+    ):
+        new_vertices, new_faces = real_decimate_mesh(
+            vertices, faces, target_triangle_count
+        )
+        shared_edge = next(
+            edge for edge, count in _edge_owner_counts(new_faces).items() if count == 2
+        )
+        a, b = shared_edge
+        third_vertex = int(new_faces[0][0])
+        if third_vertex in (a, b):
+            third_vertex = int(new_faces[0][1])
+        extra_face = np.array([[a, b, third_vertex]], dtype=new_faces.dtype)
+        corrupted_faces = np.vstack([new_faces, extra_face])
+        assert _max_edge_owners(corrupted_faces) >= 3  # confirms the repro is real
+        return new_vertices, corrupted_faces
+
+    monkeypatch.setattr(
+        mesh_cleanup, "decimate_mesh", _decimate_then_add_a_third_owner_on_a_shared_edge
+    )
+
+    report = mesh_cleanup.cleanup_run(
+        mesh_ply_path, out_path, target_triangle_count=100, max_hole_loop_length=8
+    )
+
+    assert report["non_manifold_faces_dropped_after_decimation"] > 0
+    # the corruption only happens at cleanup_run's own decimate_mesh call in this test, not
+    # inside write_glb_with_size_limit's re-decimation loop -- kept apart on purpose (see
+    # write_cleanup_report), not summed into the field above.
+    assert report["non_manifold_faces_dropped_during_size_redecimation"] == 0
+    _read_vertices, read_faces, _read_colors = mesh_cleanup.read_glb(out_path)
+    assert _max_edge_owners(read_faces) <= 2
+    assert len(read_faces) == report["face_count"]
+
+
+def test_cleanup_run_restores_orientability_after_its_own_decimation(
+    tmp_path, monkeypatch
+):
+    # Same case as the write_glb_with_size_limit orientation test above, at cleanup_run's own
+    # decimate_mesh call site.
+    vertices, faces = _flat_grid(n=20)
+    mesh_ply_path = tmp_path / "mesh.ply"
+    tsdf_fusion.write_mesh_ply(mesh_ply_path, vertices, faces)
+    out_path = tmp_path / "mesh_clean.glb"
+    real_decimate_mesh = mesh_cleanup.decimate_mesh
+
+    def _decimate_then_graft_a_non_orientable_ring(
+        vertices, faces, target_triangle_count
+    ):
+        new_vertices, new_faces = real_decimate_mesh(
+            vertices, faces, target_triangle_count
+        )
+        ring_vertex_offset = len(new_vertices)
+        grafted_vertices = np.vstack(
+            [new_vertices, _NON_ORIENTABLE_RING_VERTICES + np.array([0, 0, 100.0])]
+        )
+        grafted_ring_faces = _NON_ORIENTABLE_RING_FACES + ring_vertex_offset
+        grafted_faces = np.vstack([new_faces, grafted_ring_faces]).astype(
+            new_faces.dtype
+        )
+        assert mesh_cleanup._find_orientation_conflict(grafted_faces) is not None
+        return grafted_vertices.astype(np.float32), grafted_faces
+
+    monkeypatch.setattr(
+        mesh_cleanup, "decimate_mesh", _decimate_then_graft_a_non_orientable_ring
+    )
+
+    report = mesh_cleanup.cleanup_run(
+        mesh_ply_path, out_path, target_triangle_count=100, max_hole_loop_length=8
+    )
+
+    assert report["non_orientable_faces_dropped_after_decimation"] > 0
+    assert report["non_orientable_faces_dropped_during_size_redecimation"] == 0
+    _read_vertices, read_faces, _read_colors = mesh_cleanup.read_glb(out_path)
+    assert mesh_cleanup._find_orientation_conflict(read_faces) is None
+    assert len(read_faces) == report["face_count"]
 
 
 def test_cleanup_run_refuses_to_overwrite_existing_output(tmp_path):
