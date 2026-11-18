@@ -306,7 +306,7 @@ def write_glb_with_size_limit(
     *,
     max_file_size_bytes: int = DEFAULT_MAX_FILE_SIZE_BYTES,
     min_triangle_count: int = 4,
-) -> tuple[np.ndarray, np.ndarray, int, int]:
+) -> tuple[np.ndarray, np.ndarray, int, int, int]:
     """Write a GLB that actually satisfies the configured byte limit.
 
     If the first write is oversized, progressively re-decimate to 75% of the current triangle
@@ -318,7 +318,9 @@ def write_glb_with_size_limit(
     unconditionally, whatever ``min_triangle_count`` is, since a stalled round makes no more
     progress whether or not there's room left to decimate. #300: decimation can turn a manifold
     mesh non-manifold, so every round re-checks and drops any face that breaks it, same as the
-    pre-decimation pass in ``cleanup_run``.
+    pre-decimation pass in ``cleanup_run`` -- the returned ``non_manifold_faces_dropped`` is the
+    sum of those drops across every round this call made, not including ``cleanup_run``'s own
+    earlier, separate drop before this function was ever called.
     """
     if max_file_size_bytes <= 0:
         raise ValueError("max_file_size_bytes must be positive.")
@@ -328,12 +330,19 @@ def write_glb_with_size_limit(
     vertices = np.asarray(vertices, dtype=np.float32)
     faces = np.asarray(faces, dtype=np.int32)
     redecimation_rounds = 0
+    non_manifold_faces_dropped = 0
 
     while True:
         write_glb(path, vertices, faces)
         file_size_bytes = Path(path).stat().st_size
         if file_size_bytes <= max_file_size_bytes:
-            return vertices, faces, file_size_bytes, redecimation_rounds
+            return (
+                vertices,
+                faces,
+                file_size_bytes,
+                redecimation_rounds,
+                non_manifold_faces_dropped,
+            )
 
         if len(faces) <= min_triangle_count:
             raise ValueError(
@@ -351,7 +360,8 @@ def write_glb_with_size_limit(
                 f"GLB is {file_size_bytes} bytes, over the {max_file_size_bytes}-byte limit, "
                 "and cannot be decimated further safely."
             )
-        vertices, faces, _dropped = drop_non_manifold_faces(vertices, faces)
+        vertices, faces, dropped = drop_non_manifold_faces(vertices, faces)
+        non_manifold_faces_dropped += dropped
         redecimation_rounds += 1
 
 
@@ -626,6 +636,7 @@ def write_cleanup_report(
     size_redecimation_rounds: int,
     non_manifold_faces_dropped: int = 0,
     non_manifold_faces_dropped_after_decimation: int = 0,
+    non_manifold_faces_dropped_during_size_redecimation: int = 0,
 ) -> dict[str, Any]:
     report = {
         "story": "R-08",
@@ -634,10 +645,18 @@ def write_cleanup_report(
         # filter below -- almost always 0; non-zero means re-anchoring left a seam provenance
         # couldn't have labelled anyway.
         "non_manifold_faces_dropped": non_manifold_faces_dropped,
-        # R-40 (#300): faces dropped by the same check again, right after decimation -- decimation
-        # itself can turn a manifold mesh non-manifold, a different cause from the one above.
+        # R-40 (#300): faces dropped by the same check again, right after this function's own
+        # decimate_mesh call -- decimation itself can turn a manifold mesh non-manifold, a
+        # different cause from the one above.
         "non_manifold_faces_dropped_after_decimation": (
             non_manifold_faces_dropped_after_decimation
+        ),
+        # R-40 (#300), a third and separate cause: the sum of the same drops across every
+        # re-decimation round write_glb_with_size_limit ran to satisfy the byte limit. Kept apart
+        # from the field above rather than summed into it -- a reviewer asking "which stage
+        # caused this" shouldn't have to guess.
+        "non_manifold_faces_dropped_during_size_redecimation": (
+            non_manifold_faces_dropped_during_size_redecimation
         ),
         "faces_before_component_filter": faces_before,
         "faces_after_component_filter": faces_after_component_filter,
@@ -705,13 +724,17 @@ def cleanup_run(
     triangle_count_after_decimation = len(faces)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    vertices, faces, file_size_bytes, size_redecimation_rounds = (
-        write_glb_with_size_limit(
-            out_path,
-            vertices,
-            faces,
-            max_file_size_bytes=max_file_size_bytes,
-        )
+    (
+        vertices,
+        faces,
+        file_size_bytes,
+        size_redecimation_rounds,
+        non_manifold_faces_dropped_during_size_redecimation,
+    ) = write_glb_with_size_limit(
+        out_path,
+        vertices,
+        faces,
+        max_file_size_bytes=max_file_size_bytes,
     )
     triangle_count_after_decimation = len(faces)
 
@@ -735,6 +758,9 @@ def cleanup_run(
         non_manifold_faces_dropped=non_manifold_faces_dropped,
         non_manifold_faces_dropped_after_decimation=(
             non_manifold_faces_dropped_after_decimation
+        ),
+        non_manifold_faces_dropped_during_size_redecimation=(
+            non_manifold_faces_dropped_during_size_redecimation
         ),
     )
 

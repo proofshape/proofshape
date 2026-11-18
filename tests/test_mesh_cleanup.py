@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import concurrent.futures
 import json
+import multiprocessing
 
 import numpy as np
 import pygltflib
@@ -425,7 +425,7 @@ def test_write_glb_with_size_limit_redecimates_until_under_limit(tmp_path):
     baseline_size = baseline.stat().st_size
 
     out = tmp_path / "limited.glb"
-    limited_vertices, limited_faces, size_bytes, rounds = (
+    limited_vertices, limited_faces, size_bytes, rounds, dropped = (
         mesh_cleanup.write_glb_with_size_limit(
             out,
             vertices,
@@ -438,6 +438,7 @@ def test_write_glb_with_size_limit_redecimates_until_under_limit(tmp_path):
     assert size_bytes <= int(baseline_size * 0.75)
     assert len(limited_faces) < len(faces)
     assert len(limited_vertices) <= len(vertices)
+    assert dropped == 0  # a plain flat grid never goes non-manifold under decimation
 
 
 def test_write_glb_with_size_limit_raises_when_limit_is_impossible(tmp_path):
@@ -466,32 +467,68 @@ def _max_edge_owners(faces: np.ndarray) -> int:
     return max(_edge_owner_counts(faces).values(), default=0)
 
 
-def test_write_glb_with_size_limit_raises_instead_of_looping_forever_on_a_stalled_decimation(
-    tmp_path, monkeypatch
-):
-    # #263 reproduction: decimate_mesh that never reduces the face count would otherwise make
-    # the while-True loop in write_glb_with_size_limit spin forever. Run it on a thread with a
-    # timeout so a regression fails the test fast instead of hanging CI.
+def _run_stalled_decimation_in_subprocess(
+    path_str: str,
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    max_file_size_bytes: int,
+    result_queue,
+) -> None:
+    """Module-level (picklable) subprocess target for the #263 regression below.
+
+    Patches decimate_mesh *inside this process* -- pytest's monkeypatch fixture only touches
+    the parent process's copy of the module, which a spawned child never sees. Reports the
+    outcome through result_queue rather than letting a real infinite loop hang this process
+    with no way for the parent to tell what happened.
+    """
+    from pathlib import Path
+
+    from recon import mesh_cleanup
+
     def _stalled_decimate(vertices, faces, target_triangle_count):
         return vertices, faces
 
-    monkeypatch.setattr(mesh_cleanup, "decimate_mesh", _stalled_decimate)
+    mesh_cleanup.decimate_mesh = _stalled_decimate
+    try:
+        mesh_cleanup.write_glb_with_size_limit(
+            Path(path_str), vertices, faces, max_file_size_bytes=max_file_size_bytes
+        )
+        result_queue.put(("ok", None))
+    except ValueError as exc:
+        result_queue.put(("value_error", str(exc)))
+    except Exception as exc:  # noqa: BLE001 -- defensive: report any crash, don't re-raise
+        result_queue.put(("other_error", str(exc)))
+
+
+def test_write_glb_with_size_limit_raises_instead_of_looping_forever_on_a_stalled_decimation(
+    tmp_path,
+):
+    # #263 reproduction: decimate_mesh that never reduces the face count would otherwise make
+    # the while-True loop in write_glb_with_size_limit spin forever. Run it in a real OS
+    # process, not a thread: a thread stuck in an infinite loop cannot be killed, and
+    # concurrent.futures joins its worker threads at interpreter exit regardless of any
+    # future.result() timeout, so a regression there would still hang the whole test run. A
+    # process can be terminated outright, so a regression here fails this one test instead.
     vertices, faces = _flat_grid(n=20)
     out = tmp_path / "stalled.glb"
-
-    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    try:
-        future = executor.submit(
-            mesh_cleanup.write_glb_with_size_limit,
-            out,
-            vertices,
-            faces,
-            max_file_size_bytes=1,
+    result_queue: multiprocessing.Queue = multiprocessing.Queue()
+    process = multiprocessing.Process(
+        target=_run_stalled_decimation_in_subprocess,
+        args=(str(out), vertices, faces, 1, result_queue),
+    )
+    process.start()
+    process.join(timeout=5.0)
+    if process.is_alive():
+        process.terminate()
+        process.join()
+        pytest.fail(
+            "write_glb_with_size_limit looped past the 5s timeout -- #263 regression"
         )
-        with pytest.raises(ValueError, match="cannot be decimated further"):
-            future.result(timeout=5.0)
-    finally:
-        executor.shutdown(wait=False)
+
+    assert not result_queue.empty(), "subprocess exited without reporting an outcome"
+    outcome, message = result_queue.get()
+    assert outcome == "value_error", (outcome, message)
+    assert "cannot be decimated further" in message
 
 
 def test_write_glb_with_size_limit_restores_manifoldness_after_each_round(
@@ -532,13 +569,16 @@ def test_write_glb_with_size_limit_restores_manifoldness_after_each_round(
     )
     out = tmp_path / "cleaned.glb"
 
-    _, result_faces, size_bytes, rounds = mesh_cleanup.write_glb_with_size_limit(
-        out, vertices, faces, max_file_size_bytes=int(baseline_size * 0.75)
+    _, result_faces, size_bytes, rounds, dropped = (
+        mesh_cleanup.write_glb_with_size_limit(
+            out, vertices, faces, max_file_size_bytes=int(baseline_size * 0.75)
+        )
     )
 
     assert rounds >= 1
     assert size_bytes <= int(baseline_size * 0.75)
     assert _max_edge_owners(result_faces) <= 2
+    assert dropped > 0  # confirms the per-round non-manifold drop actually ran
 
 
 def test_mesh_cleanup_cli_returns_nonzero_for_impossible_size_limit(tmp_path, capsys):
@@ -644,6 +684,10 @@ def test_cleanup_run_restores_manifoldness_after_its_own_decimation(
     )
 
     assert report["non_manifold_faces_dropped_after_decimation"] > 0
+    # the corruption only happens at cleanup_run's own decimate_mesh call in this test, not
+    # inside write_glb_with_size_limit's re-decimation loop -- kept apart on purpose (see
+    # write_cleanup_report), not summed into the field above.
+    assert report["non_manifold_faces_dropped_during_size_redecimation"] == 0
     _read_vertices, read_faces, _read_colors = mesh_cleanup.read_glb(out_path)
     assert _max_edge_owners(read_faces) <= 2
     assert len(read_faces) == report["face_count"]
