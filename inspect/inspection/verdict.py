@@ -79,25 +79,31 @@ and `"registration_failed"` (this module's own, for when registration/ambiguity/
 couldn't be computed at all -- a best-effort post-reconstruction step, not a reconstruction
 failure).
 
-A *critical* feature (contract's `SpecFeature.critical`) with a missing or null `tolerance_mm`
-is refused outright (raises `RefusedToleranceError`), never defaulted or silently skipped -- the
-same discipline A-03/I-09 apply, and the contract's `VerdictResult` has no "refused" verdict
-value to represent it, so the caller (`getVerdict`) turns this into an error response, not a
-verdict. A missing `critical` key is treated as critical (refuse), the same "refuse, don't
-assume" discipline as a missing tolerance itself -- only an explicit `critical: false` is read as
-non-critical. A non-critical feature with no tolerance is not refused: it is listed as its own
-region, contributing nothing (no tolerance exists to judge it against), rather than aborting the
-whole verdict for a feature the contract itself says doesn't need one (caught on review,
-@TabeenRaoof, PR #379 -- the contract's own 422 description already said "a critical spec
-feature," but the first version refused on *any* feature's null tolerance). A malformed spec
-(`features` present but not a list, or an entry that is not an object) is refused the same way,
-matching I-09's own "refuse, don't crash on an opaque, unvalidated spec dict" discipline
-(`recon/order_store.py` stores a buyer-supplied spec unvalidated), rather than raising an
-uncaught `AttributeError`/`TypeError` `getVerdict` would have to let through as a 500.
+A *critical* feature (contract's `SpecFeature.critical`) with a `tolerance_mm` that isn't a
+finite, positive, non-bool number -- missing, null, a string, negative, zero, NaN, infinite, or
+a literal `True`/`False` -- is refused outright (raises `RefusedToleranceError`), never defaulted
+or coerced into a comparison. `_valid_tolerance_mm` matches I-09's own `check_intake_spec` check
+exactly (PR #379 review, @TabeenRaoof: the first version of this check only caught `None`, so a
+string tolerance crashed `_evaluate_pool` outright, and a negative one produced a wrong Fail on
+a clean part -- the one thing this story must never do). The contract's `VerdictResult` has no
+"refused" verdict value to represent any of this, so the caller (`getVerdict`) turns it into an
+error response, not a verdict. A missing `critical` key is treated as critical (refuse), the
+same "refuse, don't assume" discipline as an invalid tolerance itself -- only an explicit
+`critical: false` is read as non-critical. A non-critical feature with no valid tolerance is not
+refused: it is listed as its own region, contributing nothing (no tolerance exists to judge it
+against), rather than aborting the whole verdict for a feature the contract itself says doesn't
+need one (caught on review, @TabeenRaoof, PR #379 -- the contract's own 422 description already
+said "a critical spec feature," but the first version refused on *any* feature's null
+tolerance). A malformed spec (`features` present but not a list, or an entry that is not an
+object) is refused the same way, matching I-09's own "refuse, don't crash on an opaque,
+unvalidated spec dict" discipline (`recon/order_store.py` stores a buyer-supplied spec
+unvalidated), rather than raising an uncaught `AttributeError`/`TypeError` `getVerdict` would
+have to let through as a 500.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -128,6 +134,27 @@ REASON_REGISTRATION_FAILED = "registration_failed"
 
 class RefusedToleranceError(ValueError):
     """A spec feature's tolerance_mm is missing or null -- refused, never defaulted."""
+
+
+def _valid_tolerance_mm(tolerance_mm: Any) -> float | None:
+    """`tolerance_mm` as a finite positive float, or `None` if it isn't one -- `None` itself,
+    a non-numeric value (including `bool`, which is a `numbers` subtype of `int` but is never a
+    tolerance), NaN, infinity, or a non-positive number. Matches I-09's own
+    `check_intake_spec` check exactly (PR #379 review, @TabeenRaoof): a malformed tolerance
+    reaching this story's `post_reconstruction` rows must be refused the same way I-09 already
+    refuses it at intake, not silently coerced into a comparison (a string tolerance raised
+    inside `_evaluate_pool`; a negative one produced a wrong Fail on a clean part)."""
+    if tolerance_mm is None or isinstance(tolerance_mm, bool):
+        return None
+    if not isinstance(tolerance_mm, (int, float)):
+        return None
+    try:
+        numeric_tolerance_mm = float(tolerance_mm)
+    except OverflowError:
+        numeric_tolerance_mm = math.inf
+    if not math.isfinite(numeric_tolerance_mm) or numeric_tolerance_mm <= 0:
+        return None
+    return numeric_tolerance_mm
 
 
 def _evaluate_pool(
@@ -203,10 +230,13 @@ def compute_verdict(
             raise RefusedToleranceError(
                 "a feature entry must be an object; refused, not assumed."
             )
-        if feature.get("critical", True) and feature.get("tolerance_mm") is None:
+        if (
+            feature.get("critical", True)
+            and _valid_tolerance_mm(feature.get("tolerance_mm")) is None
+        ):
             raise RefusedToleranceError(
                 f"critical feature {feature.get('name', '<unnamed feature>')!r} has a "
-                "missing or null tolerance_mm; refused, not defaulted."
+                "missing, null, or non-finite-positive tolerance_mm; refused, not defaulted."
             )
 
     observed_measured = (np.asarray(labels) == LABEL_OBSERVED) & (
@@ -251,7 +281,7 @@ def compute_verdict(
 
     for feature in features:
         name = feature.get("name", "<unnamed feature>")
-        tolerance_mm = feature.get("tolerance_mm")
+        tolerance_mm = _valid_tolerance_mm(feature.get("tolerance_mm"))
 
         if not has_observed_data:
             regions.append(

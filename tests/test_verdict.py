@@ -714,6 +714,38 @@ def test_missing_critical_key_defaults_to_refused_same_as_a_missing_tolerance():
         )
 
 
+@pytest.mark.parametrize(
+    "malformed_tolerance_mm",
+    ["5", -1.0, float("nan"), True],
+    ids=["string", "negative", "nan", "bool"],
+)
+def test_malformed_tolerance_mm_is_refused_not_coerced(malformed_tolerance_mm):
+    """PR #379 review (@TabeenRaoof): the refusal check only looked for `None`, so a string
+    tolerance crashed `_evaluate_pool` outright (comparing a string to a float), a negative one
+    produced a wrong Fail on a clean part (the one thing this story must never do), a NaN one
+    Rescanned for the wrong reason, and `True` was silently treated as `1.0`. All four must be
+    refused the same way a missing tolerance already is -- matching I-09's own
+    `check_intake_spec` validation exactly."""
+    sample, _cv, _cf, deviation_mm, deviation_measured = _clean_sample_deviation()
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    spec = {
+        "features": [
+            {"name": "edge_1", "kind": "edge", "tolerance_mm": malformed_tolerance_mm}
+        ]
+    }
+
+    with pytest.raises(RefusedToleranceError):
+        compute_verdict(
+            deviation_mm,
+            deviation_measured,
+            sample.labels,
+            sigma_mm,
+            sample.vertices_mm,
+            FLAT_BOARD_PLANE,
+            spec,
+        )
+
+
 def test_non_list_features_is_refused_not_crashed():
     """`recon/order_store.py` stores a buyer-supplied spec as an opaque, unvalidated dict
     (I-09's own precedent) -- a malformed `features` value must be refused, not left to crash

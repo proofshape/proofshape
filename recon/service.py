@@ -1107,6 +1107,14 @@ def create_app(
             session_dir = store.session_dir(session_id)
             cad_path = order_store.cad_path(record["order_code"])
             if cad_path is None:
+                # PR #379 review (@TabeenRaoof): order.has_cad=True but no CAD file on disk is
+                # an inconsistent order, not a transient timing gap -- get_verdict's own earlier
+                # has_cad check won't 404 for it, so silently returning here (never writing
+                # `ambiguity`) left get_verdict answering "measurement has not finished yet"
+                # forever, for a measurement that will now never run. Recorded as an error, the
+                # same as every other best-effort failure in this function.
+                record["ambiguity"] = {"error": "registration_or_deviation_failed"}
+                store.save(record)
                 return
             cad_vertices, cad_faces, cad_units = load_mesh(cad_path)
             cad_mesh = (cad_vertices, cad_faces, cad_units)
