@@ -99,6 +99,15 @@ object) is refused the same way, matching I-09's own "refuse, don't crash on an 
 unvalidated spec dict" discipline (`recon/order_store.py` stores a buyer-supplied spec
 unvalidated), rather than raising an uncaught `AttributeError`/`TypeError` `getVerdict` would
 have to let through as a 500.
+
+**A Pass requires at least one region to actually have `contributes_to_verdict: True`**
+(`NoJudgedFeaturesError`, caught on review, @TabeenRaoof and @mbj1994, PR #379): `verdict_rank`
+starts at Pass and only a judged feature ever raises it, so a spec with nothing to judge -- no
+`features` at all, or every feature non-critical with no valid tolerance -- fell through to a
+bare Pass regardless of what the part actually looked like, including past a planted defect
+many times any plausible tolerance. The caller (`getVerdict`) turns this into the existing
+`404 verdict_not_available`, not a new contract error code -- there is as little a verdict to
+serve as when post-reconstruction measurement hasn't run yet.
 """
 
 from __future__ import annotations
@@ -134,6 +143,18 @@ REASON_REGISTRATION_FAILED = "registration_failed"
 
 class RefusedToleranceError(ValueError):
     """A spec feature's tolerance_mm is missing or null -- refused, never defaulted."""
+
+
+class NoJudgedFeaturesError(ValueError):
+    """No feature in the spec was ever actually evaluated against a Pass/Fail/Rescan rule -- an
+    empty or missing `features` list, or every feature non-critical with no valid tolerance. A
+    Pass under these conditions would be the "dressed-up" claim D-003 rules out (D-004: no
+    spec, no verdict machinery) -- caught on review, @TabeenRaoof and @mbj1994, PR #379:
+    `verdict_rank` starts at Pass and nothing ever raised it, so `{}`, `{"features": []}`, and
+    R-34's own `{"tolerance_mm": 4.0}` placeholder shape all Passed a part with a planted 12mm
+    defect. The caller (`getVerdict`) turns this into `404 verdict_not_available`, the same code
+    already used when post-reconstruction measurement hasn't run -- there is similarly nothing
+    to serve a verdict from."""
 
 
 def _valid_tolerance_mm(tolerance_mm: Any) -> float | None:
@@ -384,6 +405,17 @@ def compute_verdict(
         verdict_rank = max(verdict_rank, feature_rank)
 
     verdict = {0: "Pass", 1: "Rescan", 2: "Fail"}[verdict_rank]
+    if verdict == "Pass" and not any(
+        region["contributes_to_verdict"] for region in regions
+    ):
+        # Every other way to reach Pass sets contributes_to_verdict on at least one region
+        # (a pool only returns "Pass" by setting it) -- the only way to reach it with none set
+        # is that no feature was ever judged at all (no features, or every one non-critical
+        # with no valid tolerance). That is "nothing to check," not "nothing wrong."
+        raise NoJudgedFeaturesError(
+            "no feature in this spec was judged against a Pass/Fail/Rescan rule; refused, "
+            "not defaulted to Pass."
+        )
     return {
         "verdict": verdict,
         "orientation_ambiguous": orientation_ambiguous,

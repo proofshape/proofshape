@@ -12,6 +12,7 @@ from inspection.verdict import (
     D073_SIGMA_FLOOR_BOARD_MM,
     D077_K,
     D078_SIGMA_FLOOR_IN_PLANE_MM,
+    NoJudgedFeaturesError,
     RefusedToleranceError,
     compute_verdict,
 )
@@ -827,3 +828,67 @@ def test_overall_verdict_is_the_worst_across_features():
     assert statuses["failer"] is True
     assert "failer_deviation_out_of_spec" in result["reason_codes"]
     assert "passer_deviation_out_of_spec" not in result["reason_codes"]
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {},
+        {"features": []},
+        {
+            "tolerance_mm": 4.0
+        },  # R-34's placeholder spec shape -- no "features" key at all
+        {
+            "features": [
+                {
+                    "name": "a",
+                    "kind": "overall",
+                    "tolerance_mm": None,
+                    "critical": False,
+                }
+            ]
+        },
+    ],
+    ids=[
+        "no_features_key",
+        "empty_features_list",
+        "r34_placeholder_shape",
+        "only_non_critical",
+    ],
+)
+def test_no_judged_features_is_refused_not_a_dressed_up_pass(spec):
+    """PR #379 review (@TabeenRaoof and @mbj1994): `verdict_rank` starts at Pass and only a
+    judged feature ever raises it, so a spec with nothing to judge -- no features at all, or
+    every feature non-critical with no valid tolerance -- fell through to Pass with zero
+    regions, regardless of what the part actually looks like. A 12mm defect (well beyond any
+    plausible tolerance) is planted here specifically to show the danger: this must never Pass,
+    whatever the geometry, when nothing was actually checked against it (D-004: no spec, no
+    verdict machinery)."""
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    vertex_index = _top_face_center_vertex_index(cad_vertices, sample)
+    outward = _outward_offset_direction(cad_vertices, sample, vertex_index)
+    model_vertices = sample.vertices_mm.copy()
+    model_vertices[vertex_index] = model_vertices[vertex_index] + 12.0 * outward
+
+    deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, sample.labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+    sigma_mm = np.full(len(sample.labels), 0.3)
+
+    with pytest.raises(NoJudgedFeaturesError):
+        compute_verdict(
+            deviation_mm,
+            deviation_measured,
+            sample.labels,
+            sigma_mm,
+            model_vertices,
+            FLAT_BOARD_PLANE,
+            spec,
+        )

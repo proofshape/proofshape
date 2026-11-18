@@ -154,6 +154,25 @@ def test_getverdict_refuses_a_null_tolerance_feature_end_to_end(tmp_path):
     assert response.json()["code"] == "tolerance_missing"
 
 
+def test_getverdict_404s_an_empty_spec_not_a_dressed_up_pass_end_to_end(tmp_path):
+    """PR #379 review (@TabeenRaoof, @mbj1994): a spec with no features at all previously
+    returned a bare Pass through the live service, the same as compute_verdict's own unit
+    tests caught in isolation -- this exercises the real wiring end to end."""
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+        pipeline_runner=_make_pipeline_runner(),
+    )
+    with TestClient(app) as client:
+        session_id = _finish_a_session_with_cad(client, {"features": []})
+
+        response = client.get(f"/v1/sessions/{session_id}/verdict")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "verdict_not_available"
+
+
 def test_getverdict_404s_in_the_gap_before_measurement_finishes_not_rescan(tmp_path):
     """PR #379 review (@TabeenRaoof): run_session marks reconstruction "complete" and saves the
     record before calling run_post_reconstruction_measurement, which then writes `ambiguity`

@@ -1269,7 +1269,11 @@ def create_app(
             DEVIATION_MEASURED_ATTRIBUTE,
             DEVIATION_MM_ATTRIBUTE,
         )
-        from inspection.verdict import RefusedToleranceError, compute_verdict
+        from inspection.verdict import (
+            NoJudgedFeaturesError,
+            RefusedToleranceError,
+            compute_verdict,
+        )
 
         from recon.mesh_cleanup import read_glb, read_glb_extra_attributes
         from recon.provenance import colors_to_labels
@@ -1355,6 +1359,12 @@ def create_app(
             )
         except RefusedToleranceError as exc:
             return error(422, ErrorDetail(code="tolerance_missing", message=str(exc)))
+        except NoJudgedFeaturesError as exc:
+            # PR #379 review (@TabeenRaoof, @mbj1994): reused, not a new contract error code --
+            # there is as little a verdict to serve here as when measurement hasn't run yet.
+            return error(
+                404, ErrorDetail(code="verdict_not_available", message=str(exc))
+            )
 
         return VerdictResult(declared_at="post_reconstruction", **result)
 

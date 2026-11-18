@@ -255,16 +255,20 @@ paths:
               schema:
                 $ref: "#/components/schemas/VerdictResult"
         "404":
-          description: No CAD was supplied for this session — no verdict exists (D-004).
+          description: >
+            No verdict exists yet, distinguished by `ErrorDetail.code`: `no_cad_uploaded`
+            (D-004, no CAD was supplied for this session), or `verdict_not_available`
+            (reconstruction/measurement hasn't finished, or the spec has no feature that can
+            actually be judged).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
         "422":
           description: >
-            A critical spec feature's tolerance_mm is missing or null -- refused, not
-            defaulted (A-03/I-09's own discipline; none of the four verdict values represents
-            an invalid spec).
+            A critical spec feature's tolerance_mm is missing, null, or not a finite positive
+            number -- refused, not defaulted or coerced (A-03/I-09's own discipline; none of
+            the four verdict values represents an invalid spec).
           content:
             application/json:
               schema:
@@ -415,9 +419,12 @@ components:
             a photo; `internal_error` means the service failed for a reason unrelated to the
             photos, and its message never includes the server's internal error text. `vlm_veto`
             means only the VLM's semantic check (A-02), never a malformed upload.
-            `tolerance_missing` (I-07): a critical spec feature's `tolerance_mm` was missing or
-            null at verdict time -- refused, not defaulted; none of the four verdict values
-            represents an invalid spec.
+            `tolerance_missing` (I-07): a critical spec feature's `tolerance_mm` was missing,
+            null, or not a finite positive number at verdict time -- refused, not defaulted or
+            coerced; none of the four verdict values represents an invalid spec.
+            `verdict_not_available` also covers a spec with no feature actually judged against
+            a Pass/Fail/Rescan rule (no features, or every feature non-critical with no valid
+            tolerance) -- there is as little a verdict to serve as when measurement hasn't run.
         message:
           type: string
           description: Human-readable, safe to show to the supplier holding the phone.
