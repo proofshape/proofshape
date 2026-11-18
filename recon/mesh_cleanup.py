@@ -162,7 +162,10 @@ def _find_orientation_conflict(faces: np.ndarray) -> tuple[int, int] | None:
 
 
 def drop_faces_until_orientable(
-    vertices: np.ndarray, faces: np.ndarray
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    max_dropped_fraction: float = 0.01,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """Drop the fewest faces needed so the mesh orients, re-checking manifoldness as it goes.
 
@@ -177,11 +180,22 @@ def drop_faces_until_orientable(
     the face count (by at least two), so it ends within `len(faces)` rounds at worst, raising
     rather than returning an empty mesh if it ever runs out of faces.
 
+    Found on the same review: each round rebuilds the whole edge map from scratch and drops
+    only the two faces where the flood fill happened to stop, so that worst case is technically
+    bounded but impractically slow -- at 50k faces, `len(faces)/2` rounds would take hours, not
+    the few hundred milliseconds real decimation damage actually costs.
+    `max_dropped_fraction` (the real R-32 "all" run needed 4 of about 50,000 faces, far under
+    the 1% default) catches that case by raising once orientation drops exceed it, the same way
+    `write_glb_with_size_limit` refuses rather than decimating a mesh into nothing.
+
     Call this only on a mesh `drop_non_manifold_faces` has already cleaned -- same precondition
     as `_find_orientation_conflict`.
     """
+    if max_dropped_fraction <= 0:
+        raise ValueError("max_dropped_fraction must be positive.")
     vertices = np.asarray(vertices, dtype=np.float32)
     faces = np.asarray(faces, dtype=np.int32)
+    max_dropped = max(1, int(len(faces) * max_dropped_fraction))
     total_dropped = 0
 
     while True:
@@ -192,6 +206,12 @@ def drop_faces_until_orientable(
         conflict = _find_orientation_conflict(faces)
         if conflict is None:
             return vertices, faces, total_dropped
+        if total_dropped >= max_dropped:
+            raise ValueError(
+                f"mesh needs more than {max_dropped} faces dropped "
+                f"({max_dropped_fraction:.1%} of its original face count) to orient; "
+                "refusing rather than dropping the whole mesh one conflict at a time."
+            )
         face_a, face_b = conflict
         keep_face = np.ones(len(faces), dtype=bool)
         keep_face[face_a] = False

@@ -141,6 +141,36 @@ def test_drop_faces_until_orientable_leaves_an_already_orientable_mesh_untouched
     np.testing.assert_array_equal(kept_vertices, _TETRAHEDRON_VERTICES)
 
 
+def test_drop_faces_until_orientable_raises_once_past_the_dropped_fraction_cap():
+    # Found on review (@TabeenRaoof, PR #381): two independent non-orientable rings need two
+    # separate drops (4 faces of 10 total); a 10% cap only allows one.
+    second_ring_offset = len(_NON_ORIENTABLE_RING_VERTICES)
+    vertices = np.vstack(
+        [
+            _NON_ORIENTABLE_RING_VERTICES,
+            _NON_ORIENTABLE_RING_VERTICES + np.array([5.0, 0.0, 0.0]),
+        ]
+    )
+    faces = np.vstack(
+        [
+            _NON_ORIENTABLE_RING_FACES,
+            _NON_ORIENTABLE_RING_FACES + second_ring_offset,
+        ]
+    )
+
+    with pytest.raises(ValueError, match="faces dropped"):
+        mesh_cleanup.drop_faces_until_orientable(
+            vertices, faces, max_dropped_fraction=0.1
+        )
+
+
+def test_drop_faces_until_orientable_rejects_non_positive_fraction():
+    with pytest.raises(ValueError, match="max_dropped_fraction"):
+        mesh_cleanup.drop_faces_until_orientable(
+            _TETRAHEDRON_VERTICES, _TETRAHEDRON_FACES_CLOSED, max_dropped_fraction=0.0
+        )
+
+
 # --- keep_largest_connected_component -----------------------------------------------------------
 
 
