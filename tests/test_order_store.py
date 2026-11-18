@@ -709,6 +709,7 @@ def test_i10_axis_ambiguous_feature_above_any_axis_floor_stays_refused_without_v
     assert body["intake_check"][0]["status"] == "refused"
     assert "verdict" not in body
 
+
 def test_i10_mixed_order_blocks_only_on_critical_unverifiable_features(tmp_path):
     app = service.create_app(
         tmp_path / "sessions", orders_dir=tmp_path / "orders", buyer_key="buyer-secret"
