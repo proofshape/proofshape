@@ -26,56 +26,74 @@ floors sigma at `D073_SIGMA_FLOOR_BOARD_MM` first, via `np.fmax` (not `np.maximu
 treats a NaN sigma, R-10's own "fewer than two observations" marker, as "use the floor", where
 `maximum` would propagate the NaN into the comparison and silently break it).
 
-**sigma_floor covers out-of-plane (height) comparisons only (D-073) -- in-plane gets raw sigma,
-no floor, and two pools are judged independently, not one global worst vertex:** D-073 states
-the restriction explicitly -- "0.86 mm is sigma_floor for out-of-plane (height) features on the
-board reference only... I-07's `max(sigma, sigma_floor)` does not apply 0.86 to in-plane
-deviation (most Observed vertices are wall vertices, i.e. in-plane) until R-37 lands." It
-forbids *flooring* in-plane sigma with this figure -- it does not say in-plane evidence must
-always be discarded. Each Observed, measured vertex is classified out-of-plane (top `100 -
-TOP_REGION_PERCENTILE` percent of this session's own height-above-board distribution) or
-in-plane (everything else), using `recon.cad_size_check.compute_height_above_board` and the same
-percentile convention G-07/D-077's `per_vertex_height_reliability` already established for this
-exact board/wall distinction -- reused here, not reinvented. The two pools are then evaluated
-independently, each against its own worst-deviation vertex (generalising v1's original
-single-worst-vertex simplification to two separate worsts, one per pool, since they can no
-longer share one floor):
-
-- **Out-of-plane:** unchanged Fail/Pass/high-sigma logic, sigma floored at `D073_SIGMA_FLOOR_BOARD_MM`.
-- **In-plane:** no floor exists (pending R-37), so raw sigma is used as given. If the pool's own
-  worst-deviation vertex's raw sigma is NaN (R-10's "can't even estimate this" marker -- not
-  merely noisy, genuinely unassessed, the literal #157 scenario with no floor available to
-  neutralise it), that is reported as insufficient evidence (Rescan, its own reason code) --
-  matching R-16's own `insufficient_evidence` resolution to this identical ambiguity, mapped onto
-  the nearest safe verdict value (D-003: never invent a number to dress up a judgement the
-  evidence can't support). Otherwise, a deviation that clearly exceeds tolerance by more than
-  `k * raw_sigma` still Fails -- a genuine wall-side defect is real evidence of a problem
-  regardless of which pool's floor convention applies, and this project's whole purpose is
-  catching gross defects, not suppressing ones outside the one pool a floor happens to cover.
-  A raw in-plane sigma that is merely large (not NaN) doesn't by itself force anything: it can't
-  grant a Pass (no floor to trust one with), but it isn't treated as alarming on its own either --
-  it simply contributes nothing, leaving the out-of-plane pool's own result (if any) to stand.
+**sigma_floor covers out-of-plane (height, D-073, 0.86 mm) and in-plane (wall, D-078, R-37,
+5.278 mm) comparisons, each with its own measured figure, and every Observed vertex in a pool is
+checked, not just the pool's single worst one (caught on review, @TabeenRaoof, PR #379):** the
+first version of this module floored only out-of-plane sigma and left in-plane raw (D-073's
+"pending R-37" framing, true when this story started but superseded once PR #364/D-078 landed a
+real measured in-plane floor) and evaluated each pool against only its own single
+largest-deviation vertex. The reviewer gave concrete counterexamples where a second vertex, not
+the pool's worst one, was independently over tolerance or over the sigma-vs-tolerance margin --
+proposal 7.2's own wording binds *every* Observed vertex ("no Observed deviation above
+tolerance" for Pass; an exceeding deviation "at that location" for Fail means any location, not
+whichever one the pool's own argmax happens to pick). Each Observed, measured vertex is
+classified out-of-plane (top `100 - TOP_REGION_PERCENTILE` percent of this session's own
+height-above-board distribution) or in-plane (everything else), using
+`recon.cad_size_check.compute_height_above_board` and the same percentile convention
+G-07/D-077's `per_vertex_height_reliability` already established for this exact board/wall
+distinction -- reused here, not reinvented. Each pool's own sigma is floored with `np.fmax` at
+its own figure (`D073_SIGMA_FLOOR_BOARD_MM` out-of-plane, `D078_SIGMA_FLOOR_IN_PLANE_MM`
+in-plane -- `fmax` treats a NaN sigma, R-10's "fewer than two observations" marker, as "use the
+floor" in both pools alike, so neither pool needs a separate NaN-is-insufficient-evidence path
+any more). A pool then Fails if *any* of its vertices has `|deviation| > tolerance + k *
+sigma_eff` at that vertex; otherwise it Passes only if *every* vertex has `|deviation| <=
+tolerance` *and* `sigma_eff <= tolerance / k`; otherwise it Rescans as high-sigma. The two pools
+are evaluated independently (D-073/D-078 give them different floors, so they cannot share one
+sigma), and a feature's own rank is the worse of its two pools.
 
 **`k`/`sigma_floor` are consumed as given, never re-measured or re-derived here** (G-07's D-077,
-G-04's D-073) -- defined independently in this module rather than imported from
+G-04's D-073, R-37's D-078) -- defined independently in this module rather than imported from
 `inspection.intake_check` (I-09), matching this project's own existing precedent of each
 consumer keeping its own named copy of a team-agreed figure (G-07's own script does the same
 rather than importing G-04's).
 
+**Scope difference from I-09, by design, stated rather than left implicit (caught on review,
+@TabeenRaoof, PR #379):** I-09 refuses `face`/`overall` features outright at intake because
+nothing says which axis they check, and judges only `hole`/`edge` against D-078's figure. This
+module instead classifies by *vertex* height, not by feature *kind* -- consistent with the
+module's own "what a region is in v1" resolution above (every named feature, of any kind, is
+judged against the same global per-vertex measurement, since v1 binds no feature to actual CAD
+geometry). A `face`/`overall` feature here is judged against whichever pool(s) its global
+measurement's own worst vertices fall into, not refused for axis ambiguity the way I-09 refuses
+it at intake. This is intentional for v1 (the two stories answer different questions -- I-09
+flags Unverifiable before any photo exists; this module judges a real measurement after one
+does) but is a real scope mismatch worth a team decision before Tier 3 binds features to regions.
+
 **`reason_codes` vocabulary, defined here (caught on review, #302: none existed anywhere):**
 `f"{feature_name}_not_seen"` (Unobserved), `f"{feature_name}_deviation_out_of_spec"` (Fail --
 matches the contract's own committed example naming exactly, from either pool),
-`f"{feature_name}_high_sigma"` (out-of-plane, Observed, but too noisy to trust even with the
-floor applied), `f"{feature_name}_in_plane_insufficient_evidence"` (the in-plane pool's own
-worst-deviation vertex has no usable sigma estimate at all -- D-073), plus the already-defined
-`registration.REASON_ORIENTATION_AMBIGUOUS` and `"registration_failed"` (this module's own, for
-when registration/ambiguity/deviation couldn't be computed at all -- a best-effort post-
-reconstruction step, not a reconstruction failure).
+`f"{feature_name}_high_sigma"` (out-of-plane pool Rescan), `f"{feature_name}_in_plane_high_sigma"`
+(in-plane pool Rescan -- kept distinct from the out-of-plane code so a report can say which
+pool's floor was the problem), plus the already-defined `registration.REASON_ORIENTATION_AMBIGUOUS`
+and `"registration_failed"` (this module's own, for when registration/ambiguity/deviation
+couldn't be computed at all -- a best-effort post-reconstruction step, not a reconstruction
+failure).
 
-A feature with a missing or null `tolerance_mm` is refused outright (raises
-`RefusedToleranceError`), never defaulted or silently skipped -- the same discipline A-03/I-09
-apply, and the contract's `VerdictResult` has no "refused" verdict value to represent it, so the
-caller (`getVerdict`) turns this into an error response, not a verdict.
+A *critical* feature (contract's `SpecFeature.critical`) with a missing or null `tolerance_mm`
+is refused outright (raises `RefusedToleranceError`), never defaulted or silently skipped -- the
+same discipline A-03/I-09 apply, and the contract's `VerdictResult` has no "refused" verdict
+value to represent it, so the caller (`getVerdict`) turns this into an error response, not a
+verdict. A missing `critical` key is treated as critical (refuse), the same "refuse, don't
+assume" discipline as a missing tolerance itself -- only an explicit `critical: false` is read as
+non-critical. A non-critical feature with no tolerance is not refused: it is listed as its own
+region, contributing nothing (no tolerance exists to judge it against), rather than aborting the
+whole verdict for a feature the contract itself says doesn't need one (caught on review,
+@TabeenRaoof, PR #379 -- the contract's own 422 description already said "a critical spec
+feature," but the first version refused on *any* feature's null tolerance). A malformed spec
+(`features` present but not a list, or an entry that is not an object) is refused the same way,
+matching I-09's own "refuse, don't crash on an opaque, unvalidated spec dict" discipline
+(`recon/order_store.py` stores a buyer-supplied spec unvalidated), rather than raising an
+uncaught `AttributeError`/`TypeError` `getVerdict` would have to let through as a 500.
 """
 
 from __future__ import annotations
@@ -87,8 +105,11 @@ import numpy as np
 
 from recon.cad_size_check import compute_height_above_board
 
-# G-04's measured height sigma_floor_mm (D-073), board reference only.
+# G-04's measured out-of-plane (height) sigma_floor_mm (D-073), board reference only.
 D073_SIGMA_FLOOR_BOARD_MM = 0.86
+
+# R-37's measured in-plane (wall) sigma_floor_mm (D-078), board reference only.
+D078_SIGMA_FLOOR_IN_PLANE_MM = 5.278
 
 # G-07's consumable_k_estimate (measured 0.688, D-077) -- total error against
 # max(sigma, sigma_floor), the exact quantity this module's Fail/Pass rows use.
@@ -109,20 +130,38 @@ class RefusedToleranceError(ValueError):
     """A spec feature's tolerance_mm is missing or null -- refused, never defaulted."""
 
 
-def _pool_worst(
-    deviation_mm: np.ndarray, sigma_mm: np.ndarray
-) -> tuple[float, float, float] | None:
-    """For one pool (out-of-plane or in-plane, already sigma-prepared by the caller -- floored
-    or raw): the worst (largest |deviation|) vertex's own deviation and sigma, plus the pool's
-    own worst (largest) sigma. `None` if the pool is empty."""
+def _evaluate_pool(
+    deviation_mm: np.ndarray,
+    sigma_mm: np.ndarray,
+    floor_mm: float,
+    tolerance_mm: float,
+) -> tuple[str, float] | None:
+    """Evaluate one pool (out-of-plane or in-plane) against proposal 7.2's Pass/Fail rows,
+    checking *every* vertex in the pool, not just its single largest-deviation one (PR #379
+    review): Fail if any vertex's deviation exceeds `tolerance + k * sigma_eff` at that vertex;
+    Pass only if every vertex's deviation is within tolerance and every vertex's sigma_eff is
+    within `tolerance / k`; otherwise Rescan as high-sigma. `sigma_eff` is `sigma_mm` floored at
+    `floor_mm` via `np.fmax`, which also treats a NaN sigma (R-10's "fewer than two
+    observations" marker) as "use the floor" rather than propagating it.
+
+    Returns `(verdict, representative_deviation_mm)`, the verdict one of
+    `"Pass"`/`"Fail"`/`"Rescan"` and the representative deviation the pool's own
+    largest-magnitude vertex (for reporting only -- the rule above does not depend on it).
+    `None` if the pool is empty.
+    """
     if len(deviation_mm) == 0:
         return None
-    worst_index = int(np.argmax(np.abs(deviation_mm)))
-    return (
-        float(deviation_mm[worst_index]),
-        float(sigma_mm[worst_index]),
-        float(np.max(sigma_mm)),
+    sigma_eff_mm = np.fmax(sigma_mm, floor_mm)
+    representative_deviation_mm = float(
+        deviation_mm[int(np.argmax(np.abs(deviation_mm)))]
     )
+    if np.any(np.abs(deviation_mm) > tolerance_mm + D077_K * sigma_eff_mm):
+        return "Fail", representative_deviation_mm
+    if np.all(np.abs(deviation_mm) <= tolerance_mm) and np.all(
+        sigma_eff_mm <= tolerance_mm / D077_K
+    ):
+        return "Pass", representative_deviation_mm
+    return "Rescan", representative_deviation_mm
 
 
 def compute_verdict(
@@ -152,11 +191,22 @@ def compute_verdict(
     Returns a dict matching `VerdictResult` minus `declared_at` (always
     `"post_reconstruction"` here -- the caller sets it).
     """
-    for feature in spec.get("features", []):
-        if feature.get("tolerance_mm") is None:
+    features = spec.get("features")
+    if features is None:
+        features = []
+    elif not isinstance(features, list):
+        raise RefusedToleranceError(
+            "spec['features'] must be a list; refused, not assumed."
+        )
+    for feature in features:
+        if not isinstance(feature, dict):
             raise RefusedToleranceError(
-                f"feature {feature.get('name', '<unnamed feature>')!r} has a missing or "
-                "null tolerance_mm; refused, not defaulted."
+                "a feature entry must be an object; refused, not assumed."
+            )
+        if feature.get("critical", True) and feature.get("tolerance_mm") is None:
+            raise RefusedToleranceError(
+                f"critical feature {feature.get('name', '<unnamed feature>')!r} has a "
+                "missing or null tolerance_mm; refused, not defaulted."
             )
 
     observed_measured = (np.asarray(labels) == LABEL_OBSERVED) & (
@@ -164,15 +214,16 @@ def compute_verdict(
     )
     has_observed_data = bool(np.any(observed_measured))
 
-    out_of_plane_worst: tuple[float, float, float] | None = None
-    in_plane_worst: tuple[float, float, float] | None = None
+    out_of_plane_deviation = out_of_plane_sigma_raw = np.empty(0)
+    in_plane_deviation = in_plane_sigma_raw = np.empty(0)
+    overall_worst_deviation_mm: float | None = None
     if has_observed_data:
         observed_indices = np.flatnonzero(observed_measured)
         observed_deviation = np.asarray(deviation_mm)[observed_indices]
         observed_sigma_raw = np.asarray(sigma_mm, dtype=np.float64)[observed_indices]
 
-        # D-073: classify each Observed, measured vertex out-of-plane (top face) vs in-plane
-        # (wall) before deciding anything -- only the former may be floored.
+        # D-073/D-078: classify each Observed, measured vertex out-of-plane (top face) vs
+        # in-plane (wall) before deciding anything -- each pool gets its own measured floor.
         height_above_board_mm = compute_height_above_board(
             np.asarray(vertex_positions_mm)[observed_indices], board_plane
         )
@@ -182,25 +233,14 @@ def compute_verdict(
         out_of_plane_mask = height_above_board_mm >= top_region_threshold_mm
         in_plane_mask = ~out_of_plane_mask
 
-        out_of_plane_worst = _pool_worst(
-            observed_deviation[out_of_plane_mask],
-            np.fmax(observed_sigma_raw[out_of_plane_mask], D073_SIGMA_FLOOR_BOARD_MM),
-        )
-        # In-plane: raw sigma, never floored (D-073) -- a NaN here poisons `_pool_worst`'s own
-        # np.max on purpose, so "the pool's worst sigma is NaN" below catches it either way.
-        in_plane_worst = _pool_worst(
-            observed_deviation[in_plane_mask], observed_sigma_raw[in_plane_mask]
-        )
+        out_of_plane_deviation = observed_deviation[out_of_plane_mask]
+        out_of_plane_sigma_raw = observed_sigma_raw[out_of_plane_mask]
+        in_plane_deviation = observed_deviation[in_plane_mask]
+        in_plane_sigma_raw = observed_sigma_raw[in_plane_mask]
 
-    def _overall_worst_deviation_mm() -> float | None:
-        """For reporting only (unobserved/ambiguous/registration-failed regions still want some
-        `deviation_mm` to show) -- whichever pool's worst reading is larger in magnitude."""
-        candidates = [
-            w[0] for w in (out_of_plane_worst, in_plane_worst) if w is not None
-        ]
-        if not candidates:
-            return None
-        return max(candidates, key=abs)
+        overall_worst_deviation_mm = float(
+            observed_deviation[int(np.argmax(np.abs(observed_deviation)))]
+        )
 
     rank = {"Pass": 0, "Rescan": 1, "Fail": 2}
     verdict_rank = 0
@@ -209,7 +249,7 @@ def compute_verdict(
     if registration_failed:
         reason_codes.append(REASON_REGISTRATION_FAILED)
 
-    for feature in spec.get("features", []):
+    for feature in features:
         name = feature.get("name", "<unnamed feature>")
         tolerance_mm = feature.get("tolerance_mm")
 
@@ -231,11 +271,25 @@ def compute_verdict(
                 {
                     "name": name,
                     "provenance": "observed",
-                    "deviation_mm": _overall_worst_deviation_mm(),
+                    "deviation_mm": overall_worst_deviation_mm,
                     "contributes_to_verdict": False,
                 }
             )
             verdict_rank = max(verdict_rank, rank["Rescan"])
+            continue
+
+        if tolerance_mm is None:
+            # Non-critical feature, no tolerance to judge it against (the contract's own
+            # 422 description restricts refusal to critical features) -- contributes nothing,
+            # not even a reason code, rather than guessing a number or aborting the verdict.
+            regions.append(
+                {
+                    "name": name,
+                    "provenance": "observed",
+                    "deviation_mm": overall_worst_deviation_mm,
+                    "contributes_to_verdict": False,
+                }
+            )
             continue
 
         feature_rank = rank["Pass"]
@@ -243,46 +297,50 @@ def compute_verdict(
         feature_deviation_mm: float | None = None
         feature_contributes = False
 
-        if out_of_plane_worst is not None:
-            oop_deviation_mm, oop_vertex_sigma_mm, oop_pool_sigma_mm = (
-                out_of_plane_worst
-            )
-            if abs(oop_deviation_mm) > tolerance_mm + D077_K * oop_vertex_sigma_mm:
-                feature_rank = max(feature_rank, rank["Fail"])
+        out_of_plane_result = _evaluate_pool(
+            out_of_plane_deviation,
+            out_of_plane_sigma_raw,
+            D073_SIGMA_FLOOR_BOARD_MM,
+            tolerance_mm,
+        )
+        if out_of_plane_result is not None:
+            oop_verdict, oop_deviation_mm = out_of_plane_result
+            feature_rank = max(feature_rank, rank[oop_verdict])
+            if oop_verdict == "Fail":
                 feature_reason_codes.append(f"{name}_deviation_out_of_spec")
                 feature_deviation_mm = oop_deviation_mm
                 feature_contributes = True
-            elif oop_pool_sigma_mm <= tolerance_mm / D077_K:
+            elif oop_verdict == "Pass":
                 feature_deviation_mm = oop_deviation_mm
                 feature_contributes = True
             else:
-                feature_rank = max(feature_rank, rank["Rescan"])
                 feature_reason_codes.append(f"{name}_high_sigma")
 
-        if in_plane_worst is not None:
-            ip_deviation_mm, ip_vertex_sigma_mm, ip_pool_sigma_mm = in_plane_worst
-            if np.isnan(ip_pool_sigma_mm):
-                # The in-plane pool has no usable sigma estimate at all for its own worst
-                # vertex (R-10's NaN marker) -- genuinely insufficient evidence, not merely
-                # noisy, and no floor exists to neutralise it the way out-of-plane's does.
-                feature_rank = max(feature_rank, rank["Rescan"])
-                feature_reason_codes.append(f"{name}_in_plane_insufficient_evidence")
-            elif abs(ip_deviation_mm) > tolerance_mm + D077_K * ip_vertex_sigma_mm:
-                # A real, well-measured wall-side defect is still evidence of a problem --
-                # D-073 withholds the floor, not the ability to Fail on an obvious defect.
-                feature_rank = max(feature_rank, rank["Fail"])
+        in_plane_result = _evaluate_pool(
+            in_plane_deviation,
+            in_plane_sigma_raw,
+            D078_SIGMA_FLOOR_IN_PLANE_MM,
+            tolerance_mm,
+        )
+        if in_plane_result is not None:
+            ip_verdict, ip_deviation_mm = in_plane_result
+            feature_rank = max(feature_rank, rank[ip_verdict])
+            if ip_verdict == "Fail":
                 feature_reason_codes.append(f"{name}_deviation_out_of_spec")
                 if feature_deviation_mm is None or abs(ip_deviation_mm) > abs(
                     feature_deviation_mm
                 ):
                     feature_deviation_mm = ip_deviation_mm
                 feature_contributes = True
-            # else: in-plane looks fine on raw sigma alone, but raw sigma has no floor behind
-            # it -- D-073 gives this no standing to grant a Pass, so it contributes nothing
-            # and leaves the out-of-plane pool's own result (if any) to stand as-is.
+            elif ip_verdict == "Pass":
+                if feature_deviation_mm is None:
+                    feature_deviation_mm = ip_deviation_mm
+                    feature_contributes = True
+            else:
+                feature_reason_codes.append(f"{name}_in_plane_high_sigma")
 
         if feature_deviation_mm is None:
-            feature_deviation_mm = _overall_worst_deviation_mm()
+            feature_deviation_mm = overall_worst_deviation_mm
 
         regions.append(
             {

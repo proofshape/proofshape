@@ -154,6 +154,43 @@ def test_getverdict_refuses_a_null_tolerance_feature_end_to_end(tmp_path):
     assert response.json()["code"] == "tolerance_missing"
 
 
+def test_getverdict_404s_in_the_gap_before_measurement_finishes_not_rescan(tmp_path):
+    """PR #379 review (@TabeenRaoof): run_session marks reconstruction "complete" and saves the
+    record before calling run_post_reconstruction_measurement, which then writes `ambiguity`
+    separately. A request landing in that window must not see a Rescan that looks like a final
+    answer for a part that was never actually measured. TestClient runs background tasks to
+    completion before a request returns, so the two steps can't actually race inside this test
+    -- instead, the record is rewritten straight after a normal finish to the exact state that
+    window looks like (reconstruction complete, no `ambiguity` key yet), which is what
+    get_verdict's own check above this test's sibling exercises; this test checks the other
+    `reconstruction.status == "complete"` branch specifically."""
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+        pipeline_runner=_make_pipeline_runner(),
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [{"name": "overall_A", "kind": "overall", "tolerance_mm": 5.0}]
+        }
+        session_id = _finish_a_session_with_cad(client, spec)
+
+        record_path = tmp_path / "sessions" / session_id / "session.json"
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        assert record["reconstruction"]["status"] == "complete"
+        assert (
+            "ambiguity" in record
+        )  # sanity: a normal finish really did write this key
+        del record["ambiguity"]
+        record_path.write_text(json.dumps(record), encoding="utf-8")
+
+        response = client.get(f"/v1/sessions/{session_id}/verdict")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "verdict_not_available"
+
+
 def test_getverdict_still_404s_before_reconstruction_completes(tmp_path):
     app = service.create_app(
         tmp_path / "sessions",

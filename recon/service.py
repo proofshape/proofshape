@@ -1264,7 +1264,25 @@ def create_app(
         )
 
         ambiguity_record = record.get("ambiguity")
-        registration_failed = ambiguity_record is None or "error" in ambiguity_record
+        if ambiguity_record is None:
+            # PR #379 review (@TabeenRaoof): run_session marks reconstruction "complete" and
+            # saves the record *before* calling run_post_reconstruction_measurement (so a crash
+            # in the latter can never leave the former unpersisted) -- a request landing in that
+            # window previously fell through to registration_failed below and returned a
+            # Rescan that looked final, for a part that was never actually measured. Measurement
+            # genuinely not having run yet is distinct from it having run and recorded an error;
+            # only the latter is `registration_failed`.
+            return error(
+                404,
+                ErrorDetail(
+                    code="verdict_not_available",
+                    message=(
+                        "Reconstruction is complete, but post-reconstruction measurement "
+                        "has not finished yet."
+                    ),
+                ),
+            )
+        registration_failed = "error" in ambiguity_record
         orientation_ambiguous = bool(
             not registration_failed and ambiguity_record.get("orientation_ambiguous")
         )

@@ -2,7 +2,7 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.3.0"
+  version: "1.4.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
@@ -12,6 +12,8 @@ info:
     `vlm_feedback` on the upload response and two error codes; a v1.0 client is unaffected.
     1.2.0 (R-34) additively introduces buyer orders, stored CAD metadata, and named order/verdict errors.
     1.3.0 (C-16) additively exposes A-03's server-side prose-to-spec parser to the buyer page.
+    1.4.0 (I-07) additively adds the `tolerance_missing` error and getVerdict's 422 response, for
+    a critical spec feature whose tolerance_mm is missing or null at verdict time.
 
 servers:
   - url: /v1

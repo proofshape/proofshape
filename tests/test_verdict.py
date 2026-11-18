@@ -11,6 +11,7 @@ from inspection.deviation import compute_deviation
 from inspection.verdict import (
     D073_SIGMA_FLOOR_BOARD_MM,
     D077_K,
+    D078_SIGMA_FLOOR_IN_PLANE_MM,
     RefusedToleranceError,
     compute_verdict,
 )
@@ -88,6 +89,34 @@ def _top_face_center_vertex_index(
     return int(
         np.argmin(np.linalg.norm(cad_frame_vertices - top_face_center_target, axis=1))
     )
+
+
+def _second_top_face_vertex_index(
+    cad_vertices_mm: np.ndarray, sample: synthetic.SyntheticSample
+) -> int:
+    """A second, distinct out-of-plane (top-face) vertex, near a corner rather than the center
+    -- the whole top face sits at the same cad-frame z=30mm as `_top_face_center_vertex_index`
+    (this fixture's cube), strictly above every wall vertex's z=15mm, so any point on it clears
+    the top-10%-of-height-above-board threshold the same way. Needed for PR #379's regression
+    tests, which plant two different top-face vertices to show Fail/Rescan must be decided from
+    every vertex in a pool, not just its single largest-deviation one."""
+    rotation = np.asarray(sample.sidecar["transform"]["rotation"], dtype=float)
+    translation = np.asarray(sample.sidecar["transform"]["translation_mm"], dtype=float)
+    cad_frame_vertices = (sample.vertices_mm - translation) @ rotation
+    corner_target = np.array([3.0, 3.0, 30.0])
+    return int(np.argmin(np.linalg.norm(cad_frame_vertices - corner_target, axis=1)))
+
+
+def _top_face_outward_direction(sample: synthetic.SyntheticSample) -> np.ndarray:
+    """The top face's own normal (CAD-frame +z, mapped into model frame) -- unlike
+    `_outward_offset_direction`, this is the same direction for *every* top-face vertex, center
+    or corner, since the whole face is flat. `_outward_offset_direction`'s bbox-center-relative
+    heuristic only coincides with the true normal for a vertex directly above the bbox center
+    (confirmed: a corner vertex offset that way measures well under its own planted magnitude,
+    since part of the displacement is tangent to the face, not normal to it)."""
+    rotation = np.asarray(sample.sidecar["transform"]["rotation"], dtype=float)
+    direction = np.array([0.0, 0.0, 1.0]) @ rotation.T
+    return direction / np.linalg.norm(direction)
 
 
 def _clean_sample_deviation(seed: int = 0, patch_fraction: float = 0.0):
@@ -170,11 +199,11 @@ def test_planted_deviation_beyond_tolerance_fails():
     assert "overall_deviation_out_of_spec" in result["reason_codes"]
 
 
-def test_in_plane_deviation_with_a_real_sigma_still_fails():
-    """D-073 withholds the height floor from in-plane (wall) comparisons -- it does not say a
-    genuine, well-measured wall-side defect can't Fail a part. With an ordinary (non-NaN) raw
-    sigma, a 2.0mm in-plane defect (the side-face center, reused from this module's own earlier
-    Fail test) must still Fail, using its own raw sigma directly, no floor involved."""
+def test_in_plane_deviation_beyond_the_measured_floor_margin_fails():
+    """D-078/R-37 gives in-plane (wall) comparisons their own real measured floor (5.278mm) --
+    a genuine, large wall-side defect, well beyond even that floor's margin, must still Fail.
+    tolerance 0.5mm + k*D078_SIGMA_FLOOR_IN_PLANE_MM (0.70*5.278=3.6946mm) margin = 4.1946mm;
+    a 6.0mm planted deviation clears it comfortably."""
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
@@ -183,7 +212,7 @@ def test_in_plane_deviation_with_a_real_sigma_still_fails():
     vertex_index = _face_center_vertex_index(cad_vertices, sample)
     outward = _outward_offset_direction(cad_vertices, sample, vertex_index)
     model_vertices = sample.vertices_mm.copy()
-    model_vertices[vertex_index] = model_vertices[vertex_index] + 2.0 * outward
+    model_vertices[vertex_index] = model_vertices[vertex_index] + 6.0 * outward
 
     deviation_mm, deviation_measured = compute_deviation(
         (model_vertices, sample.faces, sample.labels),
@@ -193,8 +222,6 @@ def test_in_plane_deviation_with_a_real_sigma_still_fails():
     )
     sigma_mm = np.full(len(sample.labels), 0.3)
 
-    # 2.0mm planted deviation; tolerance 0.5mm + k*raw_sigma (0.70*0.3=0.21mm) margin = 0.71mm,
-    # well under 2.0mm -- must Fail, with no sigma_floor anywhere in this calculation.
     result = compute_verdict(
         deviation_mm,
         deviation_measured,
@@ -210,12 +237,13 @@ def test_in_plane_deviation_with_a_real_sigma_still_fails():
     assert "overall_deviation_out_of_spec" in result["reason_codes"]
 
 
-def test_in_plane_nan_sigma_rescans_as_insufficient_evidence_not_an_automatic_pass():
-    """The one case D-073 really guards against: the in-plane pool's own worst-deviation vertex
-    has no usable sigma at all (R-10's NaN, fewer-than-two-observations marker) -- out-of-plane
-    would neutralise this via the floor (np.fmax); in-plane has no floor to neutralise it with,
-    so this must Rescan as insufficient evidence, never silently Pass (the #157 trap, unguarded)
-    and never silently Fail off a fabricated number either."""
+def test_in_plane_deviation_within_the_measured_floor_margin_rescans_not_passes():
+    """The flip side of D-078's floor being real and large: a wall-side defect too small to
+    clear the floor's own margin cannot be told apart from noise, so it must Rescan as
+    high-sigma, never silently Pass -- the same honesty D-073's height floor already required,
+    now true for in-plane too (caught on review, @TabeenRaoof, PR #379: the first version of
+    this story left in-plane unfloored and would have Passed this exact case on raw sigma
+    alone)."""
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
@@ -233,8 +261,10 @@ def test_in_plane_nan_sigma_rescans_as_insufficient_evidence_not_an_automatic_pa
         FLAT_BOARD,
     )
     sigma_mm = np.full(len(sample.labels), 0.3)
-    sigma_mm[vertex_index] = np.nan  # fewer than 2 observations, R-10's own marker
 
+    # 2.0mm planted deviation; tolerance 0.5mm + k*floor (0.70*5.278=3.6946mm) margin = 4.1946mm
+    # -- 2.0mm sits well inside it, so this cannot Fail; D-078's floor also blocks a Pass
+    # (5.278 > 0.5/0.70=0.714mm), so it must Rescan.
     result = compute_verdict(
         deviation_mm,
         deviation_measured,
@@ -246,7 +276,158 @@ def test_in_plane_nan_sigma_rescans_as_insufficient_evidence_not_an_automatic_pa
     )
 
     assert result["verdict"] == "Rescan"
-    assert "overall_in_plane_insufficient_evidence" in result["reason_codes"]
+    assert "overall_in_plane_high_sigma" in result["reason_codes"]
+
+
+def test_157_nan_sigma_in_plane_is_also_clamped_via_fmax_not_passed_through():
+    """The in-plane analogue of the #157 regression below: a NaN raw sigma (R-10's
+    fewer-than-two-observations marker) on a wall vertex must be floored to
+    D078_SIGMA_FLOOR_IN_PLANE_MM via np.fmax, not propagated into the comparison -- the same
+    defence out-of-plane already had, now true for in-plane since D-078 gives it a real floor
+    too."""
+    sample, cad_vertices, _cf, deviation_mm, deviation_measured = (
+        _clean_sample_deviation()
+    )
+    wall_vertex_index = _face_center_vertex_index(cad_vertices, sample)
+    deviation_mm = deviation_mm.copy()
+    deviation_mm[wall_vertex_index] = 0.05
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    sigma_mm[wall_vertex_index] = np.nan
+
+    # tolerance 10.0mm is generous enough that D078_SIGMA_FLOOR_IN_PLANE_MM (5.278mm) itself
+    # clears tolerance/k (10.0/0.70=14.29mm) -- isolates "does NaN crash or silently misbehave"
+    # from the separate, much stricter floor-vs-tight-tolerance Rescan case above.
+    result = compute_verdict(
+        deviation_mm,
+        deviation_measured,
+        sample.labels,
+        sigma_mm,
+        sample.vertices_mm,
+        FLAT_BOARD_PLANE,
+        _spec(tolerance_mm=10.0),
+    )
+
+    assert result["verdict"] == "Pass"
+
+
+def test_fail_can_be_driven_by_a_vertex_other_than_the_largest_deviation_one():
+    """PR #379 review (@TabeenRaoof): evaluating only the pool's single largest-deviation vertex
+    missed a *different* vertex independently failing its own margin. Two top-face vertices:
+    3.3mm deviation with sigma 2.0 (its own margin: 2.0 + 0.70*2.0 = 3.4mm, 3.3 does not clear
+    it) and 3.0mm deviation with sigma 0.5 -- floored to D073_SIGMA_FLOOR_BOARD_MM, 0.86mm
+    (margin: 2.0 + 0.70*0.86 = 2.602mm, 3.0 clears it). The pool's single worst vertex by
+    deviation (3.3mm) does not itself Fail, but the per-vertex rule must still Fail from the
+    second vertex -- the single-worst-vertex design (only checking 3.3mm's own margin) would
+    have Passed this instead."""
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    first_index = _top_face_center_vertex_index(cad_vertices, sample)
+    second_index = _second_top_face_vertex_index(cad_vertices, sample)
+    assert first_index != second_index
+    outward = _top_face_outward_direction(sample)
+    model_vertices = sample.vertices_mm.copy()
+    model_vertices[first_index] = model_vertices[first_index] + 3.3 * outward
+    model_vertices[second_index] = model_vertices[second_index] + 3.0 * outward
+
+    deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, sample.labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    sigma_mm[first_index] = 2.0
+    sigma_mm[second_index] = 0.5
+
+    result = compute_verdict(
+        deviation_mm,
+        deviation_measured,
+        sample.labels,
+        sigma_mm,
+        model_vertices,
+        FLAT_BOARD_PLANE,
+        _spec(tolerance_mm=2.0),
+    )
+
+    assert result["verdict"] == "Fail"
+    assert "overall_deviation_out_of_spec" in result["reason_codes"]
+
+
+def test_fail_is_not_masked_as_rescan_by_a_lower_sigma_vertex_elsewhere():
+    """A second PR #379 review counterexample: the pool's single worst-deviation vertex (2.5mm,
+    sigma 2.2 -- its own margin 1.0 + 0.70*2.2 = 2.54mm, 2.5 does not clear it, and
+    2.2 > tolerance/k = 1.4286mm so that vertex alone would only Rescan) must not let a second
+    vertex's own Fail go unseen: 2.3mm deviation with sigma 0.5, floored to 0.86mm (margin
+    1.0 + 0.70*0.86 = 1.602mm, 2.3 clears it). The single-worst-vertex design evaluated only the
+    first vertex and returned Rescan (high-sigma); the per-vertex rule must Fail instead."""
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    first_index = _top_face_center_vertex_index(cad_vertices, sample)
+    second_index = _second_top_face_vertex_index(cad_vertices, sample)
+    assert first_index != second_index
+    outward = _top_face_outward_direction(sample)
+    model_vertices = sample.vertices_mm.copy()
+    model_vertices[first_index] = model_vertices[first_index] + 2.5 * outward
+    model_vertices[second_index] = model_vertices[second_index] + 2.3 * outward
+
+    deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, sample.labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    sigma_mm[first_index] = 2.2
+    sigma_mm[second_index] = 0.5
+
+    result = compute_verdict(
+        deviation_mm,
+        deviation_measured,
+        sample.labels,
+        sigma_mm,
+        model_vertices,
+        FLAT_BOARD_PLANE,
+        _spec(tolerance_mm=1.0),
+    )
+
+    assert result["verdict"] == "Fail"
+    assert "overall_deviation_out_of_spec" in result["reason_codes"]
+
+
+def test_deviation_within_sigma_margin_but_above_raw_tolerance_rescans_not_passes():
+    """A third PR #379 review counterexample, needing only one vertex: a deviation that clears
+    its own Fail margin (1.5mm vs. 1.0 + 0.70*0.9 = 1.63mm) is not automatically a Pass just
+    because its sigma is low enough -- proposal 7.2's Pass row also requires "no Observed
+    deviation above tolerance" outright, and 1.5mm is itself above the 1.0mm tolerance. The
+    single-worst-vertex design's Pass branch checked only the pool's sigma against
+    tolerance/k, never the deviation itself against tolerance -- it would have Passed this."""
+    sample, cad_vertices, _cf, deviation_mm, deviation_measured = (
+        _clean_sample_deviation()
+    )
+    top_vertex_index = _top_face_center_vertex_index(cad_vertices, sample)
+    deviation_mm = deviation_mm.copy()
+    deviation_mm[top_vertex_index] = 1.5
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    sigma_mm[top_vertex_index] = 0.9
+
+    result = compute_verdict(
+        deviation_mm,
+        deviation_measured,
+        sample.labels,
+        sigma_mm,
+        sample.vertices_mm,
+        FLAT_BOARD_PLANE,
+        _spec(tolerance_mm=1.0),
+    )
+
+    assert result["verdict"] == "Rescan"
+    assert "overall_high_sigma" in result["reason_codes"]
 
 
 def test_fully_unobserved_mesh_rescans_not_seen():
@@ -307,6 +488,10 @@ def test_deviation_only_in_an_unobserved_region_does_not_fail():
     )  # confirms the plant is truly invisible
     sigma_mm = np.full(len(sample.labels), 0.3)
 
+    # tolerance 10.0mm, not 1.0mm: D078_SIGMA_FLOOR_IN_PLANE_MM (5.278mm) needs
+    # tolerance >= 5.278*0.70 = 3.6946mm to ever Pass the in-plane pool on its own -- a tight
+    # tolerance would Rescan this clean part on the floor alone, unrelated to what this test is
+    # actually checking (that an Unobserved-only defect can't fail or rescan a part by itself).
     result = compute_verdict(
         deviation_mm,
         deviation_measured,
@@ -314,7 +499,7 @@ def test_deviation_only_in_an_unobserved_region_does_not_fail():
         sigma_mm,
         model_vertices,
         FLAT_BOARD_PLANE,
-        _spec(tolerance_mm=1.0),
+        _spec(tolerance_mm=10.0),
     )
 
     assert result["verdict"] == "Pass"
@@ -428,9 +613,10 @@ def test_157_nan_sigma_is_also_clamped_via_fmax_not_propagated():
     assert result["verdict"] == "Pass"
 
 
-def test_threshold_constants_match_g04_and_g07():
+def test_threshold_constants_match_g04_g07_and_d078():
     assert D073_SIGMA_FLOOR_BOARD_MM == 0.86
     assert D077_K == 0.70
+    assert D078_SIGMA_FLOOR_IN_PLANE_MM == 5.278
 
 
 def test_null_tolerance_is_refused_not_defaulted():
@@ -454,6 +640,104 @@ def test_missing_tolerance_key_is_also_refused():
     sample, _cv, _cf, deviation_mm, deviation_measured = _clean_sample_deviation()
     sigma_mm = np.full(len(sample.labels), 0.3)
     spec = {"features": [{"name": "edge_1", "kind": "edge"}]}
+
+    with pytest.raises(RefusedToleranceError):
+        compute_verdict(
+            deviation_mm,
+            deviation_measured,
+            sample.labels,
+            sigma_mm,
+            sample.vertices_mm,
+            FLAT_BOARD_PLANE,
+            spec,
+        )
+
+
+def test_non_critical_null_tolerance_is_not_refused_but_contributes_nothing():
+    """The contract's own 422 description restricts refusal to a *critical* feature
+    (caught on review, @TabeenRaoof, PR #379: the first version refused on any feature's null
+    tolerance, critical or not). A non-critical feature with no tolerance has nothing to judge
+    it against -- listed as its own region, contributing nothing, not aborting the verdict."""
+    sample, _cv, _cf, deviation_mm, deviation_measured = _clean_sample_deviation()
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    spec = {
+        "features": [
+            {
+                "name": "critical_one",
+                "kind": "overall",
+                "tolerance_mm": 5.0,
+                "critical": True,
+            },
+            {
+                "name": "optional_one",
+                "kind": "overall",
+                "tolerance_mm": None,
+                "critical": False,
+            },
+        ]
+    }
+
+    result = compute_verdict(
+        deviation_mm,
+        deviation_measured,
+        sample.labels,
+        sigma_mm,
+        sample.vertices_mm,
+        FLAT_BOARD_PLANE,
+        spec,
+    )
+
+    assert result["verdict"] == "Pass"
+    statuses = {r["name"]: r for r in result["regions"]}
+    assert statuses["critical_one"]["contributes_to_verdict"] is True
+    assert statuses["optional_one"]["contributes_to_verdict"] is False
+    assert not any(code.startswith("optional_one_") for code in result["reason_codes"])
+
+
+def test_missing_critical_key_defaults_to_refused_same_as_a_missing_tolerance():
+    """A missing `critical` key is treated as critical (refuse on a null tolerance) -- the same
+    "refuse, don't assume" discipline a missing tolerance itself already gets. Only an explicit
+    `critical: false` is read as non-critical."""
+    sample, _cv, _cf, deviation_mm, deviation_measured = _clean_sample_deviation()
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    spec = {"features": [{"name": "edge_1", "kind": "edge", "tolerance_mm": None}]}
+
+    with pytest.raises(RefusedToleranceError):
+        compute_verdict(
+            deviation_mm,
+            deviation_measured,
+            sample.labels,
+            sigma_mm,
+            sample.vertices_mm,
+            FLAT_BOARD_PLANE,
+            spec,
+        )
+
+
+def test_non_list_features_is_refused_not_crashed():
+    """`recon/order_store.py` stores a buyer-supplied spec as an opaque, unvalidated dict
+    (I-09's own precedent) -- a malformed `features` value must be refused, not left to crash
+    with an uncaught AttributeError/TypeError `getVerdict` would have to let through as a 500."""
+    sample, _cv, _cf, deviation_mm, deviation_measured = _clean_sample_deviation()
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    spec = {"features": "not-a-list"}
+
+    with pytest.raises(RefusedToleranceError):
+        compute_verdict(
+            deviation_mm,
+            deviation_measured,
+            sample.labels,
+            sigma_mm,
+            sample.vertices_mm,
+            FLAT_BOARD_PLANE,
+            spec,
+        )
+
+
+def test_non_dict_feature_entry_is_refused_not_crashed():
+    sample, _cv, _cf, deviation_mm, deviation_measured = _clean_sample_deviation()
+    sigma_mm = np.full(len(sample.labels), 0.3)
+    spec = {"features": ["not-a-dict"]}
 
     with pytest.raises(RefusedToleranceError):
         compute_verdict(
