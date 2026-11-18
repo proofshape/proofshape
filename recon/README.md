@@ -155,17 +155,23 @@ chmod 600 ~/.proofshape_buyer_key
    *visit this website*, and confirm. Do this again if Safari asks after the dev server restarts.
    Then allow the camera and motion access.
 8. **Capture 25–30 frames** around the part until coverage reads 13/13, then press Finish.
-   **Don't switch apps mid-session:** iOS reloads the page, and the session is lost (#352, fixed
-   by C-24). At home, the model was back 31–51 s after Finish, and the report link opens from the
-   result.
+   Stay in the same Safari tab. Switching to another app is fine: if iOS reloads the page, it
+   offers the session back (C-24). At home, the model was back 31–51 s after Finish, and the
+   report link opens from the result.
 
 ### If something goes wrong
-- **The phone shows "uploadFrame: response body was not valid JSON (status 500)".** The service
-  is down. Vite's proxy answers for it with an empty 500 (#351, reworded by C-24). Run terminal
-  1's last command again, then capture again on the phone: the same session continues, and
-  frames already accepted are kept. That was tested after 91 s and 138 s outages.
-- **The page reloaded and the session is gone.** Open the same capture link again and start a new
-  session. An order can be used for more than one session.
+- **The phone shows "The service isn't reachable right now — wait a moment and try again."** The
+  service is down, and Vite's proxy answers for it with an empty 500 (#351, C-24). Run terminal
+  1's last command again, wait for "Application startup complete", then capture again on the
+  phone. The same session continues, and frames already accepted are kept. That was tested after
+  91 s and 138 s outages (R-36), and again on 2026-11-18 (C-24).
+- **The page reloaded mid-session.** It says "An unfinished session is saved in this tab". Tap
+  **Continue session**, allow the camera and motion again if asked, and carry on: coverage comes
+  back, and the next frame goes into the same session. If Finish had already gone through, tap
+  **Show result** instead. (#352, C-24.)
+- **The session is gone anyway**, for example the link was opened in a new tab, or the phone says
+  "This session can't take more frames". Open the capture link again and start a new session. An
+  order can be used for more than one session.
 - **The phone can't load the page at all.** The network keeps devices apart. Move both onto the
   iPhone's Personal Hotspot, then restart terminal 3, because the LAN address changes.
 - **The first run is very slow.** Memory: see step 1, and the ceiling below.
