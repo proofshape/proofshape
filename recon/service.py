@@ -173,6 +173,20 @@ class VerdictResult(BaseModel):
     narrative: str | None = None
 
 
+def verdict_result_with_narrative(payload: dict[str, Any]) -> VerdictResult:
+    """A-09/D-082: attaches the deterministic narrative to a `VerdictResult` payload about to
+    be served, from either `getVerdict` (session-level, both the intake-shortcut and
+    post-reconstruction returns) or `getOrder`/`createOrder` (order-level, I-10's own intake
+    verdict) -- every place this project serves a `VerdictResult` gets the same field, round 6,
+    @TabeenRaoof, PR #391."""
+    from recon.report_narrative import VerdictInput, generate_narrative
+
+    # generate_narrative is the v1, template-only entry point -- never generate_llm_narrative,
+    # which is kept as untested-in-production groundwork only (D-082).
+    narrative = generate_narrative(VerdictInput.model_validate(payload)).text
+    return VerdictResult(**payload, narrative=narrative)
+
+
 OrderResponse.model_rebuild()
 
 
@@ -750,7 +764,9 @@ def create_app(
                 for result in check_intake_spec(record["spec"])
             ],
             verdict=(
-                None if intake_verdict is None else VerdictResult(**intake_verdict)
+                None
+                if intake_verdict is None
+                else verdict_result_with_narrative(intake_verdict)
             ),
         )
 
@@ -1268,17 +1284,9 @@ def create_app(
             )
         from inspection.intake_check import intake_unverifiable_verdict
 
-        from recon.report_narrative import VerdictInput, generate_narrative
-
-        def with_narrative(payload: dict) -> VerdictResult:
-            # A-09/D-082: generate_narrative is the v1, template-only entry point -- never
-            # generate_llm_narrative, which is kept as untested-in-production groundwork only.
-            narrative = generate_narrative(VerdictInput.model_validate(payload)).text
-            return VerdictResult(**payload, narrative=narrative)
-
         intake_verdict = intake_unverifiable_verdict(order["spec"])
         if intake_verdict is not None:
-            return with_narrative(intake_verdict)
+            return verdict_result_with_narrative(intake_verdict)
 
         reconstruction = record.get("reconstruction", {})
         if reconstruction.get("status") != "complete":
@@ -1395,7 +1403,9 @@ def create_app(
                 404, ErrorDetail(code="verdict_not_available", message=str(exc))
             )
 
-        return with_narrative({**result, "declared_at": "post_reconstruction"})
+        return verdict_result_with_narrative(
+            {**result, "declared_at": "post_reconstruction"}
+        )
 
     @app.get(
         "/v1/sessions/{session_id}/model.glb",

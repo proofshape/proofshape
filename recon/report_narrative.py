@@ -68,6 +68,18 @@ output can state an outcome by construction -- the option both reviewers preferr
 abandoning the generative component entirely. Accepting the residual risk and shipping free
 prose anyway was also raised and rejected: it would weaken the hard rule for convenience, which
 AGENTS.md says not to do.
+
+**Round 6, @TabeenRaoof, PR #391: the snake_case gap reached the served report.** Round 4's
+`_sanitize_for_narrative` worked for a name joined by spaces or hyphens, but `_` is a word
+character, so `_BANNED_WORD_RE`'s `\b` never fired next to one -- and snake_case is how A-03 and
+every fixture actually name a feature (`mounting_hole_A`), not an edge case. `part_passed_
+inspection` reached the served `narrative` verbatim. `_normalize_underscores` fixes a region
+name (safe: it has no structural convention of its own to protect); a reason code needed
+different handling, since *its own* underscores are this project's fixed vocabulary
+(`observed_deviation_out_of_spec`) and normalizing the whole thing the same way would wrongly
+sanitize every legitimate code. `_sanitize_reason_code` instead isolates the buyer-controlled
+name by stripping one of I-07/I-09/I-10's own known fixed prefixes/suffixes first, and
+normalizes/checks only that isolated portion.
 """
 
 from __future__ import annotations
@@ -239,17 +251,81 @@ class NarrativeResult(BaseModel):
         return self
 
 
+def _normalize_underscores(text: str) -> str:
+    """Snake_case is how A-03 and every fixture name a feature (`mounting_hole_A`) -- `_` is a
+    word character, so `_BANNED_WORD_RE`'s `\\b` never fires next to one, and `part_passed_
+    inspection` reaches `_BANNED_WORD_RE` as one unbroken token (round 6, @TabeenRaoof, PR #391).
+    A hyphen already works (`-` is not a word character, so `within-tolerance` was always
+    caught); only `_` needed this. Safe for a region name specifically, which has no structural
+    convention of its own to protect -- unlike a reason code, whose *own* underscores are this
+    project's fixed vocabulary and must not be blindly normalized the same way
+    (`_sanitize_reason_code` below)."""
+    return text.replace("_", " ")
+
+
+def _contains_unsafe_name(name: str, verdict_input: VerdictInput) -> bool:
+    return (
+        _invalid_figure_or_outcome_reason(_normalize_underscores(name), verdict_input)
+        is not None
+    )
+
+
 def _sanitize_for_narrative(
     text: str, verdict_input: VerdictInput, fallback: str
 ) -> str:
-    """A region's own name and a reason code are buyer/feature-name-derived, unvalidated text
-    (R-34) that can reach the deterministic narrative without the model ever being involved --
-    the same figure/outcome-language checks applied to a model's explanation apply here too
-    (round 4, @mbj1994, PR #387). An unsafe value is replaced by `fallback` rather than refusing
-    the whole narrative: the deterministic path must always produce something."""
-    if _invalid_figure_or_outcome_reason(text, verdict_input) is not None:
+    """A region's own name is buyer-supplied, unvalidated text (R-34) that can reach the
+    deterministic narrative without the model ever being involved -- the same figure/outcome-
+    language checks applied to a model's explanation apply here too (round 4, @mbj1994, PR
+    #387), on the snake_case-normalized name (round 6). An unsafe value is replaced by
+    `fallback` rather than refusing the whole narrative: the deterministic path must always
+    produce something."""
+    if _contains_unsafe_name(text, verdict_input):
         return fallback
     return text
+
+
+# I-07/I-09/I-10's own fixed reason-code shapes (inspect/inspection/verdict.py,
+# inspect/inspection/intake_check.py) -- the buyer-controlled feature name is always a prefix or
+# a suffix away from one of these, never embedded with no landmark at all. Longest suffix first:
+# "_in_plane_high_sigma" itself ends with "_high_sigma", so checking the short one first would
+# cut the name at the wrong point.
+_REASON_CODE_SUFFIXES = (
+    "_in_plane_high_sigma",
+    "_deviation_out_of_spec",
+    "_high_sigma",
+    "_not_seen",
+)
+_REASON_CODE_PREFIXES = (
+    "intake_tolerance_below_method_floor_any_axis:",
+    "intake_tolerance_below_k_sigma_floor:",
+)
+# This project's own fixed text -- never derived from a buyer-controlled name at all.
+_NAMELESS_REASON_CODES = frozenset(
+    {"registration_orientation_ambiguous", "registration_failed"}
+)
+
+
+def _sanitize_reason_code(code: str, verdict_input: VerdictInput, fallback: str) -> str:
+    """Round 6, @TabeenRaoof, PR #391: normalizing a reason code's underscores the same blunt
+    way as a region name would also flag `observed_deviation_out_of_spec`/`..._not_seen` and
+    every other legitimate code this project's own backend builds -- their *own* underscores are
+    fixed vocabulary, not buyer text, and "spec"/"sigma" there are not invented claims. Instead,
+    isolate exactly the buyer-controlled name portion by stripping one of I-07/I-09/I-10's known
+    fixed prefixes/suffixes, and normalize/check only that isolated portion. A code matching none
+    of those known shapes is opaque -- checked and sanitized whole, the previous behaviour."""
+    if code in _NAMELESS_REASON_CODES:
+        return code
+    for prefix in _REASON_CODE_PREFIXES:
+        if code.startswith(prefix):
+            name = code[len(prefix) :]
+            return fallback if _contains_unsafe_name(name, verdict_input) else code
+    for suffix in _REASON_CODE_SUFFIXES:
+        if code.endswith(suffix):
+            name = code[: -len(suffix)]
+            return fallback if _contains_unsafe_name(name, verdict_input) else code
+    if _invalid_figure_or_outcome_reason(code, verdict_input) is not None:
+        return fallback
+    return code
 
 
 def template_narrative(verdict_input: VerdictInput) -> str:
@@ -273,7 +349,11 @@ def template_narrative(verdict_input: VerdictInput) -> str:
             if region.deviation_mm is None:
                 details.append(label)
             else:
-                details.append(f"{label} ({region.deviation_mm:.2f} mm)")
+                # round(d, 2) + 0.0 folds a rounded -0.00 back to 0.0 (round #391,
+                # @TabeenRaoof) -- a clean part's raw -0.0026 mm reads as "-0.00 mm" otherwise,
+                # which looks like a sign error rather than a rounding artifact.
+                rounded_deviation_mm = round(region.deviation_mm, 2) + 0.0
+                details.append(f"{label} ({rounded_deviation_mm:.2f} mm)")
         plural = "s" if len(contributing) != 1 else ""
         sentences.append(
             f"{len(contributing)} region{plural} counted toward this verdict: "
@@ -281,7 +361,7 @@ def template_narrative(verdict_input: VerdictInput) -> str:
         )
     if verdict_input.reason_codes:
         safe_codes = [
-            _sanitize_for_narrative(code, verdict_input, f"reason {index + 1}")
+            _sanitize_reason_code(code, verdict_input, f"reason {index + 1}")
             for index, code in enumerate(verdict_input.reason_codes)
         ]
         sentences.append(f"Reason codes: {', '.join(safe_codes)}.")
