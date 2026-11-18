@@ -582,3 +582,105 @@ def test_order_response_is_empty_intake_check_when_spec_has_no_features(tmp_path
         )
 
     assert created.json()["intake_check"] == []
+
+
+def _i10_blocked_edge_spec(*, critical: bool = True) -> dict:
+    return {
+        "features": [
+            {
+                "name": "hole_A",
+                "kind": "hole",
+                "tolerance_mm": 1.0,
+                "critical": critical,
+            }
+        ]
+    }
+
+
+def test_i10_order_resolves_unverifiable_at_intake_before_any_session_exists(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions", orders_dir=tmp_path / "orders", buyer_key="buyer-secret"
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": ("spec.json", json.dumps(_i10_blocked_edge_spec()), "application/json"),
+                "cad": ("part.stl", _ascii_stl(), "model/stl"),
+            },
+        )
+        assert created.status_code == 201
+        body = created.json()
+        assert body["intake_check"][0]["status"] == "unverifiable"
+        assert body["verdict"] == {
+            "verdict": "Unverifiable",
+            "declared_at": "intake",
+            "orientation_ambiguous": False,
+            "regions": [],
+            "reason_codes": ["intake_tolerance_below_k_sigma_floor:hole_A"],
+        }
+        fetched = client.get(f"/v1/orders/{body['order_code']}")
+        assert fetched.status_code == 200
+        assert fetched.json()["verdict"] == body["verdict"]
+
+
+def test_i10_mixed_order_blocks_only_on_critical_unverifiable_features(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions", orders_dir=tmp_path / "orders", buyer_key="buyer-secret"
+    )
+    spec = {
+        "features": [
+            {"name": "hole_A", "kind": "hole", "tolerance_mm": 1.0, "critical": True},
+            {"name": "edge_B", "kind": "edge", "tolerance_mm": 5.0, "critical": True},
+            {"name": "hole_advisory", "kind": "hole", "tolerance_mm": 1.0, "critical": False},
+        ]
+    }
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": ("spec.json", json.dumps(spec), "application/json"),
+                "cad": ("part.stl", _ascii_stl(), "model/stl"),
+            },
+        )
+    body = created.json()
+    assert [item["status"] for item in body["intake_check"]] == ["unverifiable", "ok", "unverifiable"]
+    assert body["verdict"]["reason_codes"] == ["intake_tolerance_below_k_sigma_floor:hole_A"]
+
+
+def test_i10_noncritical_only_floor_failure_has_no_overall_verdict(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions", orders_dir=tmp_path / "orders", buyer_key="buyer-secret"
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": ("spec.json", json.dumps(_i10_blocked_edge_spec(critical=False)), "application/json"),
+                "cad": ("part.stl", _ascii_stl(), "model/stl"),
+            },
+        )
+    body = created.json()
+    assert body["intake_check"][0]["status"] == "unverifiable"
+    assert "verdict" not in body
+
+
+def test_i10_preserves_d004_no_cad_no_verdict(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions", orders_dir=tmp_path / "orders", buyer_key="buyer-secret"
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": ("spec.json", json.dumps(_i10_blocked_edge_spec()), "application/json")
+            },
+        )
+    body = created.json()
+    assert body["intake_check"][0]["status"] == "unverifiable"
+    assert body["has_cad"] is False
+    assert "verdict" not in body

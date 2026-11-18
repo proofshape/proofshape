@@ -29,7 +29,13 @@ const REFERENCE_TEXT: Record<string, string> = {
   none: "no reference",
 };
 
+const INTAKE_UNVERIFIABLE_REASON_PREFIX = "intake_tolerance_below_k_sigma_floor:";
+
 export function describeReasonCode(code: string): string {
+  if (code.startsWith(INTAKE_UNVERIFIABLE_REASON_PREFIX)) {
+    const feature = code.slice(INTAKE_UNVERIFIABLE_REASON_PREFIX.length).trim();
+    return `${feature || "Critical feature"}: the requested tolerance is below ProofShape\'s measured method floor for this inspection.`;
+  }
   return REASON_TEXT[code] ?? code;
 }
 
