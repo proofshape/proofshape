@@ -98,6 +98,15 @@ class SessionResponse(BaseModel):
     status: Literal["capturing", "finished"]
 
 
+class IntakeCheckResult(BaseModel):
+    """I-09: one feature's Unverifiable-at-intake check, board tier only (D-073/D-077)."""
+
+    feature_name: str
+    tolerance_mm: float | None
+    status: Literal["ok", "unverifiable", "refused"]
+    reason: str | None = None
+
+
 class OrderResponse(BaseModel):
     order_code: str
     created_at: str
@@ -107,6 +116,7 @@ class OrderResponse(BaseModel):
     spec: dict[str, Any]
     placement_note: str | None = None
     buyer_reference: str | None = None
+    intake_check: list[IntakeCheckResult] = Field(default_factory=list)
 
 
 class VlmFeedback(BaseModel):
@@ -710,6 +720,11 @@ def create_app(
 
     def order_response(record: dict[str, Any]) -> OrderResponse:
         cad = record.get("cad")
+        # I-09: computed fresh from the stored spec on every read, never persisted into the
+        # record itself -- so a future change to k/sigma_floor (or G-10 adding sheet/card
+        # floors) is reflected on the next read of an existing order, not frozen at creation.
+        from inspection.intake_check import check_intake_spec
+
         return OrderResponse(
             order_code=record["order_code"],
             created_at=record["created_at"],
@@ -719,6 +734,10 @@ def create_app(
             spec=record["spec"],
             placement_note=record.get("placement_note"),
             buyer_reference=record.get("buyer_reference"),
+            intake_check=[
+                IntakeCheckResult(**result)
+                for result in check_intake_spec(record["spec"])
+            ],
         )
 
     def buyer_key_authorized(value: str | None) -> bool:
