@@ -1,0 +1,4 @@
+{
+  "code": "tolerance_missing",
+  "message": "feature 'mounting_hole_A' has a missing or null tolerance_mm; refused, not defaulted."
+}

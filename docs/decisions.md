@@ -1700,9 +1700,11 @@ without the review's reproduction attempt would have been reporting noise as sig
 the smallest the real evidence currently supports; it is likely optimistic (n = 5, no edges),
 not a claim that the board reference's true floor is this good.
 *What 0.86 mm covers, stated precisely because R-16 and I-07 will read this literally:* 0.86 mm
-is σ_floor **for out-of-plane (height) features on the board reference only.** It says nothing
-about in-plane features — edge lengths, wall positions — which **have no measured floor yet**,
-pending R-37. Concretely:
+is σ_floor **for out-of-plane (height) features on the board reference only.** At the time
+D-073 was recorded, in-plane features — edge lengths and wall positions — had no measured floor
+and were pending R-37. **D-078 now closes that gap with an independently rerun in-plane
+σ_floor of 5.278 mm; D-073 remains authoritative for heights only.** Concretely, the bullets
+below describe the historical pre-R-37 state and must not be read as the current in-plane rule:
 - **R-16** judges in-plane comparisons (e.g. s-04's B–C leg, a 60 mm in-plane length) as
   **insufficient-evidence**, not within/out-of-tolerance against 0.86 mm — that story's own
   criteria already provide for this case.
@@ -2032,6 +2034,91 @@ Recorded back in `stories/G/G-07.md`'s notes, and in `stories/I/I-07.md` and `st
 explicitly), per this story's own acceptance criteria.
 *Checked against D-028:* fetched all origin branches on 2026-11-17; D-076 (held on `main`) was
 highest anywhere at the time of the first version of this decision, unchanged on this revision.
+
+---
+
+**D-078 · R-37: the board reference's measured in-plane σ_floor is 5.278 mm; D-073's
+out-of-plane height floor remains 0.86 mm.** (2026-11-17, PR #364)
+
+R-37 fixed the two edge-measurement defects that forced D-073 to leave in-plane features
+unmeasured: `measure_prism` now measures each footprint edge corner-to-corner from adjacent
+robust fitted-wall intersections, and `_fit_rigid_2d` uses a whole-outline pose search with a
+scale-free edge-length-pattern tie-breaker for scalene polygons. Real-data review also exposed
+and fixed two integration problems before this decision was accepted: sparse outlier bridges
+could make the largest 2-D connected blob span most of the board, and direct-script execution
+could import a stale `recon` package instead of the checked-out branch. The G-04 measurement
+entry point now pins imports to the checkout and refuses mixed/stale code.
+
+@dalwalyk reran the existing G-04 real-data chain on R-37 head `035baa2` twice using
+`python scripts/measure_g04_board_error.py ...`, then once more through the module-import
+entry style. **All three outputs were byte-identical.** All six G-02 specimens completed:
+
+| Specimen | Rotation | Edge ratios (measured/CAD) |
+|---|---:|---|
+| g02_01 (square) | 34.16° | 1.103, 0.849, 0.848, 0.932 |
+| g02_02 (rect) | −177.37° | 0.989, 0.955, 0.986, 0.951 |
+| g02_03 (triangle) | 44.60° | 1.070, 1.015, 1.115 |
+| g02_04 | 168.94° | 0.898, 0.931, 1.009, 0.955, 0.996 |
+| g02_05 | 25.96° | 0.901, 0.960, 0.933, 0.927, 0.944, 0.928 |
+| g02_06 | −174.68° | 0.966, 0.959, 0.954, 0.954 |
+
+The corrected `in_plane_summary_r37` contains **11 unambiguous edge comparisons**, no excluded
+specimens, signed mean error **−0.108 mm**, nearest-rank p95 absolute error
+**σ_floor_mm = 5.278 mm**, and **max_error_mm = 5.278 mm**. The p95 implementation itself was
+also corrected during review to the true nearest-rank index `ceil(0.95 * n) - 1`, with an
+N=12 regression that distinguishes it from the previous formula.
+
+The height result did not regress: the same run reports mean height error **−0.002 mm** and
+`sigma_floor_mm = 0.856 mm`, consistent with D-073's rounded **0.86 mm** out-of-plane floor.
+Therefore D-073 remains authoritative for board-reference heights, while **this decision
+supersedes only D-073's statement that in-plane features have no measured floor yet.**
+
+*Interpretation:* 5.278 mm is not a claim of high in-plane accuracy; it is the measured floor
+the evidence supports. Per the project rule, a large measured floor is recorded rather than
+tuned downward. Any downstream story that previously returned `insufficient_evidence` solely
+because D-073 lacked an in-plane floor (notably R-16/I-07 consumers) must rerun its own
+comparison against the fixed R-37 measurement path before changing a verdict; historical
+pre-R-37 edge numbers are not retroactively treated as valid.
+*Conditions:* same as G-04/D-073 — landscape phone stills, board reference, R-01 raw point cloud
+rather than the cleaned mesh, G-06 measured board pitch, and the current board-anchored
+alignment path including R-38's frame rejection.
+*Evidence:* PR #364 comment by @dalwalyk, 2026-11-17; owner-local
+`fixtures/data/g04_board_error/g04-board-error-evidence.json`.
+*Checked against D-028:* D-077 is held by G-07/PR #367; an open-PR search found no D-078 use,
+so D-078 was free.
+
+---
+
+**D-080 · v1 expresses D-005's hard rule mesh-wide, not per-feature: a hidden defect on
+Unobserved/Inferred geometry does not change a verdict a session's real, measured evidence
+would otherwise Pass.** (2026-11-18, PR #384)
+
+No code anywhere in v1 binds a named spec feature to actual CAD geometry (I-07's own "what a
+region is in v1" note, `inspect/inspection/verdict.py`) -- `compute_verdict` judges every
+feature against the same global per-vertex measurement; binding a feature to a specific region
+is the Tier 3 extension, not built yet. So proposal 7.2's "a critical region is Unobserved"
+Rescan row can only be expressed at the whole-session level in v1: either some Observed,
+measured data exists (the verdict proceeds from it) or none does at all (Rescan,
+`{name}_not_seen`). A defect that happens to land only on Unobserved or Inferred geometry is,
+by design (D-062, I-06's `compute_deviation`), never measured there (`deviation_measured == 0`)
+and so cannot numerically affect Pass/Fail -- that is the real guarantee D-005 gives in v1, and
+`tests/test_hard_rule.py` (I-08) confirms it structurally: `compute_verdict`'s output is
+byte-for-byte identical with and without such a hidden defect planted.
+*Why:* this was implemented in I-07/PR #379 and not objected to across two reviewers' four
+review rounds, but was never recorded as its own decision -- caught on I-08's own review
+(@mbj1994, PR #384): a story file's working note is not a team decision, and I-08's acceptance
+criterion 3 ("produces Rescan... the table's third row") was written against the literal
+proposal table, before this mesh-wide reduction existed in code or was reviewed on its own
+terms. This decision gives that reduction the standing I-08 asked for, and I-08.md's criterion 3
+is restated to the invariant v1 can actually express, rather than left reading as unmet.
+*Conditions:* v1 only -- once Tier 3 binds a named feature to actual CAD geometry (per-feature
+region tracking), a defect hidden specifically within *that* feature's own Unobserved region
+becomes expressible, and this decision's mesh-wide reduction no longer applies.
+*Evidence:* PR #384 review (@mbj1994), 2026-11-18; `inspect/inspection/verdict.py`'s
+`observed_measured`/`has_observed_data` logic (PR #379); `tests/test_hard_rule.py`'s
+identical-output comparison (PR #384).
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-079 (held by
+`inspect/I-10-unverifiable-path-impl`) was highest anywhere, so D-080 was free.
 
 ---
 

@@ -43,14 +43,31 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
 from typing import Any
 
+# Running this file directly sets sys.path[0] to scripts/, while importing it as a module sets
+# sys.path[0] to the repository root. Put the checked-out repository first explicitly so both
+# entry styles import the exact same recon package instead of a stale editable/site-packages copy.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+repo_root_text = str(REPO_ROOT)
+if not sys.path or sys.path[0] != repo_root_text:
+    sys.path.insert(0, repo_root_text)
+
 from recon import board_pose, metric_alignment, vggt_runner
 from recon.cad_size_check import build_report
 from recon.vggt_runner import DEFAULT_MIN_CONFIDENCE
+
+for _module in (board_pose, metric_alignment, vggt_runner):
+    module_path = Path(_module.__file__).resolve()
+    if REPO_ROOT not in module_path.parents:
+        raise RuntimeError(
+            f"G-04 imported {_module.__name__} from {module_path}, outside checked-out repo "
+            f"{REPO_ROOT}. Refusing to measure with mixed/stale code."
+        )
 
 SPECIMEN_IDS = ("g02_01", "g02_02", "g02_03", "g02_04", "g02_05", "g02_06")
 
@@ -60,6 +77,19 @@ SPECIMEN_IDS = ("g02_01", "g02_02", "g02_03", "g02_04", "g02_05", "g02_06")
 # part measurement is not evidence about the part; it is evidence the alignment failed for that
 # one capture (not reverse-fit to any specific specimen found here).
 MAX_BOARD_SCALE_DEVIATION = 0.05
+
+
+def _nearest_rank_index(sample_count: int, percentile: float) -> int:
+    """Zero-based nearest-rank index for a non-empty sample.
+
+    Nearest-rank percentile P is ceil(P * N) in one-based indexing, so subtract 1 for Python's
+    zero-based indexing. Keeping this in one helper prevents the height and in-plane aggregates
+    from silently using different percentile conventions.
+    """
+    if sample_count <= 0:
+        raise ValueError("sample_count must be positive")
+    return max(0, min(sample_count - 1, math.ceil(percentile * sample_count) - 1))
+
 
 CAPTURE_ROOT = Path("fixtures/data/specimen_capture")
 RECON_RUN_ROOT = Path("fixtures/data/recon_runs")
@@ -166,6 +196,12 @@ def measure_specimen(
         "board_scale_rms_residual_mm": report["board_scale"]["rms_residual_mm"],
         "board_alignment_ok": board_alignment_ok,
         "exclusion_reason": exclusion_reason,
+        # R-37 real-data evidence: these let two runs prove the square/triangle pose and raw
+        # corner-to-corner edge measurements are stable even when a caliper length class is
+        # ambiguous and therefore absent from prism.caliper.edges.
+        "prism_rotation_deg": report["prism"]["rotation_deg"],
+        "prism_alignment_residual_mm": report["prism"]["alignment_residual_mm"],
+        "prism_edges": report["prism"]["edges"],
         "caliper": report["prism"]["caliper"],
     }
 
@@ -202,9 +238,7 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
 
     absolute_errors_mm = sorted(abs(e) for e in errors_mm)
     mean_mm = statistics.fmean(errors_mm)
-    p95_index = max(
-        0, min(len(absolute_errors_mm) - 1, round(0.95 * (len(absolute_errors_mm) - 1)))
-    )
+    p95_index = _nearest_rank_index(len(absolute_errors_mm), 0.95)
     sigma_floor_mm = absolute_errors_mm[p95_index]
     return {
         "feature_count": len(errors_mm),
@@ -220,6 +254,54 @@ def aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
             "max_error_mm are close or equal; both are reported rather than implying more "
             "precision than the sample size supports."
         ),
+    }
+
+
+def aggregate_in_plane(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pool the fixed corner-to-corner edge errors for R-37's in-plane floor check.
+
+    This deliberately stays separate from G-04's historical height-only aggregate above, so the
+    corrected D-073 result is not silently redefined. Only edge entries that caliper_edge_errors
+    could match unambiguously are present in each specimen's report. A failed board alignment
+    excludes the whole specimen for the same reason as the height aggregate.
+    """
+    errors_mm: list[float] = []
+    excluded_specimen_ids: list[str] = []
+    for result in results:
+        if not result["board_alignment_ok"]:
+            excluded_specimen_ids.append(result["specimen_id"])
+            continue
+        errors_mm.extend(
+            float(edge["caliper_error_mm"]) for edge in result["caliper"]["edges"]
+        )
+
+    definition = (
+        "95th percentile (nearest-rank) of |caliper_error_mm| across every unambiguous "
+        "corner-to-corner edge comparison from included board-reference specimens. "
+        "mean_error_mm is the signed mean (systematic bias). R-37 only: this is separate "
+        "from D-073's historical height-only sigma_floor."
+    )
+    if not errors_mm:
+        return {
+            "feature_count": 0,
+            "excluded_specimen_ids": excluded_specimen_ids,
+            "mean_error_mm": None,
+            "sigma_floor_mm": None,
+            "max_error_mm": None,
+            "sigma_floor_definition": definition,
+            "measurable": False,
+        }
+
+    absolute_errors_mm = sorted(abs(error) for error in errors_mm)
+    p95_index = _nearest_rank_index(len(absolute_errors_mm), 0.95)
+    return {
+        "feature_count": len(errors_mm),
+        "excluded_specimen_ids": excluded_specimen_ids,
+        "mean_error_mm": statistics.fmean(errors_mm),
+        "sigma_floor_mm": absolute_errors_mm[p95_index],
+        "max_error_mm": absolute_errors_mm[-1],
+        "sigma_floor_definition": definition,
+        "measurable": True,
     }
 
 
@@ -256,12 +338,14 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     summary = aggregate(results)
+    in_plane_summary = aggregate_in_plane(results)
     evidence = {
         "story": "G-04",
         "board_pitch_mm": {"across": board_pitch_mm[0], "down": board_pitch_mm[1]},
         "min_confidence": DEFAULT_MIN_CONFIDENCE,
         "specimens": results,
         "summary": summary,
+        "in_plane_summary_r37": in_plane_summary,
     }
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -275,6 +359,15 @@ def main(argv: list[str] | None = None) -> int:
         f"sigma_floor (p95)={summary['sigma_floor_mm']:.3f} mm, "
         f"max={summary['max_error_mm']:.3f} mm"
     )
+    if in_plane_summary["measurable"]:
+        print(
+            f"R-37 IN-PLANE ERROR: {in_plane_summary['feature_count']} edge features, "
+            f"mean={in_plane_summary['mean_error_mm']:.3f} mm, "
+            f"sigma_floor (p95)={in_plane_summary['sigma_floor_mm']:.3f} mm, "
+            f"max={in_plane_summary['max_error_mm']:.3f} mm"
+        )
+    else:
+        print("R-37 IN-PLANE ERROR: not measurable; no unambiguous edge features.")
     print(f"Evidence written to {args.out}")
     return 0
 

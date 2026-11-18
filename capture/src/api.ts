@@ -235,7 +235,7 @@ export async function getVerdict(
   if (response.status === 200) {
     return { ok: true, status: response.status, body: body as VerdictResult };
   }
-  if (response.status === 404) {
+  if (response.status === 404 || response.status === 422) {
     return { ok: false, status: response.status, error: body as ErrorDetail };
   }
   unexpectedStatus("getVerdict", response, body);

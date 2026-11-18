@@ -287,6 +287,21 @@ describe("api against the contract stub", () => {
     }
   });
 
+  // I-07 (PR #379 review, @TabeenRaoof): getVerdict previously threw unexpectedStatus on a 422,
+  // which report.ts's own generic error branch never gets a chance to show.
+  it("returns tolerance_missing as the contract 422 from getVerdict, not an unexpected status", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+    stub.setVerdictScenario("tolerance_missing");
+
+    const result = await getVerdict(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(422);
+      expect(result.error.code).toBe("tolerance_missing");
+    }
+  });
+
   it("fails loudly, not as a contract status, when the frame isn't a JPEG", async () => {
     const session = await createSession(baseUrl, "PO-48213-A");
     if (!session.ok) throw new Error("setup: createSession failed");
