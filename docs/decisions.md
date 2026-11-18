@@ -2136,7 +2136,7 @@ rule, unless a separate exception is recorded.
 this implementation.
 
 ---
-**D-080 ·**D-080 · v1 expresses D-005's hard rule mesh-wide, not per-feature: a hidden defect on
+**D-080 · v1 expresses D-005's hard rule mesh-wide, not per-feature: a hidden defect on
 Unobserved/Inferred geometry does not change a verdict a session's real, measured evidence
 would otherwise Pass.** (2026-11-18, PR #384)
 
