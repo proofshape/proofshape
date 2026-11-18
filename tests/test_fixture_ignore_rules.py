@@ -43,6 +43,7 @@ def test_capture_manifest_checksum_locks_are_not_ignored() -> None:
     # a checksum file inside a download (fixtures/data/) stays ignored.
     assert not _is_ignored("fixtures/golden_capture_manifest.sha256")
     assert not _is_ignored("fixtures/specimen_capture_manifest.sha256")
+    assert not _is_ignored("fixtures/robustness_capture_manifest.sha256")
     assert _is_ignored("fixtures/data/specimen_capture/g02_01.sha256")
 
 
