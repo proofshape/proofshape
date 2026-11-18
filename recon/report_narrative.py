@@ -50,6 +50,24 @@ anywhere but immediately before the suffix, is still caught (`tests/test_report_
 None of this can be perfect against free text, but the template is always a safe answer, so
 erring toward falling back costs nothing: a prompt is not proof, and a quiet wrong claim in a
 report is worse than a loud refusal (AGENTS.md's "no silent failures").
+
+**Round 5, both reviewers independently, PR #387: v1 serves the deterministic template only.**
+Round 4's fixes closed two real holes, but round 5's probes ("mounting_hole_A looks perfect",
+"...is unacceptable", "...is OK", "...is within limits" -- ordinary words, not odd idioms, and
+`\b(?:acceptable|conforming)\b` cannot match inside "**un**acceptable"/"**non**conforming"
+either) showed the deeper problem: a region name is enough to satisfy `_is_grounded`, and an
+outcome sentence can trivially mention one, so *grounded* never implied *safe*. Both reviewers
+independently concluded a lexical filter over free prose cannot guarantee AGENTS.md's hard rule
+("a model's guess must never approve or condemn a component") -- every round found the next
+word. Per **D-082**, `generate_narrative` therefore serves `template_narrative` only, matching
+proposal §7.5 ("Templated text; an LLM narrative is a Tier 3 add-on"). `generate_llm_narrative`,
+`GeminiNarrator` and every guard above are kept, fully tested, as groundwork for a follow-up
+story that would constrain the model to *selecting* evidence (which regions/reason codes, in
+what order) rather than writing prose, so Python renders every word a reader sees and no model
+output can state an outcome by construction -- the option both reviewers preferred over
+abandoning the generative component entirely. Accepting the residual risk and shipping free
+prose anyway was also raised and rejected: it would weaken the hard rule for convenience, which
+AGENTS.md says not to do.
 """
 
 from __future__ import annotations
@@ -428,16 +446,31 @@ class GeminiNarrator:
 Narrator = Callable[[VerdictInput], Any]
 
 
-def generate_narrative(
+def generate_narrative(verdict_input: VerdictInput) -> NarrativeResult:
+    """**The actual v1 entry point (D-082).** Serves `template_narrative` only -- no model is
+    called, no key is read, no network request is made. This is what a future PR wires into
+    `recon.service`. See the module docstring for why: five review rounds on PR #387 could not
+    make free LLM prose safe against AGENTS.md's hard rule, so v1 does not serve any."""
+    return NarrativeResult(
+        text=template_narrative(verdict_input),
+        source="template",
+        reason="llm_narrative_disabled_v1",
+    )
+
+
+def generate_llm_narrative(
     verdict_input: VerdictInput,
     *,
     narrator: Narrator | None = None,
     api_key: str = "",
 ) -> NarrativeResult:
-    """The session always gets a narrative: the deterministic verdict statement, optionally
-    followed by the model's own explanation of why. `narrator` overrides the default
-    `GeminiNarrator` for tests; with neither a narrator nor an `api_key`, this falls back
-    immediately rather than constructing a client with an empty key."""
+    """**Groundwork, not served in v1 (D-082)** -- kept, and kept fully tested, for a follow-up
+    story that constrains the model to selecting evidence rather than writing prose. Today this
+    is every guard this module could build against free text, which still was not enough (see
+    the module docstring's round 5): the deterministic verdict statement, optionally followed by
+    the model's own explanation of why. `narrator` overrides the default `GeminiNarrator` for
+    tests; with neither a narrator nor an `api_key`, this falls back immediately rather than
+    constructing a client with an empty key."""
     deterministic = template_narrative(verdict_input)
     active_narrator = (
         narrator

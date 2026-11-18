@@ -1,6 +1,8 @@
-"""A-09: run the real Gemini call once against a sample VerdictResult. Not part of pytest or
-CI (same as scripts/check_agent_model.py) -- a manual, operator-run check, since it spends real
-API quota."""
+"""A-09: run the real Gemini call once against a sample VerdictResult, against the groundwork
+`generate_llm_narrative` -- D-082 means the actual v1 entry point (`generate_narrative`) never
+calls the model at all, so this script checks the path a future story would resume, not what is
+served today. Not part of pytest or CI (same as scripts/check_agent_model.py) -- a manual,
+operator-run check, since it spends real API quota."""
 
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ from recon.report_narrative import (
     MODEL,
     GeminiNarrator,
     VerdictInput,
-    generate_narrative,
+    generate_llm_narrative,
 )
 
 SAMPLE_VERDICT = {
@@ -39,7 +41,7 @@ SAMPLE_VERDICT = {
 
 def run_live_check(api_key: str) -> dict[str, Any]:
     verdict_input = VerdictInput.model_validate(SAMPLE_VERDICT)
-    result = generate_narrative(verdict_input, narrator=GeminiNarrator(api_key))
+    result = generate_llm_narrative(verdict_input, narrator=GeminiNarrator(api_key))
     return {
         "requested_model": MODEL,
         "returned_model_version": result.model_version,

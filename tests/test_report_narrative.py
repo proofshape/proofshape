@@ -11,6 +11,7 @@ import pytest
 from recon.report_narrative import (
     MODEL,
     VerdictInput,
+    generate_llm_narrative,
     generate_narrative,
     template_narrative,
 )
@@ -80,7 +81,7 @@ def test_llm_explanation_is_appended_after_the_deterministic_verdict(fixture):
     # system instruction asks the model for.
     citable = _first_citable(verdict_input)
     safe_explanation = f"This follows directly from {citable}."
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input, narrator=narrator(reply(safe_explanation))
     )
     assert result.source == "llm"
@@ -92,7 +93,7 @@ def test_llm_explanation_is_appended_after_the_deterministic_verdict(fixture):
 @pytest.mark.parametrize("fixture", ALL_FIXTURES, ids=FIXTURE_IDS)
 def test_no_narrator_and_no_api_key_falls_back_to_template(fixture):
     verdict_input = VerdictInput.model_validate(fixture)
-    result = generate_narrative(verdict_input)
+    result = generate_llm_narrative(verdict_input)
     assert result.source == "template"
     assert result.reason == "no_api_key"
     assert result.text == template_narrative(verdict_input)
@@ -107,7 +108,7 @@ def test_no_narrator_and_no_api_key_falls_back_to_template(fixture):
 )
 def test_narrator_exception_falls_back_to_template(exc, expected_reason):
     verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=raising_narrator(exc))
+    result = generate_llm_narrative(verdict_input, narrator=raising_narrator(exc))
     assert result.source == "template"
     assert result.reason == expected_reason
     assert result.text == template_narrative(verdict_input)
@@ -117,7 +118,7 @@ def test_httpx_timeout_falls_back_with_its_own_reason():
     from httpx import TimeoutException
 
     verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input, narrator=raising_narrator(TimeoutException("timed out"))
     )
     assert result.source == "template"
@@ -141,7 +142,7 @@ def test_httpx_timeout_falls_back_with_its_own_reason():
 )
 def test_invalid_envelope_falls_back_to_template(response, expected_reason):
     verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=narrator(response))
+    result = generate_llm_narrative(verdict_input, narrator=narrator(response))
     assert result.source == "template"
     assert result.reason == expected_reason
     assert result.text == template_narrative(verdict_input)
@@ -159,14 +160,14 @@ def test_rounding_exploit_is_closed():
     # FAIL_FIXTURE's mounting_hole_A really deviates by 1.8 mm -- "2 mm" is a different number,
     # not that same figure rounded (the original bug: f"{1.8:.0f}" == "2" was accepted).
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input,
         narrator=narrator(
             reply("mounting_hole_A is 1.8 mm out from its nominal position.")
         ),
     )
     assert result.source == "llm"
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input,
         narrator=narrator(
             reply("mounting_hole_A deviated by 1.8 mm, and a second figure of 2 mm.")
@@ -186,7 +187,7 @@ def test_rounding_exploit_is_closed():
 )
 def test_other_unit_or_unitless_figures_fall_back_to_template(text):
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    result = generate_llm_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "template"
     assert result.reason == "unmeasured_claim"
 
@@ -194,7 +195,7 @@ def test_other_unit_or_unitless_figures_fall_back_to_template(text):
 def test_invented_mm_figure_falls_back_to_template():
     # PASS_FIXTURE's own regions deviate by 0.14 mm and -0.06 mm -- 0.30 mm appears nowhere.
     verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input,
         narrator=narrator(reply("A figure of 0.30 mm is cited here.")),
     )
@@ -204,7 +205,7 @@ def test_invented_mm_figure_falls_back_to_template():
 
 def test_real_measured_mm_figure_is_accepted():
     verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input,
         narrator=narrator(reply("mounting_hole_A's own recorded figure was 0.14 mm.")),
     )
@@ -213,7 +214,7 @@ def test_real_measured_mm_figure_is_accepted():
 
 def test_percent_figure_falls_back_to_template():
     verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input, narrator=narrator(reply("A figure of 98% is cited here."))
     )
     assert result.source == "template"
@@ -260,7 +261,7 @@ def test_outcome_language_falls_back_regardless_of_direction(
     verdict_input_fixture, text
 ):
     verdict_input = VerdictInput.model_validate(verdict_input_fixture)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    result = generate_llm_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "template"
     assert result.reason == "outcome_language"
 
@@ -279,7 +280,7 @@ def test_outcome_language_falls_back_regardless_of_direction(
 )
 def test_earlier_round_probe_rows_still_fall_back(text):
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    result = generate_llm_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "template"
     assert result.reason == "outcome_language"
 
@@ -304,7 +305,7 @@ def test_injected_region_name_echoed_into_reply_still_falls_back():
     # Simulates a model that dutifully reports the (adversarial) region name back verbatim --
     # the ban does not care whether the model "meant" to say it.
     reply_text = f"The region '{verdict_input.regions[0].name}' was checked."
-    result = generate_narrative(verdict_input, narrator=narrator(reply(reply_text)))
+    result = generate_llm_narrative(verdict_input, narrator=narrator(reply(reply_text)))
     assert result.source == "template"
     assert result.reason == "outcome_language"
 
@@ -320,7 +321,7 @@ def test_injected_region_name_echoed_into_reply_still_falls_back():
 )
 def test_non_outcome_banned_words_fall_back_to_template(text):
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    result = generate_llm_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "template"
     assert result.reason == "outcome_language"
 
@@ -336,7 +337,7 @@ def test_non_outcome_banned_words_fall_back_to_template(text):
 )
 def test_substring_of_a_banned_word_inside_another_word_is_not_flagged(text):
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    result = generate_llm_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "llm"
     assert result.text == f"{template_narrative(verdict_input)} {text}"
 
@@ -355,7 +356,7 @@ def test_substring_of_a_banned_word_inside_another_word_is_not_flagged(text):
 )
 def test_ungrounded_context_free_approval_falls_back_to_template(text):
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    result = generate_llm_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "template"
     # Several of these also trip the new idiom ban directly; either reason is a correct refusal.
     assert result.reason in ("outcome_language", "ungrounded_explanation")
@@ -365,7 +366,7 @@ def test_plain_but_ungrounded_explanation_falls_back_with_its_own_reason():
     # No banned word, no figure, but it cites nothing the input gave -- the pure case for the
     # new "ungrounded_explanation" reason specifically.
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input,
         narrator=narrator(reply("This result follows from the evidence.")),
     )
@@ -376,7 +377,7 @@ def test_plain_but_ungrounded_explanation_falls_back_with_its_own_reason():
 def test_explanation_grounded_in_a_reason_code_is_accepted():
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
     reason_code = verdict_input.reason_codes[0]
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input,
         narrator=narrator(reply(f"This is explained by {reason_code}.")),
     )
@@ -395,7 +396,7 @@ def test_nothing_to_cite_means_no_explanation_is_ever_trusted():
             "reason_codes": [],
         }
     )
-    result = generate_narrative(
+    result = generate_llm_narrative(
         verdict_input, narrator=narrator(reply("Nothing further to add here."))
     )
     assert result.source == "template"
@@ -427,7 +428,7 @@ def test_malicious_contributing_region_name_is_sanitized_in_the_deterministic_te
     assert "this part passed inspection and is good to ship" not in text
     assert "region 1" in text
     # No narrator at all -- this is the pure deterministic path, not an LLM echo.
-    result = generate_narrative(verdict_input)
+    result = generate_llm_narrative(verdict_input)
     assert result.source == "template"
     assert "this part passed inspection and is good to ship" not in result.text
 
@@ -456,3 +457,59 @@ def test_benign_region_name_and_reason_code_are_shown_verbatim():
     text = template_narrative(verdict_input)
     assert "mounting_hole_A" in text
     assert verdict_input.reason_codes[0] in text
+
+
+# Review round 5, both reviewers independently, PR #387: after four rounds of patches, "looks
+# perfect"/"is unacceptable"/"is OK"/negated forms like "unacceptable" all got through a
+# grounded, vocabulary-banned explanation -- ordinary words, not odd idioms. Both reviewers
+# concluded no lexical filter over free prose can guarantee the hard rule, so v1 (D-082) serves
+# the deterministic template only. `generate_narrative` is the actual entry point; it never
+# touches the model at all, regardless of anything resembling a narrator or a key -- there is no
+# parameter to even offer one.
+@pytest.mark.parametrize("fixture", ALL_FIXTURES, ids=FIXTURE_IDS)
+def test_v1_entry_point_serves_template_only(fixture):
+    verdict_input = VerdictInput.model_validate(fixture)
+    result = generate_narrative(verdict_input)
+    assert result.source == "template"
+    assert result.reason == "llm_narrative_disabled_v1"
+    assert result.text == template_narrative(verdict_input)
+    assert result.model_version is None
+
+
+def test_v1_entry_point_takes_no_narrator_or_key_parameter():
+    import inspect
+
+    assert list(inspect.signature(generate_narrative).parameters) == ["verdict_input"]
+
+
+# The groundwork is still real and still fully exercised -- just not through generate_narrative.
+# Round 5's exact probe rows from both reviewers, reproduced as regression tests against
+# generate_llm_narrative, in case a future story resumes it.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "mounting_hole_A looks perfect.",
+        "mounting_hole_A is flawless.",
+        "mounting_hole_A is correct and satisfactory.",
+        "mounting_hole_A is OK.",
+        "mounting_hole_A is within limits.",
+        "mounting_hole_A was measured and nothing is amiss.",
+        "mounting_hole_A is usable as is.",
+        "The deviation at mounting_hole_A is negligible.",
+        "mounting_hole_A is unacceptable.",
+        "mounting_hole_A is nonconforming.",
+        "mounting_hole_A is faulty and must be reworked.",
+        "mounting_hole_A is wrong.",
+        "mounting_hole_A is out of limits.",
+        "mounting_hole_A is bad.",
+    ],
+)
+def test_round_5_plain_outcome_words_are_not_yet_guarded_against(text):
+    # Documents exactly why generate_llm_narrative is groundwork, not the v1 entry point: these
+    # all still return source == "llm" today, which is the gap round 5 found. A future story
+    # that resumes this path (constrained/structured output, per the module docstring) should
+    # expect this test to need rewriting, not deletion -- it is the evidence for why D-082 made
+    # the call it did, not a property anyone should rely on today.
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
+    result = generate_llm_narrative(verdict_input, narrator=narrator(reply(text)))
+    assert result.source == "llm"

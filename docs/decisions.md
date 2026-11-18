@@ -2200,6 +2200,43 @@ several other branches) was highest anywhere, so D-081 was free.
 
 ---
 
+**D-082 · A-09 v1 serves the deterministic template narrative only; the LLM path is kept as
+tested groundwork, not served.** (2026-11-18)
+Four rounds of review on PR #387 grew `recon/report_narrative.py`'s safety checks against a
+model's free-text explanation: a per-verdict word ban (round 1), figure-check holes closed
+(round 1), a direction-phrase gap closed (round 2), a full redesign to a deterministic-
+verdict-first structure with a verdict-independent outcome ban (round 3), then a structural
+groundedness requirement plus sanitizing buyer-controlled region names/reason codes in the
+*deterministic* path too (round 4). Round 5, both `@TabeenRaoof` and `@mbj1994` independently:
+ordinary words with no figure and no banned term ("looks perfect", "is unacceptable", "is OK",
+"is within limits") still passed a grounded, vocabulary-banned explanation, and negated/prefixed
+forms ("**un**acceptable", "**non**conforming") structurally cannot be caught by a word-boundary
+ban at all. Both concluded independently that no lexical filter over free prose can guarantee
+AGENTS.md's hard rule ("a model's guess must never approve or condemn a component") for an
+open-ended explanation sentence. `generate_narrative` (the actual entry point a later PR wires
+into `recon.service`) therefore calls only `template_narrative` -- no model, no key, no network
+call, and no parameter through which one could be supplied. `generate_llm_narrative`,
+`GeminiNarrator`, and every guard built across all four rounds remain in the module, fully
+exercised by `tests/test_report_narrative.py` (81 tests), as groundwork for a follow-up story.
+*Why:* proposal §7.5 already says "Templated text; an LLM narrative is a Tier 3 add-on" -- v1
+serving the templated half only is not a retreat from the proposal, it is what the proposal
+itself describes as the floor. Three options were on the table (`@TabeenRaoof`, PR #387): (A)
+template-only for v1, keeping the generator as groundwork; (B) a follow-up story that constrains
+the model to *selecting* evidence (which regions/reason codes, in what order) from a fixed set,
+with Python rendering every word a reader sees, so no model output can state an outcome by
+construction; (C) keep free prose and record the residual risk as accepted. (C) was rejected --
+AGENTS.md says not to weaken the hard rule "for convenience," and shipping a narrative that
+cannot be guaranteed safe is exactly that. (A) now, with (B) as a real follow-up if there is
+time, keeps the generative component's groundwork rather than discarding it, while not serving
+anything the hard rule cannot back.
+*Conditions:* this governs only what `generate_narrative`/v1 serves. If a later story implements
+(B) and it is reviewed and found to close the gap by construction, this decision's "template
+only" scope is what that story's own review should revisit, not silently expand past.
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-081 (held by this same
+branch) was highest anywhere, so D-082 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
