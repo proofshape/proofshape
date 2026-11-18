@@ -2,7 +2,7 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.3.0"
+  version: "1.5.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
@@ -12,6 +12,9 @@ info:
     `vlm_feedback` on the upload response and two error codes; a v1.0 client is unaffected.
     1.2.0 (R-34) additively introduces buyer orders, stored CAD metadata, and named order/verdict errors.
     1.3.0 (C-16) additively exposes A-03's server-side prose-to-spec parser to the buyer page.
+    1.4.0 (I-07, PR #379) additively adds the `tolerance_missing` error and getVerdict's 422
+    response. 1.5.0 (I-09) additively adds `Order.intake_check`/`IntakeCheckResult`, taken after
+    1.4.0 since both PRs changed the contract the same day -- see each story's own notes.
 
 servers:
   - url: /v1
@@ -320,6 +323,28 @@ components:
           type: boolean
           description: True if any two of the compared sources disagreed by more than the D-007 threshold.
 
+    IntakeCheckResult:
+      type: object
+      description: >
+        I-09: one spec feature's Unverifiable-at-intake check, against the board tier's own
+        measured k*sigma_floor for the axis that feature's kind unambiguously checks --
+        `hole`/`edge` against D-078/R-37's in-plane floor, D-077's k. `face`/`overall` are
+        refused outright rather than checked against either floor: nothing says whether they
+        mean the board reference's height or in-plane dimension, and guessing the smaller one
+        would under-flag. `tolerance_mm` is omitted, not zero, when the feature's own tolerance
+        was missing or null -- refused, never defaulted.
+      required: [feature_name, status]
+      properties:
+        feature_name:
+          type: string
+        tolerance_mm:
+          type: number
+        status:
+          type: string
+          enum: [ok, unverifiable, refused]
+        reason:
+          type: string
+
     Region:
       type: object
       description: One named critical region or surface area, as used by the verdict and the deviation heatmap.
@@ -493,6 +518,16 @@ components:
           type: string
         buyer_reference:
           type: string
+        intake_check:
+          type: array
+          description: >
+            I-09: each spec feature's Unverifiable-at-intake check, board tier only (D-078/R-37's
+            in-plane sigma_floor for `hole`/`edge`, D-073/G-04's height sigma_floor unused since
+            `face`/`overall` are refused for axis ambiguity instead, k measured by G-07; sheet/
+            card tiers are an explicit, named gap pending G-10). Computed fresh on every read,
+            not persisted.
+          items:
+            $ref: "#/components/schemas/IntakeCheckResult"
 
     CreateSessionRequest:
       type: object
