@@ -2,7 +2,7 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.6.0"
+  version: "1.7.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
@@ -17,7 +17,10 @@ info:
     order (I-07.md's/I-09.md's own notes); #372 merged first, so it took 1.5.0 and 1.4.0 was
     never shipped. 1.6.0 (I-07, PR #379) additively adds the `tolerance_missing` error and
     getVerdict's 422 response, for a critical spec feature whose tolerance_mm is missing, null,
-    or not a finite positive number at verdict time.
+    or not a finite positive number at verdict time. 1.7.0 (I-10, D-079) additively adds an
+    optional order-level `verdict`, using the existing `VerdictResult` schema, so a critical
+    tolerance below the measured method floor can resolve to `Unverifiable` at intake before any
+    session exists.
 
 servers:
   - url: /v1
@@ -551,6 +554,14 @@ components:
             not persisted.
           items:
             $ref: "#/components/schemas/IntakeCheckResult"
+        verdict:
+          $ref: "#/components/schemas/VerdictResult"
+          description: >
+            I-10 / D-079: present when at least one critical feature is already Unverifiable at
+            intake. Uses the existing VerdictResult envelope with declared_at=intake, no
+            contributing regions, and feature-specific reason codes. Absent when no intake
+            verdict exists. D-004 still applies: an order without CAD has no verdict even when
+            intake_check contains an Unverifiable flag.
 
     CreateSessionRequest:
       type: object
@@ -692,7 +703,7 @@ components:
           type: array
           items:
             type: string
-          description: Machine-readable reasons behind a Rescan or Fail, for the report page to explain in plain language.
+          description: Machine-readable reasons behind an Unverifiable, Rescan or Fail, for the report page to explain in plain language.
       x-proofshape-extends-at:
         description: >
           Not a real field — a vendor-extension marker at the schema level, so tooling and

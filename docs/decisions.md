@@ -2087,6 +2087,30 @@ alignment path including R-38's frame rejection.
 *Checked against D-028:* D-077 is held by G-07/PR #367; an open-PR search found no D-078 use,
 so D-078 was free.
 
+**D-079 · One critical intake-floor failure makes the whole order Unverifiable; non-critical features do not.** (2026-11-17, I-10)
+
+I-09 flags features independently, but the frozen `VerdictResult` has one verdict for the whole
+order/session. I-10 resolves that mismatch conservatively: if any critical feature is below
+the measured `k * sigma_floor` threshold, the order-level verdict is `Unverifiable` at intake.
+Every blocked critical feature is named in `reason_codes`; no geometry region contributes because
+no photo or reconstruction exists yet. A feature explicitly marked `critical: false` may still
+appear as `unverifiable` in `intake_check`, but it does not make the whole order Unverifiable.
+
+*Why:* returning Pass or Fail while one critical requirement is outside the method's measured
+capability would dress an incomplete inspection up as complete. The single overall enum has no
+honest partial-Pass state, so the whole critical inspection is routed to a CMM.
+
+*D-004 still applies:* no CAD means no verdict. Creating a capture session is not blocked; if
+one is created anyway, `getVerdict` returns the same intake Unverifiable result immediately and
+reconstruction cannot upgrade it to Pass or Fail.
+
+*Contract effect:* I-10 adds optional `Order.verdict` using the existing `VerdictResult` schema.
+This is D-031-governed and needs both other members' approval plus the sprint-boundary merge
+rule, unless a separate exception is recorded.
+
+*Checked against D-028:* D-079 was unused on `main` and every open PR branch checked before
+this implementation.
+
 ---
 
 ## Open — not yet decided
