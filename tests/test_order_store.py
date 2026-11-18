@@ -670,7 +670,9 @@ def test_i10_mixed_order_blocks_only_on_critical_unverifiable_features(tmp_path)
         "ok",
         "unverifiable",
     ]
-    assert body["verdict"]["reason_codes"] == ["intake_tolerance_below_k_sigma_floor:hole_A"]
+    assert body["verdict"]["reason_codes"] == [
+        "intake_tolerance_below_k_sigma_floor:hole_A"
+    ]
 
 
 def test_i10_noncritical_only_floor_failure_has_no_overall_verdict(tmp_path):

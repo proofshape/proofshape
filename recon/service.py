@@ -748,7 +748,9 @@ def create_app(
                 IntakeCheckResult(**result)
                 for result in check_intake_spec(record["spec"])
             ],
-            verdict=(None if intake_verdict is None else VerdictResult(**intake_verdict)),
+            verdict=(
+                None if intake_verdict is None else VerdictResult(**intake_verdict)
+            ),
         )
 
     def buyer_key_authorized(value: str | None) -> bool:
