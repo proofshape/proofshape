@@ -312,6 +312,13 @@ def write_glb_with_size_limit(
     If the first write is oversized, progressively re-decimate to 75% of the current triangle
     count and rewrite. If the mesh cannot be reduced further while keeping at least
     min_triangle_count triangles, fail loudly rather than returning an oversized PASS.
+
+    #263: a round that doesn't actually reduce the face count (``decimate_mesh`` stalled) raises
+    the same "cannot be decimated further" error instead of repeating forever -- checked
+    unconditionally, whatever ``min_triangle_count`` is, since a stalled round makes no more
+    progress whether or not there's room left to decimate. #300: decimation can turn a manifold
+    mesh non-manifold, so every round re-checks and drops any face that breaks it, same as the
+    pre-decimation pass in ``cleanup_run``.
     """
     if max_file_size_bytes <= 0:
         raise ValueError("max_file_size_bytes must be positive.")
@@ -337,7 +344,14 @@ def write_glb_with_size_limit(
         next_target = max(min_triangle_count, int(len(faces) * 0.75))
         if next_target >= len(faces):
             next_target = len(faces) - 1
+        faces_before_round = len(faces)
         vertices, faces = decimate_mesh(vertices, faces, next_target)
+        if len(faces) >= faces_before_round:
+            raise ValueError(
+                f"GLB is {file_size_bytes} bytes, over the {max_file_size_bytes}-byte limit, "
+                "and cannot be decimated further safely."
+            )
+        vertices, faces, _dropped = drop_non_manifold_faces(vertices, faces)
         redecimation_rounds += 1
 
 
@@ -611,6 +625,7 @@ def write_cleanup_report(
     component_report: dict[str, int | float],
     size_redecimation_rounds: int,
     non_manifold_faces_dropped: int = 0,
+    non_manifold_faces_dropped_after_decimation: int = 0,
 ) -> dict[str, Any]:
     report = {
         "story": "R-08",
@@ -619,6 +634,11 @@ def write_cleanup_report(
         # filter below -- almost always 0; non-zero means re-anchoring left a seam provenance
         # couldn't have labelled anyway.
         "non_manifold_faces_dropped": non_manifold_faces_dropped,
+        # R-40 (#300): faces dropped by the same check again, right after decimation -- decimation
+        # itself can turn a manifold mesh non-manifold, a different cause from the one above.
+        "non_manifold_faces_dropped_after_decimation": (
+            non_manifold_faces_dropped_after_decimation
+        ),
         "faces_before_component_filter": faces_before,
         "faces_after_component_filter": faces_after_component_filter,
         "holes_filled": holes_filled,
@@ -677,6 +697,11 @@ def cleanup_run(
 
     triangle_count_before_decimation = len(faces)
     vertices, faces = decimate_mesh(vertices, faces, target_triangle_count)
+    # #300: decimation can turn a manifold mesh non-manifold; re-check right after it, the same
+    # way the pre-decimation pass above does.
+    vertices, faces, non_manifold_faces_dropped_after_decimation = (
+        drop_non_manifold_faces(vertices, faces)
+    )
     triangle_count_after_decimation = len(faces)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -708,6 +733,9 @@ def cleanup_run(
         component_report=component_report,
         size_redecimation_rounds=size_redecimation_rounds,
         non_manifold_faces_dropped=non_manifold_faces_dropped,
+        non_manifold_faces_dropped_after_decimation=(
+            non_manifold_faces_dropped_after_decimation
+        ),
     )
 
 

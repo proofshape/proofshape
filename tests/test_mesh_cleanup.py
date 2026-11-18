@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 
 import numpy as np
@@ -450,6 +451,96 @@ def test_write_glb_with_size_limit_raises_when_limit_is_impossible(tmp_path):
         )
 
 
+def _edge_owner_counts(faces: np.ndarray) -> dict[tuple[int, int], int]:
+    counts: dict[tuple[int, int], int] = {}
+    for triangle in np.asarray(faces):
+        for i in range(3):
+            a, b = int(triangle[i]), int(triangle[(i + 1) % 3])
+            key = (a, b) if a < b else (b, a)
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _max_edge_owners(faces: np.ndarray) -> int:
+    """The largest number of faces sharing any one undirected edge -- >2 means non-manifold."""
+    return max(_edge_owner_counts(faces).values(), default=0)
+
+
+def test_write_glb_with_size_limit_raises_instead_of_looping_forever_on_a_stalled_decimation(
+    tmp_path, monkeypatch
+):
+    # #263 reproduction: decimate_mesh that never reduces the face count would otherwise make
+    # the while-True loop in write_glb_with_size_limit spin forever. Run it on a thread with a
+    # timeout so a regression fails the test fast instead of hanging CI.
+    def _stalled_decimate(vertices, faces, target_triangle_count):
+        return vertices, faces
+
+    monkeypatch.setattr(mesh_cleanup, "decimate_mesh", _stalled_decimate)
+    vertices, faces = _flat_grid(n=20)
+    out = tmp_path / "stalled.glb"
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(
+            mesh_cleanup.write_glb_with_size_limit,
+            out,
+            vertices,
+            faces,
+            max_file_size_bytes=1,
+        )
+        with pytest.raises(ValueError, match="cannot be decimated further"):
+            future.result(timeout=5.0)
+    finally:
+        executor.shutdown(wait=False)
+
+
+def test_write_glb_with_size_limit_restores_manifoldness_after_each_round(
+    tmp_path, monkeypatch
+):
+    # #300 reproduction, built synthetically (the story's own Tests section allows this):
+    # decimate_mesh here stands in for fast_simplification actually doing this on real meshes.
+    # It still decimates for real, then injects one extra face onto an already-shared edge --
+    # pushing that edge from 2 owners to 3, the same shape of damage a real edge collapse can
+    # cause -- while leaving the rest of the mesh untouched, so the drop afterward only has to
+    # remove a handful of faces, not the whole mesh.
+    vertices, faces = _flat_grid(n=20)
+    baseline = tmp_path / "baseline.glb"
+    mesh_cleanup.write_glb(baseline, vertices, faces)
+    baseline_size = baseline.stat().st_size
+    real_decimate_mesh = mesh_cleanup.decimate_mesh
+
+    def _decimate_then_add_a_third_owner_on_a_shared_edge(
+        vertices, faces, target_triangle_count
+    ):
+        new_vertices, new_faces = real_decimate_mesh(
+            vertices, faces, target_triangle_count
+        )
+        shared_edge = next(
+            edge for edge, count in _edge_owner_counts(new_faces).items() if count == 2
+        )
+        a, b = shared_edge
+        third_vertex = int(new_faces[0][0])
+        if third_vertex in (a, b):
+            third_vertex = int(new_faces[0][1])
+        extra_face = np.array([[a, b, third_vertex]], dtype=new_faces.dtype)
+        corrupted_faces = np.vstack([new_faces, extra_face])
+        assert _max_edge_owners(corrupted_faces) >= 3  # confirms the repro is real
+        return new_vertices, corrupted_faces
+
+    monkeypatch.setattr(
+        mesh_cleanup, "decimate_mesh", _decimate_then_add_a_third_owner_on_a_shared_edge
+    )
+    out = tmp_path / "cleaned.glb"
+
+    _, result_faces, size_bytes, rounds = mesh_cleanup.write_glb_with_size_limit(
+        out, vertices, faces, max_file_size_bytes=int(baseline_size * 0.75)
+    )
+
+    assert rounds >= 1
+    assert size_bytes <= int(baseline_size * 0.75)
+    assert _max_edge_owners(result_faces) <= 2
+
+
 def test_mesh_cleanup_cli_returns_nonzero_for_impossible_size_limit(tmp_path, capsys):
     mesh_ply_path = tmp_path / "mesh.ply"
     out_path = tmp_path / "mesh_clean.glb"
@@ -512,6 +603,50 @@ def test_cleanup_run_writes_glb_and_report(tmp_path):
     assert len(read_vertices) == report["vertex_count"]
     on_disk_report = json.loads(out_path.with_suffix(".json").read_text())
     assert on_disk_report == report
+
+
+def test_cleanup_run_restores_manifoldness_after_its_own_decimation(
+    tmp_path, monkeypatch
+):
+    # #300 reproduction at cleanup_run's own decimate_mesh call site (line 679's original, not
+    # write_glb_with_size_limit's re-decimation loop), built synthetically the same way as the
+    # write_glb_with_size_limit case above.
+    vertices, faces = _flat_grid(n=20)
+    mesh_ply_path = tmp_path / "mesh.ply"
+    tsdf_fusion.write_mesh_ply(mesh_ply_path, vertices, faces)
+    out_path = tmp_path / "mesh_clean.glb"
+    real_decimate_mesh = mesh_cleanup.decimate_mesh
+
+    def _decimate_then_add_a_third_owner_on_a_shared_edge(
+        vertices, faces, target_triangle_count
+    ):
+        new_vertices, new_faces = real_decimate_mesh(
+            vertices, faces, target_triangle_count
+        )
+        shared_edge = next(
+            edge for edge, count in _edge_owner_counts(new_faces).items() if count == 2
+        )
+        a, b = shared_edge
+        third_vertex = int(new_faces[0][0])
+        if third_vertex in (a, b):
+            third_vertex = int(new_faces[0][1])
+        extra_face = np.array([[a, b, third_vertex]], dtype=new_faces.dtype)
+        corrupted_faces = np.vstack([new_faces, extra_face])
+        assert _max_edge_owners(corrupted_faces) >= 3  # confirms the repro is real
+        return new_vertices, corrupted_faces
+
+    monkeypatch.setattr(
+        mesh_cleanup, "decimate_mesh", _decimate_then_add_a_third_owner_on_a_shared_edge
+    )
+
+    report = mesh_cleanup.cleanup_run(
+        mesh_ply_path, out_path, target_triangle_count=100, max_hole_loop_length=8
+    )
+
+    assert report["non_manifold_faces_dropped_after_decimation"] > 0
+    _read_vertices, read_faces, _read_colors = mesh_cleanup.read_glb(out_path)
+    assert _max_edge_owners(read_faces) <= 2
+    assert len(read_faces) == report["face_count"]
 
 
 def test_cleanup_run_refuses_to_overwrite_existing_output(tmp_path):
