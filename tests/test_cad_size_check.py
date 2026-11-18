@@ -507,6 +507,34 @@ def test_measure_prism_rejects_sparse_bridge_to_oversized_outlier_blob() -> None
         assert edge.ratio == pytest.approx(1.0, abs=0.10)
 
 
+def test_measure_prism_keeps_historical_blob_when_it_already_has_a_valid_top() -> None:
+    # R-39 is a recovery path, not a new global ranking rule. A small spatially separate cluster
+    # can sit higher than the real part while the historical largest component is perfectly
+    # measurable; in that case the old component must still win.
+    prism = _triangle_prism(height_mm=30.0)
+    rng = np.random.default_rng(143)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=12.0,
+        offset_xy=(90.0, 70.0),
+        noise_mm=0.15,
+        rng=rng,
+    )
+
+    stray_xy = rng.uniform([15.0, 15.0], [19.0, 19.0], size=(120, 2))
+    stray_height = rng.normal(36.0, 0.05, size=120)
+    stray = np.column_stack([stray_xy, -stray_height])
+    contaminated = np.concatenate([points, stray])
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(30.0, abs=1.5)
+    assert result.alignment_residual_mm < 3.0
+    assert [edge.ratio for edge in result.edges] == pytest.approx(
+        [1.0, 1.0, 1.0], abs=0.12
+    )
+
+
 def test_measure_prism_prefers_real_top_over_larger_low_stray_blob() -> None:
     # R-39 reproduction of #356: on sparse phone-style scans, a broad low pile can occupy more
     # XY cells than the actual part. The historical largest-component prefilter therefore keeps

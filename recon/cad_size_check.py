@@ -733,13 +733,13 @@ def _top_face_connected_blob(
     prefilter keeps the pile and discards the part before height detection even starts. Size is
     therefore the wrong signal for this pre-height choice.
 
-    Each connected component is scored only inside the same broad CAD-relative height range
-    used by measure_prism. We find that component's densest 0.5 mm height bin, require at least
-    min_top_support points within the existing +/-1.75 mm top-face window, then choose the
-    component whose supported peak is highest. This preserves R-37's spatial isolation against
-    a denser but lower stray cluster without using the CAD-diameter plausibility gate that
-    regressed g02_02. If no component has a supported peak, fall back to the historical
-    largest-component rule so later measurement checks keep their existing failure behavior.
+    Each connected component is checked only inside the same broad CAD-relative height range
+    used by measure_prism. If the historical largest component already contains a supported top
+    peak, keep it exactly: R-39 must not perturb scans that already measure. Only when that old
+    choice has no usable top do we choose another component, preferring the highest supported
+    peak. This preserves R-37's spatial isolation without using the CAD-diameter plausibility
+    gate that regressed g02_02. If no component has a supported peak, fall back to the historical
+    rule so later measurement checks keep their existing failure behavior.
     """
     xy = np.asarray(xy_mm, dtype=np.float64)
     heights = np.asarray(height_mm, dtype=np.float64)
@@ -760,7 +760,7 @@ def _top_face_connected_blob(
     occupancy = np.zeros((height, width), dtype=np.uint8)
     occupancy[grid[:, 1], grid[:, 0]] = 1
 
-    component_count, labels, _stats, _ = cv2.connectedComponentsWithStats(
+    component_count, labels, stats, _ = cv2.connectedComponentsWithStats(
         occupancy, connectivity=8
     )
     if component_count <= 1:
@@ -768,6 +768,10 @@ def _top_face_connected_blob(
             "No connected blob of points found; check the candidate region."
         )
 
+    # Preserve the historical choice whenever it already has a usable top-face peak. R-39 is a
+    # recovery path for the #356 failure, not permission to change which component wins on scans
+    # that already measure successfully.
+    historical_label = 1 + int(stats[1:, cv2.CC_STAT_AREA].argmax())
     point_labels = labels[grid[:, 1], grid[:, 0]]
     search_lo = 0.5 * expected_height_mm
     search_hi = 1.3 * expected_height_mm + 5.0
@@ -790,6 +794,8 @@ def _top_face_connected_blob(
         if top_support < min_top_support:
             continue
 
+        if label == historical_label:
+            return point_mask
         candidates.append((peak_center, top_support, int(point_mask.sum()), point_mask))
 
     if not candidates:
