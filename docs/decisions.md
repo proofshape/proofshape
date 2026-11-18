@@ -261,6 +261,15 @@ that same exception because it is the buyer UI for R-34 and adds only the server
 route needed to land A-03 safely. C-16 still must receive both other members' approvals on its
 final head before merge; this note records the exception, not an approval.
 
+*Timing exception record (2026-11-18, I-10 / PR #385):* @mbj1994 explicitly requested an
+early-boundary merge because the capstone schedule no longer has room to hold this additive
+contract change until Dec 2. This exception waives **only the sprint-boundary timing** for
+PR #385. It does **not** waive D-031's substantive review requirement: both other team members
+must still approve the final head, all required CI must be green, and any later code change
+invalidates those approvals in the normal way. The exception changes no runtime behavior or
+contract semantics; it only allows the already-reviewed I-10 contract addition to merge as soon
+as the final-head review gates are satisfied.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
