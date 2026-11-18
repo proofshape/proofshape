@@ -117,6 +117,7 @@ class OrderResponse(BaseModel):
     placement_note: str | None = None
     buyer_reference: str | None = None
     intake_check: list[IntakeCheckResult] = Field(default_factory=list)
+    verdict: VerdictResult | None = None
 
 
 class VlmFeedback(BaseModel):
@@ -169,6 +170,9 @@ class VerdictResult(BaseModel):
     orientation_ambiguous: bool
     regions: list[Region]
     reason_codes: list[str] | None = None
+
+
+OrderResponse.model_rebuild()
 
 
 class ReconstructionResult(BaseModel):
@@ -723,8 +727,13 @@ def create_app(
         # I-09: computed fresh from the stored spec on every read, never persisted into the
         # record itself -- so a future change to k/sigma_floor (or G-10 adding sheet/card
         # floors) is reflected on the next read of an existing order, not frozen at creation.
-        from inspection.intake_check import check_intake_spec
+        from inspection.intake_check import check_intake_spec, intake_unverifiable_verdict
 
+        intake_verdict = (
+            intake_unverifiable_verdict(record["spec"])
+            if record["has_cad"]
+            else None
+        )
         return OrderResponse(
             order_code=record["order_code"],
             created_at=record["created_at"],
@@ -738,6 +747,7 @@ def create_app(
                 IntakeCheckResult(**result)
                 for result in check_intake_spec(record["spec"])
             ],
+            verdict=(None if intake_verdict is None else VerdictResult(**intake_verdict)),
         )
 
     def buyer_key_authorized(value: str | None) -> bool:
@@ -1088,6 +1098,12 @@ def create_app(
         record = store.load(session_id)
         if record is None:
             return
+        from inspection.intake_check import intake_unverifiable_verdict
+
+        intake_verdict = intake_unverifiable_verdict(order["spec"])
+        if intake_verdict is not None:
+            return VerdictResult(**intake_verdict)
+
         reconstruction = record.get("reconstruction", {})
         if reconstruction.get("status") != "complete":
             return

@@ -230,3 +230,42 @@ def check_intake_spec(spec: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
     return results
+
+
+# I-10 / D-079: derive the order-level intake verdict from I-09's per-feature checks.
+_INTAKE_UNVERIFIABLE_REASON_PREFIX = "intake_tolerance_below_k_sigma_floor:"
+
+
+def intake_unverifiable_verdict(spec: dict[str, Any]) -> dict[str, Any] | None:
+    """Return I-10's order-level Unverifiable VerdictResult payload, or None.
+
+    If any critical feature is already I-09 unverifiable, the whole order is
+    Unverifiable at intake. Explicit critical:false features stay advisory.
+    Refused or malformed features are not silently relabelled Unverifiable.
+    """
+    features = spec.get("features")
+    if not isinstance(features, list):
+        return None
+
+    checks = check_intake_spec(spec)
+    reason_codes: list[str] = []
+    for index, (feature, check) in enumerate(zip(features, checks, strict=False)):
+        if not isinstance(feature, dict):
+            continue
+        if not bool(feature.get("critical", True)):
+            continue
+        if check.get("status") != "unverifiable":
+            continue
+        feature_name = str(check.get("feature_name") or f"feature_{index}")
+        reason_codes.append(f"{_INTAKE_UNVERIFIABLE_REASON_PREFIX}{feature_name}")
+
+    if not reason_codes:
+        return None
+
+    return {
+        "verdict": "Unverifiable",
+        "declared_at": "intake",
+        "orientation_ambiguous": False,
+        "regions": [],
+        "reason_codes": reason_codes,
+    }
