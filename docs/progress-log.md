@@ -2653,3 +2653,27 @@ tab.
 **Next:** R-36's runbook (#371) drops its "don't switch apps" warning and the old 500 text once
 this merges. An abandoned `capturing` session still never expires on the server (#352's second
 point), with no story.
+
+## 2026-11-18 — Print files on Drive: G-01 and G-05 kept; G-02's and G-11's sliced files are gone (G-11)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- A `print-files/` folder on the golden set's Drive, with one subfolder per story, kept apart
+  from the photo folders. The photo downloader fetches whole folders, so a `.3mf` beside the
+  photos would land in every download.
+- G-01's two cube files and G-05's two sliced files are in it.
+- G-01's story now records its two SHA-256 values, which it never had.
+- G-11 records that its three jobs' sliced files weren't kept, so its printer, process and
+  filament presets can't be read from a file. G-02 records the same for its six specimens.
+**Command / how to reproduce:** each Drive file was downloaded and checked with
+`shasum -a 256` against the owner's local copy.
+**Result:**
+- All four G-01 and G-05 files match their local copies byte for byte.
+- G-05's two match the hashes it recorded on 2026-11-13.
+- The two files in `print-files/g-11` are model-only `.3mf` files with exactly the committed STLs'
+  vertices, so they're copies of the CAD, not a print record.
+**Concluded:** only G-01 and G-05 can show their slicer settings from a file. For G-11's finish
+parts, the caliper match with the grey control (within 0.07 mm in height) is the evidence that
+the finish didn't change the printed size. Nothing shows which preset the silk part used.
+**Next:** G-11 still needs the screen-photo and wrong-part stills, each part through
+reconstruction, and the A-01/A-02 cross-references.
