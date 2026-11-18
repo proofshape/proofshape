@@ -2603,7 +2603,7 @@ C-17 waiting on its physical print/caliper check.
 **Concluded:** the claim and D-064 WIP accounting are consistent on the reviewed head.
 **Next:** begin R-39 implementation after the claim merges.
 
-## 2026-11-18 — G-11 parts photographed and calipered; the thin wall prints at 1.10 mm (PR #nn)
+## 2026-11-18 — G-11 parts photographed and calipered; the thin wall prints at 1.10 mm (PR #388)
 
 **Who:** @TabeenRaoof.
 
