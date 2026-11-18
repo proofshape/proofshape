@@ -234,3 +234,43 @@ def test_getverdict_still_404s_before_reconstruction_completes(tmp_path):
 
     assert response.status_code == 404
     assert response.json()["code"] == "verdict_not_available"
+
+
+def test_i10_getverdict_returns_intake_unverifiable_before_reconstruction(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+        pipeline_runner=_make_pipeline_runner(),
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [
+                {
+                    "name": "hole_A",
+                    "kind": "hole",
+                    "tolerance_mm": 1.0,
+                    "critical": True,
+                }
+            ]
+        }
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": ("spec.json", json.dumps(spec), "application/json"),
+                "cad": ("part.stl", ASYMMETRIC_PART.read_bytes(), "model/stl"),
+            },
+        ).json()
+        session_id = client.post(
+            "/v1/sessions", json={"order_code": created["order_code"]}
+        ).json()["session_id"]
+        response = client.get(f"/v1/sessions/{session_id}/verdict")
+    assert response.status_code == 200
+    assert response.json() == {
+        "verdict": "Unverifiable",
+        "declared_at": "intake",
+        "orientation_ambiguous": False,
+        "regions": [],
+        "reason_codes": ["intake_tolerance_below_k_sigma_floor:hole_A"],
+    }
