@@ -507,6 +507,54 @@ def test_measure_prism_rejects_sparse_bridge_to_oversized_outlier_blob() -> None
         assert edge.ratio == pytest.approx(1.0, abs=0.10)
 
 
+def test_measure_prism_prefers_real_top_over_larger_low_stray_blob() -> None:
+    # R-39 reproduction of #356: on sparse phone-style scans, a broad low pile can occupy more
+    # XY cells than the actual part. The historical largest-component prefilter therefore keeps
+    # the pile, whose maximum height is below the expected top range, and measurement fails
+    # before it can see the real top face.
+    prism = _triangle_prism(height_mm=30.0)
+    rng = np.random.default_rng(142)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=0.0,
+        offset_xy=(90.0, 70.0),
+        noise_mm=0.15,
+        points_per_edge=600,
+        top_points=1200,
+        rng=rng,
+    )
+
+    stray_x, stray_y = np.meshgrid(
+        np.arange(5.0, 71.0, 1.0),
+        np.arange(5.0, 51.0, 1.0),
+    )
+    stray_xy = np.column_stack([stray_x.ravel(), stray_y.ravel()])
+    stray_height = np.full(len(stray_xy), 8.0)
+    stray = np.column_stack([stray_xy, -stray_height])
+    contaminated = np.concatenate([points, stray])
+
+    height = compute_height_above_board(contaminated, (0.0, 0.0, 0.0))
+    region = (
+        (contaminated[:, 0] > -10)
+        & (contaminated[:, 0] < 170)
+        & (contaminated[:, 1] > -10)
+        & (contaminated[:, 1] < 130)
+        & (height > 1.5)
+        & (height < max(prism.height_mm * 1.6, 40.0))
+    )
+    historical_mask = cad_size_check._largest_connected_blob(contaminated[region, :2])
+    # Prove the fixture actually reproduces the old failure instead of merely testing the fix.
+    assert float(height[region][historical_mask].max()) < 0.5 * prism.height_mm
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(30.0, abs=1.5)
+    assert result.alignment_residual_mm < 3.0
+    assert [edge.ratio for edge in result.edges] == pytest.approx(
+        [1.0, 1.0, 1.0], abs=0.12
+    )
+
+
 def test_measure_prism_height_ignores_denser_spatially_separate_stray_cluster() -> None:
     # Regression for the pre-R-37 spatial isolation guarantee. A compact stray cluster can have
     # more samples in one height bin than the real top face; height detection must choose the
