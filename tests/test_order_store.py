@@ -629,6 +629,86 @@ def test_i10_order_resolves_unverifiable_at_intake_before_any_session_exists(tmp
         assert fetched.json()["verdict"] == body["verdict"]
 
 
+@pytest.mark.parametrize(
+    ("kind", "tolerance_mm"),
+    [("face", 1.0), ("overall", 2.0)],
+)
+def test_i10_axis_ambiguous_critical_floor_failure_is_unverifiable_at_intake(
+    tmp_path, kind, tolerance_mm
+):
+    """PR #385 review (@TabeenRaoof): I-09 correctly refuses face/overall because their axis
+    is unknown, but I-07 later applies its global height/wall pools to every feature. Below the
+    larger measured threshold these requirements cannot reach Pass, so I-10 must route them to
+    Unverifiable before they become endless field Rescans."""
+    app = service.create_app(
+        tmp_path / "sessions", orders_dir=tmp_path / "orders", buyer_key="buyer-secret"
+    )
+    feature_name = f"{kind}_A"
+    spec = {
+        "features": [
+            {
+                "name": feature_name,
+                "kind": kind,
+                "tolerance_mm": tolerance_mm,
+                "critical": True,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": ("spec.json", json.dumps(spec), "application/json"),
+                "cad": ("part.stl", _ascii_stl(), "model/stl"),
+            },
+        )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["intake_check"][0]["status"] == "refused"
+    assert body["verdict"] == {
+        "verdict": "Unverifiable",
+        "declared_at": "intake",
+        "orientation_ambiguous": False,
+        "regions": [],
+        "reason_codes": [
+            f"intake_tolerance_below_method_floor_any_axis:{feature_name}"
+        ],
+    }
+
+
+def test_i10_axis_ambiguous_feature_above_any_axis_floor_stays_refused_without_verdict(
+    tmp_path,
+):
+    app = service.create_app(
+        tmp_path / "sessions", orders_dir=tmp_path / "orders", buyer_key="buyer-secret"
+    )
+    spec = {
+        "features": [
+            {
+                "name": "face_A",
+                "kind": "face",
+                "tolerance_mm": 5.0,
+                "critical": True,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": ("spec.json", json.dumps(spec), "application/json"),
+                "cad": ("part.stl", _ascii_stl(), "model/stl"),
+            },
+        )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["intake_check"][0]["status"] == "refused"
+    assert "verdict" not in body
+
 def test_i10_mixed_order_blocks_only_on_critical_unverifiable_features(tmp_path):
     app = service.create_app(
         tmp_path / "sessions", orders_dir=tmp_path / "orders", buyer_key="buyer-secret"

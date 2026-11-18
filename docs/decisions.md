@@ -2098,18 +2098,31 @@ so D-078 was free.
 
 ---
 
-**D-079 · One critical intake-floor failure makes the whole order Unverifiable; non-critical features do not.** (2026-11-17, I-10)
+**D-079 · One critical intake-floor failure makes the whole order Unverifiable; non-critical features do not trigger it at intake.** (2026-11-17, I-10)
 
 I-09 flags features independently, but the frozen `VerdictResult` has one verdict for the whole
-order/session. I-10 resolves that mismatch conservatively: if any critical feature is below
-the measured `k * sigma_floor` threshold, the order-level verdict is `Unverifiable` at intake.
-Every blocked critical feature is named in `reason_codes`; no geometry region contributes because
-no photo or reconstruction exists yet. A feature explicitly marked `critical: false` may still
-appear as `unverifiable` in `intake_check`, but it does not make the whole order Unverifiable.
+order/session. I-10 resolves that mismatch conservatively: if any critical `hole`/`edge` is
+below its measured `k * sigma_floor` threshold, the order-level verdict is `Unverifiable` at
+intake. The same outcome applies to a critical axis-ambiguous `face`/`overall` only when its
+valid tolerance is below the larger of the two measured thresholds used by I-07's global v1
+verdict path: `max(0.70 * 0.86, 0.70 * 5.278) = 3.6946 mm`. I-09 still reports that feature as
+`refused` because intake does not know its axis; I-10 is not choosing an axis, only recognizing
+that I-07 applies both vertex pools to every named feature and the current method path cannot
+reach Pass for that requirement. Other refused, malformed or unrecognised features are not
+relabelled. Every blocked critical feature is named in `reason_codes`; no geometry region
+contributes because no photo or reconstruction exists yet.
+
+A feature explicitly marked `critical: false` does **not** make the order Unverifiable at
+intake, even if its own `intake_check` entry is `unverifiable`. I-07 currently still evaluates
+any feature with a valid tolerance after capture, regardless of `critical`, so a non-critical
+feature can still affect a later post-reconstruction Rescan/Fail. I-10 does not change that I-07
+behavior; this sentence records the distinction instead of calling such features purely advisory.
 
 *Why:* returning Pass or Fail while one critical requirement is outside the method's measured
-capability would dress an incomplete inspection up as complete. The single overall enum has no
-honest partial-Pass state, so the whole critical inspection is routed to a CMM.
+capability would dress an incomplete inspection up as complete. Sending a requirement that the
+current method path cannot Pass into repeated capture would instead produce endless Rescans. The
+single overall enum has no honest partial-Pass state, so the whole critical inspection is routed
+to a CMM before capture.
 
 *D-004 still applies:* no CAD means no verdict. Creating a capture session is not blocked; if
 one is created anyway, `getVerdict` returns the same intake Unverifiable result immediately and
@@ -2123,8 +2136,7 @@ rule, unless a separate exception is recorded.
 this implementation.
 
 ---
-
-**D-080 · v1 expresses D-005's hard rule mesh-wide, not per-feature: a hidden defect on
+**D-080 ·**D-080 · v1 expresses D-005's hard rule mesh-wide, not per-feature: a hidden defect on
 Unobserved/Inferred geometry does not change a verdict a session's real, measured evidence
 would otherwise Pass.** (2026-11-18, PR #384)
 
