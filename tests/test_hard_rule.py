@@ -10,6 +10,18 @@ alike) from measurement by construction, and `inspect/inspection/verdict.py`'s o
 `observed_measured` mask does the same before either pool is built -- this module's job is to
 pin that down with a direct, reusable check on real `compute_verdict` results, not to add a new
 rule.
+
+**D-080 (v1 has no per-feature CAD-region binding, so the hard rule's "a critical region is
+Unobserved" row can only be expressed mesh-wide):** `compute_verdict` only ever emits
+`provenance: "unobserved"` on a region when the *whole* session has no Observed, measured data
+at all (`has_observed_data` is `False`) -- as soon as any exists anywhere, every region comes
+back `provenance: "observed"`, regardless of whether the mesh also contains Unobserved/Inferred
+patches (caught on review, @mbj1994, PR #384: a first version of the two partial-patch tests
+below checked `provenance`/`contributes_to_verdict` directly and passed vacuously for exactly
+this reason -- there were no non-`"observed"` regions in the result to inspect). The real,
+non-vacuous proof for a *partial* patch is numeric: `compute_verdict` run on the same sample
+with and without a hidden defect on non-Observed geometry must return identical results, since
+D-062/I-06 guarantee that geometry is never measured either way.
 """
 
 from __future__ import annotations
@@ -89,8 +101,11 @@ def test_hard_rule_holds_with_an_unobserved_patch_and_a_hidden_defect():
     """Same construction as `test_verdict.py`'s own
     `test_deviation_only_in_an_unobserved_region_does_not_fail`: a defect planted on an
     Unobserved vertex, with the rest of the mesh clean and fully Observed. That test already
-    owns the specific verdict value (Pass); this one checks the generic invariant instead, on
-    the live result."""
+    owns the specific verdict value (Pass). This one proves the *generic* invariant instead --
+    not by checking `provenance`/`contributes_to_verdict` on the result (vacuous here: with any
+    Observed data present, every region comes back `provenance: "observed"` regardless of the
+    Unobserved patch, per D-080), but by comparing `compute_verdict`'s own output with and
+    without the hidden defect and requiring it to be identical."""
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=1, sigma_mm=0.0, patch_fraction=0.3
@@ -103,33 +118,44 @@ def test_hard_rule_holds_with_an_unobserved_patch_and_a_hidden_defect():
 
     transform = _ground_truth_transform(sample)
     outward = _outward_offset_direction(cad_vertices, sample, unobserved_index)
-    model_vertices = sample.vertices_mm.copy()
-    model_vertices[unobserved_index] = (
-        model_vertices[unobserved_index] + 5.0 * outward
+    defective_vertices = sample.vertices_mm.copy()
+    defective_vertices[unobserved_index] = (
+        defective_vertices[unobserved_index] + 5.0 * outward
     )  # a large defect, but on an Unobserved vertex
 
-    deviation_mm, deviation_measured = compute_deviation(
-        (model_vertices, sample.faces, sample.labels),
+    _, defective_deviation_measured = compute_deviation(
+        (defective_vertices, sample.faces, sample.labels),
         (cad_vertices, cad_faces),
         transform,
         FLAT_BOARD,
     )
     assert (
-        deviation_measured[unobserved_index] == 0.0
+        defective_deviation_measured[unobserved_index] == 0.0
     )  # confirms the plant is truly invisible
     sigma_mm = np.full(len(sample.labels), 0.3)
 
-    result = compute_verdict(
-        deviation_mm,
-        deviation_measured,
-        sample.labels,
-        sigma_mm,
-        model_vertices,
-        FLAT_BOARD_PLANE,
-        _spec(tolerance_mm=10.0),
-    )
+    def _verdict(model_vertices: np.ndarray) -> dict:
+        deviation_mm, deviation_measured = compute_deviation(
+            (model_vertices, sample.faces, sample.labels),
+            (cad_vertices, cad_faces),
+            transform,
+            FLAT_BOARD,
+        )
+        return compute_verdict(
+            deviation_mm,
+            deviation_measured,
+            sample.labels,
+            sigma_mm,
+            model_vertices,
+            FLAT_BOARD_PLANE,
+            _spec(tolerance_mm=10.0),
+        )
 
-    assert _non_observed_contributing_regions(result) == []
+    clean_result = _verdict(sample.vertices_mm)
+    defective_result = _verdict(defective_vertices)
+
+    assert _non_observed_contributing_regions(defective_result) == []
+    assert defective_result == clean_result
 
 
 def test_hard_rule_holds_with_inferred_vertices_stapled_in():
@@ -137,8 +163,9 @@ def test_hard_rule_holds_with_inferred_vertices_stapled_in():
     `test_deviation.py`'s own `test_compute_deviation_leaves_inferred_vertices_unmeasured` runs
     Inferred through `compute_deviation`; nothing runs it through `compute_verdict` yet. A clean,
     fully-Observed sample has one vertex relabeled Inferred and given a large (12mm) planted
-    displacement -- proving the defect had zero effect on the verdict specifically because it
-    landed on Inferred surface, not coincidentally because nothing was wrong."""
+    displacement; as in the Unobserved-patch test above, the generic invariant is proved by
+    comparing `compute_verdict` with and without that treatment, not by inspecting
+    `provenance`/`contributes_to_verdict` (vacuous here for the same D-080 reason)."""
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
@@ -147,45 +174,60 @@ def test_hard_rule_holds_with_inferred_vertices_stapled_in():
     transform = _ground_truth_transform(sample)
 
     inferred_index = 0
-    labels = sample.labels.copy()
-    labels[inferred_index] = LABEL_INFERRED
+    inferred_labels = sample.labels.copy()
+    inferred_labels[inferred_index] = LABEL_INFERRED
     outward = _outward_offset_direction(cad_vertices, sample, inferred_index)
-    model_vertices = sample.vertices_mm.copy()
-    model_vertices[inferred_index] = model_vertices[inferred_index] + 12.0 * outward
+    defective_vertices = sample.vertices_mm.copy()
+    defective_vertices[inferred_index] = (
+        defective_vertices[inferred_index] + 12.0 * outward
+    )
 
-    deviation_mm, deviation_measured = compute_deviation(
-        (model_vertices, sample.faces, labels),
+    _, defective_deviation_measured = compute_deviation(
+        (defective_vertices, sample.faces, inferred_labels),
         (cad_vertices, cad_faces),
         transform,
         FLAT_BOARD,
     )
     assert (
-        deviation_measured[inferred_index] == 0.0
+        defective_deviation_measured[inferred_index] == 0.0
     )  # confirms the plant is truly invisible
-    sigma_mm = np.full(len(labels), 0.3)
 
-    result = compute_verdict(
-        deviation_mm,
-        deviation_measured,
-        labels,
-        sigma_mm,
-        model_vertices,
-        FLAT_BOARD_PLANE,
-        _spec(tolerance_mm=5.0),
-    )
+    def _verdict(model_vertices: np.ndarray, labels: np.ndarray) -> dict:
+        deviation_mm, deviation_measured = compute_deviation(
+            (model_vertices, sample.faces, labels),
+            (cad_vertices, cad_faces),
+            transform,
+            FLAT_BOARD,
+        )
+        sigma_mm = np.full(len(labels), 0.3)
+        return compute_verdict(
+            deviation_mm,
+            deviation_measured,
+            labels,
+            sigma_mm,
+            model_vertices,
+            FLAT_BOARD_PLANE,
+            _spec(tolerance_mm=5.0),
+        )
 
-    assert _non_observed_contributing_regions(result) == []
+    clean_result = _verdict(sample.vertices_mm, sample.labels)
+    defective_result = _verdict(defective_vertices, inferred_labels)
+
+    assert _non_observed_contributing_regions(defective_result) == []
+    assert defective_result == clean_result
     # The rest of the mesh is clean and fully Observed -- the 12mm planted defect on the one
     # Inferred vertex must not have dragged the verdict down at all.
-    assert result["verdict"] == "Pass"
+    assert defective_result["verdict"] == "Pass"
 
 
 def test_hard_rule_holds_with_a_fully_unobserved_mesh():
     """The mesh-level case -- the real, v1-expressible form of proposal 7.2's "a critical region
-    is Unobserved" row (see `stories/I/I-08.md`'s notes on why this, not a per-feature Rescan on
-    a hidden defect, is the right granularity for v1). Complements `test_verdict.py`'s own
-    `test_fully_unobserved_mesh_rescans_not_seen`, which already asserts the specific verdict
-    value; this one checks the generic invariant on the live result."""
+    is Unobserved" row (D-080: this, not a per-feature Rescan on a hidden defect, is the right
+    granularity for v1). Unlike the two tests above, `provenance: "unobserved"` really is
+    emitted here, so the `_non_observed_contributing_regions` check is not vacuous -- this
+    duplicates `test_verdict.py`'s own `test_fully_unobserved_mesh_rescans_not_seen` (same
+    construction, same verdict assertion) because the hard rule, not that specific test, is
+    this module's own subject."""
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=1.0
@@ -213,3 +255,4 @@ def test_hard_rule_holds_with_a_fully_unobserved_mesh():
     )
 
     assert _non_observed_contributing_regions(result) == []
+    assert result["verdict"] == "Rescan"
