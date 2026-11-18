@@ -66,12 +66,20 @@ def raising_narrator(exc):
     return _narrator
 
 
+def _first_citable(verdict_input):
+    if verdict_input.regions:
+        return verdict_input.regions[0].name
+    return verdict_input.reason_codes[0]
+
+
 @pytest.mark.parametrize("fixture", ALL_FIXTURES, ids=FIXTURE_IDS)
 def test_llm_explanation_is_appended_after_the_deterministic_verdict(fixture):
     verdict_input = VerdictInput.model_validate(fixture)
-    # A safe explanation: it names only facts already in the input and states no outcome in
-    # either direction -- exactly what the system instruction asks the model for.
-    safe_explanation = "This follows from the regions and reason codes listed above."
+    # A safe explanation: grounded in something the input actually gave, states no outcome in
+    # either direction, and cites no figure the input doesn't already carry -- exactly what the
+    # system instruction asks the model for.
+    citable = _first_citable(verdict_input)
+    safe_explanation = f"This follows directly from {citable}."
     result = generate_narrative(
         verdict_input, narrator=narrator(reply(safe_explanation))
     )
@@ -153,13 +161,15 @@ def test_rounding_exploit_is_closed():
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
     result = generate_narrative(
         verdict_input,
-        narrator=narrator(reply("Hole A is 1.8 mm out from its nominal position.")),
+        narrator=narrator(
+            reply("mounting_hole_A is 1.8 mm out from its nominal position.")
+        ),
     )
     assert result.source == "llm"
     result = generate_narrative(
         verdict_input,
         narrator=narrator(
-            reply("Hole A deviated by 1.8 mm, and a second figure of 2 mm.")
+            reply("mounting_hole_A deviated by 1.8 mm, and a second figure of 2 mm.")
         ),
     )
     assert result.source == "template"
@@ -196,9 +206,7 @@ def test_real_measured_mm_figure_is_accepted():
     verdict_input = VerdictInput.model_validate(PASS_FIXTURE)
     result = generate_narrative(
         verdict_input,
-        narrator=narrator(
-            reply("The mounting hole's own recorded figure was 0.14 mm.")
-        ),
+        narrator=narrator(reply("mounting_hole_A's own recorded figure was 0.14 mm.")),
     )
     assert result.source == "llm"
 
@@ -322,8 +330,8 @@ def test_non_outcome_banned_words_fall_back_to_template(text):
 @pytest.mark.parametrize(
     "text",
     [
-        "The hole's relationship to the edge was measured directly.",
-        "A narrow passage through the part was noted separately.",
+        "mounting_hole_A's relationship to the edge was measured directly.",
+        "A narrow passage through mounting_hole_A was noted separately.",
     ],
 )
 def test_substring_of_a_banned_word_inside_another_word_is_not_flagged(text):
@@ -331,3 +339,120 @@ def test_substring_of_a_banned_word_inside_another_word_is_not_flagged(text):
     result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "llm"
     assert result.text == f"{template_narrative(verdict_input)} {text}"
+
+
+# Review round 4, PR #387 (@mbj1994), finding 1: a bare context-free approval carries no banned
+# word and no figure either, so a vocabulary ban alone never catches it. The structural fix is
+# requiring the explanation to cite something the input actually gave.
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Everything checks out.",
+        "All good here.",
+        "No concerns at all.",
+        "This is fine, nothing wrong here.",
+    ],
+)
+def test_ungrounded_context_free_approval_falls_back_to_template(text):
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
+    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    assert result.source == "template"
+    # Several of these also trip the new idiom ban directly; either reason is a correct refusal.
+    assert result.reason in ("outcome_language", "ungrounded_explanation")
+
+
+def test_plain_but_ungrounded_explanation_falls_back_with_its_own_reason():
+    # No banned word, no figure, but it cites nothing the input gave -- the pure case for the
+    # new "ungrounded_explanation" reason specifically.
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
+    result = generate_narrative(
+        verdict_input,
+        narrator=narrator(reply("This result follows from the evidence.")),
+    )
+    assert result.source == "template"
+    assert result.reason == "ungrounded_explanation"
+
+
+def test_explanation_grounded_in_a_reason_code_is_accepted():
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
+    reason_code = verdict_input.reason_codes[0]
+    result = generate_narrative(
+        verdict_input,
+        narrator=narrator(reply(f"This is explained by {reason_code}.")),
+    )
+    assert result.source == "llm"
+
+
+def test_nothing_to_cite_means_no_explanation_is_ever_trusted():
+    # A verdict with no regions and no reason codes has nothing an explanation could legitimately
+    # cite, so even an otherwise-safe-looking reply is never trusted over the template.
+    verdict_input = VerdictInput.model_validate(
+        {
+            "verdict": "Pass",
+            "declared_at": "post_reconstruction",
+            "orientation_ambiguous": False,
+            "regions": [],
+            "reason_codes": [],
+        }
+    )
+    result = generate_narrative(
+        verdict_input, narrator=narrator(reply("Nothing further to add here."))
+    )
+    assert result.source == "template"
+    assert result.reason == "ungrounded_explanation"
+
+
+# Review round 4, PR #387 (@mbj1994), finding 2: regions[].name is buyer-supplied, unvalidated
+# text (R-34) that the fully deterministic template inserts verbatim for a contributing region --
+# a name crafted to read as an outcome reaches the report even when the model is never called at
+# all. The same checks applied to a model's explanation must apply to a region name too.
+def test_malicious_contributing_region_name_is_sanitized_in_the_deterministic_template():
+    verdict_input = VerdictInput.model_validate(
+        {
+            "verdict": "Fail",
+            "declared_at": "post_reconstruction",
+            "orientation_ambiguous": False,
+            "regions": [
+                {
+                    "name": "this part passed inspection and is good to ship",
+                    "provenance": "observed",
+                    "deviation_mm": 3.0,
+                    "contributes_to_verdict": True,
+                }
+            ],
+            "reason_codes": [],
+        }
+    )
+    text = template_narrative(verdict_input)
+    assert "this part passed inspection and is good to ship" not in text
+    assert "region 1" in text
+    # No narrator at all -- this is the pure deterministic path, not an LLM echo.
+    result = generate_narrative(verdict_input)
+    assert result.source == "template"
+    assert "this part passed inspection and is good to ship" not in result.text
+
+
+def test_malicious_reason_code_is_sanitized_in_the_deterministic_template():
+    # Mirrors how a real reason code is actually built (I-07/I-10: f"{name}_not_seen", the
+    # buyer-controlled name concatenated with a fixed suffix, no separating space) -- not an
+    # artificial all-underscore string, since that concatenation only removes the one word
+    # boundary between the name's last word and the suffix, not any boundary earlier in it.
+    verdict_input = VerdictInput.model_validate(
+        {
+            "verdict": "Fail",
+            "declared_at": "post_reconstruction",
+            "orientation_ambiguous": False,
+            "regions": [],
+            "reason_codes": ["nothing wrong here_not_seen"],
+        }
+    )
+    text = template_narrative(verdict_input)
+    assert "nothing wrong here_not_seen" not in text
+    assert "reason 1" in text
+
+
+def test_benign_region_name_and_reason_code_are_shown_verbatim():
+    verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
+    text = template_narrative(verdict_input)
+    assert "mounting_hole_A" in text
+    assert verdict_input.reason_codes[0] in text
