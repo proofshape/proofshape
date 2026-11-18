@@ -30,14 +30,14 @@ RESCAN_FIXTURE = json.loads(
 FAIL_FIXTURE = json.loads(
     (REPO_ROOT / "capture" / "stub" / "fixtures" / "verdict-fail.json").read_text()
 )
-# No real intake-time Unverifiable example exists yet -- I-10 (the story that defines the
-# authoritative intake reason-code vocabulary) is still Claimed, not Done. Illustrative only.
+# I-10 landed on main while this PR was in review -- same payload shape its own
+# tests/test_verdict_endpoint.py asserts against a real session, not hand-invented.
 UNVERIFIABLE_FIXTURE = {
     "verdict": "Unverifiable",
     "declared_at": "intake",
     "orientation_ambiguous": False,
     "regions": [],
-    "reason_codes": ["sealing_face_below_reference_floor"],
+    "reason_codes": ["intake_tolerance_below_k_sigma_floor:hole_A"],
 }
 
 ALL_FIXTURES = [PASS_FIXTURE, FAIL_FIXTURE, RESCAN_FIXTURE, UNVERIFIABLE_FIXTURE]
