@@ -279,10 +279,10 @@ Full detail in each story file.
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Done | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
 | [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Done | @dalwalyk |
-| [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Claimed | @dalwalyk |
-| [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Blocked | _unclaimed_ |
-| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34 | Claimed | @dalwalyk |
-| [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Blocked | _unclaimed_ |
+| [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Done | @dalwalyk |
+| [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Ready | _unclaimed_ |
+| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34, R-37 | Done | @dalwalyk |
+| [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Ready | _unclaimed_ |
 
 ---
 
@@ -334,7 +334,7 @@ Full detail in each story file.
 | [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
 | [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Done | @dalwalyk |
-| [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
+| [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Ready | _unclaimed_ |
 
 **Waiting on a decision, no story yet:**
 - **Completion on a host that serves suppliers.** A-12's runner works on a CUDA host, but two
@@ -455,7 +455,7 @@ Full detail in each story file.
 | [C-25](C/C-25.md) | Frame gate: check the blur threshold against a real motion-blurred frame | 2 h | C-06 | Ready | _unclaimed_ |
 | [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Ready | _unclaimed_ |
 | [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
-| [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Ready | _unclaimed_ |
+| [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Claimed | @dalwalyk |
 
 ---
 

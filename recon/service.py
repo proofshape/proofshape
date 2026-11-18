@@ -61,6 +61,8 @@ ErrorCode = Literal[
     "no_cad_uploaded",
     "cad_unreadable",
     "verdict_not_available",
+    # I-07: a critical spec feature's tolerance_mm was missing or null at verdict time.
+    "tolerance_missing",
     "buyer_auth_required",
     # Contract v1.1 (A-11, D-056).
     "malformed_request",
@@ -96,6 +98,15 @@ class SessionResponse(BaseModel):
     status: Literal["capturing", "finished"]
 
 
+class IntakeCheckResult(BaseModel):
+    """I-09: one feature's Unverifiable-at-intake check, board tier only (D-073/D-077)."""
+
+    feature_name: str
+    tolerance_mm: float | None
+    status: Literal["ok", "unverifiable", "refused"]
+    reason: str | None = None
+
+
 class OrderResponse(BaseModel):
     order_code: str
     created_at: str
@@ -105,6 +116,7 @@ class OrderResponse(BaseModel):
     spec: dict[str, Any]
     placement_note: str | None = None
     buyer_reference: str | None = None
+    intake_check: list[IntakeCheckResult] = Field(default_factory=list)
 
 
 class VlmFeedback(BaseModel):
@@ -708,6 +720,11 @@ def create_app(
 
     def order_response(record: dict[str, Any]) -> OrderResponse:
         cad = record.get("cad")
+        # I-09: computed fresh from the stored spec on every read, never persisted into the
+        # record itself -- so a future change to k/sigma_floor (or G-10 adding sheet/card
+        # floors) is reflected on the next read of an existing order, not frozen at creation.
+        from inspection.intake_check import check_intake_spec
+
         return OrderResponse(
             order_code=record["order_code"],
             created_at=record["created_at"],
@@ -717,6 +734,10 @@ def create_app(
             spec=record["spec"],
             placement_note=record.get("placement_note"),
             buyer_reference=record.get("buyer_reference"),
+            intake_check=[
+                IntakeCheckResult(**result)
+                for result in check_intake_spec(record["spec"])
+            ],
         )
 
     def buyer_key_authorized(value: str | None) -> bool:
@@ -1054,6 +1075,88 @@ def create_app(
         # cannot overwrite reconstruction state, nor can this stale record lose their work.
         supervisor.join(session_dir, int(record["frame_count"]))
         store.save(record)
+        run_post_reconstruction_measurement(session_id)
+
+    def run_post_reconstruction_measurement(session_id: str) -> None:
+        """I-07: once reconstruction completes, run I-05's registration/ambiguity check and
+        I-06's deviation computation against the order's CAD (if any) -- both are otherwise
+        dormant, called by nothing in the live pipeline. Best-effort: any failure here is
+        caught and recorded as `record["ambiguity"]["error"]`, never raised. Reconstruction
+        itself already succeeded; this is a second, independent pass `getVerdict` treats as
+        Rescan if it didn't complete, not a reconstruction failure.
+        """
+        record = store.load(session_id)
+        if record is None:
+            return
+        reconstruction = record.get("reconstruction", {})
+        if reconstruction.get("status") != "complete":
+            return
+        order = order_store.load(record["order_code"])
+        if order is None or not order.get("has_cad"):
+            return
+
+        from inspection import registration
+        from inspection.cad import load_mesh
+        from inspection.deviation import publish_deviation_glb
+
+        from recon.mesh_cleanup import read_glb
+        from recon.part_segmentation import BoardSurface
+        from recon.provenance import colors_to_labels
+
+        try:
+            session_dir = store.session_dir(session_id)
+            cad_path = order_store.cad_path(record["order_code"])
+            if cad_path is None:
+                # PR #379 review (@TabeenRaoof): order.has_cad=True but no CAD file on disk is
+                # an inconsistent order, not a transient timing gap -- get_verdict's own earlier
+                # has_cad check won't 404 for it, so silently returning here (never writing
+                # `ambiguity`) left get_verdict answering "measurement has not finished yet"
+                # forever, for a measurement that will now never run. Recorded as an error, the
+                # same as every other best-effort failure in this function.
+                record["ambiguity"] = {"error": "registration_or_deviation_failed"}
+                store.save(record)
+                return
+            cad_vertices, cad_faces, cad_units = load_mesh(cad_path)
+            cad_mesh = (cad_vertices, cad_faces, cad_units)
+
+            glb_path = Path(reconstruction["glb_path"])
+            model_vertices, model_faces, model_colors = read_glb(glb_path)
+            model_labels = colors_to_labels(model_colors)
+            model = (model_vertices, model_faces, model_labels)
+
+            board_surface_report = json.loads(
+                (session_dir / "artifacts" / "fusion" / "tsdf_fusion.json").read_text(
+                    encoding="utf-8"
+                )
+            )["board_surface"]
+            board_surface = BoardSurface(**board_surface_report)
+
+            candidates = registration.global_register(model, cad_mesh)
+            ambiguity = registration.check_ambiguity(candidates, model, cad_mesh)
+            publish_deviation_glb(
+                store,
+                session_id,
+                cad_mesh,
+                ambiguity.best.transformation,
+                board_surface,
+            )
+        except Exception:
+            logger.exception(
+                "Post-reconstruction measurement failed for session %s", session_id
+            )
+            record = store.load(session_id)
+            if record is not None:
+                record["ambiguity"] = {"error": "registration_or_deviation_failed"}
+                store.save(record)
+            return
+
+        record = store.load(session_id)
+        if record is not None:
+            record["ambiguity"] = {
+                "orientation_ambiguous": ambiguity.orientation_ambiguous,
+                "reason_codes": list(ambiguity.reason_codes),
+            }
+            store.save(record)
 
     @app.post(
         "/v1/sessions/{session_id}/finish",
@@ -1127,7 +1230,7 @@ def create_app(
     @app.get(
         "/v1/sessions/{session_id}/verdict",
         response_model=VerdictResult,
-        responses={404: {"model": ErrorDetail}},
+        responses={404: {"model": ErrorDetail}, 422: {"model": ErrorDetail}},
         operation_id="getVerdict",
     )
     def get_verdict(session_id: str):
@@ -1148,13 +1251,122 @@ def create_app(
                     message="No CAD was supplied for this session — no verdict exists.",
                 ),
             )
-        return error(
-            404,
-            ErrorDetail(
-                code="verdict_not_available",
-                message="A CAD is stored for this order, but verdict logic is not available yet.",
-            ),
+        reconstruction = record.get("reconstruction", {})
+        if reconstruction.get("status") != "complete":
+            return error(
+                404,
+                ErrorDetail(
+                    code="verdict_not_available",
+                    message=(
+                        "A CAD is stored for this order, but reconstruction has not "
+                        "completed yet."
+                    ),
+                ),
+            )
+
+        import numpy as np
+        from inspection.deviation import (
+            DEVIATION_MEASURED_ATTRIBUTE,
+            DEVIATION_MM_ATTRIBUTE,
         )
+        from inspection.verdict import (
+            NoJudgedFeaturesError,
+            RefusedToleranceError,
+            compute_verdict,
+        )
+
+        from recon.mesh_cleanup import read_glb, read_glb_extra_attributes
+        from recon.provenance import colors_to_labels
+        from recon.uncertainty import read_sigma_npz
+
+        session_dir = store.session_dir(session_id)
+        glb_path = Path(reconstruction["glb_path"])
+        vertices, _faces, colors = read_glb(glb_path)
+        labels = colors_to_labels(colors)
+        extra = read_glb_extra_attributes(
+            glb_path, [DEVIATION_MM_ATTRIBUTE, DEVIATION_MEASURED_ATTRIBUTE]
+        )
+        # I-07: a session whose post-reconstruction measurement (registration + deviation)
+        # never completed has no deviation attributes on its served GLB yet -- treated as
+        # registration_failed below, same as an explicit error.
+        deviation_mm = extra.get(DEVIATION_MM_ATTRIBUTE, np.zeros(len(vertices)))
+        deviation_measured = extra.get(
+            DEVIATION_MEASURED_ATTRIBUTE, np.zeros(len(vertices))
+        )
+
+        ambiguity_record = record.get("ambiguity")
+        if ambiguity_record is None:
+            # PR #379 review (@TabeenRaoof): run_session marks reconstruction "complete" and
+            # saves the record *before* calling run_post_reconstruction_measurement (so a crash
+            # in the latter can never leave the former unpersisted) -- a request landing in that
+            # window previously fell through to registration_failed below and returned a
+            # Rescan that looked final, for a part that was never actually measured. Measurement
+            # genuinely not having run yet is distinct from it having run and recorded an error;
+            # only the latter is `registration_failed`.
+            return error(
+                404,
+                ErrorDetail(
+                    code="verdict_not_available",
+                    message=(
+                        "Reconstruction is complete, but post-reconstruction measurement "
+                        "has not finished yet."
+                    ),
+                ),
+            )
+        registration_failed = "error" in ambiguity_record
+        orientation_ambiguous = bool(
+            not registration_failed and ambiguity_record.get("orientation_ambiguous")
+        )
+        ambiguity_reason_codes = (
+            [] if registration_failed else ambiguity_record.get("reason_codes", [])
+        )
+
+        sigma_npz_path = session_dir / "artifacts" / "uncertainty" / "sigma_mm.npz"
+        sigma_mm = (
+            read_sigma_npz(sigma_npz_path)["sigma_mm"]
+            if sigma_npz_path.exists()
+            else np.full(len(vertices), np.nan)
+        )
+
+        # D-073: sigma_floor only covers out-of-plane (height) comparisons -- compute_verdict
+        # needs each vertex's height above the board to tell those apart from in-plane (wall)
+        # ones, so it needs the same board plane TSDF fusion already fit for this session
+        # (written during reconstruction itself, independent of whether the post-reconstruction
+        # measurement step below later succeeded).
+        board_surface_report = json.loads(
+            (session_dir / "artifacts" / "fusion" / "tsdf_fusion.json").read_text(
+                encoding="utf-8"
+            )
+        )["board_surface"]
+        board_plane = (
+            board_surface_report["slope_x"],
+            board_surface_report["slope_y"],
+            board_surface_report["z_at_origin_mm"],
+        )
+
+        try:
+            result = compute_verdict(
+                deviation_mm,
+                deviation_measured,
+                labels,
+                sigma_mm,
+                vertices,
+                board_plane,
+                order["spec"],
+                orientation_ambiguous=orientation_ambiguous,
+                ambiguity_reason_codes=ambiguity_reason_codes,
+                registration_failed=registration_failed,
+            )
+        except RefusedToleranceError as exc:
+            return error(422, ErrorDetail(code="tolerance_missing", message=str(exc)))
+        except NoJudgedFeaturesError as exc:
+            # PR #379 review (@TabeenRaoof, @mbj1994): reused, not a new contract error code --
+            # there is as little a verdict to serve here as when measurement hasn't run yet.
+            return error(
+                404, ErrorDetail(code="verdict_not_available", message=str(exc))
+            )
+
+        return VerdictResult(declared_at="post_reconstruction", **result)
 
     @app.get(
         "/v1/sessions/{session_id}/model.glb",

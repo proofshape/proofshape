@@ -67,6 +67,7 @@ const RECONSTRUCTION_404 = loadExample("getReconstruction.response-404") as Erro
 const VERDICT_PASS = loadExample("getVerdict.response-200") as VerdictResult;
 const VERDICT_RESCAN = loadExample("getVerdict.response-200-rescan-unobserved") as VerdictResult;
 const VERDICT_404 = loadExample("getVerdict.response-404") as ErrorDetail;
+const VERDICT_422 = loadExample("getVerdict.response-422") as ErrorDetail;
 const VERDICT_FAIL = JSON.parse(
   readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "fixtures", "verdict-fail.json"),
@@ -117,7 +118,7 @@ function sessionNotFound(): ErrorDetail {
   return { code: "session_not_found", message: "No session with that id." };
 }
 
-export type VerdictScenario = "no_cad" | "pass" | "rescan" | "fail";
+export type VerdictScenario = "no_cad" | "pass" | "rescan" | "fail" | "tolerance_missing";
 
 export interface ContractStub {
   // A Connect-style listener: usable both as a bare `http.createServer` handler (tests) and as
@@ -534,6 +535,10 @@ export function createContractStub(): ContractStub {
     const scenario = verdictScenarios.get(sessionId) ?? "no_cad";
     if (scenario === "no_cad") {
       sendJson(res, 404, VERDICT_404);
+      return;
+    }
+    if (scenario === "tolerance_missing") {
+      sendJson(res, 422, VERDICT_422);
       return;
     }
     const verdict =

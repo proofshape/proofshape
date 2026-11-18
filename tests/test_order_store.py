@@ -5,6 +5,7 @@ import re
 import secrets
 import struct
 
+import pytest
 from fastapi.testclient import TestClient
 
 from recon import service
@@ -319,3 +320,265 @@ def test_verdict_distinguishes_no_cad_from_not_available(tmp_path):
             client.get(f"/v1/sessions/{sid_with_cad}/verdict").json()["code"]
             == "verdict_not_available"
         )
+
+
+def test_order_response_surfaces_intake_check_for_an_unverifiable_feature(tmp_path):
+    """I-09: a feature whose tolerance sits below the board tier's k*sigma_floor is flagged
+    Unverifiable in both the createOrder and getOrder responses -- the same endpoint round
+    trip test_create_order_round_trip_and_session_gate already exercises, with a real
+    A-03-shaped spec this time."""
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        # Both in-plane kinds (hole/edge), checked against D-078's measured floor -- a
+        # height-like kind (face/overall) is refused instead, since neither states its axis
+        # (see test_order_response_refuses_face_and_overall_for_their_axis_ambiguity below).
+        spec = {
+            "features": [
+                {
+                    "name": "hole_A",
+                    "kind": "hole",
+                    "tolerance_mm": 1.0,
+                    "critical": True,
+                },
+                {
+                    "name": "edge_B",
+                    "kind": "edge",
+                    "tolerance_mm": 5.0,
+                    "critical": False,
+                },
+            ]
+        }
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", json.dumps(spec), "application/json")},
+        )
+
+        assert created.status_code == 201
+        checks = {
+            r["feature_name"]: r["status"] for r in created.json()["intake_check"]
+        }
+        assert checks == {"hole_A": "unverifiable", "edge_B": "ok"}
+
+        fetched = client.get(f"/v1/orders/{created.json()['order_code']}")
+        assert fetched.json()["intake_check"] == created.json()["intake_check"]
+
+
+def test_order_response_refuses_face_and_overall_for_their_axis_ambiguity(tmp_path):
+    """Found on review (@TabeenRaoof, PR #372): neither kind states whether it means the
+    board-perpendicular dimension (D-073) or an in-plane one (D-078), so neither floor is
+    assumed -- both are refused, regardless of tolerance."""
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [
+                {
+                    "name": "top_face_A",
+                    "kind": "face",
+                    "tolerance_mm": 0.1,
+                    "critical": True,
+                },
+                {
+                    "name": "overall_B",
+                    "kind": "overall",
+                    "tolerance_mm": 50.0,
+                    "critical": False,
+                },
+            ]
+        }
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", json.dumps(spec), "application/json")},
+        )
+
+        assert created.status_code == 201
+        checks = {
+            r["feature_name"]: r["status"] for r in created.json()["intake_check"]
+        }
+        assert checks == {"top_face_A": "refused", "overall_B": "refused"}
+
+
+def test_order_response_refuses_a_null_tolerance_feature(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [
+                {
+                    "name": "edge_C",
+                    "kind": "edge",
+                    "tolerance_mm": None,
+                    "critical": True,
+                }
+            ]
+        }
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", json.dumps(spec), "application/json")},
+        )
+
+    # response_model_exclude_none=True drops tolerance_mm (null) from the JSON entirely.
+    assert created.json()["intake_check"] == [
+        {
+            "feature_name": "edge_C",
+            "status": "refused",
+            "reason": "tolerance_mm is missing or null; refused, not defaulted.",
+        }
+    ]
+
+
+def test_order_response_refuses_a_non_numeric_tolerance_without_server_error(tmp_path):
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": (
+                    "spec.json",
+                    json.dumps(
+                        {
+                            "features": [
+                                {
+                                    "name": "height",
+                                    "kind": "face",
+                                    "tolerance_mm": "1.0",
+                                    "critical": True,
+                                }
+                            ]
+                        }
+                    ),
+                    "application/json",
+                )
+            },
+        )
+
+    assert created.status_code == 201
+    assert created.json()["intake_check"] == [
+        {
+            "feature_name": "height",
+            "status": "refused",
+            "reason": "tolerance_mm must be a finite positive number; refused, not defaulted.",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("spec", "expected_statuses"),
+    [
+        ({"features": None}, []),
+        ({"features": "abc"}, ["refused"]),
+        ({"features": {"a": 1}}, ["refused"]),
+        ({"features": [5]}, ["refused"]),
+        (
+            {"features": [{"name": 7, "kind": "edge", "tolerance_mm": 1.0}]},
+            ["unverifiable"],
+        ),
+    ],
+)
+def test_order_response_refuses_malformed_opaque_specs_without_server_error(
+    tmp_path, spec, expected_statuses
+):
+    """Found on review (@TabeenRaoof, PR #372): each of these previously returned 500 on
+    createOrder, and -- because the order is saved before the response is built -- 500 on
+    every later getOrder too, from a spec that `main` accepts with 201. R-34 stores a spec as
+    opaque JSON, so a buyer-supplied `features` shape this malformed reaches the server as-is.
+    The last case's `name` is malformed, but its `kind`/`tolerance_mm` are not -- the real check
+    still runs, with the name replaced by a placeholder, rather than every malformed field
+    forcing a blanket refusal."""
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", json.dumps(spec), "application/json")},
+        )
+
+        assert created.status_code == 201
+        statuses = [r["status"] for r in created.json()["intake_check"]]
+        assert statuses == expected_statuses
+
+        fetched = client.get(f"/v1/orders/{created.json()['order_code']}")
+        assert fetched.status_code == 200
+        assert fetched.json()["intake_check"] == created.json()["intake_check"]
+
+
+def test_order_response_checks_an_in_plane_feature_against_the_in_plane_floor_not_height(
+    tmp_path,
+):
+    """The exact bug found on review (@mbj1994, PR #372): use D-078's in-plane floor, not height."""
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [
+                {
+                    "name": "edge_1",
+                    "kind": "edge",
+                    "tolerance_mm": 1.0,
+                    "critical": True,
+                },
+                {
+                    "name": "edge_2",
+                    "kind": "edge",
+                    "tolerance_mm": 5.0,
+                    "critical": True,
+                },
+            ]
+        }
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={"spec": ("spec.json", json.dumps(spec), "application/json")},
+        )
+
+    checks = {r["feature_name"]: r["status"] for r in created.json()["intake_check"]}
+    assert checks == {"edge_1": "unverifiable", "edge_2": "ok"}
+
+
+def test_order_response_is_empty_intake_check_when_spec_has_no_features(tmp_path):
+    # Existing orders (and R-34's own placeholder-shaped specs, e.g. {"tolerance_mm": 4.0})
+    # have no "features" key at all -- D-004, nothing to check yet, not an error.
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/v1/orders",
+            headers={"x-proofshape-buyer-key": "buyer-secret"},
+            files={
+                "spec": (
+                    "spec.json",
+                    json.dumps({"tolerance_mm": 4.0}),
+                    "application/json",
+                )
+            },
+        )
+
+    assert created.json()["intake_check"] == []
