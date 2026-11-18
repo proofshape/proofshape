@@ -91,6 +91,30 @@ day these were checked, while Drive still served the same files on its plain dow
 and run the script again, ideally later or from another network. It never swaps in a sample that
 failed its count or hash check, so a retry is always safe.
 
+## G-11 robustness capture
+
+G-11's three printed robustness parts were photographed the same way as G-08's specimens, and
+`robustness_capture_manifest.json` describes them in the same format, locked by
+`robustness_capture_manifest.sha256`. They have their own Drive folder (`g-11`), beside G-08's.
+
+| Sample | Part | Frames | CAD |
+|---|---|---|---|
+| `g11_glossy` | silver silk PLA pentagon | 30 | `g02_04_pentagon_r22x25mm.stl` |
+| `g11_dark` | black PLA Basic pentagon | 30 | `g02_04_pentagon_r22x25mm.stl` |
+| `g11_thin` | grey open-top tray, 1.2 mm walls | 29 | `g11_01_thin_wall_pentagon_r22x25mm.stl` |
+
+- **Capture:** 2026-11-17, on the same board sheet and table as the golden set and G-08, under
+  lighting condition A, with the iPhone 16 main camera at 5712 × 4284. The grey `g02_04` in
+  `specimen_capture_manifest.json` is the control for all three.
+- **Checks:** the board was posed in every frame by R-02's own detection, and no frame was softer
+  than the golden set's softest. No part has a label on a face the camera sees: the glossy part
+  and the tray were reshot after a pen label was found on a side face.
+
+```bash
+GOLDEN_CAPTURE_MANIFEST=fixtures/robustness_capture_manifest.json \
+  bash fixtures/download_golden_capture.sh fixtures/data/robustness_capture
+```
+
 ## Caliper readings
 
 The ground-truth stories (`stories/G/`) record caliper readings as one file per story,
@@ -117,8 +141,8 @@ Each object in `features`:
 
 | Field | Meaning |
 |---|---|
-| `object` | `s-04`, a specimen ID, `board`, a cube ID, or a G-05 part ID such as `g05-00` |
-| `kind` | `edge`, `height`, `board_span`, `cube_axis`, `wall` (G-05: the web between an outside face and a hole wall, outside jaws) or `hole_width` (G-05: across a hole, inside jaws) |
+| `object` | `s-04`, a specimen ID, `board`, a cube ID, a G-05 part ID such as `g05-00`, or a G-11 sample ID such as `g11_thin` |
+| `kind` | `edge`, `height`, `board_span`, `cube_axis`, `wall` (G-05: the web between an outside face and a hole wall, outside jaws; G-11: the thin tray's wall, read across both its faces) or `hole_width` (G-05: across a hole, inside jaws) |
 | `cad_vertices` | For an `edge`, the CAD vertex pair it runs between, as `[[x, y], [x, y]]` in the STL's millimetres. `null` otherwise |
 | `nominal_mm` | The size it should be, in millimetres |
 | `nominal_source` | Where `nominal_mm` comes from: `"cad"`, `"D-034"` (the board's 20 mm squares) or `"cube"` |

@@ -1,0 +1,54 @@
+{
+  "captures": [
+    {
+      "aggregate_bytes": 115399130,
+      "drive_folder_id": "14n6DPJbgCXgpy5OUVXJoBGVc5T2bwRQB",
+      "frames": 30,
+      "lighting": "condition A",
+      "object": "silver silk PLA pentagonal prism, r22 x 25 mm (g02_04 geometry)",
+      "reflective": true,
+      "sample_id": "g11_glossy",
+      "content_sha256": "6a9ed13b20f27c0e10d021d0f3df1dd698896035e3676e130618bd9dba40af67"
+    },
+    {
+      "aggregate_bytes": 115267425,
+      "drive_folder_id": "11Umt-atmvRBt6QN3Ee9GSV0Rg0ZpkM_1",
+      "frames": 30,
+      "lighting": "condition A",
+      "object": "black PLA Basic pentagonal prism, r22 x 25 mm (g02_04 geometry)",
+      "reflective": false,
+      "sample_id": "g11_dark",
+      "content_sha256": "4b0dfe816a475d484b920feeb5e195cb7dfd2cea8890133afd9127670a66f5f2"
+    },
+    {
+      "aggregate_bytes": 112431297,
+      "drive_folder_id": "1iw_ghxxMIGIqRpSDlUpRAJE-zuEUijoA",
+      "frames": 29,
+      "lighting": "condition A",
+      "object": "grey open-top pentagonal tray, r22 x 25 mm, 1.2 mm walls, 2.0 mm floor",
+      "reflective": false,
+      "sample_id": "g11_thin",
+      "content_sha256": "b48ac8518b9241d74cdfeee828d6d4cfc2f7511d9ea35e8d19aede7c9be58879"
+    }
+  ],
+  "drive_root_folder_id": "1ywjkf54eHQ2DxDhCjDSGKYR5QMYIr6eV",
+  "notes": "G-11: the robustness parts, photographed 2026-11-17 by @TabeenRaoof on the same G-06-calipered board sheet and table as the golden set and G-08, under lighting condition A. iPhone 16 main camera, 5712 x 4284 landscape stills. The glossy and dark parts are g02_04 printed in other filaments; the grey g02_04 in specimen_capture_manifest.json is their control. Photos remain outside git.",
+  "reference_cad": [
+    {
+      "filename": "g02_04_pentagon_r22x25mm.stl",
+      "path": "fixtures/reference_cad/g02_04_pentagon_r22x25mm.stl",
+      "sample_id": "g11_glossy"
+    },
+    {
+      "filename": "g02_04_pentagon_r22x25mm.stl",
+      "path": "fixtures/reference_cad/g02_04_pentagon_r22x25mm.stl",
+      "sample_id": "g11_dark"
+    },
+    {
+      "filename": "g11_01_thin_wall_pentagon_r22x25mm.stl",
+      "path": "fixtures/reference_cad/g11_01_thin_wall_pentagon_r22x25mm.stl",
+      "sample_id": "g11_thin"
+    }
+  ],
+  "version": 1
+}

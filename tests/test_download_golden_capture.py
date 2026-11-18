@@ -180,12 +180,17 @@ def bin_dir(tmp_path: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    "manifest_name", ["golden_capture_manifest.json", "specimen_capture_manifest.json"]
+    "manifest_name",
+    [
+        "golden_capture_manifest.json",
+        "specimen_capture_manifest.json",
+        "robustness_capture_manifest.json",
+    ],
 )
 def test_committed_manifest_matches_its_committed_sha256(manifest_name: str) -> None:
     # F-08: each manifest's committed .sha256 is the checksum of the versioned inventory manifest
     # (fixtures/README.md) -- it only catches an accidental edit to the manifest if something
-    # actually checks the two still agree. G-08 added the specimen set's.
+    # actually checks the two still agree. G-08 added the specimen set's, G-11 the robustness set's.
     manifest_path = REPO_ROOT / "fixtures" / manifest_name
     sha_path = manifest_path.with_suffix(".sha256")
     expected_line = sha_path.read_text(encoding="utf-8").strip()
@@ -213,6 +218,33 @@ def test_specimen_manifest_lists_every_g02_specimen_with_its_hash_and_cad() -> N
         assert capture["drive_folder_id"]
     cad = {entry["sample_id"]: entry for entry in data["reference_cad"]}
     assert sorted(cad) == sample_ids
+    for entry in cad.values():
+        assert (REPO_ROOT / entry["path"]).is_file(), entry["path"]
+        assert entry["path"].endswith(entry["filename"])
+
+
+def test_robustness_manifest_lists_the_three_g11_parts_with_hash_and_cad() -> None:
+    # G-11: one capture per printed robustness part, 25-30 frames each (G-08's convention),
+    # every one hash-locked so the downloader refuses rather than falls back to a count-only
+    # check. The glossy and dark parts are g02_04 itself in another filament, so they map to its
+    # CAD; the thin tray maps to the hollowed g11_01.
+    data = json.loads(
+        (REPO_ROOT / "fixtures" / "robustness_capture_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    sample_ids = [capture["sample_id"] for capture in data["captures"]]
+    assert sample_ids == ["g11_glossy", "g11_dark", "g11_thin"]
+    for capture in data["captures"]:
+        assert 25 <= capture["frames"] <= 30, capture["sample_id"]
+        assert len(capture["content_sha256"]) == 64
+        int(capture["content_sha256"], 16)
+        assert capture["drive_folder_id"]
+    cad = {entry["sample_id"]: entry for entry in data["reference_cad"]}
+    assert sorted(cad) == sorted(sample_ids)
+    assert cad["g11_glossy"]["filename"] == "g02_04_pentagon_r22x25mm.stl"
+    assert cad["g11_dark"]["filename"] == "g02_04_pentagon_r22x25mm.stl"
+    assert cad["g11_thin"]["filename"] == "g11_01_thin_wall_pentagon_r22x25mm.stl"
     for entry in cad.values():
         assert (REPO_ROOT / entry["path"]).is_file(), entry["path"]
         assert entry["path"].endswith(entry["filename"])
