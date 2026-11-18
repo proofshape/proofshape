@@ -727,7 +727,10 @@ def create_app(
         # I-09: computed fresh from the stored spec on every read, never persisted into the
         # record itself -- so a future change to k/sigma_floor (or G-10 adding sheet/card
         # floors) is reflected on the next read of an existing order, not frozen at creation.
-        from inspection.intake_check import check_intake_spec, intake_unverifiable_verdict
+        from inspection.intake_check import (
+            check_intake_spec,
+            intake_unverifiable_verdict,
+        )
 
         intake_verdict = (
             intake_unverifiable_verdict(record["spec"])
@@ -1098,11 +1101,6 @@ def create_app(
         record = store.load(session_id)
         if record is None:
             return
-        from inspection.intake_check import intake_unverifiable_verdict
-
-        intake_verdict = intake_unverifiable_verdict(order["spec"])
-        if intake_verdict is not None:
-            return VerdictResult(**intake_verdict)
 
         reconstruction = record.get("reconstruction", {})
         if reconstruction.get("status") != "complete":
@@ -1267,6 +1265,12 @@ def create_app(
                     message="No CAD was supplied for this session — no verdict exists.",
                 ),
             )
+        from inspection.intake_check import intake_unverifiable_verdict
+
+        intake_verdict = intake_unverifiable_verdict(order["spec"])
+        if intake_verdict is not None:
+            return VerdictResult(**intake_verdict)
+
         reconstruction = record.get("reconstruction", {})
         if reconstruction.get("status") != "complete":
             return error(
