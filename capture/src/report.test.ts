@@ -215,7 +215,7 @@ describe("C-15 report page", () => {
 
   it("formats I-10 intake reasons, keeps unknown codes verbatim and has an Unverifiable action", () => {
     expect(describeReasonCode("intake_tolerance_below_k_sigma_floor:hole_A")).toContain(
-      "hole_A: the requested tolerance is below ProofShape\'s measured method floor",
+      "hole_A: the requested tolerance is below ProofShape's measured method floor",
     );
     expect(describeReasonCode("future_reason_code")).toBe("future_reason_code");
     expect(VERDICT_ACTIONS.Unverifiable).toContain("CMM");
