@@ -2089,6 +2089,39 @@ so D-078 was free.
 
 ---
 
+**D-080 · v1 expresses D-005's hard rule mesh-wide, not per-feature: a hidden defect on
+Unobserved/Inferred geometry does not change a verdict a session's real, measured evidence
+would otherwise Pass.** (2026-11-18, PR #384)
+
+No code anywhere in v1 binds a named spec feature to actual CAD geometry (I-07's own "what a
+region is in v1" note, `inspect/inspection/verdict.py`) -- `compute_verdict` judges every
+feature against the same global per-vertex measurement; binding a feature to a specific region
+is the Tier 3 extension, not built yet. So proposal 7.2's "a critical region is Unobserved"
+Rescan row can only be expressed at the whole-session level in v1: either some Observed,
+measured data exists (the verdict proceeds from it) or none does at all (Rescan,
+`{name}_not_seen`). A defect that happens to land only on Unobserved or Inferred geometry is,
+by design (D-062, I-06's `compute_deviation`), never measured there (`deviation_measured == 0`)
+and so cannot numerically affect Pass/Fail -- that is the real guarantee D-005 gives in v1, and
+`tests/test_hard_rule.py` (I-08) confirms it structurally: `compute_verdict`'s output is
+byte-for-byte identical with and without such a hidden defect planted.
+*Why:* this was implemented in I-07/PR #379 and not objected to across two reviewers' four
+review rounds, but was never recorded as its own decision -- caught on I-08's own review
+(@mbj1994, PR #384): a story file's working note is not a team decision, and I-08's acceptance
+criterion 3 ("produces Rescan... the table's third row") was written against the literal
+proposal table, before this mesh-wide reduction existed in code or was reviewed on its own
+terms. This decision gives that reduction the standing I-08 asked for, and I-08.md's criterion 3
+is restated to the invariant v1 can actually express, rather than left reading as unmet.
+*Conditions:* v1 only -- once Tier 3 binds a named feature to actual CAD geometry (per-feature
+region tracking), a defect hidden specifically within *that* feature's own Unobserved region
+becomes expressible, and this decision's mesh-wide reduction no longer applies.
+*Evidence:* PR #384 review (@mbj1994), 2026-11-18; `inspect/inspection/verdict.py`'s
+`observed_measured`/`has_observed_data` logic (PR #379); `tests/test_hard_rule.py`'s
+identical-output comparison (PR #384).
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-079 (held by
+`inspect/I-10-unverifiable-path-impl`) was highest anywhere, so D-080 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
