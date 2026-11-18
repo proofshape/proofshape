@@ -30,8 +30,7 @@ const REFERENCE_TEXT: Record<string, string> = {
 };
 
 const INTAKE_UNVERIFIABLE_REASON_PREFIX = "intake_tolerance_below_k_sigma_floor:";
-const INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX =
-  "intake_tolerance_below_method_floor_any_axis:";
+const INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX = "intake_tolerance_below_method_floor_any_axis:";
 
 export function describeReasonCode(code: string): string {
   if (code.startsWith(INTAKE_UNVERIFIABLE_REASON_PREFIX)) {
@@ -39,9 +38,7 @@ export function describeReasonCode(code: string): string {
     return `${feature || "Critical feature"}: the requested tolerance is below ProofShape's measured method floor for this inspection.`;
   }
   if (code.startsWith(INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX)) {
-    const feature = code
-      .slice(INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX.length)
-      .trim();
+    const feature = code.slice(INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX.length).trim();
     return `${feature || "Critical feature"}: the requested tolerance is below a measured method floor that the current verdict path applies to every feature.`;
   }
   return REASON_TEXT[code] ?? code;
