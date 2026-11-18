@@ -282,7 +282,7 @@ Full detail in each story file.
 | [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Done | @dalwalyk |
 | [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Claimed | @dalwalyk |
 | [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34, R-37 | Done | @dalwalyk |
-| [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Ready | _unclaimed_ |
+| [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Claimed | @mbj1994 |
 
 ---
 
