@@ -2569,3 +2569,87 @@ Ready. `main` reached that state without this PR. G-04 was then claimed and clos
 sets: retry and back off, or use Drive's plain download URL. Until then, fetch the specimen folders
 as browser zips and unzip them into `fixtures/data/specimen_capture/`. The manifest hashes still
 verify them.
+
+## 2026-11-17 — C-24 claimed; WIP accounting reviewed (PR #373)
+
+**Who:** @dalwalyk; PR #373 by @TabeenRaoof.
+**What changed:** approved the claim-only update for C-24 and the dated D-064 waiting notes for
+R-36 (defense-room access) and G-11 (lab slot/materials). C-24's dependencies, C-13 and C-18, are
+Done; the story and backlog claim match.
+**Result:** CI passed (ruff, TypeScript, pytest). No implementation code is included.
+**Concluded:** the active claims are G-09 and C-24; R-36 and G-11 are explicitly waiting on
+external access/resources under D-064.
+**Next:** begin C-24 implementation; the claim is merged separately from its code PR.
+
+## 2026-11-17 — I-09 follows merged D-078 and refuses malformed tolerances (PR #372)
+
+**Who:** @dalwalyk; reviewed by @mbj1994.
+**What changed:** synced R-37/D-078 from `main`; `hole`/`edge` now use the measured 5.278 mm
+in-plane floor, while `face`/`overall` retain D-073's measured height floor. Invalid tolerances are
+refused, with pure and endpoint regression tests.
+**Result:** 1,337 tests passed, 4 skipped, 6 warnings; Ruff, format, and story-state checks passed.
+I-09 remains Done with 5 h actual and now depends on R-37.
+**Concluded:** both measured board floors are used only for their corresponding feature kinds;
+malformed opaque order specs are refused safely.
+**Next:** @mbj1994 to re-review PR #372's current head.
+
+## 2026-11-17 — R-39 claimed; WIP accounting reviewed (PR #376)
+
+**Who:** @dalwalyk; PR #376 by @mbj1994.
+**What changed:** approved the claim-only update for R-39. R-37 is Done, satisfying the
+dependency. C-24, C-13 and C-18 states are consistent. The WIP notes show C-21/R-39 active and
+C-17 waiting on its physical print/caliper check.
+**Result:** CI passed (ruff, TypeScript, pytest). No implementation code is included.
+**Concluded:** the claim and D-064 WIP accounting are consistent on the reviewed head.
+**Next:** begin R-39 implementation after the claim merges.
+
+## 2026-11-18 — G-11 parts photographed and calipered; the thin wall prints at 1.10 mm (PR #388)
+
+**Who:** @TabeenRaoof.
+
+**What changed:**
+- `fixtures/robustness_capture_manifest.json` and its `.sha256` lock: the glossy, dark and
+  thin-walled pentagons, 30, 30 and 29 frames, on their own Drive folder.
+- `fixtures/caliper_g-11.json`: 70 readings, the height and one edge of each part and the tray's
+  wall.
+- `stories/G/G-11.md` records the print, the photos and the measurements. The story stays
+  Claimed.
+
+**Measurement runs:**
+- **Photos:** R-02 posed the board in every frame (median reprojection RMS 2.00–2.22 px), and
+  no frame was softer than the golden set's softest. Every Drive file matched its local original
+  by name and size.
+- **Reshoot:** the glossy part and the tray were reshot after a pen label turned up on a side
+  face the camera saw.
+- **Calipers:** the glossy and dark parts match the grey `g02_04` control within 0.07 mm. The
+  tray's 1.2 mm wall reads 1.10 mm in all ten placements.
+
+**Next:** the `.3mf` files, the screen-photo and wrong-part stills, and each part through
+reconstruction.
+
+## 2026-11-18 — C-24 Done: a plain outage message, and a capture session that survives a reload (PR #375)
+
+**Who:** @TabeenRaoof.
+**What changed:** two capture-side fixes from R-36's home pre-check, with no contract change.
+- **#351:** a 5xx with a non-JSON body (Vite's empty 500 for a stopped service, or a proxy's HTML
+  502) now reads "The service isn't reachable right now — wait a moment and try again." A failed
+  upload adds "Frames already accepted are kept."
+- **#352:** the session id, the accepted count and the gyro readings are kept in `sessionStorage`.
+  After a reload, the page offers Continue session, or Show result once Finish has succeeded.
+
+`docs/manual.md` §9 covers both.
+**Command / how to reproduce:** `cd capture && npm test`. For the device check, R-36's runbook,
+then switch apps mid-session and stop uvicorn mid-session.
+**Result:**
+- 324 capture tests pass, 41 of them new or changed. `tsc`, ESLint, Prettier and the build are
+  clean.
+- Three mutation checks each failed the new tests.
+- On the iPhone (`sess_71afa24c2640`, 18 frames), the session continued across an app switch
+  (frame 7 to 8) and a service restart (frame 9 to 10) with no gap in frame numbers. It finished
+  complete, metric, with observed fraction 0.910.
+- 6 h actual against 5.
+**Concluded:** neither interruption ends a live demo any more. The rule is to stay in one Safari
+tab.
+**Next:** R-36's runbook (#371) drops its "don't switch apps" warning and the old 500 text once
+this merges. An abandoned `capturing` session still never expires on the server (#352's second
+point), with no story.
