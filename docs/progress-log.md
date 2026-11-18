@@ -2569,3 +2569,24 @@ Ready. `main` reached that state without this PR. G-04 was then claimed and clos
 sets: retry and back off, or use Drive's plain download URL. Until then, fetch the specimen folders
 as browser zips and unzip them into `fixtures/data/specimen_capture/`. The manifest hashes still
 verify them.
+
+## 2026-11-17 — C-24 claimed; WIP accounting reviewed (PR #373)
+
+**Who:** @dalwalyk; PR #373 by @TabeenRaoof.
+**What changed:** approved the claim-only update for C-24 and the dated D-064 waiting notes for
+R-36 (defense-room access) and G-11 (lab slot/materials). C-24's dependencies, C-13 and C-18, are
+Done; the story and backlog claim match.
+**Result:** CI passed (ruff, TypeScript, pytest). No implementation code is included.
+**Concluded:** the active claims are G-09 and C-24; R-36 and G-11 are explicitly waiting on
+external access/resources under D-064.
+**Next:** begin C-24 implementation; the claim is merged separately from its code PR.
+
+## 2026-11-17 — R-39 claimed; WIP accounting reviewed (PR #376)
+
+**Who:** @dalwalyk; PR #376 by @mbj1994.
+**What changed:** approved the claim-only update for R-39. R-37 is Done, satisfying the
+dependency. C-24, C-13 and C-18 states are consistent. The WIP notes show C-21/R-39 active and
+C-17 waiting on its physical print/caliper check.
+**Result:** CI passed (ruff, TypeScript, pytest). No implementation code is included.
+**Concluded:** the claim and D-064 WIP accounting are consistent on the reviewed head.
+**Next:** begin R-39 implementation after the claim merges.

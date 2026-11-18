@@ -323,80 +323,227 @@ def _edge_segment_distances(
     return distances
 
 
-def _longest_hull_edges(
-    blob_xy: np.ndarray, max_candidates: int = 6
-) -> list[tuple[np.ndarray, np.ndarray]]:
-    """The blob's convex-hull edges, longest first, capped at ``max_candidates``.
+def _polygon_centroid(vertices_xy: np.ndarray) -> np.ndarray:
+    """Area centroid of an ordered polygon, with a mean fallback for a degenerate outline."""
+    vertices = np.asarray(vertices_xy, dtype=np.float64)
+    shifted = np.roll(vertices, -1, axis=0)
+    cross = vertices[:, 0] * shifted[:, 1] - shifted[:, 0] * vertices[:, 1]
+    twice_area = float(cross.sum())
+    if abs(twice_area) < 1e-9:
+        return vertices.mean(axis=0)
+    return ((vertices + shifted) * cross[:, None]).sum(axis=0) / (3.0 * twice_area)
 
-    A part's cross-section band, apart from noise, outlines a convex polygon that is literally
-    the part's hull -- so its longest hull edges are the most trustworthy direction candidates to
-    match against the CAD's own edges below.
+
+def _approximate_hull_polygon(
+    blob_xy: np.ndarray, vertex_count: int
+) -> np.ndarray | None:
+    """Simplify the observed convex hull to the CAD polygon's vertex count.
+
+    R-37 uses the whole outline rather than trusting whichever one noisy hull edge happens to be
+    longest. The scan takes the middle simplification that has the expected vertex count so a
+    result does not depend on one brittle epsilon boundary.
     """
+    hull = cv2.convexHull(blob_xy.astype(np.float32))
+    perimeter = float(cv2.arcLength(hull, True))
+    exact: list[np.ndarray] = []
+    for fraction in np.linspace(0.001, 0.08, 160):
+        approx = cv2.approxPolyDP(hull, fraction * perimeter, True)
+        vertices = approx.reshape(-1, 2).astype(np.float64)
+        if len(vertices) == vertex_count:
+            exact.append(vertices)
+    if not exact:
+        return None
+    return exact[len(exact) // 2]
+
+
+def _edge_pattern_error_mm(source_xy: np.ndarray, target_xy: np.ndarray) -> float:
+    """Scale-free mismatch between two ordered polygons' edge-length sequences.
+
+    Cyclic shifts are geometrically indistinguishable for a square, but not for a scalene
+    triangle. Comparing perimeter-normalised edge lengths gives the correspondence search a
+    deterministic way to keep a 30/40/50 triangle's physical walls attached to the matching
+    CAD edge slots without fitting scale. The result is converted back to an mm-like penalty
+    using the CAD perimeter; it is only a correspondence tie-breaker, never a size estimate.
+    """
+    source_next = np.roll(source_xy, -1, axis=0)
+    target_next = np.roll(target_xy, -1, axis=0)
+    source_lengths = np.linalg.norm(source_next - source_xy, axis=1)
+    target_lengths = np.linalg.norm(target_next - target_xy, axis=1)
+    source_perimeter = float(source_lengths.sum())
+    target_perimeter = float(target_lengths.sum())
+    if source_perimeter <= 0 or target_perimeter <= 0:
+        return float("inf")
+    source_fraction = source_lengths / source_perimeter
+    target_fraction = target_lengths / target_perimeter
+    return (
+        0.5 * source_perimeter * float(np.abs(source_fraction - target_fraction).sum())
+    )
+
+
+def _rigid_transform_no_scale(
+    source_xy: np.ndarray, target_xy: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Map one ordered polygon correspondence with rotation/reflection but no scale.
+
+    A generic SVD/Kabsch fit is ambiguous for a perfect square because its two planar singular
+    values are equal: it can preserve the centroid while losing the specific edge-to-edge
+    correspondence. R-37 instead maps the first corresponding edge direction exactly and uses
+    the polygons' signed winding to choose whether the perpendicular axis is reflected. The
+    candidate scorer still decides which cyclic/reversed correspondence is best.
+    """
+    source_center = source_xy.mean(axis=0)
+    target_center = target_xy.mean(axis=0)
+
+    source_direction = source_xy[1] - source_xy[0]
+    target_direction = target_xy[1] - target_xy[0]
+    source_direction = source_direction / np.linalg.norm(source_direction)
+    target_direction = target_direction / np.linalg.norm(target_direction)
+
+    source_perpendicular = np.array([-source_direction[1], source_direction[0]])
+    target_perpendicular = np.array([-target_direction[1], target_direction[0]])
+
+    source_shifted = np.roll(source_xy, -1, axis=0)
+    target_shifted = np.roll(target_xy, -1, axis=0)
+    source_area = float(
+        (
+            source_xy[:, 0] * source_shifted[:, 1]
+            - source_shifted[:, 0] * source_xy[:, 1]
+        ).sum()
+    )
+    target_area = float(
+        (
+            target_xy[:, 0] * target_shifted[:, 1]
+            - target_shifted[:, 0] * target_xy[:, 1]
+        ).sum()
+    )
+    handedness = 1.0 if source_area * target_area >= 0 else -1.0
+
+    source_basis = np.column_stack((source_direction, source_perpendicular))
+    target_basis = np.column_stack(
+        (target_direction, handedness * target_perpendicular)
+    )
+    transform = target_basis @ source_basis.T
+    translation = target_center - transform @ source_center
+    return transform, translation
+
+
+def _pose_score(
+    blob_xy: np.ndarray,
+    edges: list[tuple[np.ndarray, np.ndarray]],
+    transform: np.ndarray,
+    translation: np.ndarray,
+) -> tuple[float, float]:
+    """Symmetric outline score: observed-to-CAD and CAD-to-observed.
+
+    The old one-way median let a wrong triangle pose look good when most observed points happened
+    to sit near some transformed CAD line. R-37 scores a high quantile in both directions, so a
+    transformed edge with no observed wall also counts against the candidate.
+    """
+    transformed = [
+        (transform @ p0 + translation, transform @ p1 + translation) for p0, p1 in edges
+    ]
+    observed_to_cad = _edge_segment_distances(blob_xy, transformed).min(axis=1)
+
     hull = cv2.convexHull(blob_xy.astype(np.float32)).reshape(-1, 2).astype(np.float64)
-    if len(hull) < 2:
-        raise ValueError("Point blob's convex hull has fewer than 2 vertices.")
-    edges = [(hull[i], hull[(i + 1) % len(hull)]) for i in range(len(hull))]
-    edges.sort(key=lambda edge: -float(np.linalg.norm(edge[1] - edge[0])))
-    return edges[:max_candidates]
+    hull_edges = [
+        (hull[index], hull[(index + 1) % len(hull)]) for index in range(len(hull))
+    ]
+    sample_t = np.linspace(0.0, 1.0, 9)
+    cad_samples = np.concatenate(
+        [p0[None, :] + sample_t[:, None] * (p1 - p0)[None, :] for p0, p1 in transformed]
+    )
+    cad_to_observed = _edge_segment_distances(
+        cad_samples, hull_edges, slack_fraction=0.0
+    ).min(axis=1)
+
+    high_quantile = max(
+        float(np.quantile(observed_to_cad, 0.90)),
+        float(np.quantile(cad_to_observed, 0.90)),
+    )
+    median_sum = float(np.median(observed_to_cad) + np.median(cad_to_observed))
+    return high_quantile, median_sum
+
+
+def _fallback_pose_search(
+    edges: list[tuple[np.ndarray, np.ndarray]], blob_xy: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Deterministic whole-angle fallback when hull simplification cannot recover the polygon."""
+    cad_vertices = np.array([p0 for p0, _p1 in edges])
+    cad_center = _polygon_centroid(cad_vertices)
+    hull = cv2.convexHull(blob_xy.astype(np.float32)).reshape(-1, 2).astype(np.float64)
+    blob_center = _polygon_centroid(hull)
+
+    best: tuple[tuple[float, float, int, float], np.ndarray, np.ndarray] | None = None
+    for mirror_index, mirror in enumerate((1.0, -1.0)):
+        mirror_matrix = np.array([[mirror, 0.0], [0.0, 1.0]])
+        for theta in np.linspace(-math.pi, math.pi, 180, endpoint=False):
+            cos_t, sin_t = math.cos(theta), math.sin(theta)
+            rotation = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
+            transform = rotation @ mirror_matrix
+            translation = blob_center - transform @ cad_center
+            score = _pose_score(blob_xy, edges, transform, translation)
+            key = (score[0], score[1], mirror_index, theta)
+            if best is None or key < best[0]:
+                best = (key, transform, translation)
+
+    assert best is not None
+    return best[1], best[2]
 
 
 def _fit_rigid_2d(
     edges: list[tuple[np.ndarray, np.ndarray]], blob_xy: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, float, list[tuple[np.ndarray, np.ndarray]]]:
-    """Find the 2D rotation+mirror and translation mapping the CAD's edges onto the point blob.
+    """Find the no-scale 2D pose mapping the CAD outline onto observed wall points.
 
-    No scale: the whole point of this module is to measure the part's size independently of the
-    CAD's assumed size, so letting this fit absorb a scale factor would hide exactly the error
-    being investigated.
+    R-37 replaces the old single-hull-edge seed. The convex outline is simplified to the CAD
+    polygon's vertex count; every cyclic correspondence in both winding directions gets a
+    no-scale orthogonal fit and a symmetric outline score. A deterministic global angle search
+    is the fallback when simplification cannot recover the expected polygon.
 
-    Coarse orientation comes from directly matching each CAD edge's direction against each of the
-    point blob's longest convex-hull edges (``_longest_hull_edges``) -- not from comparing
-    ``cv2.minAreaRect`` of the two, which was tried first and is unreliable for a triangle: the
-    *minimum-area* enclosing rectangle of a near-right triangle can align with its hypotenuse
-    rather than its legs, and which of the two wins is sensitive to exactly how the noisy
-    reconstructed points happen to be distributed -- a rectangle's own minAreaRect has no such
-    ambiguity, but this module has to work for both shapes. Each (hull edge, CAD edge) pairing is
-    tried both directions along the edge and both chiralities (mirrored or not), since neither the
-    blob's point order nor its handedness relative to the CAD is known in advance; each candidate
-    seeds its translation by aligning that one matched edge's midpoint, then is scored by median
-    point-to-nearest-edge *segment* distance over the whole blob (``_edge_segment_distances``,
-    not the unbounded ``_edge_line_distances`` -- see that function's docstring for why: a wrong
-    candidate for a near-square or near-symmetric blob can otherwise score deceptively well).
-    Translation is then refined by one linear least-squares solve against the winning candidate's
-    resulting point-to-edge assignment (rotation itself is not re-optimised further).
+    A small local angle search removes simplification error, then an edge-balanced translation
+    refinement prevents a densely sampled long wall from outvoting a short wall. Scale is never
+    fit: a genuinely undersized part must remain undersized for measure_prism.
     """
-    hull_edges = _longest_hull_edges(blob_xy)
-    best: tuple[float, np.ndarray, np.ndarray] | None = None
-    for hull_p0, hull_p1 in hull_edges:
-        hull_angle = math.atan2(hull_p1[1] - hull_p0[1], hull_p1[0] - hull_p0[0])
-        hull_midpoint = (hull_p0 + hull_p1) / 2.0
-        for cad_p0, cad_p1 in edges:
-            cad_angle = math.atan2(cad_p1[1] - cad_p0[1], cad_p1[0] - cad_p0[0])
-            cad_midpoint = (cad_p0 + cad_p1) / 2.0
-            for direction_flip in (0.0, math.pi):
-                theta = hull_angle - cad_angle + direction_flip
-                cos_t, sin_t = math.cos(theta), math.sin(theta)
-                rotation = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
-                for mirror in (1.0, -1.0):
-                    transform = rotation @ np.array([[mirror, 0.0], [0.0, 1.0]])
-                    translation = hull_midpoint - transform @ cad_midpoint
-                    transformed = [
-                        (transform @ p0 + translation, transform @ p1 + translation)
-                        for p0, p1 in edges
-                    ]
-                    score = float(
-                        np.median(
-                            _edge_segment_distances(blob_xy, transformed).min(axis=1)
-                        )
-                    )
-                    if best is None or score < best[0]:
-                        best = (score, transform, translation)
+    cad_vertices = np.array([p0 for p0, _p1 in edges])
+    observed_vertices = _approximate_hull_polygon(blob_xy, len(cad_vertices))
 
-    # From here on, the *rotation* (ballpark-correct now) is not re-chosen, only translation is
-    # refined -- so this goes back to unbounded line distance, the same as measure_prism's own
-    # final per-edge pass, so a genuinely shrunk edge's points are not excluded from refining the
-    # fit just for falling short of the CAD's own edge length.
-    _, transform, translation = best
+    best: tuple[tuple[float, float, float, int, int], np.ndarray, np.ndarray] | None = (
+        None
+    )
+    if observed_vertices is not None:
+        for reverse_index, observed in enumerate(
+            (observed_vertices, observed_vertices[::-1])
+        ):
+            for shift in range(len(observed)):
+                target = np.roll(observed, -shift, axis=0)
+                transform, translation = _rigid_transform_no_scale(cad_vertices, target)
+                score = _pose_score(blob_xy, edges, transform, translation)
+                pattern_error_mm = _edge_pattern_error_mm(cad_vertices, target)
+                combined = score[0] + 0.25 * pattern_error_mm
+                key = (combined, score[0], score[1], reverse_index, shift)
+                if best is None or key < best[0]:
+                    best = (key, transform, translation)
+
+    if best is None:
+        transform, translation = _fallback_pose_search(edges, blob_xy)
+    else:
+        transform, translation = best[1], best[2]
+
+    source_center = cad_vertices.mean(axis=0)
+    target_center = transform @ source_center + translation
+    refined: tuple[tuple[float, float, float], np.ndarray, np.ndarray] | None = None
+    for delta in np.linspace(math.radians(-3.0), math.radians(3.0), 61):
+        cos_t, sin_t = math.cos(delta), math.sin(delta)
+        adjustment = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
+        candidate_transform = adjustment @ transform
+        candidate_translation = target_center - candidate_transform @ source_center
+        score = _pose_score(blob_xy, edges, candidate_transform, candidate_translation)
+        key = (score[0], score[1], abs(delta))
+        if refined is None or key < refined[0]:
+            refined = (key, candidate_transform, candidate_translation)
+
+    assert refined is not None
+    transform, translation = refined[1], refined[2]
     transformed = [
         (transform @ p0 + translation, transform @ p1 + translation) for p0, p1 in edges
     ]
@@ -406,18 +553,13 @@ def _fit_rigid_2d(
     coarse_residual = float(np.median(nearest))
     inliers = nearest < max(5.0, 4.0 * coarse_residual)
 
-    # One row per *edge* (its inliers' mean offset), not one row per point: a long, densely
-    # sampled edge (a wall seen by many frames) would otherwise outvote a short or sparsely
-    # sampled one by orders of magnitude in an unweighted per-point solve, pulling the whole pose
-    # toward fitting the big edge well at a short edge's expense -- exactly backwards when one
-    # edge is genuinely more shrunk than the others, which this module exists to be able to see.
     rows: list[np.ndarray] = []
     rhs: list[float] = []
-    for edge_index, (p0, _p1) in enumerate(transformed):
+    for edge_index, (p0, p1) in enumerate(transformed):
         selected = inliers & (assignment == edge_index)
         if selected.sum() < 5:
             continue
-        direction = transformed[edge_index][1] - p0
+        direction = p1 - p0
         normal = np.array([-direction[1], direction[0]]) / np.linalg.norm(direction)
         mean_point = blob_xy[selected].mean(axis=0)
         rows.append(normal)
@@ -435,28 +577,134 @@ def _fit_rigid_2d(
     return transform, translation, residual, transformed
 
 
-def _largest_connected_blob(
-    xy_mm: np.ndarray, cell_mm: float = 1.0, min_points_per_cell: int = 1
-) -> np.ndarray:
-    """Boolean mask keeping only the points in the largest 8-connected cluster of occupied grid
-    cells -- the same "largest connected cluster of occupied voxels" idea R-17 used to separate
-    a part from stray points, applied here in 2D to an xy slice rather than 3D to the whole cloud.
+def _fit_wall_line(
+    points_xy: np.ndarray,
+    reference_edge: tuple[np.ndarray, np.ndarray],
+    max_iterations: int = 4,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Robust orthogonal line fit to one observed wall, oriented like its matched CAD edge."""
+    points = np.asarray(points_xy, dtype=np.float64)
+    if len(points) < 5:
+        raise ValueError("Need at least 5 points to fit a wall line.")
 
-    The default keeps any occupied cell, not just a densely-populated one: the noise rejection
-    here comes from keeping only the *largest* component, which already discards an isolated
-    stray cluster regardless of its own per-cell density. Requiring several points per cell was
-    tried first and is fragile exactly where it matters most -- a thin line of wall points (an
-    edge seen nearly edge-on, or a narrow mid-height band) can have many occupied cells with only
-    one or two points each by chance, and a stricter threshold fragments that single wall into
-    several small components instead of one connected edge.
+    reference_direction = reference_edge[1] - reference_edge[0]
+    reference_direction = reference_direction / np.linalg.norm(reference_direction)
+    keep = np.ones(len(points), dtype=bool)
+
+    for _ in range(max_iterations):
+        selected = points[keep]
+        center = selected.mean(axis=0)
+        _left, _singular_values, right_t = np.linalg.svd(
+            selected - center, full_matrices=False
+        )
+        direction = right_t[0]
+        if float(direction @ reference_direction) < 0:
+            direction = -direction
+        normal = np.array([-direction[1], direction[0]])
+        residuals = (points - center) @ normal
+        median = float(np.median(residuals))
+        mad = float(np.median(np.abs(residuals - median))) + 1e-9
+        updated = np.abs(residuals - median) < max(1e-6, 3.0 * 1.4826 * mad)
+        if updated.sum() < 5 or np.array_equal(updated, keep):
+            break
+        keep = updated
+
+    selected = points[keep]
+    center = selected.mean(axis=0)
+    _left, _singular_values, right_t = np.linalg.svd(
+        selected - center, full_matrices=False
+    )
+    direction = right_t[0]
+    if float(direction @ reference_direction) < 0:
+        direction = -direction
+    return center, direction
+
+
+def _line_intersection(
+    first: tuple[np.ndarray, np.ndarray],
+    second: tuple[np.ndarray, np.ndarray],
+) -> np.ndarray:
+    """Intersection of two fitted 2D lines represented as (point, unit direction)."""
+    first_point, first_direction = first
+    second_point, second_direction = second
+    cross = (
+        first_direction[0] * second_direction[1]
+        - first_direction[1] * second_direction[0]
+    )
+    if abs(cross) < 1e-6:
+        raise ValueError(
+            "Adjacent fitted wall lines are effectively parallel; cannot locate their corner."
+        )
+    delta = second_point - first_point
+    first_t = (delta[0] * second_direction[1] - delta[1] * second_direction[0]) / cross
+    return first_point + first_t * first_direction
+
+
+def _largest_connected_blob(
+    xy_mm: np.ndarray,
+    cell_mm: float = 1.0,
+    min_points_per_cell: int = 1,
+    expected_diameter_mm: float | None = None,
+) -> np.ndarray:
+    """Return the most plausible connected part blob in an xy slice.
+
+    The original implementation always kept the largest 8-connected component of occupied
+    1 mm cells. Real G-04 data showed why that is too permissive: a chain of sparse stray cells
+    can connect the real part to a much larger cloud, so the resulting convex hull spans most of
+    the board and a 20 mm square can be measured as 70--150 mm.
+
+    When expected_diameter_mm is supplied, inspect components at several density thresholds.
+    A one-cell dilation puts sparse wall samples immediately next to a dense core back into the
+    candidate, while single-point bridges disappear at the higher thresholds. Components whose
+    minimum-area-rectangle diagonal is between 0.35x and 2.5x the CAD footprint diameter are
+    considered physically plausible; among those, keep the one containing the most original
+    points. The gate is intentionally very broad so it rejects catastrophic non-part blobs
+    without forcing the measured part to equal the CAD size. If no component passes that broad
+    gate, fall back to the historical largest-component rule rather than fabricating a result.
     """
     xy_mm = np.asarray(xy_mm, dtype=np.float64)
+    if xy_mm.ndim != 2 or xy_mm.shape[1] != 2 or len(xy_mm) == 0:
+        raise ValueError(f"xy_mm must have shape (N,2) with N>0, got {xy_mm.shape}")
+
     origin = xy_mm.min(axis=0)
     grid = np.floor((xy_mm - origin) / cell_mm).astype(np.int64)
     width = int(grid[:, 0].max()) + 1
     height = int(grid[:, 1].max()) + 1
     occupancy = np.zeros((height, width), dtype=np.int32)
     np.add.at(occupancy, (grid[:, 1], grid[:, 0]), 1)
+
+    def components(threshold: int) -> list[np.ndarray]:
+        binary = (occupancy >= threshold).astype(np.uint8)
+        component_count, labels, _stats, _ = cv2.connectedComponentsWithStats(
+            binary, connectivity=8
+        )
+        masks: list[np.ndarray] = []
+        kernel = np.ones((3, 3), dtype=np.uint8)
+        for label in range(1, component_count):
+            core = (labels == label).astype(np.uint8)
+            if int(core.sum()) == 0:
+                continue
+            support = cv2.dilate(core, kernel, iterations=1)
+            point_mask = support[grid[:, 1], grid[:, 0]] > 0
+            if int(point_mask.sum()) >= 30:
+                masks.append(point_mask)
+        return masks
+
+    if expected_diameter_mm is not None and expected_diameter_mm > 0:
+        plausible: list[tuple[int, np.ndarray]] = []
+        start_threshold = max(1, min_points_per_cell)
+        for threshold in range(start_threshold, max(start_threshold, 4) + 1):
+            for point_mask in components(threshold):
+                selected = xy_mm[point_mask].astype(np.float32)
+                _center, (rect_width, rect_height), _angle = cv2.minAreaRect(selected)
+                diameter = math.hypot(float(rect_width), float(rect_height))
+                ratio = diameter / expected_diameter_mm
+                if 0.35 <= ratio <= 2.5:
+                    plausible.append((int(point_mask.sum()), point_mask))
+        if plausible:
+            plausible.sort(key=lambda item: -item[0])
+            return plausible[0][1]
+
     binary = (occupancy >= min_points_per_cell).astype(np.uint8)
     component_count, labels, stats, _ = cv2.connectedComponentsWithStats(
         binary, connectivity=8
@@ -790,11 +1038,24 @@ def measure_prism(
     candidate_points = points[region]
     candidate_xy = candidate_points[:, :2]
     candidate_height = height[region]
-    blob_mask = _largest_connected_blob(candidate_xy)
-    candidate_points = candidate_points[blob_mask]
-    candidate_xy = candidate_xy[blob_mask]
-    candidate_height = candidate_height[blob_mask]
 
+    # Preserve the pre-R-37 spatial isolation used by height detection: a compact, unrelated
+    # stray cluster can otherwise win the height histogram simply by containing more samples
+    # than the real top face. This deliberately uses the historical largest-connected-component
+    # rule with NO CAD-diameter plausibility gate; the latter is only for the mid-height pose
+    # cross-section and was shown by real g02_02 to be too aggressive before height detection.
+    height_blob_mask = _largest_connected_blob(candidate_xy)
+    candidate_points = candidate_points[height_blob_mask]
+    candidate_xy = candidate_xy[height_blob_mask]
+    candidate_height = candidate_height[height_blob_mask]
+
+    footprint_rect = cv2.minAreaRect(prism.footprint_xy.astype(np.float32))
+    expected_diameter_mm = math.hypot(
+        float(footprint_rect[1][0]), float(footprint_rect[1][1])
+    )
+
+    # The CAD-size plausibility gate is still intentionally deferred until the mid-height
+    # cross-section below. Height uses only the historical connectivity filter above.
     # --- height: the densest height bin in the expected range is the top face --------------
     # Without confidence filtering, low-confidence stray points (R-17) pile up near the board
     # far more densely than the part itself, so searching the *whole* height range for the
@@ -827,7 +1088,9 @@ def measure_prism(
             "Too few points in the mid-height band to measure the cross-section."
         )
     band_xy = candidate_xy[band]
-    band_mask = _largest_connected_blob(band_xy)
+    band_mask = _largest_connected_blob(
+        band_xy, expected_diameter_mm=expected_diameter_mm
+    )
     band_xy = band_xy[band_mask]
     if len(band_xy) < 30:
         raise ValueError(
@@ -840,22 +1103,12 @@ def measure_prism(
     distances = _edge_line_distances(band_xy, transformed_edges)
     assignment = distances.argmin(axis=1)
 
-    edge_measurements: list[EdgeMeasurement] = []
-    for edge_index, (p0, p1) in enumerate(transformed_edges):
+    edge_point_masks: list[np.ndarray] = []
+    fitted_wall_lines: list[tuple[np.ndarray, np.ndarray]] = []
+    for edge_index, transformed_edge in enumerate(transformed_edges):
         cad_length_mm = float(
             np.linalg.norm(prism.edges[edge_index][1] - prism.edges[edge_index][0])
         )
-        direction = p1 - p0
-        unit_direction = direction / np.linalg.norm(direction)
-        normal = np.array([-unit_direction[1], unit_direction[0]])
-        # Correspondence by nearest-edge-line only -- no separate margin or corner-ambiguity cut
-        # near the endpoints. A margin sized relative to the CAD's edge length was tried first
-        # and silently caps how short a genuinely undersized edge can ever measure (it bounds the
-        # *window* a shrunk edge's points must fit inside, independent of their real extent); a
-        # geometric "close to two edges at once" corner test was tried next and over-excludes a
-        # triangle's acute-angled edges, where a third edge's extended line can pass within a few
-        # millimetres of points nowhere near the real corner. The 2nd/98th-percentile extent below
-        # already discounts the few points that do fall near a corner.
         on_this_edge = (assignment == edge_index) & (
             distances[:, edge_index] < max(5.0, 3.0 * residual)
         )
@@ -864,11 +1117,36 @@ def measure_prism(
                 f"Too few points assigned to edge {edge_index} (length {cad_length_mm:.1f} mm "
                 "in the CAD) to measure it."
             )
-        projection = (band_xy[on_this_edge] - p0) @ unit_direction
-        perpendicular = (band_xy[on_this_edge] - p0) @ normal
+        edge_point_masks.append(on_this_edge)
+        fitted_wall_lines.append(
+            _fit_wall_line(band_xy[on_this_edge], transformed_edge)
+        )
+
+    # R-37: a caliper measures physical corners, not percentiles of whichever point samples
+    # happened to land on a wall. Corner i is the intersection of wall i-1 with wall i.
+    fitted_corners = [
+        _line_intersection(
+            fitted_wall_lines[(edge_index - 1) % len(fitted_wall_lines)],
+            fitted_wall_lines[edge_index],
+        )
+        for edge_index in range(len(fitted_wall_lines))
+    ]
+
+    edge_measurements: list[EdgeMeasurement] = []
+    for edge_index, on_this_edge in enumerate(edge_point_masks):
+        cad_length_mm = float(
+            np.linalg.norm(prism.edges[edge_index][1] - prism.edges[edge_index][0])
+        )
+        measured_length_mm = float(
+            np.linalg.norm(
+                fitted_corners[(edge_index + 1) % len(fitted_corners)]
+                - fitted_corners[edge_index]
+            )
+        )
+        line_point, unit_direction = fitted_wall_lines[edge_index]
+        normal = np.array([-unit_direction[1], unit_direction[0]])
+        perpendicular = (band_xy[on_this_edge] - line_point) @ normal
         offset_mm = float(np.median(perpendicular))
-        low, high = np.percentile(projection, [2, 98])
-        measured_length_mm = float(high - low)
         spread_low, spread_high = np.percentile(perpendicular - offset_mm, [10, 90])
         edge_measurements.append(
             EdgeMeasurement(
