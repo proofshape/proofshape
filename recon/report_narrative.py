@@ -80,20 +80,39 @@ _VERDICT_SENTENCE: dict[str, str] = {
     "Unverifiable": "This inspection question cannot be answered by this system.",
 }
 
-# A narrative is checked for words naming a *different* verdict than the one actually given
-# (PR #387 review): free text that happens to say "passed... can be shipped" under a real Fail
-# approves a component exactly the way AGENTS.md's hard rule forbids, whether the model invented
-# that on its own or merely echoed a `regions[].name` crafted to read as an instruction. Deciding
-# whether the *current* verdict's own word must also appear was considered and left out: it would
-# reject safe paraphrases that never restate the verdict literally ("this is within tolerance"),
-# which this project has no reason to treat as unsafe, while the cross-verdict ban alone already
-# defeats every contradiction example the review raised.
+# A narrative is checked for words or phrases that *imply* a different verdict than the one
+# actually given (PR #387 review, two rounds -- @TabeenRaoof then @mbj1994): free text that says
+# "passed... can be shipped" under a real Fail, or just "this part is within tolerance" with no
+# verdict label at all, approves a component exactly the way AGENTS.md's hard rule forbids,
+# whether the model invented that on its own or echoed a `regions[].name` crafted to read as an
+# instruction. The direction phrases (`_WITHIN_TOLERANCE_RE`/`_OUTSIDE_TOLERANCE_RE`) exist
+# because the word ban alone missed this: "within tolerance"/"outside tolerance" state a Pass or
+# Fail outcome in plain English without using the word "pass" or "fail" at all.
 _VERDICT_WORDS: dict[str, tuple[str, ...]] = {
     "Pass": ("pass", "passed", "approved", "accepted", "ship"),
     "Fail": ("fail", "failed", "reject", "rejected"),
     "Rescan": ("rescan", "recapture"),
     "Unverifiable": ("unverifiable", "cmm"),
 }
+_WITHIN_TOLERANCE_RE = re.compile(r"\bwithin\b[^.]{0,30}\btolerance\b", re.IGNORECASE)
+_OUTSIDE_TOLERANCE_RE = re.compile(
+    r"\b(?:outside|exceed(?:s|ed)?|beyond|out of)\b[^.]{0,30}\btolerance\b",
+    re.IGNORECASE,
+)
+# Only Pass/Fail have a direction phrase -- "rescan"/"unverifiable" have no equivalent plain-
+# English paraphrase this cheap to detect, so those two rely on the word ban alone.
+_VERDICT_PHRASE: dict[str, re.Pattern[str]] = {
+    "Pass": _WITHIN_TOLERANCE_RE,
+    "Fail": _OUTSIDE_TOLERANCE_RE,
+}
+
+
+def _implies_verdict(text: str, verdict: str) -> bool:
+    lowered = text.lower()
+    if any(word in lowered for word in _VERDICT_WORDS[verdict]):
+        return True
+    phrase = _VERDICT_PHRASE.get(verdict)
+    return phrase is not None and bool(phrase.search(text))
 
 
 class RegionInput(BaseModel):
@@ -188,12 +207,10 @@ def _measured_mm_figures(verdict_input: VerdictInput) -> set[str]:
 
 
 def _contains_verdict_contradiction(text: str, verdict: str) -> bool:
-    lowered = text.lower()
     return any(
-        word in lowered
-        for other_verdict, words in _VERDICT_WORDS.items()
+        _implies_verdict(text, other_verdict)
+        for other_verdict in _VERDICT_WORDS
         if other_verdict != verdict
-        for word in words
     )
 
 

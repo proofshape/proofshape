@@ -227,6 +227,26 @@ def test_verdict_contradiction_falls_back_to_template(verdict_input_fixture, tex
     assert result.reason == "verdict_contradiction"
 
 
+# Second review round, PR #387 (@mbj1994): the word ban alone misses a plain-English direction
+# phrase that implies a different verdict without using its label at all.
+@pytest.mark.parametrize(
+    "verdict_input_fixture,text",
+    [
+        (FAIL_FIXTURE, "This part is within tolerance."),
+        (PASS_FIXTURE, "This part is outside tolerance."),
+        (PASS_FIXTURE, "The measured value exceeds its tolerance."),
+        (PASS_FIXTURE, "The part is out of tolerance on this feature."),
+    ],
+)
+def test_direction_phrase_contradiction_falls_back_to_template(
+    verdict_input_fixture, text
+):
+    verdict_input = VerdictInput.model_validate(verdict_input_fixture)
+    result = generate_narrative(verdict_input, narrator=narrator(reply(text)))
+    assert result.source == "template"
+    assert result.reason == "verdict_contradiction"
+
+
 def test_injected_region_name_echoed_into_reply_still_falls_back():
     verdict_input = VerdictInput.model_validate(
         {
