@@ -110,6 +110,98 @@ def drop_non_manifold_faces(
     return vertices, kept_faces, int(len(faces) - len(kept_faces))
 
 
+def _find_orientation_conflict(faces: np.ndarray) -> tuple[int, int] | None:
+    """The first pair of already-manifold faces whose winding can't both be satisfied, or None.
+
+    Same flood fill as `recon.provenance._orient_faces_with_groups`, reimplemented here rather
+    than imported -- `provenance.py` already imports from this module, and importing back would
+    be circular. Assumes `faces` has no edge with more than two owners (call
+    `drop_non_manifold_faces` first); an edge with more owners than that is silently skipped
+    here rather than re-diagnosed, since that case belongs to the other function.
+    """
+    faces = np.asarray(faces, dtype=np.int64)
+    if len(faces) == 0:
+        return None
+
+    edge_owners: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for face_index, triangle in enumerate(faces):
+        for corner in range(3):
+            start, end = int(triangle[corner]), int(triangle[(corner + 1) % 3])
+            edge = (start, end) if start < end else (end, start)
+            direction = 1 if (start, end) == edge else -1
+            edge_owners.setdefault(edge, []).append((face_index, direction))
+
+    adjacency: list[list[tuple[int, bool]]] = [[] for _ in range(len(faces))]
+    for owners in edge_owners.values():
+        if len(owners) != 2:
+            continue
+        (left_face, left_direction), (right_face, right_direction) = owners
+        toggle = left_direction == right_direction
+        adjacency[left_face].append((right_face, toggle))
+        adjacency[right_face].append((left_face, toggle))
+
+    flip = np.zeros(len(faces), dtype=bool)
+    assigned = np.zeros(len(faces), dtype=bool)
+    for root in range(len(faces)):
+        if assigned[root]:
+            continue
+        assigned[root] = True
+        stack = [root]
+        while stack:
+            current = stack.pop()
+            for neighbour, toggle in adjacency[current]:
+                required = bool(flip[current] ^ toggle)
+                if assigned[neighbour]:
+                    if bool(flip[neighbour]) != required:
+                        return current, neighbour
+                    continue
+                flip[neighbour] = required
+                assigned[neighbour] = True
+                stack.append(neighbour)
+    return None
+
+
+def drop_faces_until_orientable(
+    vertices: np.ndarray, faces: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """Drop the fewest faces needed so the mesh orients, re-checking manifoldness as it goes.
+
+    Found on review of R-40/PR #381 (@TabeenRaoof), on R-32's real MASt3R s-05 "all" run:
+    decimation can fold a handful of faces into a winding that no single per-face flip can
+    resolve -- the same class of defect #300 already covers for edge-owner count, just a
+    different property `drop_non_manifold_faces` doesn't check. `provenance.py`'s
+    `_orient_faces_with_groups` raises "mesh winding is topologically contradictory" on exactly
+    this. Each conflict found drops both faces on the contradicting edge and starts the search
+    over; `drop_non_manifold_faces` runs again after each drop, since removing a face can itself
+    newly over-share one of its other edges. This always terminates: each round strictly reduces
+    the face count (by at least two), so it ends within `len(faces)` rounds at worst, raising
+    rather than returning an empty mesh if it ever runs out of faces.
+
+    Call this only on a mesh `drop_non_manifold_faces` has already cleaned -- same precondition
+    as `_find_orientation_conflict`.
+    """
+    vertices = np.asarray(vertices, dtype=np.float32)
+    faces = np.asarray(faces, dtype=np.int32)
+    total_dropped = 0
+
+    while True:
+        if len(faces) == 0:
+            raise ValueError(
+                "mesh cannot be made orientable without dropping every face."
+            )
+        conflict = _find_orientation_conflict(faces)
+        if conflict is None:
+            return vertices, faces, total_dropped
+        face_a, face_b = conflict
+        keep_face = np.ones(len(faces), dtype=bool)
+        keep_face[face_a] = False
+        keep_face[face_b] = False
+        faces = faces[keep_face]
+        total_dropped += 2
+        vertices, faces, newly_non_manifold = drop_non_manifold_faces(vertices, faces)
+        total_dropped += newly_non_manifold
+
+
 def filter_connected_components(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -306,7 +398,7 @@ def write_glb_with_size_limit(
     *,
     max_file_size_bytes: int = DEFAULT_MAX_FILE_SIZE_BYTES,
     min_triangle_count: int = 4,
-) -> tuple[np.ndarray, np.ndarray, int, int, int]:
+) -> tuple[np.ndarray, np.ndarray, int, int, int, int]:
     """Write a GLB that actually satisfies the configured byte limit.
 
     If the first write is oversized, progressively re-decimate to 75% of the current triangle
@@ -318,9 +410,12 @@ def write_glb_with_size_limit(
     unconditionally, whatever ``min_triangle_count`` is, since a stalled round makes no more
     progress whether or not there's room left to decimate. #300: decimation can turn a manifold
     mesh non-manifold, so every round re-checks and drops any face that breaks it, same as the
-    pre-decimation pass in ``cleanup_run`` -- the returned ``non_manifold_faces_dropped`` is the
-    sum of those drops across every round this call made, not including ``cleanup_run``'s own
-    earlier, separate drop before this function was ever called.
+    pre-decimation pass in ``cleanup_run``. Found on review (@TabeenRaoof, PR #381, R-32's real
+    MASt3R s-05 "all" run): decimation can also leave an already-manifold mesh non-orientable,
+    a different property than edge-owner count -- every round re-checks that too, via
+    ``drop_faces_until_orientable``. The two returned counts are each the sum of their own drops
+    across every round this call made, not including ``cleanup_run``'s own earlier, separate
+    drops before this function was ever called.
     """
     if max_file_size_bytes <= 0:
         raise ValueError("max_file_size_bytes must be positive.")
@@ -331,6 +426,7 @@ def write_glb_with_size_limit(
     faces = np.asarray(faces, dtype=np.int32)
     redecimation_rounds = 0
     non_manifold_faces_dropped = 0
+    non_orientable_faces_dropped = 0
 
     while True:
         write_glb(path, vertices, faces)
@@ -342,6 +438,7 @@ def write_glb_with_size_limit(
                 file_size_bytes,
                 redecimation_rounds,
                 non_manifold_faces_dropped,
+                non_orientable_faces_dropped,
             )
 
         if len(faces) <= min_triangle_count:
@@ -362,6 +459,8 @@ def write_glb_with_size_limit(
             )
         vertices, faces, dropped = drop_non_manifold_faces(vertices, faces)
         non_manifold_faces_dropped += dropped
+        vertices, faces, oriented_dropped = drop_faces_until_orientable(vertices, faces)
+        non_orientable_faces_dropped += oriented_dropped
         redecimation_rounds += 1
 
 
@@ -637,6 +736,8 @@ def write_cleanup_report(
     non_manifold_faces_dropped: int = 0,
     non_manifold_faces_dropped_after_decimation: int = 0,
     non_manifold_faces_dropped_during_size_redecimation: int = 0,
+    non_orientable_faces_dropped_after_decimation: int = 0,
+    non_orientable_faces_dropped_during_size_redecimation: int = 0,
 ) -> dict[str, Any]:
     report = {
         "story": "R-08",
@@ -657,6 +758,16 @@ def write_cleanup_report(
         # caused this" shouldn't have to guess.
         "non_manifold_faces_dropped_during_size_redecimation": (
             non_manifold_faces_dropped_during_size_redecimation
+        ),
+        # R-40, found on review (@TabeenRaoof, PR #381): decimation can also leave an
+        # already-manifold mesh non-orientable (R-32's real MASt3R s-05 "all" run) -- a
+        # different property than edge-owner count, so kept in its own pair of fields rather
+        # than folded into the non_manifold_* ones above.
+        "non_orientable_faces_dropped_after_decimation": (
+            non_orientable_faces_dropped_after_decimation
+        ),
+        "non_orientable_faces_dropped_during_size_redecimation": (
+            non_orientable_faces_dropped_during_size_redecimation
         ),
         "faces_before_component_filter": faces_before,
         "faces_after_component_filter": faces_after_component_filter,
@@ -721,6 +832,11 @@ def cleanup_run(
     vertices, faces, non_manifold_faces_dropped_after_decimation = (
         drop_non_manifold_faces(vertices, faces)
     )
+    # Found on review (@TabeenRaoof, PR #381): decimation can also leave a manifold mesh
+    # non-orientable, a different property than edge-owner count.
+    vertices, faces, non_orientable_faces_dropped_after_decimation = (
+        drop_faces_until_orientable(vertices, faces)
+    )
     triangle_count_after_decimation = len(faces)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -730,6 +846,7 @@ def cleanup_run(
         file_size_bytes,
         size_redecimation_rounds,
         non_manifold_faces_dropped_during_size_redecimation,
+        non_orientable_faces_dropped_during_size_redecimation,
     ) = write_glb_with_size_limit(
         out_path,
         vertices,
@@ -761,6 +878,12 @@ def cleanup_run(
         ),
         non_manifold_faces_dropped_during_size_redecimation=(
             non_manifold_faces_dropped_during_size_redecimation
+        ),
+        non_orientable_faces_dropped_after_decimation=(
+            non_orientable_faces_dropped_after_decimation
+        ),
+        non_orientable_faces_dropped_during_size_redecimation=(
+            non_orientable_faces_dropped_during_size_redecimation
         ),
     )
 
