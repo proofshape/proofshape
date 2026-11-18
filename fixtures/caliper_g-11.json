@@ -1,0 +1,222 @@
+{
+  "version": 1,
+  "story": "G-11",
+  "measured_by": "@TabeenRaoof",
+  "date": "2026-11-18",
+  "instrument": {
+    "type": "digital caliper",
+    "resolution_mm": 0.1,
+    "accuracy_spec": "±0.02 mm"
+  },
+  "features": [
+    {
+      "object": "g11_glossy",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 25.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "base to top face, outside jaws flat across both faces, away from the edges",
+      "orientation_on_board": null,
+      "readings_mm": [
+        25.0,
+        25.0,
+        25.0,
+        25.0,
+        25.0,
+        25.0,
+        24.9,
+        24.9,
+        25.0,
+        25.0
+      ],
+      "mean_mm": 24.98,
+      "min_mm": 24.9,
+      "max_mm": 25.0,
+      "std_mm": 0.0422
+    },
+    {
+      "object": "g11_glossy",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          -12.931,
+          -17.798
+        ],
+        [
+          12.931,
+          -17.798
+        ]
+      ],
+      "nominal_mm": 25.862,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the two vertical corners of one side face, at mid-height (about 12.5 mm up), the same face for all 10 readings. Which face was not recorded: all five edges are 25.86 mm in CAD, and cad_vertices gives the measuring page's drawn front edge (C to D) as the representative pair",
+      "orientation_on_board": null,
+      "readings_mm": [
+        25.9,
+        25.9,
+        25.8,
+        25.8,
+        25.9,
+        25.9,
+        25.9,
+        25.9,
+        25.8,
+        25.9
+      ],
+      "mean_mm": 25.87,
+      "min_mm": 25.8,
+      "max_mm": 25.9,
+      "std_mm": 0.0483
+    },
+    {
+      "object": "g11_dark",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 25.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "base to top face, outside jaws flat across both faces, away from the edges",
+      "orientation_on_board": null,
+      "readings_mm": [
+        25.0,
+        24.9,
+        24.9,
+        24.9,
+        25.0,
+        24.9,
+        24.9,
+        25.0,
+        24.9,
+        24.9
+      ],
+      "mean_mm": 24.93,
+      "min_mm": 24.9,
+      "max_mm": 25.0,
+      "std_mm": 0.0483
+    },
+    {
+      "object": "g11_dark",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          -12.931,
+          -17.798
+        ],
+        [
+          12.931,
+          -17.798
+        ]
+      ],
+      "nominal_mm": 25.862,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the two vertical corners of one side face, at mid-height (about 12.5 mm up), the same face for all 10 readings. Which face was not recorded: all five edges are 25.86 mm in CAD, and cad_vertices gives the measuring page's drawn front edge (C to D) as the representative pair",
+      "orientation_on_board": null,
+      "readings_mm": [
+        25.9,
+        25.9,
+        25.8,
+        25.9,
+        25.9,
+        26.0,
+        25.9,
+        25.8,
+        25.9,
+        25.9
+      ],
+      "mean_mm": 25.89,
+      "min_mm": 25.8,
+      "max_mm": 26.0,
+      "std_mm": 0.0568
+    },
+    {
+      "object": "g11_thin",
+      "kind": "height",
+      "cad_vertices": null,
+      "nominal_mm": 25.0,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "outside jaws flat across the base and the top of the rim, laid across two opposite walls, away from the corners",
+      "orientation_on_board": null,
+      "readings_mm": [
+        24.9,
+        24.9,
+        24.9,
+        24.9,
+        24.9,
+        24.9,
+        25.0,
+        25.0,
+        24.9,
+        24.9
+      ],
+      "mean_mm": 24.92,
+      "min_mm": 24.9,
+      "max_mm": 25.0,
+      "std_mm": 0.0422
+    },
+    {
+      "object": "g11_thin",
+      "kind": "edge",
+      "cad_vertices": [
+        [
+          -12.931,
+          -17.798
+        ],
+        [
+          12.931,
+          -17.798
+        ]
+      ],
+      "nominal_mm": 25.862,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "corner to corner, jaw tips on the two vertical corners of one side face, at mid-height (about 12.5 mm up), the same face for all 10 readings. Which face was not recorded: all five edges are 25.86 mm in CAD, and cad_vertices gives the measuring page's drawn front edge (C to D) as the representative pair",
+      "orientation_on_board": null,
+      "readings_mm": [
+        25.9,
+        25.8,
+        25.8,
+        25.9,
+        25.9,
+        25.8,
+        25.9,
+        25.8,
+        25.9,
+        25.9
+      ],
+      "mean_mm": 25.86,
+      "min_mm": 25.8,
+      "max_mm": 25.9,
+      "std_mm": 0.0516
+    },
+    {
+      "object": "g11_thin",
+      "kind": "wall",
+      "cad_vertices": null,
+      "nominal_mm": 1.2,
+      "nominal_source": "cad",
+      "square_count": null,
+      "where": "outside jaws across one wall, one jaw inside the tray, at mid-height in the middle of the face, away from the corners; the same face as the edge row",
+      "orientation_on_board": null,
+      "readings_mm": [
+        1.1,
+        1.1,
+        1.1,
+        1.1,
+        1.1,
+        1.1,
+        1.1,
+        1.1,
+        1.1,
+        1.1
+      ],
+      "mean_mm": 1.1,
+      "min_mm": 1.1,
+      "max_mm": 1.1,
+      "std_mm": 0.0
+    }
+  ]
+}
