@@ -2621,8 +2621,10 @@ C-17 waiting on its physical print/caliper check.
   by name and size.
 - **Reshoot:** the glossy part and the tray were reshot after a pen label turned up on a side
   face the camera saw.
-- **Calipers:** the glossy and dark parts match the grey `g02_04` control within 0.07 mm. The
-  tray's 1.2 mm wall reads 1.10 mm in all ten placements.
+- **Calipers:** the glossy and dark parts' heights are within 0.03 mm of the grey `g02_04`
+  control's. (Corrected on #392: this first said "within 0.07 mm". The glossy part's edge,
+  25.87 mm, is 0.01 mm below the control's 25.88–26.02 range.) The tray's 1.2 mm wall reads
+  1.10 mm in all ten placements.
 
 **Next:** the `.3mf` files, the screen-photo and wrong-part stills, and each part through
 reconstruction.
@@ -2801,8 +2803,8 @@ amended under its original text.
 - The two files in `print-files/g-11` are model-only `.3mf` files with exactly the committed STLs'
   vertices, so they're copies of the CAD, not a print record.
 **Concluded:** only G-01 and G-05 can show their slicer settings from a file. For G-11's finish
-parts, the caliper match with the grey control (within 0.07 mm in height) is the evidence that
-the finish didn't change the printed size. Nothing shows which preset the silk part used.
+parts, the evidence is the caliper comparison with the grey control: heights within 0.03 mm,
+from one print per finish. Nothing shows which preset the silk part used.
 **Next:** G-11 still needs the screen-photo and wrong-part stills, the VLM's reading of the
 parts, and the A-01/A-02 cross-references.
 
@@ -2860,6 +2862,6 @@ story and the index, with its completion record: 7.5 h actual against an estimat
 there's no cascade, because nothing depends on G-11.
 **Result:** all four criteria have written results. A reprint was not chosen, because its
 record would describe a new part, not the one photographed and run. The calipers put the
-glossy and dark parts within 0.07 mm of the grey control's height.
+glossy and dark parts within 0.03 mm of the grey control's height.
 **Concluded:** G-11 closes on this PR. This frees one of @TabeenRaoof's two WIP slots (D-064).
 **Next:** @mbj1994's re-review of #392's final commit, then the author merges.

@@ -2415,10 +2415,11 @@ or an explicit decision that the gap is accepted.
 the parts that were photographed and run. Every G-11 result (Drive photos, the hash-locked
 manifest, the caliper file, the reconstruction and VLM runs) would then have to be redone to
 describe the new part. What the print record is for is still shown another way. The caliper
-readings put the glossy and dark parts within 0.07 mm of the grey `g02_04` control in height, and
-within its range of edge lengths, and each result is judged against the printed part's measured
-size rather than an assumed one. That comparison is one print per finish, not a claim about the
-finishes in general. What stays
+readings put the glossy and dark parts within 0.03 mm of the grey `g02_04` control's height
+(+0.02 and −0.03 mm). Their edges read 25.87 and 25.89 mm, against the control's five at
+25.88–26.02 mm: the dark part's is inside that range, and the glossy part's is 0.01 mm below it.
+Each result is judged against the printed part's measured size rather than an assumed one. That
+comparison is one print per finish, not a claim about the finishes in general. What stays
 unknown is which settings produced those sizes. G-11 doesn't claim them.
 
 *Conditions:* this covers G-11's three parts only. It doesn't relax G-01's printer-and-settings
