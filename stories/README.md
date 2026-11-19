@@ -235,7 +235,7 @@ Full detail in each story file.
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Done | @dalwalyk |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
-| [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Claimed | @TabeenRaoof |
+| [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Done | @TabeenRaoof |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Cut | _unclaimed_ |
 | [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Claimed | @TabeenRaoof |
 
@@ -439,7 +439,8 @@ Issues per story:
 
 **No story, and why:**
 - **#181 and #200 wait on a team decision**, as before (D-039 and D-047). #181's fix is a
-  prerequisite of X-03.
+  prerequisite of X-03. *2026-11-18 (#397): #181 now has a story, R-41, whose first criterion is
+  that decision.*
 - **#107 (a Lightning cost guard)** is one of D-072's four conditions for a public service. It
   gets a story only if the team takes that path.
 - **#246 and #247 (the Poisson fallback)** are known limitations of a fallback the service never
@@ -453,7 +454,7 @@ Full detail in each story file.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [C-24](C/C-24.md) | Capture survives interruptions: a plain outage message, and a session that survives a reload | 5 h | C-13, C-18 | Done | @TabeenRaoof |
-| [C-25](C/C-25.md) | Frame gate: check the blur threshold against a real motion-blurred frame | 2 h | C-06 | Ready | _unclaimed_ |
+| [C-25](C/C-25.md) | Frame gate: check the blur threshold against a real motion-blurred frame | 2 h | C-06 | Claimed | @mbj1994 |
 | [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Done | @mbj1994 |
 | [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Done | @dalwalyk |
@@ -560,13 +561,19 @@ still genuinely in the future, correctly Blocked on the verdict chain and on the
 feature-complete, respectively. X-05 is the kept-current backup recording itself, distinct from
 X-04's one-time act of running and recording I4.
 
+R-41 and R-42 are recon stories, listed here because they exist as X-03's prerequisites. They
+were added by G-09's review (#397, 2026-11-18): #181's reversed scale ratio, and the service
+never calling the scale-agreement check. Both were named in X-03's notes but had no story.
+
 Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Done | @dalwalyk |
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Done | @dalwalyk |
-| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Blocked | _unclaimed_ |
+| [R-41](R/R-41.md) | Scale agreement compares the CAD ratio the right way round (#181, D-039) | 2 h | nothing | Ready | _unclaimed_ |
+| [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Blocked | _unclaimed_ |
+| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42 | Blocked | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
