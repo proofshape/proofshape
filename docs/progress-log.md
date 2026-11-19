@@ -2793,3 +2793,17 @@ The evidence files are in `proofshape-data/g11-runs/vlm/` (outside git).
 falsely flagged. The VLM has no field that could catch the thin tray, whose failure shows up only
 at registration. G-11's four criteria now have written results.
 **Next:** reviews on #392.
+
+## 2026-11-19 — G-11 Done: the lost slicer files accepted as a gap (D-085) (PR #392)
+
+**Who:** @TabeenRaoof.
+**What changed:** D-085 records G-11's lost sliced `.3mf` files as an accepted, permanent gap in
+criterion 1's print record. That answers @mbj1994's review on #392. G-11 is set to Done in the
+story and the index, with its completion record: 7.5 h actual against an estimate of 4.
+**Command / how to reproduce:** `python scripts/check_story_states.py --fix` is clean, so
+there's no cascade, because nothing depends on G-11.
+**Result:** all four criteria have written results. A reprint was not chosen, because its
+record would describe a new part, not the one photographed and run. The calipers show the
+finish didn't change the printed size.
+**Concluded:** G-11 closes on this PR. This frees one of @TabeenRaoof's two WIP slots (D-064).
+**Next:** @mbj1994's re-review of #392's final commit, then the author merges.

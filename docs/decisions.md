@@ -2283,6 +2283,33 @@ written.
 *Checked against D-028:* fetched all origin branches on 2026-11-18; D-082 (held by `main`) was
 highest anywhere, so D-083 was free.
 
+**D-085 · G-11's lost slicer files are an accepted, permanent gap in its print record; the
+story closes without them.** (2026-11-19)
+G-11's first criterion asks for its glossy, dark and thin parts printed "on G-01's recorded
+printer and settings". The three parts exist and were photographed, measured and run through the
+pipeline. But their sliced `.3mf` files weren't kept (owner, 2026-11-18), so the printer, the
+process settings and the glossy part's silk filament preset can't be read from a file, as they
+can for G-01 and G-05. Drive's `print-files/g-11` holds only two model-only `.3mf` files, which
+are copies of the committed STLs. @mbj1994's review on #392 asked for either the missing evidence
+or an explicit decision that the gap is accepted.
+
+*Why accept it rather than reprint:* a reprint would carry a print record for a new part, not for
+the parts that were photographed and run. Every G-11 result (Drive photos, the hash-locked
+manifest, the caliper file, the reconstruction and VLM runs) would then have to be redone to
+describe the new part. What the print record is for is still shown another way. The caliper
+readings put the glossy and dark parts within 0.07 mm of the grey `g02_04` control in height, and
+within its range of edge lengths. So the finish didn't change the printed size, and each result
+is judged against the printed part's measured size rather than an assumed one. What stays
+unknown is which settings produced those sizes. G-11 doesn't claim them.
+
+*Conditions:* this covers G-11's three parts only. It doesn't relax G-01's printer-and-settings
+requirement for any other story. G-02's own lost sliced files are recorded in G-02, which is
+already Done, and aren't decided here. Any future print for a ground-truth story keeps its sliced
+`.3mf` on Drive's `print-files/`.
+
+*Checked against D-028:* fetched all origin branches on 2026-11-19; D-084 (held by
+`generative-ai/A-02-vlm-veto`) was highest anywhere, so D-085 was free.
+
 ---
 
 ## Open — not yet decided
