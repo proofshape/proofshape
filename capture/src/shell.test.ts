@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
-import { DEFAULT_BLUR_VARIANCE_THRESHOLD, measureBlurVariance } from "./frame_gate.js";
+import { measureBlurVariance } from "./frame_gate.js";
 import {
   browserSessionStorage,
   CAPTURE_SESSION_STORAGE_KEY,
