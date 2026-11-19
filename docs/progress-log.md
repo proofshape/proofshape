@@ -2803,7 +2803,7 @@ story and the index, with its completion record: 7.5 h actual against an estimat
 **Command / how to reproduce:** `python scripts/check_story_states.py --fix` is clean, so
 there's no cascade, because nothing depends on G-11.
 **Result:** all four criteria have written results. A reprint was not chosen, because its
-record would describe a new part, not the one photographed and run. The calipers show the
-finish didn't change the printed size.
+record would describe a new part, not the one photographed and run. The calipers put the
+glossy and dark parts within 0.07 mm of the grey control's height.
 **Concluded:** G-11 closes on this PR. This frees one of @TabeenRaoof's two WIP slots (D-064).
 **Next:** @mbj1994's re-review of #392's final commit, then the author merges.
