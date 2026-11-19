@@ -2675,5 +2675,28 @@ point), with no story.
 **Concluded:** only G-01 and G-05 can show their slicer settings from a file. For G-11's finish
 parts, the caliper match with the grey control (within 0.07 mm in height) is the evidence that
 the finish didn't change the printed size. Nothing shows which preset the silk part used.
-**Next:** G-11 still needs the screen-photo and wrong-part stills, each part through
-reconstruction, and the A-01/A-02 cross-references.
+**Next:** G-11 still needs the screen-photo and wrong-part stills, the VLM's reading of the
+parts, and the A-01/A-02 cross-references.
+
+## 2026-11-18 — G-11's parts through reconstruction: glossy fine, dark noisier, thin walls lost
+
+**Who:** @TabeenRaoof.
+**What changed:** nothing in code. G-11 records criterion 3's runs: the glossy, dark and
+thin-walled parts and the grey `g02_04` control, each through the service in-process on `main`
+(`d205149`), on the M2 Max.
+**Command / how to reproduce:** a throwaway driver created an order with the CAD, uploaded each
+Drive photo set, finished and polled; then `python -m recon.cad_size_check <artifacts>/reconstruction
+<artifacts>/board_pose --cad fixtures/reference_cad/g02_04_pentagon_r22x25mm.stl`. Outputs are in
+`proofshape-data/g11-runs/` (outside git).
+**Result:**
+- All four completed, metric on the board, with no warnings, in 37–49 s of reconstruction.
+- The control reproduces G-04's numbers (board scale 0.9976, height +0.85 mm against +0.86).
+- Height against calipers: glossy −0.54 mm, dark −1.65 mm.
+- The thin tray's 1.1 mm walls come back as single slabs. The served model loses about 5 mm of
+  their top, since fusion's voxel is 2.0 mm. Its registration fails ("No candidate could be
+  refined").
+- Every solid pentagon is flagged orientation-ambiguous, as a regular pentagon should be.
+**Concluded:** gloss didn't hurt. The dark finish makes the walls noisier and reads the height
+short. Walls thinner than a voxel are outside what the pipeline can measure, and this one also
+breaks registration. The pentagon's symmetry means none of these parts can Pass through I-07.
+**Next:** the VLM run (needs a Gemini key), the stills, the A-01/A-02 cross-references.
