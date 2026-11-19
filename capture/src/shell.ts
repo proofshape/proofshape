@@ -20,7 +20,13 @@ import {
 } from "./api.js";
 import { mountAgentConversation } from "./agent-conversation.js";
 import { requireElement, requireTyped } from "./dom.js";
-import { checkBlur, checkDuplicate, checkExposure, type FramePixels } from "./frame_gate.js";
+import {
+  checkBlur,
+  checkDuplicate,
+  checkExposure,
+  measureBlurVariance,
+  type FramePixels,
+} from "./frame_gate.js";
 import { requestGyroPermission } from "./gyro.js";
 import {
   describeCreateSession,
@@ -81,6 +87,44 @@ export interface AppShellOptions {
   // C-24: where an in-progress session is kept across a reload. Defaults to the tab's
   // sessionStorage; tests pass their own, and null turns resume off.
   captureSessionStorage?: KeyValueStorage | null;
+  // C-25 review calibration aid. When true, store the exact pre-JPEG Laplacian variance for each
+  // server-accepted frame in sessionStorage, keyed by the server frame index. No pixels/photos are
+  // retained. main.ts enables this only with ?blur-debug=1.
+  blurDebug?: boolean;
+}
+
+export const C25_BLUR_DEBUG_STORAGE_KEY = "proofshape.c25BlurDebug.v1";
+
+export interface C25BlurDebugMeasurement {
+  session_id: string;
+  frame_index: number;
+  pre_jpeg_variance: number;
+  width: number;
+  height: number;
+}
+
+function appendC25BlurDebugMeasurement(
+  storage: KeyValueStorage | null,
+  measurement: C25BlurDebugMeasurement,
+): void {
+  if (storage === null) {
+    return;
+  }
+  let measurements: C25BlurDebugMeasurement[] = [];
+  try {
+    const raw = storage.getItem(C25_BLUR_DEBUG_STORAGE_KEY);
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        measurements = parsed as C25BlurDebugMeasurement[];
+      }
+    }
+    measurements.push(measurement);
+    storage.setItem(C25_BLUR_DEBUG_STORAGE_KEY, JSON.stringify(measurements));
+  } catch {
+    // Debug evidence must never interrupt a supplier capture. If storage is unavailable, capture
+    // continues normally and the tester can use another browser/session.
+  }
 }
 
 const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
@@ -608,6 +652,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       return;
     }
     state.lastCapturedFrame = captured;
+    const c25PreJpegVariance =
+      options.blurDebug === true ? measureBlurVariance(captured.pixels) : null;
 
     // C-20: exposure runs before blur so a uniformly black/white frame reports the lighting
     // problem instead of being mislabelled as blur. Duplicate stays last; first failure wins and
@@ -687,6 +733,15 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
         setStatus(captureStatus, describeUploadFrame(result), result.ok ? "info" : "error");
         if (result.ok) {
+          if (c25PreJpegVariance !== null) {
+            appendC25BlurDebugMeasurement(browserSessionStorage(), {
+              session_id: sessionId,
+              frame_index: result.body.frame_index,
+              pre_jpeg_variance: c25PreJpegVariance,
+              width: captured.pixels.width,
+              height: captured.pixels.height,
+            });
+          }
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
           gyroOverlayHandle.reportAcceptedFrame(captured.gyro);

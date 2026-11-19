@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
+import { DEFAULT_BLUR_VARIANCE_THRESHOLD } from "./frame_gate.js";
 import {
   browserSessionStorage,
   CAPTURE_SESSION_STORAGE_KEY,
@@ -8,7 +9,13 @@ import {
   saveCaptureSession,
   type StoredCaptureSession,
 } from "./session-persistence.js";
-import { mountAppShell, type AppShellOptions, type AppState } from "./shell.js";
+import {
+  C25_BLUR_DEBUG_STORAGE_KEY,
+  mountAppShell,
+  type AppShellOptions,
+  type AppState,
+  type C25BlurDebugMeasurement,
+} from "./shell.js";
 import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 
@@ -677,6 +684,44 @@ describe("mountAppShell", () => {
       if (mounted.captureStatus.textContent === "Uploading…") throw new Error("still uploading");
     });
     expect(mounted.captureStatus.textContent).toMatch(/accepted/i);
+  });
+
+  it("blur-debug records the exact pre-JPEG gate metric beside the accepted server frame index", async () => {
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    const { imageData } = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    const raw = window.sessionStorage.getItem(C25_BLUR_DEBUG_STORAGE_KEY);
+    expect(raw).not.toBeNull();
+    const measurements = JSON.parse(raw ?? "[]") as C25BlurDebugMeasurement[];
+    expect(measurements).toHaveLength(1);
+    expect(measurements[0]).toMatchObject({
+      session_id: mounted.state.sessionId,
+      frame_index: 0,
+      width: imageData.width,
+      height: imageData.height,
+    });
+    expect(measurements[0]?.pre_jpeg_variance).toBeGreaterThan(
+      DEFAULT_BLUR_VARIANCE_THRESHOLD,
+    );
   });
 
   it("captures stay available but never enable without a real gyro reading, even with the camera playing", async () => {
