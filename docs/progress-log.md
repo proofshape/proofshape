@@ -2668,4 +2668,6 @@ bash fixtures/download_golden_capture.sh fixtures/data/specimen_capture`
 - The real downloader fetched both parts and verified both hashes.
 - 2 h actual against 1.5.
 **Concluded:** M4's planted-defect pair is ready for reconstruction.
-**Next:** with G-09 Done, all of X-03's dependencies are Done, so X-03 (I3) is Ready.
+**Next:** X-03 (I3) stays Blocked. At @dalwalyk's review, its two unstoried prerequisites became
+stories and dependencies: R-41 (#181's reversed scale ratio, which still needs the team's D-039
+decision) and R-42 (the service calling `check_scale_agreement`).
