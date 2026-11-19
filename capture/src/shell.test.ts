@@ -719,9 +719,7 @@ describe("mountAppShell", () => {
       width: imageData.width,
       height: imageData.height,
     });
-    expect(measurements[0]?.pre_jpeg_variance).toBeGreaterThan(
-      DEFAULT_BLUR_VARIANCE_THRESHOLD,
-    );
+    expect(measurements[0]?.pre_jpeg_variance).toBeGreaterThan(DEFAULT_BLUR_VARIANCE_THRESHOLD);
   });
 
   it("captures stay available but never enable without a real gyro reading, even with the camera playing", async () => {
