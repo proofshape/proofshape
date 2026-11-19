@@ -250,6 +250,34 @@ def test_robustness_manifest_lists_the_three_g11_parts_with_hash_and_cad() -> No
         assert entry["path"].endswith(entry["filename"])
 
 
+def test_robustness_manifest_hash_locks_the_two_vlm_stills() -> None:
+    # G-11 criterion 2: A-01's screen-photo and wrong-part controls, formalised by file hash.
+    # The screen photo has its own Drive file; the wrong part is golden s-05's IMG_4161.jpeg,
+    # the same bytes A-01 used, so it points at that sample instead of a second copy on Drive.
+    # The downloader only fetches `captures`; these are verified by hash after a manual download.
+    data = json.loads(
+        (REPO_ROOT / "fixtures" / "robustness_capture_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    stills = {still["still_id"]: still for still in data["stills"]}
+    assert sorted(stills) == ["g11_screen_photo", "g11_wrong_part"]
+    assert stills["g11_screen_photo"]["role"] == "screen_photo"
+    assert stills["g11_screen_photo"]["drive_file_id"]
+    assert stills["g11_wrong_part"]["role"] == "wrong_part"
+    golden = json.loads(
+        (REPO_ROOT / "fixtures" / "golden_capture_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    golden_ids = {capture["sample_id"] for capture in golden["captures"]}
+    assert stills["g11_wrong_part"]["golden_sample_id"] in golden_ids
+    for still in stills.values():
+        assert len(still["content_sha256"]) == 64
+        int(still["content_sha256"], 16)
+        assert still["filename"].lower().endswith((".jpg", ".jpeg"))
+
+
 def test_missing_gdown_fails_with_install_hint(tmp_path: Path) -> None:
     env = dict(os.environ)
     env["PATH"] = "/usr/bin:/bin"  # deliberately exclude any gdown on PATH

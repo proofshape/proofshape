@@ -2700,3 +2700,24 @@ Drive photo set, finished and polled; then `python -m recon.cad_size_check <arti
 short. Walls thinner than a voxel are outside what the pipeline can measure, and this one also
 breaks registration. The pentagon's symmetry means none of these parts can Pass through I-07.
 **Next:** the VLM run (needs a Gemini key), the stills, the A-01/A-02 cross-references.
+
+## 2026-11-18 — G-11's stills hash-locked; the VLM catches both controls, not the thin tray
+
+**Who:** @TabeenRaoof.
+**What changed:** `fixtures/robustness_capture_manifest.json` gains a `stills` list, made of the
+screen photo (Drive `vlm_checks/`) and the wrong part (golden s-05 `IMG_4161.jpeg`, the same bytes
+A-01 used). Each is locked by sha256, and the manifest's `.sha256` is refreshed. A test in
+`tests/test_download_golden_capture.py` checks the entries. `fixtures/README.md` describes them.
+**Command / how to reproduce:** `scripts/check_vlm.py <capture> --screen-photo screen_photo.jpeg
+--wrong-part IMG_4161.jpeg --api-tier free --billing-account "ProofShape (free tier)"`, on
+`main` `788c256`. It ran once each for s-04 and the three G-11 captures, 44 requests in all.
+The evidence files are in `proofshape-data/g11-runs/vlm/` (outside git).
+**Result:**
+- All 44 requests came back `checked`.
+- s-04 gives the same booleans A-01 recorded, on all 11 results.
+- On every G-11 part, the screen photo is flagged and the wrong part reads `same_part` false.
+- No glossy, dark or thin frame is flagged.
+**Concluded:** both controls work against every finish, and the glossy and dark parts aren't
+falsely flagged. The VLM has no field that could catch the thin tray, whose failure shows up only
+at registration. G-11's four criteria now have written results.
+**Next:** reviews on #392.
