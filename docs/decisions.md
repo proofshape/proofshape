@@ -498,6 +498,22 @@ check "Planned"); R-05 does not depend on it or stub it out, it only defines the
 takes once that residual exists.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-038, so D-039 was the first free number.
+*Amended 2026-11-19 (R-41, #181): the CAD ratio is `1 / (1 + cad_registration_residual)`, not
+`1.0 + cad_registration_residual`.*
+- The text above is left as written. The ratio it gives for the CAD source points the wrong way.
+  Every ratio is meant to estimate the same thing, true printed pitch ÷ nominal pitch, and the
+  caliper ratio does.
+- The reconstruction is scaled assuming the nominal pitch, so a page printed small makes the
+  model come out *large*: model ÷ CAD = nominal ÷ true. The residual is model ÷ CAD − 1, so true
+  ÷ nominal is `1 / (1 + r)`.
+- With `1 + r`, #181's two cases went wrong:
+  - a 98.8% print (caliper 19.76 mm, r = +0.012) was flagged, the sources 2.4% apart;
+  - caliper 20.3 mm with r = +0.015, which contradict each other, showed no gap.
+  Corrected, they are 0.01% apart (not flagged) and 3.0% apart (flagged).
+- The comparison rule, the ~2% threshold and the board-pitch anchor are unchanged.
+- The contract's `ScaleAgreement` exposes only `sources_compared` and `flagged`, not the ratios,
+  so `contracts/openapi.yaml` is unchanged and there is no D-031 round.
+- Agreed by the team through both approvals of PR #401, as R-41's first criterion requires.
 
 **D-040 · `capture/`'s npm project is Vite + vanilla TypeScript + Vitest, local to `capture/`,
 on Node 24.** (2026-09-29)
@@ -2310,6 +2326,106 @@ already Done, and aren't decided here. Any future print for a ground-truth story
 
 *Checked against D-028:* fetched all origin branches on 2026-11-19; D-084 (held by
 `generative-ai/A-02-vlm-veto`) was highest anywhere, so D-085 was free.
+
+---
+
+**D-084 · A-02: an `unchecked` A-01 result blocks a Pass, the same as a failed VLM semantic
+check — a named trade-off against live-demo availability, not an overlooked one.** (2026-11-19)
+`recon/vlm_veto.py`'s `apply_vlm_veto` reads A-01's already-recorded `<session>/vlm_checks.json`
+and combines it with `inspection.verdict.compute_verdict`'s own result, in `recon/service.py`'s
+`get_verdict`, right before the existing `verdict_result_with_narrative(...)` return. It treats
+every one of A-01's sampled frames (`recon.vlm_check.sampled_indices` — frame 0, every fifth
+index, the final frame) the same way: a `checked` frame with `screen_photo`, `hands_occluding`,
+`lighting_adequate is False`, or `same_part is False` (non-reference frames only) downgrades the
+verdict to at least `Rescan`, named by its own `vlm_*_frame_<index>` reason code; an `unchecked`
+frame (any reason — `missing_api_key`, `api_timeout`, a blocked or malformed reply, …) does
+exactly the same, named `vlm_unchecked_frame_<index>_<reason>`. The combination reuses
+`compute_verdict`'s own `{"Pass": 0, "Rescan": 1, "Fail": 2}` rank, via `max(...)`: a veto can
+raise a `Pass` to `Rescan` but never raises a `Rescan` to `Fail`, and never touches an already-
+`Fail` result — AGENTS.md's hard rule is that a model's guess must never approve or condemn a
+component, so a VLM semantic flag can only ever ask for another look.
+*Why:* proposal §6.5's own wording is "no session reaches Pass until every sampled frame **has
+passed**" — an unchecked frame has not passed, so the literal reading blocks it too, not only an
+explicit `screen_photo`/`hands_occluding` failure. `recon/README.md` and this story's own file
+both refused to let this be invented silently. The alternative — treating `unchecked` leniently,
+as if it were a clean check — was rejected because it would let an outage silently mask exactly
+the kind of defect (wrong part, a screen photo) this story exists to catch; this project's
+recent precedent (A-09/D-082) is to prefer the safer outcome when a check cannot be run, not the
+more convenient one.
+*The cost is measured, not hypothetical (review, @TabeenRaoof, PR #396):* of 11 completed real
+phone sessions on the demo host (R-36/R-39's own runs), **9 have every sampled frame
+`unchecked: missing_api_key`**, including `sess_8fdecd4b3a02` — R-36's own `s-04` demo-host run
+(42 s, edges 0.95–1.04, the clean result R-36 recorded). Under this decision, that session's
+verdict is `Rescan`, not `Pass`, through the real `getVerdict` path, unless it is re-run with a
+working `GEMINI_API_KEY` configured. `queue_full` (`MAX_PENDING = 16`, shared across every
+session's checks including A-14's), `api_timeout`, and free-tier `api_error` (e.g. a 429) can
+all produce the same outcome without any outage at all. This decision does not soften the
+policy in light of that cost — proposal §6.5 is unambiguous — but two consequences follow
+directly and need the team's action, not silent discovery at the demo: (1) the R-36 runbook
+(#371) needs a stated key requirement and a pre-demo check that at least one sampled frame comes
+back `checked`, not just that reconstruction succeeds; (2) X-03's "clean part → Pass" exercise,
+run through the real `getVerdict` path, now needs a live Gemini call against golden frames, so
+the team needs to agree that sending those frames to Gemini for that check is acceptable, or
+X-03 cannot demonstrate a `Pass` through the real service at all.
+*A `Fail` stands even under a `screen_photo`/wrong-part flag — a real choice, not the only
+hard-rule-compliant one (review, @TabeenRaoof, PR #396):* the flag casts some doubt on whether
+the measured geometry is even this supplier's real part, and *overriding* `Fail` to `Rescan`
+specifically for those two flags would also be hard-rule-compliant (it approves nothing either).
+This decision keeps `Fail` standing, so the module's one rule — a veto only ever raises rank,
+never lowers it — stays uniform across every flag rather than special-casing two of them, and
+because a geometric `Fail` already requires an Observed, measured deviation past tolerance
+(`inspection.verdict`'s own rule): the VLM's doubt is about the photographed session, not a claim
+that the measurement itself is fabricated. Recorded as an open option, not a closed one, if the
+team weighs it differently.
+*Scope, stated rather than silently narrowed:* this covers only A-01's *sampled* frames — an
+unsampled bad frame (R-36/#354: a screen photo on frame 6 of a 15-frame session, outside the
+sampled set `[0, 5, 10, 14]`) is still missed, a known limitation of sampled rather than
+all-frame supervision (`recon/README.md`), not something this decision changes. **Confirmed on
+review (@TabeenRaoof, PR #396), from the sessions' own already-recorded `vlm_checks.json`** (on
+their Mac, outside this repo): `sess_fb1b028da4cd`'s sampled frame 5 (`screen_photo: true`)
+correctly produces `vlm_screen_photo_frame_5` under this policy; `sess_1a215dae88d7`'s screen
+photo on unsampled frame 6 is, as expected, missed entirely.
+*Resolved: a vetoed frame does not need to be kept out of the reconstruction, on the evidence
+measured by `@TabeenRaoof` (re-run on `f40dddb`, recorded in #403).* `run_session` keeps
+scheduling VLM checks and starting reconstruction without waiting for them, **unchanged, on
+measured evidence rather than left open**: re-running both sessions' raw frames on current
+`main` (R-38/D-075 included, Gemini key unset) found R-38's outlier rejection drops
+`sess_1a215dae88d7`'s unsampled frame 6 from the fused mesh but keeps `sess_fb1b028da4cd`'s
+sampled frame 5. (R-36's own figures were right as given — `sess_1a215dae88d7` reads 1.345,
+`sess_fb1b028da4cd` 1.286, clean `sess_8fdecd4b3a02` 0.961 — an uncertainty about which figure
+belonged to which session was this story's own, not R-36's.) **On `sess_1a215dae88d7` only, the
+screen frame wasn't the cause — and only up to a point** (correction, @TabeenRaoof, PR #403
+review): dropping frame 6 barely moved the *old* tool's reading (1.345 → 1.352), and the
+*current* `cad_size_check.py` (changed by R-37, after these numbers were first recorded) reads
+the saved output and the fresh re-run as 0.916/0.917 either way — level with clean — but reading
+1.756 with the frame **removed from the input entirely**, a failed measurement with 6.9×/8.2×
+impossible long edges. **On `sess_fb1b028da4cd`, whether the screen frame was the cause can't be
+isolated at all**: R-38 never rejects its frame 5, so there is no before/after-rejection
+comparison, and the *old* tool fails outright if frame 5 is removed from the input by hand.
+Height stayed reliable throughout (0.947–0.952) in every variant, and neither session shows a
+measured benefit to keeping the frame out. **This justifies not adding the wait, on two sessions
+of one part from one phone — it does not prove a screen frame can never matter**, stated as the
+actual strength of the evidence rather than oversold. A real, separate problem surfaced during
+this measurement and is not this decision's to fix: the edge-ratio reading itself shifted by
+0.1–0.4 between tool versions and by up to 0.8 when a frame was removed, and gave impossible
+long-edge readings (4.8–8.2×) on some runs — a `cad_size_check.py` reliability bug, which
+`@TabeenRaoof` is filing as its own issue separately (see `stories/A/A-02.md`).
+*Also recorded, a judgment call open to correction on review:* the contract's `vlm_veto`
+`ErrorDetail.code` (reserved since A-11 freed it from its malformed-upload borrow, D-056) is
+*not* used by this story. `docs/manual.md` lists it under "not produced yet," and the closest
+precedent in this codebase — I-10's Unverifiable-at-intake, also "the session is rejected" in
+plain language — is delivered as an ordinary `200 VerdictResult` value, never a distinct HTTP
+error; `recon/README.md` itself describes A-02's effect as turning a session's verdict into
+"Rescan," a value, not an error code. This story follows that precedent: the veto's outcome is
+`verdict: "Rescan"` in the normal response, with descriptive `reason_codes` (already an
+unconstrained string array — no contract change needed). `vlm_veto` the error code stays
+reserved and unused, exactly as before this story. `@TabeenRaoof` agreed with this reading on
+review.
+*Conditions:* a missing `vlm_checks.json` (should not occur — `VlmSupervisor.join` writes it
+unconditionally) is treated as its own veto (`vlm_checks_missing`), never as a clean session,
+rather than 500ing the endpoint (review, @TabeenRaoof, PR #396).
+*Checked against D-028:* fetched all origin branches on 2026-11-19; D-083 (held by
+`main`, merged) was highest anywhere, so D-084 was free.
 
 ---
 
