@@ -2303,13 +2303,36 @@ component, so a VLM semantic flag can only ever ask for another look.
 *Why:* proposal §6.5's own wording is "no session reaches Pass until every sampled frame **has
 passed**" — an unchecked frame has not passed, so the literal reading blocks it too, not only an
 explicit `screen_photo`/`hands_occluding` failure. `recon/README.md` and this story's own file
-both refused to let this be invented silently, naming the real cost directly: a Gemini outage or
-a missing API key turns *every* session's verdict to Rescan for as long as it lasts, a real
-availability risk for a live demo (R-36/X-04). The alternative — treating `unchecked` leniently,
+both refused to let this be invented silently. The alternative — treating `unchecked` leniently,
 as if it were a clean check — was rejected because it would let an outage silently mask exactly
 the kind of defect (wrong part, a screen photo) this story exists to catch; this project's
 recent precedent (A-09/D-082) is to prefer the safer outcome when a check cannot be run, not the
 more convenient one.
+*The cost is measured, not hypothetical (review, @TabeenRaoof, PR #396):* of 11 completed real
+phone sessions on the demo host (R-36/R-39's own runs), **9 have every sampled frame
+`unchecked: missing_api_key`**, including `sess_8fdecd4b3a02` — R-36's own `s-04` demo-host run
+(42 s, edges 0.95–1.04, the clean result R-36 recorded). Under this decision, that session's
+verdict is `Rescan`, not `Pass`, through the real `getVerdict` path, unless it is re-run with a
+working `GEMINI_API_KEY` configured. `queue_full` (`MAX_PENDING = 16`, shared across every
+session's checks including A-14's), `api_timeout`, and free-tier `api_error` (e.g. a 429) can
+all produce the same outcome without any outage at all. This decision does not soften the
+policy in light of that cost — proposal §6.5 is unambiguous — but two consequences follow
+directly and need the team's action, not silent discovery at the demo: (1) the R-36 runbook
+(#371) needs a stated key requirement and a pre-demo check that at least one sampled frame comes
+back `checked`, not just that reconstruction succeeds; (2) X-03's "clean part → Pass" exercise,
+run through the real `getVerdict` path, now needs a live Gemini call against golden frames, so
+the team needs to agree that sending those frames to Gemini for that check is acceptable, or
+X-03 cannot demonstrate a `Pass` through the real service at all.
+*A `Fail` stands even under a `screen_photo`/wrong-part flag — a real choice, not the only
+hard-rule-compliant one (review, @TabeenRaoof, PR #396):* the flag casts some doubt on whether
+the measured geometry is even this supplier's real part, and *overriding* `Fail` to `Rescan`
+specifically for those two flags would also be hard-rule-compliant (it approves nothing either).
+This decision keeps `Fail` standing, so the module's one rule — a veto only ever raises rank,
+never lowers it — stays uniform across every flag rather than special-casing two of them, and
+because a geometric `Fail` already requires an Observed, measured deviation past tolerance
+(`inspection.verdict`'s own rule): the VLM's doubt is about the photographed session, not a claim
+that the measurement itself is fabricated. Recorded as an open option, not a closed one, if the
+team weighs it differently.
 *Scope, stated rather than silently narrowed:* this covers only A-01's *sampled* frames — an
 unsampled bad frame (R-36/#354: a screen photo on frame 6 of a 15-frame session, outside the
 sampled set `[0, 5, 10, 14]`) is still missed, a known limitation of sampled rather than
@@ -2317,13 +2340,19 @@ all-frame supervision (`recon/README.md`), not something this decision changes. 
 decide whether a vetoed frame is kept out of the reconstruction itself — today, `run_session`
 schedules VLM checks and starts reconstruction without waiting for them, and that stays
 unchanged here. #354's own acceptance criteria ask for two real device sessions
-(`sess_fb1b028da4cd`, `sess_1a215dae88d7`) to be re-run first, to check whether R-38's outlier
-rejection (D-075, which landed after those sessions' numbers were recorded) already drops a
-screen-photo frame on its own. That raw data lives in `proofshape-data/sessions/`, which R-36's
-own text keeps outside git; it does not exist in the environment this story was built in, so the
-re-run could not be performed here. Recorded as a follow-up for whoever has that data (likely
-`@TabeenRaoof`, who ran R-36's device testing) in `stories/A/A-02.md`, not silently skipped or
-guessed at.
+(`sess_fb1b028da4cd`, `sess_1a215dae88d7`) to be re-run on current `main` first, to check whether
+R-38's outlier rejection (D-075, which landed after those sessions' numbers were recorded)
+already drops a screen-photo frame's effect on the *reconstruction* on its own. **Confirmed on
+review (@TabeenRaoof, PR #396), from the sessions' own already-recorded `vlm_checks.json`** (on
+their Mac, outside this repo): `sess_fb1b028da4cd`'s sampled frame 5 (`screen_photo: true`)
+correctly produces `vlm_screen_photo_frame_5` under this policy; `sess_1a215dae88d7`'s screen
+photo on unsampled frame 6 is, as expected, missed entirely. **That confirms this module's own
+behaviour against real data, not the separate, still-open question** — whether R-38 already
+keeps a bad frame's *geometry* out of the fused mesh needs an actual re-run of reconstruction on
+current `main` against both sessions' raw photos, which neither this decision nor PR #396
+performs. Recorded as a follow-up for whoever has that data (`@TabeenRaoof`, who ran R-36's
+device testing and holds both sessions under `proofshape-data/sessions/`) in `stories/A/A-02.md`,
+not silently skipped or guessed at.
 *Also recorded, a judgment call open to correction on review:* the contract's `vlm_veto`
 `ErrorDetail.code` (reserved since A-11 freed it from its malformed-upload borrow, D-056) is
 *not* used by this story. `docs/manual.md` lists it under "not produced yet," and the closest
@@ -2333,7 +2362,11 @@ error; `recon/README.md` itself describes A-02's effect as turning a session's v
 "Rescan," a value, not an error code. This story follows that precedent: the veto's outcome is
 `verdict: "Rescan"` in the normal response, with descriptive `reason_codes` (already an
 unconstrained string array — no contract change needed). `vlm_veto` the error code stays
-reserved and unused, exactly as before this story.
+reserved and unused, exactly as before this story. `@TabeenRaoof` agreed with this reading on
+review.
+*Conditions:* a missing `vlm_checks.json` (should not occur — `VlmSupervisor.join` writes it
+unconditionally) is treated as its own veto (`vlm_checks_missing`), never as a clean session,
+rather than 500ing the endpoint (review, @TabeenRaoof, PR #396).
 *Checked against D-028:* fetched all origin branches on 2026-11-19; D-083 (held by
 `main`, merged) was highest anywhere, so D-084 was free.
 

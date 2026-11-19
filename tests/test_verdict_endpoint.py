@@ -232,6 +232,31 @@ def test_getverdict_downgrades_to_rescan_on_a_screen_photo_end_to_end(tmp_path):
     )
 
 
+def test_getverdict_vetoes_instead_of_500ing_when_vlm_checks_file_is_missing(tmp_path):
+    # Review, @TabeenRaoof, PR #396: vlm_checks.json is read unguarded in get_verdict, but
+    # should never 500 on a state it can still answer safely.
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+        pipeline_runner=_make_pipeline_runner(),
+        vlm_supervisor=VlmSupervisor(inspector=_clean_vlm_reply),
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [{"name": "overall_A", "kind": "overall", "tolerance_mm": 5.0}]
+        }
+        session_id = _finish_a_session_with_cad(client, spec)
+        (tmp_path / "sessions" / session_id / "vlm_checks.json").unlink()
+
+        response = client.get(f"/v1/sessions/{session_id}/verdict")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["verdict"] == "Rescan"
+    assert "vlm_checks_missing" in body["reason_codes"]
+
+
 def test_getverdict_refuses_a_null_tolerance_feature_end_to_end(tmp_path):
     app = service.create_app(
         tmp_path / "sessions",

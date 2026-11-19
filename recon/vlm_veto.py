@@ -13,6 +13,17 @@ already-`Fail` result, and never invents a `Fail` on its own: AGENTS.md's hard r
 model's guess must never approve or condemn a component, so a VLM semantic flag can only ever ask
 for another look.
 
+**A `Fail` stands even under a `screen_photo`/wrong-part flag -- a real design choice, not the
+only hard-rule-compliant one, recorded rather than left implicit** (review, @TabeenRaoof, PR
+#396): the flag casts some doubt on whether the measured geometry is even this supplier's real
+part, and *overriding* `Fail` to `Rescan` specifically for those two flags would also be
+hard-rule-compliant (it approves nothing either). Keeping `Fail` was chosen because this module's
+one rule -- a veto only ever raises rank, never lowers it -- stays uniform across every flag
+rather than special-casing two of them, and because a geometric `Fail` already requires an
+Observed, measured deviation past tolerance (`inspection.verdict`'s own rule): the VLM's doubt is
+about the photographed session, not a claim that the measurement itself is fabricated. D-084
+records this as an open option, not a closed one, if the team weighs it differently.
+
 The veto covers exactly A-01's sampled frames (frame 0, every fifth index, and the final frame --
 `recon.vlm_check.sampled_indices`), not every accepted frame -- R-36/#354 found a screen photo on
 an unsampled frame, and `recon/README.md` is explicit that this stays a known limitation of
@@ -21,12 +32,18 @@ sampled, not all-frame, supervision pending a measured change to that sampling r
 **What this module deliberately does not do, left for a follow-up:** whether a vetoed sampled
 frame is also kept out of the reconstruction itself (today, it is not -- `run_session` schedules
 VLM checks and starts reconstruction without waiting, per `recon/service.py`). #354's own
-acceptance criteria ask for two real device sessions to be re-run first (`sess_fb1b028da4cd`,
-`sess_1a215dae88d7`) to see whether R-38's outlier rejection (D-075, which landed after those
-sessions' numbers were recorded) already drops a screen-photo frame on its own. That raw data
-lives in `proofshape-data/sessions/`, which R-36's own text keeps outside git; it does not exist
-in this environment, so that re-run could not be performed here -- recorded as a follow-up for
-whoever has it (see `stories/A/A-02.md`), not silently skipped.
+acceptance criteria ask for two real device sessions to be re-run on current `main` first
+(`sess_fb1b028da4cd`, `sess_1a215dae88d7`) to see whether R-38's outlier rejection (D-075, which
+landed after those sessions' numbers were recorded) already drops a screen-photo frame's effect
+on the *reconstruction* on its own. `@TabeenRaoof`'s review (PR #396) confirmed, from the
+sessions' own already-recorded `vlm_checks.json` (on their Mac, outside this repo), that this
+veto behaves exactly as designed against the real data: `sess_fb1b028da4cd`'s sampled frame 5
+(`screen_photo: true`) correctly vetoes; `sess_1a215dae88d7`'s screen photo on unsampled frame 6
+is, as documented above, correctly missed. **That confirms this module's own behaviour, not the
+separate, still-open question**: whether R-38 already keeps a bad frame's *geometry* out of the
+fused mesh is a reconstruction-level question this module cannot answer and does not attempt to
+-- it needs an actual re-run of reconstruction on current `main` against both sessions' raw
+photos, which remains a follow-up (see `stories/A/A-02.md`), not silently skipped.
 """
 
 from __future__ import annotations
@@ -55,8 +72,20 @@ def _checked_reason_codes(check: dict[str, Any]) -> list[str]:
     return codes
 
 
+def _raise_to_rescan(
+    verdict_result: dict[str, Any], veto_reason_codes: list[str]
+) -> dict[str, Any]:
+    combined_rank = max(_RANK[verdict_result["verdict"]], _RANK["Rescan"])
+    combined_verdict = {rank: name for name, rank in _RANK.items()}[combined_rank]
+    return {
+        **verdict_result,
+        "verdict": combined_verdict,
+        "reason_codes": [*verdict_result.get("reason_codes", []), *veto_reason_codes],
+    }
+
+
 def apply_vlm_veto(
-    verdict_result: dict[str, Any], vlm_checks_report: dict[str, Any]
+    verdict_result: dict[str, Any], vlm_checks_report: dict[str, Any] | None
 ) -> dict[str, Any]:
     """Combines `verdict_result` (`inspection.verdict.compute_verdict`'s own return shape --
     `verdict`/`orientation_ambiguous`/`regions`/`reason_codes`) with A-01's `vlm_checks_report`
@@ -64,7 +93,16 @@ def apply_vlm_veto(
     "sampled_indices", "checks"}` shape). Returns a dict in the same shape, `reason_codes`
     extended (never replaced) with every VLM-vetoed sampled frame's own code, `verdict` raised to
     at least `"Rescan"` if any fired -- never lowered, and never raised past the input's own
-    `verdict`."""
+    `verdict`.
+
+    `vlm_checks_report=None` means the file itself was missing (review, @TabeenRaoof, PR #396):
+    this shouldn't happen -- `VlmSupervisor.join` writes it unconditionally -- but a missing
+    file is itself unchecked evidence, not evidence of a clean session, so it vetoes with its
+    own named `vlm_checks_missing` code rather than crashing the endpoint on a state this policy
+    can still answer safely."""
+    if vlm_checks_report is None:
+        return _raise_to_rescan(verdict_result, ["vlm_checks_missing"])
+
     veto_reason_codes: list[str] = []
     for check in vlm_checks_report["checks"]:
         if check["status"] == "unchecked":
@@ -75,10 +113,4 @@ def apply_vlm_veto(
     if not veto_reason_codes:
         return verdict_result
 
-    combined_rank = max(_RANK[verdict_result["verdict"]], _RANK["Rescan"])
-    combined_verdict = {rank: name for name, rank in _RANK.items()}[combined_rank]
-    return {
-        **verdict_result,
-        "verdict": combined_verdict,
-        "reason_codes": [*verdict_result.get("reason_codes", []), *veto_reason_codes],
-    }
+    return _raise_to_rescan(verdict_result, veto_reason_codes)

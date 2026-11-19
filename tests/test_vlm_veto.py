@@ -146,3 +146,32 @@ def test_existing_reason_codes_are_kept_alongside_the_new_ones():
     result = apply_vlm_veto(rescan_result, vlm_checks_report)
     assert "overall_A_high_sigma" in result["reason_codes"]
     assert "vlm_screen_photo_frame_5" in result["reason_codes"]
+
+
+# Review, @TabeenRaoof, PR #396: a screen photo or wrong-part flag casts doubt on whether the
+# geometry a Fail is based on is even this supplier's real part. Keeping Fail (rather than
+# overriding it to Rescan specifically for those two flags) is a deliberate choice, not the only
+# hard-rule-compliant one -- D-084 records both options and why this one was kept. Covered
+# generally by test_veto_never_downgrades_an_already_fail_result above; this test pins the
+# specific screen_photo/wrong_part case the reviewer raised.
+def test_screen_photo_under_a_fail_result_still_leaves_it_fail():
+    vlm_checks_report = report(checked(0, screen_photo=True))
+    fail_result = pass_result(
+        verdict="Fail", reason_codes=["overall_A_deviation_out_of_spec"]
+    )
+    result = apply_vlm_veto(fail_result, vlm_checks_report)
+    assert result["verdict"] == "Fail"
+
+
+def test_missing_vlm_checks_file_vetoes_instead_of_crashing():
+    result = apply_vlm_veto(pass_result(), None)
+    assert result["verdict"] == "Rescan"
+    assert "vlm_checks_missing" in result["reason_codes"]
+
+
+def test_missing_vlm_checks_file_never_downgrades_an_already_fail_result():
+    fail_result = pass_result(
+        verdict="Fail", reason_codes=["overall_A_deviation_out_of_spec"]
+    )
+    result = apply_vlm_veto(fail_result, None)
+    assert result["verdict"] == "Fail"

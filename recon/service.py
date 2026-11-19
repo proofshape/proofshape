@@ -1406,14 +1406,17 @@ def create_app(
         # A-02/D-084: vlm_checks.json always exists once reconstruction is "complete" --
         # VlmSupervisor.join (recon/vlm_check.py) writes it unconditionally from run_session,
         # even on a failed reconstruction, before this endpoint's own "complete" check above
-        # could ever let a request reach this point. Read directly, same trust-the-invariant
-        # style as board_surface_report above, rather than defending against a state that
-        # cannot occur.
+        # could ever let a request reach this point. A missing file is still read as None,
+        # not crashed on (review, @TabeenRaoof, PR #396): apply_vlm_veto treats that the same
+        # as unchecked evidence, never as a clean session.
         from recon.vlm_veto import apply_vlm_veto
 
-        vlm_checks_report = json.loads(
-            (session_dir / "vlm_checks.json").read_text(encoding="utf-8")
-        )
+        try:
+            vlm_checks_report = json.loads(
+                (session_dir / "vlm_checks.json").read_text(encoding="utf-8")
+            )
+        except FileNotFoundError:
+            vlm_checks_report = None
         result = apply_vlm_veto(result, vlm_checks_report)
 
         return verdict_result_with_narrative(
