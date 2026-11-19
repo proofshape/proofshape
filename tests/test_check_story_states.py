@@ -386,6 +386,40 @@ def test_ready_story_with_an_owner_is_reported(css, capsys):
     assert "must be Claimed" in out
 
 
+def test_cut_story_with_unclaimed_owner_passes(css, capsys):
+    """D-083: Cut is unowned, the same shape as Blocked/Ready."""
+    _write_story(css, "F-01", "Cut")
+    _write_index(css, [("F-01", "nothing", "Cut", "_unclaimed_")])
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 0, out
+
+
+def test_cut_story_with_an_owner_is_reported(css, capsys):
+    _write_story(css, "F-01", "Cut", owner="@dalwalyk")
+    _write_index(css, [("F-01", "nothing", "Cut", "@dalwalyk")])
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 1
+    assert "must be Claimed" in out
+
+
+def test_unrecognised_state_is_reported_even_when_file_and_index_agree(css, capsys):
+    """Found on review of PR #394 (@TabeenRaoof): a typo'd state that both sides agree on
+    (so the file/index mismatch check never fires) previously passed silently -- owner_problems
+    returned early for any state outside OWNED_STATES, and nothing else ever checked the state
+    itself, despite a comment claiming it did."""
+    _write_story(css, "F-01", "Cutt", owner="@nobody")
+    _write_index(css, [("F-01", "nothing", "Cutt", "@nobody")])
+
+    exit_code, out = _issues(css, capsys)
+
+    assert exit_code == 1
+    assert "'Cutt' is not a recognised state" in out
+
+
 def test_owner_that_is_not_a_github_handle_is_reported(css, capsys):
     _write_story(css, "F-01", "Claimed", owner="Tabeen Raoof")
     _write_index(css, [("F-01", "nothing", "Claimed", "Tabeen Raoof")])
