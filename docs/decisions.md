@@ -2237,6 +2237,45 @@ branch) was highest anywhere, so D-082 was free.
 
 ---
 
+**D-083 · G-10 (σ_floor for the sheet and card reference tiers) is cut, not carried.**
+(2026-11-18)
+G-10 only measures σ_floor for the sheet and card references, by G-04's own method. It assumes
+a capability that was never built: detecting a plain sheet of paper's or a credit card's pose
+and scale. Both are markerless by design (glossary: "a blank sheet," "a credit card" — unlike
+the board reference's printed ChArUco pattern), so `recon/board_pose.py`'s `make_board()` and
+every scale-fixing path built on it (R-02/R-04) cannot see either one; there is no generic
+known-rectangle detector anywhere in `recon/`. `recon/service.py:603` confirms this in the live
+system: `reference_tier_used` is hardcoded to `"charuco_board"`, never detected or selected —
+no buyer-facing path can reach a sheet or card tier today, even though the contract
+(`contracts/openapi.yaml`) reserves `blank_sheet`/`credit_card` as enum values for forward
+compatibility.
+
+The sprint plan scheduled the detection capability itself as its own S5 block ("Sheet and card
+tiers," 12 days, ending 2026-11-14), separate from and prior to G-10's measurement step. That
+block was never built, and no story was ever written for it — every mention of "sheet and card"
+across `docs/`, `stories/P/P-24.md`, `stories/P/P-31.md` and `stories/R/R-16.md` points forward
+to G-10 alone, which was never scoped to include it. The proposal's own M5 milestone (Fri Nov
+13, already past) names "sheet and card tiers" as a feature-complete item under its stated rule:
+"Anything not working is cut, not deferred." `stories/README.md`'s own working agreement 4 says
+the same: carried-or-cut, decided at the boundary, "never silently rolled forward."
+
+*Why:* the detection work is real, new scope (contour-based rectangle detection against a known
+physical size, not in any existing story's estimate), past its own deadline, and nothing else in
+the backlog depends on G-10 — no `Blocked` story names it. Building it now would be new feature
+work this close to Dec 2 for a capability nothing currently reachable needs. Cutting it matches
+both the proposal's own M5 rule and the working agreement, applied rather than left unapplied.
+
+*Conditions:* this governs the sheet and card reference tiers only, not the board reference
+(G-04, Done) or anything else in the ground-truth lane. If a future need for multi-tier
+reference support arises, it needs a new detection story first (scoped separately from G-10's
+measurement), and that story should re-open this decision rather than silently reviving G-10 as
+written.
+
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-082 (held by `main`) was
+highest anywhere, so D-083 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
