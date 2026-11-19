@@ -329,7 +329,7 @@ Full detail in each story file.
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Done | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
-| [A-02](A/A-02.md) | VLM verdict veto | 4 h | A-01, A-11, A-14, I-07 | Blocked | _unclaimed_ |
+| [A-02](A/A-02.md) | VLM verdict veto | 4 h | A-01, A-11, A-14, I-07 | Ready | _unclaimed_ |
 | [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Done | @dalwalyk |
 | [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
@@ -425,7 +425,7 @@ mapping and the capacity note.
 3. **A-14** (the VLM tips a supplier sees, and the screen-photo gate);
 4. **C-25**.
 
-R-39 is now Ready after R-37 completed; A-02 still waits on I-07.
+R-39 is now Ready after R-37 completed; A-02 is now Ready because A-01, A-11, A-14 and I-07 are Done.
 
 Issues per story:
 - C-24 #351, #352
@@ -453,7 +453,7 @@ Full detail in each story file.
 |---|---|---|---|---|---|
 | [C-24](C/C-24.md) | Capture survives interruptions: a plain outage message, and a session that survives a reload | 5 h | C-13, C-18 | Done | @TabeenRaoof |
 | [C-25](C/C-25.md) | Frame gate: check the blur threshold against a real motion-blurred frame | 2 h | C-06 | Ready | _unclaimed_ |
-| [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Claimed | @mbj1994 |
+| [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Done | @mbj1994 |
 | [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Done | @dalwalyk |
 
