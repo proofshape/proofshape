@@ -1403,6 +1403,22 @@ def create_app(
                 404, ErrorDetail(code="verdict_not_available", message=str(exc))
             )
 
+        # A-02/D-084: vlm_checks.json always exists once reconstruction is "complete" --
+        # VlmSupervisor.join (recon/vlm_check.py) writes it unconditionally from run_session,
+        # even on a failed reconstruction, before this endpoint's own "complete" check above
+        # could ever let a request reach this point. A missing file is still read as None,
+        # not crashed on (review, @TabeenRaoof, PR #396): apply_vlm_veto treats that the same
+        # as unchecked evidence, never as a clean session.
+        from recon.vlm_veto import apply_vlm_veto
+
+        try:
+            vlm_checks_report = json.loads(
+                (session_dir / "vlm_checks.json").read_text(encoding="utf-8")
+            )
+        except FileNotFoundError:
+            vlm_checks_report = None
+        result = apply_vlm_veto(result, vlm_checks_report)
+
         return verdict_result_with_narrative(
             {**result, "declared_at": "post_reconstruction"}
         )
