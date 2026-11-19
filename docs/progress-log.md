@@ -2654,7 +2654,7 @@ tab.
 this merges. An abandoned `capturing` session still never expires on the server (#352's second
 point), with no story.
 
-## 2026-11-18 — G-09 the G-05 control and 4 mm hole shift photographed (built)
+## 2026-11-18 — G-09 the G-05 control and 4 mm hole shift photographed (built, PR #397)
 
 **Who:** @TabeenRaoof
 **What changed:** `g05_00` and `g05_02` joined `fixtures/specimen_capture_manifest.json`, at
