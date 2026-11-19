@@ -252,7 +252,7 @@ Calendar events, not intentions. All other work stops.
 ### S3 · Ground truth — Oct 12–16 — 24 h
 - **Capture (7 h):** observed/unobserved coloring; report page skeleton.
 - **Reconstruction (7 h):** fusion fixes from I2; frame-count tuning; **integrate the generative completion model and run the first K samples**.
-- **Inspection (13 h):** caliper 5–8 printed parts; error and σ_floor per reference tier; print the defect ladder (2 / 4 / 8 mm). *(2026-10-19: now G-01..G-09. σ_floor for the board reference is G-04; the sheet and card references are G-10, after the S5 sheet and card tiers exist.)*
+- **Inspection (13 h):** caliper 5–8 printed parts; error and σ_floor per reference tier; print the defect ladder (2 / 4 / 8 mm). *(2026-10-19: now G-01..G-09. σ_floor for the board reference is G-04. 2026-11-18: the sheet and card reference tiers are cut, G-10 with them — D-083.)*
 - **Gate M3:** σ_floor is a measured number. Every demo tolerance is set from it; anything below it is declared Unverifiable rather than attempted.
 
 ### S4 · Inspection — Oct 19–30 — 48 h
