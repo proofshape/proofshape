@@ -2357,27 +2357,31 @@ review (@TabeenRaoof, PR #396), from the sessions' own already-recorded `vlm_che
 their Mac, outside this repo): `sess_fb1b028da4cd`'s sampled frame 5 (`screen_photo: true`)
 correctly produces `vlm_screen_photo_frame_5` under this policy; `sess_1a215dae88d7`'s screen
 photo on unsampled frame 6 is, as expected, missed entirely.
-*Resolved: a vetoed frame does not need to be kept out of the reconstruction (@TabeenRaoof,
-PR #402/#354, 2026-11-19).* `run_session` keeps scheduling VLM checks and starting
-reconstruction without waiting for them, **unchanged, on measured evidence rather than left
-open**: re-running both sessions' raw frames on current `main` (R-38/D-075 included, Gemini key
-unset) found R-38's outlier rejection drops `sess_1a215dae88d7`'s unsampled frame 6 from the
-fused mesh but keeps `sess_fb1b028da4cd`'s sampled frame 5 — and, measured with the *same*
-`cad_size_check.py` options against both the saved pre-R-38 output and the fresh re-run, dropping
-frame 6 barely moved `sess_1a215dae88d7`'s 26 mm edge reading (1.345 → 1.352): **the screen frame
-was never what caused the distorted reading.** (R-36's own figures were right as given —
-`sess_1a215dae88d7` reads 1.345, `sess_fb1b028da4cd` 1.286, clean `sess_8fdecd4b3a02` 0.961 — the
-earlier uncertainty was this story's own, not R-36's.) The *current* `cad_size_check.py` (changed
-by R-37, after these numbers were first recorded) reads the same saved outputs as 0.916 and 1.041
-— level with the clean session — regardless of whether the screen frame is present, which is the
-tool changing, not R-38's rejection doing anything. Height stayed reliable throughout
-(0.947–0.952) in every variant. **This justifies not adding the wait, on two sessions of one part
-from one phone — it does not prove a screen frame can never matter**, stated as the actual
-strength of the evidence rather than oversold. A real, separate problem surfaced during this
-measurement and is not this decision's to fix: the edge-ratio reading itself shifted by 0.1–0.4
-between tool versions and by up to 0.8 when a frame was removed, and gave impossible long-edge
-readings (4.8–8.2×) on two runs — a `cad_size_check.py` reliability bug, needing its own issue
-(see `stories/A/A-02.md`).
+*Resolved: a vetoed frame does not need to be kept out of the reconstruction, on the evidence
+measured by `@TabeenRaoof` (re-run on `f40dddb`, recorded in #403).* `run_session` keeps
+scheduling VLM checks and starting reconstruction without waiting for them, **unchanged, on
+measured evidence rather than left open**: re-running both sessions' raw frames on current
+`main` (R-38/D-075 included, Gemini key unset) found R-38's outlier rejection drops
+`sess_1a215dae88d7`'s unsampled frame 6 from the fused mesh but keeps `sess_fb1b028da4cd`'s
+sampled frame 5. (R-36's own figures were right as given — `sess_1a215dae88d7` reads 1.345,
+`sess_fb1b028da4cd` 1.286, clean `sess_8fdecd4b3a02` 0.961 — an uncertainty about which figure
+belonged to which session was this story's own, not R-36's.) **On `sess_1a215dae88d7` only, the
+screen frame wasn't the cause — and only up to a point** (correction, @TabeenRaoof, PR #403
+review): dropping frame 6 barely moved the *old* tool's reading (1.345 → 1.352), and the
+*current* `cad_size_check.py` (changed by R-37, after these numbers were first recorded) reads
+the saved output and the fresh re-run as 0.916/0.917 either way — level with clean — but reading
+1.756 with the frame **removed from the input entirely**, a failed measurement with 6.9×/8.2×
+impossible long edges. **On `sess_fb1b028da4cd`, whether the screen frame was the cause can't be
+isolated at all**: R-38 never rejects its frame 5, so there is no before/after-rejection
+comparison, and the *old* tool fails outright if frame 5 is removed from the input by hand.
+Height stayed reliable throughout (0.947–0.952) in every variant, and neither session shows a
+measured benefit to keeping the frame out. **This justifies not adding the wait, on two sessions
+of one part from one phone — it does not prove a screen frame can never matter**, stated as the
+actual strength of the evidence rather than oversold. A real, separate problem surfaced during
+this measurement and is not this decision's to fix: the edge-ratio reading itself shifted by
+0.1–0.4 between tool versions and by up to 0.8 when a frame was removed, and gave impossible
+long-edge readings (4.8–8.2×) on some runs — a `cad_size_check.py` reliability bug, which
+`@TabeenRaoof` is filing as its own issue separately (see `stories/A/A-02.md`).
 *Also recorded, a judgment call open to correction on review:* the contract's `vlm_veto`
 `ErrorDetail.code` (reserved since A-11 freed it from its malformed-upload borrow, D-056) is
 *not* used by this story. `docs/manual.md` lists it under "not produced yet," and the closest
