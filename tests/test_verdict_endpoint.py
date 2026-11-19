@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -17,6 +18,7 @@ from recon.mesh_cleanup import write_glb
 from recon.provenance import labels_to_colors
 from recon.report_narrative import VerdictInput, template_narrative
 from recon.uncertainty import write_sigma_npz
+from recon.vlm_check import VlmSupervisor
 
 ROOT = Path(__file__).resolve().parents[1]
 # A scalene right-triangle prism (40x30x20mm) -- deliberately not g01_calibration_cube_30mm.stl
@@ -86,6 +88,26 @@ def _make_pipeline_runner(*, sigma_mm: float = 0.3):
     return pipeline_runner
 
 
+def _clean_vlm_reply(frame_path: Path, reference_path: Path | None) -> SimpleNamespace:
+    """A-02/D-084: every sampled frame comes back `unchecked`/`missing_api_key` by default in
+    tests (no `GEMINI_API_KEY` set), which the veto now correctly downgrades to Rescan -- tests
+    that need a clean `Pass`/`Fail` through the real verdict path inject this instead, mirroring
+    `tests/test_vlm_check.py`'s own fake-reply shape."""
+    observation = {
+        "same_part": None if reference_path is None else True,
+        "hands_occluding": False,
+        "screen_photo": False,
+        "lighting_adequate": True,
+        "hint": "Keep the part visible.",
+    }
+    return SimpleNamespace(
+        text=json.dumps(observation),
+        model_version="test-model-version",
+        candidates=[SimpleNamespace(finish_reason="STOP")],
+        prompt_feedback=None,
+    )
+
+
 def _finish_a_session_with_cad(client: TestClient, spec: dict) -> str:
     created = client.post(
         "/v1/orders",
@@ -118,6 +140,7 @@ def test_getverdict_passes_a_clean_part_end_to_end(tmp_path):
         orders_dir=tmp_path / "orders",
         buyer_key="buyer-secret",
         pipeline_runner=_make_pipeline_runner(),
+        vlm_supervisor=VlmSupervisor(inspector=_clean_vlm_reply),
     )
     with TestClient(app) as client:
         spec = {
@@ -140,6 +163,73 @@ def test_getverdict_passes_a_clean_part_end_to_end(tmp_path):
         {key: value for key, value in body.items() if key != "narrative"}
     )
     assert body["narrative"] == template_narrative(verdict_input)
+
+
+def test_getverdict_downgrades_to_rescan_when_vlm_checks_are_unchecked_end_to_end(
+    tmp_path,
+):
+    # A-02/D-084: unchecked blocks a Pass -- no GEMINI_API_KEY configured (the default for every
+    # other test in this file) means every sampled frame comes back missing_api_key, so a part
+    # that would otherwise Pass is downgraded to Rescan instead.
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+        pipeline_runner=_make_pipeline_runner(),
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [{"name": "overall_A", "kind": "overall", "tolerance_mm": 5.0}]
+        }
+        session_id = _finish_a_session_with_cad(client, spec)
+
+        response = client.get(f"/v1/sessions/{session_id}/verdict")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["verdict"] == "Rescan"
+    assert any(code.startswith("vlm_unchecked_frame_") for code in body["reason_codes"])
+
+
+def test_getverdict_downgrades_to_rescan_on_a_screen_photo_end_to_end(tmp_path):
+    def screen_photo_reply(
+        frame_path: Path, reference_path: Path | None
+    ) -> SimpleNamespace:
+        observation = {
+            "same_part": None if reference_path is None else True,
+            "hands_occluding": False,
+            "screen_photo": True,
+            "lighting_adequate": True,
+            "hint": "This looks like a photo of a screen.",
+        }
+        return SimpleNamespace(
+            text=json.dumps(observation),
+            model_version="test-model-version",
+            candidates=[SimpleNamespace(finish_reason="STOP")],
+            prompt_feedback=None,
+        )
+
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+        pipeline_runner=_make_pipeline_runner(),
+        vlm_supervisor=VlmSupervisor(inspector=screen_photo_reply),
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [{"name": "overall_A", "kind": "overall", "tolerance_mm": 5.0}]
+        }
+        session_id = _finish_a_session_with_cad(client, spec)
+
+        response = client.get(f"/v1/sessions/{session_id}/verdict")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["verdict"] == "Rescan"
+    assert any(
+        code.startswith("vlm_screen_photo_frame_") for code in body["reason_codes"]
+    )
 
 
 def test_getverdict_refuses_a_null_tolerance_feature_end_to_end(tmp_path):

@@ -2237,6 +2237,60 @@ branch) was highest anywhere, so D-082 was free.
 
 ---
 
+**D-084 · A-02: an `unchecked` A-01 result blocks a Pass, the same as a failed VLM semantic
+check — a named trade-off against live-demo availability, not an overlooked one.** (2026-11-19)
+`recon/vlm_veto.py`'s `apply_vlm_veto` reads A-01's already-recorded `<session>/vlm_checks.json`
+and combines it with `inspection.verdict.compute_verdict`'s own result, in `recon/service.py`'s
+`get_verdict`, right before the existing `verdict_result_with_narrative(...)` return. It treats
+every one of A-01's sampled frames (`recon.vlm_check.sampled_indices` — frame 0, every fifth
+index, the final frame) the same way: a `checked` frame with `screen_photo`, `hands_occluding`,
+`lighting_adequate is False`, or `same_part is False` (non-reference frames only) downgrades the
+verdict to at least `Rescan`, named by its own `vlm_*_frame_<index>` reason code; an `unchecked`
+frame (any reason — `missing_api_key`, `api_timeout`, a blocked or malformed reply, …) does
+exactly the same, named `vlm_unchecked_frame_<index>_<reason>`. The combination reuses
+`compute_verdict`'s own `{"Pass": 0, "Rescan": 1, "Fail": 2}` rank, via `max(...)`: a veto can
+raise a `Pass` to `Rescan` but never raises a `Rescan` to `Fail`, and never touches an already-
+`Fail` result — AGENTS.md's hard rule is that a model's guess must never approve or condemn a
+component, so a VLM semantic flag can only ever ask for another look.
+*Why:* proposal §6.5's own wording is "no session reaches Pass until every sampled frame **has
+passed**" — an unchecked frame has not passed, so the literal reading blocks it too, not only an
+explicit `screen_photo`/`hands_occluding` failure. `recon/README.md` and this story's own file
+both refused to let this be invented silently, naming the real cost directly: a Gemini outage or
+a missing API key turns *every* session's verdict to Rescan for as long as it lasts, a real
+availability risk for a live demo (R-36/X-04). The alternative — treating `unchecked` leniently,
+as if it were a clean check — was rejected because it would let an outage silently mask exactly
+the kind of defect (wrong part, a screen photo) this story exists to catch; this project's
+recent precedent (A-09/D-082) is to prefer the safer outcome when a check cannot be run, not the
+more convenient one.
+*Scope, stated rather than silently narrowed:* this covers only A-01's *sampled* frames — an
+unsampled bad frame (R-36/#354: a screen photo on frame 6 of a 15-frame session, outside the
+sampled set `[0, 5, 10, 14]`) is still missed, a known limitation of sampled rather than
+all-frame supervision (`recon/README.md`), not something this decision changes. It also does not
+decide whether a vetoed frame is kept out of the reconstruction itself — today, `run_session`
+schedules VLM checks and starts reconstruction without waiting for them, and that stays
+unchanged here. #354's own acceptance criteria ask for two real device sessions
+(`sess_fb1b028da4cd`, `sess_1a215dae88d7`) to be re-run first, to check whether R-38's outlier
+rejection (D-075, which landed after those sessions' numbers were recorded) already drops a
+screen-photo frame on its own. That raw data lives in `proofshape-data/sessions/`, which R-36's
+own text keeps outside git; it does not exist in the environment this story was built in, so the
+re-run could not be performed here. Recorded as a follow-up for whoever has that data (likely
+`@TabeenRaoof`, who ran R-36's device testing) in `stories/A/A-02.md`, not silently skipped or
+guessed at.
+*Also recorded, a judgment call open to correction on review:* the contract's `vlm_veto`
+`ErrorDetail.code` (reserved since A-11 freed it from its malformed-upload borrow, D-056) is
+*not* used by this story. `docs/manual.md` lists it under "not produced yet," and the closest
+precedent in this codebase — I-10's Unverifiable-at-intake, also "the session is rejected" in
+plain language — is delivered as an ordinary `200 VerdictResult` value, never a distinct HTTP
+error; `recon/README.md` itself describes A-02's effect as turning a session's verdict into
+"Rescan," a value, not an error code. This story follows that precedent: the veto's outcome is
+`verdict: "Rescan"` in the normal response, with descriptive `reason_codes` (already an
+unconstrained string array — no contract change needed). `vlm_veto` the error code stays
+reserved and unused, exactly as before this story.
+*Checked against D-028:* fetched all origin branches on 2026-11-19; D-083 (held by
+`chore/cut-g10-sheet-card`, unmerged) was highest anywhere, so D-084 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
