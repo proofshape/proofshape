@@ -2237,33 +2237,42 @@ branch) was highest anywhere, so D-082 was free.
 
 ---
 
-**D-083 · G-10 (σ_floor for the sheet and card reference tiers) is cut, not carried.**
-(2026-11-18)
-G-10 only measures σ_floor for the sheet and card references, by G-04's own method. It assumes
-a capability that was never built: detecting a plain sheet of paper's or a credit card's pose
-and scale. Both are markerless by design (glossary: "a blank sheet," "a credit card" — unlike
-the board reference's printed ChArUco pattern), so `recon/board_pose.py`'s `make_board()` and
-every scale-fixing path built on it (R-02/R-04) cannot see either one; there is no generic
-known-rectangle detector anywhere in `recon/`. `recon/service.py:603` confirms this in the live
-system: `reference_tier_used` is hardcoded to `"charuco_board"`, never detected or selected —
-no buyer-facing path can reach a sheet or card tier today, even though the contract
+**D-083 · The sheet and card reference tiers are cut; the board is the only reference this
+project ships with.** (2026-11-18)
+This is bigger than G-10 (its measurement story) not getting done. Proposal §6.1, under "Core
+pipeline (Tier 1)," commits to three reference tiers, auto-detected: the ChArUco board, a blank
+A4/Letter sheet classified by aspect ratio, and a credit card by its ISO/IEC 7810 dimensions.
+The Tier 2 feature list separately names a "blank-sheet fallback reference with wider error
+bars," M5 (Fri Nov 13, already past) names "sheet and card tiers" as a feature-complete item,
+and the risk table's stated mitigation for "board detection flaky in the field" is exactly
+"sheet and card fallbacks." None of that was built, and no story anywhere was ever scoped to
+build it (G-10 only measures σ_floor for tiers that already detect — it was never the detection
+work itself). Concretely, today: **the board is the only reference tier that exists.** If a
+session's board can't be detected, there is no fallback — that session simply has no
+dimensional claims (D-003's honest-refusal path), not a session on a sheet or card with wider
+error bars as the proposal describes.
+
+Both are markerless by design (glossary: "a blank sheet," "a credit card" — unlike the board's
+printed ChArUco pattern), so `recon/board_pose.py`'s `make_board()` and every scale-fixing path
+built on it (R-02/R-04) cannot see either one; there is no generic known-rectangle detector
+anywhere in `recon/`. `recon/service.py:603` confirms this in the live system:
+`reference_tier_used` is hardcoded to `"charuco_board"`, never detected or selected — no
+buyer-facing path can reach a sheet or card tier today, even though the contract
 (`contracts/openapi.yaml`) reserves `blank_sheet`/`credit_card` as enum values for forward
-compatibility.
+compatibility. The sprint plan scheduled the detection capability as its own S5 block ("Sheet
+and card tiers," 12 days, ending 2026-11-14); it was never built. `stories/README.md`'s working
+agreement 4 says anything open past the M5 boundary gets decided, "carried or cut," "never
+silently rolled forward."
 
-The sprint plan scheduled the detection capability itself as its own S5 block ("Sheet and card
-tiers," 12 days, ending 2026-11-14), separate from and prior to G-10's measurement step. That
-block was never built, and no story was ever written for it — every mention of "sheet and card"
-across `docs/`, `stories/P/P-24.md`, `stories/P/P-31.md` and `stories/R/R-16.md` points forward
-to G-10 alone, which was never scoped to include it. The proposal's own M5 milestone (Fri Nov
-13, already past) names "sheet and card tiers" as a feature-complete item under its stated rule:
-"Anything not working is cut, not deferred." `stories/README.md`'s own working agreement 4 says
-the same: carried-or-cut, decided at the boundary, "never silently rolled forward."
-
-*Why:* the detection work is real, new scope (contour-based rectangle detection against a known
-physical size, not in any existing story's estimate), past its own deadline, and nothing else in
-the backlog depends on G-10 — no `Blocked` story names it. Building it now would be new feature
-work this close to Dec 2 for a capability nothing currently reachable needs. Cutting it matches
-both the proposal's own M5 rule and the working agreement, applied rather than left unapplied.
+*Why:* the detection work (contour-based rectangle detection against a known physical size,
+classified by aspect ratio for the sheet) is real, new scope, not in any existing story's
+estimate. It is past its own M5 deadline, and nothing in the backlog depends on it — no
+`Blocked` story names G-10. Building it now would be new Tier-1 feature work this close to Dec
+2, for a fallback nothing currently reachable needs. **This cut sits outside the sprint plan's
+own §10 cut order** (visual hole filling → … → LLM report narrative never mentions it), so it
+is not a cut the plan already anticipated — it must be declared in the final report and the
+defense, not discovered there. A session with an undetectable board failing outright, with no
+sheet/card fallback, is a real capability gap against the proposal, not a cosmetic one.
 
 *Conditions:* this governs the sheet and card reference tiers only, not the board reference
 (G-04, Done) or anything else in the ground-truth lane. If a future need for multi-tier

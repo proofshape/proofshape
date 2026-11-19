@@ -91,7 +91,7 @@ they do.
 | **Claimed** | Someone has put their `@github-handle` on it, in the story file and in this index, before starting. |
 | **In review** | Pull request open, waiting on one approval. |
 | **Done** | Merged, and the completion record below is filled in. P stories have one exception here, stated in `AGENTS.md`'s definition of done (D-052). |
-| **Cut** | Decided, not left silently open (working agreement 4, §10's boundary call): never started, and won't be. The story file records why and points to the decision. Owner is `_unclaimed_`. |
+| **Cut** | Decided, not left silently open (working agreement 4, §10's boundary call): never started, and won't be. The story file records why and points to the decision. Owner is `_unclaimed_`. A story that depends on a Cut one does not become Ready by waiting — the checker's cascade only treats `Done` as satisfied, so re-scope or re-point its own dependency instead of leaving it Blocked forever. |
 
 ### Completion record
 
