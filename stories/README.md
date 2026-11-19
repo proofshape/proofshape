@@ -234,7 +234,7 @@ Full detail in each story file.
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Done | @dalwalyk |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
-| [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Claimed | @TabeenRaoof |
+| [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Done | @TabeenRaoof |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Ready | _unclaimed_ |
 | [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Claimed | @TabeenRaoof |
 
@@ -565,7 +565,7 @@ Full detail in each story file.
 |---|---|---|---|---|---|
 | [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Done | @dalwalyk |
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Done | @dalwalyk |
-| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Blocked | _unclaimed_ |
+| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Ready | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
