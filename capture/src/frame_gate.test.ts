@@ -40,7 +40,7 @@ const FLAT_WHITE = makeFrame(8, 8, () => 255);
 
 const GYRO_A: Gyro = { alpha: 10, beta: 20, gamma: 30 };
 
-function applyHorizontalMotionBlur(frame: FramePixels, kernelWidth: number): FramePixels {
+function applyDiagonalMotionBlur(frame: FramePixels, kernelWidth: number): FramePixels {
   if (kernelWidth < 1 || kernelWidth % 2 === 0) {
     throw new Error("motion-blur kernel width must be a positive odd integer");
   }
@@ -51,9 +51,10 @@ function applyHorizontalMotionBlur(frame: FramePixels, kernelWidth: number): Fra
       const targetOffset = (y * frame.width + x) * 4;
       for (let channel = 0; channel < 3; channel++) {
         let total = 0;
-        for (let dx = -radius; dx <= radius; dx++) {
-          const sourceX = Math.min(frame.width - 1, Math.max(0, x + dx));
-          const sourceOffset = (y * frame.width + sourceX) * 4;
+        for (let offset = -radius; offset <= radius; offset++) {
+          const sourceX = Math.min(frame.width - 1, Math.max(0, x + offset));
+          const sourceY = Math.min(frame.height - 1, Math.max(0, y + offset));
+          const sourceOffset = (sourceY * frame.width + sourceX) * 4;
           total += frame.data[sourceOffset + channel] ?? 0;
         }
         data[targetOffset + channel] = Math.round(total / kernelWidth);
@@ -85,22 +86,25 @@ describe("checkBlur", () => {
     expect(checkBlur(FLAT_GRAY, 0).ok).toBe(true);
   });
 
-  it("documents the current gate miss on directional motion blur over a high-contrast board", () => {
+  it("rejects directional motion blur over a high-contrast checkerboard at the calibrated threshold", () => {
     const board = makeFrame(64, 64, (x, y) =>
-      (Math.floor(x / 4) + Math.floor(y / 4)) % 2 === 0 ? 255 : 0,
+      (Math.floor(x / 16) + Math.floor(y / 16)) % 2 === 0 ? 255 : 0,
     );
-    const motionBlurred = applyHorizontalMotionBlur(board, 9);
+    const motionBlurred = applyDiagonalMotionBlur(board, 31);
     const sharpVariance = measureBlurVariance(board);
     const blurredVariance = measureBlurVariance(motionBlurred);
 
-    // C-25 starts from a real failure where a smeared ChArUco frame passed. This synthetic case
-    // pins the same limitation without committing a photograph: directional blur substantially
-    // lowers Laplacian variance, but a high-contrast board can still remain far above the current
-    // threshold. If the real R-36 measurements justify a new threshold, this assertion changes
-    // alongside that measured value; until then it prevents us from pretending 100 catches this.
+    // C-25 calibrated the threshold from real R-36 phone captures first. This synthetic fixture
+    // does not claim to model those photos exactly; it only pins the intended gate behavior for
+    // a high-contrast board after a strong one-direction smear, without committing real photos.
+    expect(checkBlur(board)).toEqual({ ok: true });
     expect(blurredVariance).toBeLessThan(sharpVariance);
-    expect(blurredVariance).toBeGreaterThan(DEFAULT_BLUR_VARIANCE_THRESHOLD);
-    expect(checkBlur(motionBlurred)).toEqual({ ok: true });
+    expect(blurredVariance).toBeLessThan(DEFAULT_BLUR_VARIANCE_THRESHOLD);
+    const result = checkBlur(motionBlurred);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("frame_rejected_blur");
+    }
   });
 });
 

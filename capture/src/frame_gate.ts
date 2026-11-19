@@ -18,10 +18,12 @@ export interface FramePixels {
 
 export type FrameGateResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
 
-// All four thresholds below are starting assumptions, not measured/calibrated values -- same
-// honesty this project already applies to recon/uncertainty.py's DEFAULT_SIGMA_DOWNGRADE_THRESHOLD_MM.
-// Tuning them against real capture data is follow-up work this story was never going to do.
-export const DEFAULT_BLUR_VARIANCE_THRESHOLD = 100;
+// C-25 calibrated the blur threshold against 53 real R-36 iPhone frames. The known #355 smear
+// measured 159.3 and the only other low-corner frame measured 168.1; the next-lowest frame was
+// 246.2. A threshold of 200 leaves margin on both sides for this small measured set. This is not
+// an accuracy claim beyond those three sessions. The remaining thresholds below are still C-06's
+// starting assumptions, not measured/calibrated values.
+export const DEFAULT_BLUR_VARIANCE_THRESHOLD = 200;
 export const DEFAULT_EXPOSURE_CLIP_FRACTION = 0.05;
 export const DEFAULT_DUPLICATE_GYRO_DELTA_DEG = 2;
 export const DEFAULT_DUPLICATE_IMAGE_DIFF_THRESHOLD = 5;
