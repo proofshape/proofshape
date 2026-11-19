@@ -119,7 +119,7 @@ export const REPORT_HTML = `
 
     <section aria-labelledby="report-narrative-title">
       <h2 id="report-narrative-title">Narrative</h2>
-      <p id="report-narrative">AI narrative slot (A-09) — not available yet.</p>
+      <p id="report-narrative">No narrative for this session.</p>
     </section>
 
     <p id="report-status" role="status"></p>
@@ -201,6 +201,11 @@ function renderVerdict(
     note.textContent = `Placement note: ${placementNote}`;
     note.hidden = false;
   }
+
+  // A-09/D-082: a deterministic, code-built summary -- never a model's. The fallback keeps
+  // this meaningful for a session served by an older backend without the field.
+  requireElement(root, "#report-narrative", HTMLElement).textContent =
+    result.narrative ?? "No narrative for this session.";
 }
 
 function renderModelOnly(root: HTMLElement): void {

@@ -17,19 +17,28 @@ from recon.report_narrative import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PASS_FIXTURE = json.loads(
-    (REPO_ROOT / "contracts" / "examples" / "getVerdict.response-200.json").read_text()
+
+
+def _load_verdict_input_fixture(path: Path) -> dict:
+    # A-09/D-082: these example files now also carry the real, computed `narrative` field
+    # (PR 2's wiring) -- stripped here since `VerdictInput` is deliberately "exactly what a
+    # narrative generator may see," which can never include an existing narrative.
+    data = json.loads(path.read_text())
+    data.pop("narrative", None)
+    return data
+
+
+PASS_FIXTURE = _load_verdict_input_fixture(
+    REPO_ROOT / "contracts" / "examples" / "getVerdict.response-200.json"
 )
-RESCAN_FIXTURE = json.loads(
-    (
-        REPO_ROOT
-        / "contracts"
-        / "examples"
-        / "getVerdict.response-200-rescan-unobserved.json"
-    ).read_text()
+RESCAN_FIXTURE = _load_verdict_input_fixture(
+    REPO_ROOT
+    / "contracts"
+    / "examples"
+    / "getVerdict.response-200-rescan-unobserved.json"
 )
-FAIL_FIXTURE = json.loads(
-    (REPO_ROOT / "capture" / "stub" / "fixtures" / "verdict-fail.json").read_text()
+FAIL_FIXTURE = _load_verdict_input_fixture(
+    REPO_ROOT / "capture" / "stub" / "fixtures" / "verdict-fail.json"
 )
 # I-10 landed on main while this PR was in review -- same payload shape its own
 # tests/test_verdict_endpoint.py asserts against a real session, not hand-invented.
@@ -513,3 +522,158 @@ def test_round_5_plain_outcome_words_are_not_yet_guarded_against(text):
     verdict_input = VerdictInput.model_validate(FAIL_FIXTURE)
     result = generate_llm_narrative(verdict_input, narrator=narrator(reply(text)))
     assert result.source == "llm"
+
+
+# Round 6, @TabeenRaoof, PR #391: `_` is a word character, so `_BANNED_WORD_RE`'s `\b` never
+# fired inside a snake_case region name -- the sanitizer worked for spaces/hyphens only, while
+# snake_case is how A-03 and every fixture actually name a feature. Reproduces the reviewer's
+# own probe table directly, on the pure deterministic path (no narrator, no key).
+@pytest.mark.parametrize(
+    "region_name,expect_sanitized",
+    [
+        ("part passed inspection", True),
+        ("part_passed_inspection", True),
+        ("approved_ok_to_ship", True),
+        ("within-tolerance", True),
+        ("mounting_hole_A", False),
+        ("overall_A", False),
+    ],
+)
+def test_snake_case_region_name_is_sanitized_in_the_deterministic_template(
+    region_name, expect_sanitized
+):
+    verdict_input = VerdictInput.model_validate(
+        {
+            "verdict": "Pass",
+            "declared_at": "post_reconstruction",
+            "orientation_ambiguous": False,
+            "regions": [
+                {
+                    "name": region_name,
+                    "provenance": "observed",
+                    "deviation_mm": 0.1,
+                    "contributes_to_verdict": True,
+                }
+            ],
+            "reason_codes": [],
+        }
+    )
+    text = template_narrative(verdict_input)
+    if expect_sanitized:
+        assert region_name not in text
+        assert "region 1" in text
+    else:
+        assert region_name in text
+
+
+def test_snake_case_region_name_with_invented_figure_is_sanitized():
+    # "ok_2.5mm_bore" -- underscore blocks the figure check's own trailing word boundary too
+    # (the same bug, not just the outcome-word ban), so normalizing first is what catches it.
+    verdict_input = VerdictInput.model_validate(
+        {
+            "verdict": "Fail",
+            "declared_at": "post_reconstruction",
+            "orientation_ambiguous": False,
+            "regions": [
+                {
+                    "name": "ok_2.5mm_bore",
+                    "provenance": "observed",
+                    "deviation_mm": 1.8,
+                    "contributes_to_verdict": True,
+                }
+            ],
+            "reason_codes": [],
+        }
+    )
+    text = template_narrative(verdict_input)
+    assert "ok_2.5mm_bore" not in text
+    assert "region 1" in text
+
+
+@pytest.mark.parametrize(
+    "region_name,expect_sanitized",
+    [
+        ("part_passed_inspection", True),
+        ("approved_ok_to_ship", True),
+        ("mounting_hole_A", False),
+    ],
+)
+def test_snake_case_name_in_a_derived_reason_code_is_sanitized(
+    region_name, expect_sanitized
+):
+    # Mirrors inspect/inspection/verdict.py's own f"{name}_high_sigma"/f"{name}_in_plane_
+    # high_sigma" shape exactly -- the fixed suffixes are this project's own vocabulary, so
+    # only the isolated name portion should be checked, not the whole code blindly.
+    verdict_input = VerdictInput.model_validate(
+        {
+            "verdict": "Rescan",
+            "declared_at": "post_reconstruction",
+            "orientation_ambiguous": False,
+            "regions": [],
+            "reason_codes": [
+                f"{region_name}_high_sigma",
+                f"{region_name}_in_plane_high_sigma",
+            ],
+        }
+    )
+    text = template_narrative(verdict_input)
+    if expect_sanitized:
+        assert region_name not in text
+        assert "reason 1" in text
+        assert "reason 2" in text
+    else:
+        assert f"{region_name}_high_sigma" in text
+        assert f"{region_name}_in_plane_high_sigma" in text
+
+
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        "mounting_hole_A_deviation_out_of_spec",
+        "observed_deviation_out_of_spec",
+        "sealing_face_not_seen",
+        "registration_orientation_ambiguous",
+        "registration_failed",
+        "intake_tolerance_below_k_sigma_floor:hole_A",
+        "intake_tolerance_below_method_floor_any_axis:hole_B",
+    ],
+)
+def test_legitimate_reason_codes_are_never_sanitized(reason_code):
+    # This project's own fixed vocabulary (I-07/I-09/I-10) -- "spec"/"sigma" embedded here are
+    # not invented claims, and normalizing the whole code blindly (as a region name is) would
+    # wrongly sanitize every one of these, per the reviewer's own warning.
+    verdict_input = VerdictInput.model_validate(
+        {
+            "verdict": "Fail",
+            "declared_at": "post_reconstruction",
+            "orientation_ambiguous": False,
+            "regions": [],
+            "reason_codes": [reason_code],
+        }
+    )
+    text = template_narrative(verdict_input)
+    assert reason_code in text
+
+
+def test_rounded_negative_zero_deviation_displays_as_positive():
+    # A raw -0.0026 mm deviation rounds to "-0.00 mm", which reads as a sign error rather than a
+    # rounding artifact (round #391, @TabeenRaoof).
+    verdict_input = VerdictInput.model_validate(
+        {
+            "verdict": "Pass",
+            "declared_at": "post_reconstruction",
+            "orientation_ambiguous": False,
+            "regions": [
+                {
+                    "name": "mounting_hole_A",
+                    "provenance": "observed",
+                    "deviation_mm": -0.0026,
+                    "contributes_to_verdict": True,
+                }
+            ],
+            "reason_codes": [],
+        }
+    )
+    text = template_narrative(verdict_input)
+    assert "-0.00 mm" not in text
+    assert "0.00 mm" in text
