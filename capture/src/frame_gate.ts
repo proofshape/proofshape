@@ -64,12 +64,18 @@ function laplacianVariance(gray: Float64Array, width: number, height: number): n
   return variance;
 }
 
+// Exported so C-25 can measure the exact quantity the live gate uses on real, out-of-git
+// capture frames instead of reimplementing a near-copy in an ad-hoc analysis script.
+export function measureBlurVariance(frame: FramePixels): number {
+  const gray = toGrayscale(frame);
+  return laplacianVariance(gray, frame.width, frame.height);
+}
+
 export function checkBlur(
   frame: FramePixels,
   threshold = DEFAULT_BLUR_VARIANCE_THRESHOLD,
 ): FrameGateResult {
-  const gray = toGrayscale(frame);
-  const variance = laplacianVariance(gray, frame.width, frame.height);
+  const variance = measureBlurVariance(frame);
   if (variance < threshold) {
     return {
       ok: false,
