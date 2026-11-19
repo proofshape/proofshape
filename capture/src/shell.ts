@@ -91,6 +91,9 @@ export interface AppShellOptions {
   // server-accepted frame in sessionStorage, keyed by the server frame index. No pixels/photos are
   // retained. main.ts enables this only with ?blur-debug=1.
   blurDebug?: boolean;
+  // Test/debug injection only. When omitted, blur-debug uses the browser's sessionStorage.
+  // A null value deliberately represents unavailable storage so the warning path is testable.
+  blurDebugStorage?: KeyValueStorage | null;
 }
 
 export const C25_BLUR_DEBUG_STORAGE_KEY = "proofshape.c25BlurDebug.v1";
@@ -106,9 +109,9 @@ export interface C25BlurDebugMeasurement {
 function appendC25BlurDebugMeasurement(
   storage: KeyValueStorage | null,
   measurement: C25BlurDebugMeasurement,
-): void {
+): number | null {
   if (storage === null) {
-    return;
+    return null;
   }
   let measurements: C25BlurDebugMeasurement[] = [];
   try {
@@ -121,9 +124,11 @@ function appendC25BlurDebugMeasurement(
     }
     measurements.push(measurement);
     storage.setItem(C25_BLUR_DEBUG_STORAGE_KEY, JSON.stringify(measurements));
+    return measurements.length;
   } catch {
-    // Debug evidence must never interrupt a supplier capture. If storage is unavailable, capture
-    // continues normally and the tester can use another browser/session.
+    // Debug evidence must never interrupt a supplier capture. The caller surfaces the failure in
+    // the debug-only status line so an operator cannot mistake a partial table for complete data.
+    return null;
   }
 }
 
@@ -147,6 +152,7 @@ export const APP_SHELL_HTML = `
     <video id="shell-camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
     <button id="shell-capture-button" type="button" disabled>Capture frame</button>
     <p id="shell-capture-status"></p>
+    <p id="shell-blur-debug-status" hidden></p>
     <p id="shell-vlm-hint"></p>
     <div id="shell-gyro-overlay"></div>
   </section>
@@ -201,6 +207,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const cameraPreview = requireTyped(root, "#shell-camera-preview", HTMLVideoElement, "<video>");
   const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
   const captureStatus = requireElement(root, "#shell-capture-status");
+  const blurDebugStatus = requireElement(root, "#shell-blur-debug-status");
   const vlmHint = requireElement(root, "#shell-vlm-hint");
   const gyroOverlayContainer = requireElement(root, "#shell-gyro-overlay");
   const agentConversationContainer = requireElement(root, "#shell-agent-conversation");
@@ -217,6 +224,29 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const modelViewer = requireElement(root, "#shell-model-viewer");
 
   const agentConversation = mountAgentConversation(agentConversationContainer);
+
+  const blurDebugStorage =
+    options.blurDebug === true
+      ? options.blurDebugStorage === undefined
+        ? browserSessionStorage()
+        : options.blurDebugStorage
+      : null;
+  if (options.blurDebug === true) {
+    blurDebugStatus.hidden = false;
+    if (blurDebugStorage === null) {
+      setStatus(
+        blurDebugStatus,
+        "Blur debug warning: measurement storage is unavailable; paired evidence will be incomplete.",
+        "error",
+      );
+    } else {
+      setStatus(
+        blurDebugStatus,
+        "Blur debug active: measurement storage is available; stored count will update after accepted frames.",
+        "info",
+      );
+    }
+  }
 
   const state: AppState = {
     sessionId: null,
@@ -734,13 +764,26 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         setStatus(captureStatus, describeUploadFrame(result), result.ok ? "info" : "error");
         if (result.ok) {
           if (c25PreJpegVariance !== null) {
-            appendC25BlurDebugMeasurement(browserSessionStorage(), {
+            const storedCount = appendC25BlurDebugMeasurement(blurDebugStorage, {
               session_id: sessionId,
               frame_index: result.body.frame_index,
               pre_jpeg_variance: c25PreJpegVariance,
               width: captured.pixels.width,
               height: captured.pixels.height,
             });
+            if (storedCount === null) {
+              setStatus(
+                blurDebugStatus,
+                `Blur debug warning: frame ${String(result.body.frame_index)} was accepted, but its pre-JPEG measurement could not be stored; paired evidence is incomplete.`,
+                "error",
+              );
+            } else {
+              setStatus(
+                blurDebugStatus,
+                `Blur debug: ${String(storedCount)} measurement(s) stored; latest frame index ${String(result.body.frame_index)}.`,
+                "info",
+              );
+            }
           }
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.

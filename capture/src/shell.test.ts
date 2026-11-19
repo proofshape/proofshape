@@ -59,6 +59,7 @@ describe("mountAppShell", () => {
     cameraPreview: HTMLVideoElement;
     captureButton: HTMLButtonElement;
     captureStatus: HTMLElement;
+    blurDebugStatus: HTMLElement;
     finishButton: HTMLButtonElement;
     finishStatus: HTMLElement;
     reconstructionStatus: HTMLElement;
@@ -82,6 +83,7 @@ describe("mountAppShell", () => {
     const cameraPreview = document.getElementById("shell-camera-preview");
     const captureButton = document.getElementById("shell-capture-button");
     const captureStatus = document.getElementById("shell-capture-status");
+    const blurDebugStatus = document.getElementById("shell-blur-debug-status");
     const finishButton = document.getElementById("shell-finish-button");
     const finishStatus = document.getElementById("shell-finish-status");
     const reconstructionStatus = document.getElementById("shell-reconstruction-status");
@@ -97,6 +99,7 @@ describe("mountAppShell", () => {
       !cameraStatus ||
       !gyroStatus ||
       !captureStatus ||
+      !blurDebugStatus ||
       !finishStatus ||
       !reconstructionStatus
     ) {
@@ -112,6 +115,7 @@ describe("mountAppShell", () => {
       cameraPreview,
       captureButton,
       captureStatus,
+      blurDebugStatus,
       finishButton,
       finishStatus,
       reconstructionStatus,
@@ -721,6 +725,50 @@ describe("mountAppShell", () => {
       height: imageData.height,
     });
     expect(measurements[0]?.pre_jpeg_variance).toBe(measureBlurVariance(imageData));
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 measurement\(s\) stored/i);
+  });
+
+  it("blur-debug warns immediately when measurement storage is unavailable", () => {
+    const mounted = mount({ blurDebug: true, blurDebugStorage: null });
+
+    expect(mounted.blurDebugStatus.hidden).toBe(false);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/storage is unavailable/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
+  });
+
+  it("blur-debug warns after an accepted frame when measurement storage throws", async () => {
+    const throwingStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("storage blocked");
+      },
+      removeItem: () => undefined,
+    };
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true, blurDebugStorage: throwingStorage });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(/could not be stored/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/evidence is incomplete/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
   });
 
   it("captures stay available but never enable without a real gyro reading, even with the camera playing", async () => {
