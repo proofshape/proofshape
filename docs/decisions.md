@@ -498,6 +498,22 @@ check "Planned"); R-05 does not depend on it or stub it out, it only defines the
 takes once that residual exists.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-038, so D-039 was the first free number.
+*Amended 2026-11-19 (R-41, #181): the CAD ratio is `1 / (1 + cad_registration_residual)`, not
+`1.0 + cad_registration_residual`.*
+- The text above is left as written. The ratio it gives for the CAD source points the wrong way.
+  Every ratio is meant to estimate the same thing, true printed pitch ÷ nominal pitch, and the
+  caliper ratio does.
+- The reconstruction is scaled assuming the nominal pitch, so a page printed small makes the
+  model come out *large*: model ÷ CAD = nominal ÷ true. The residual is model ÷ CAD − 1, so true
+  ÷ nominal is `1 / (1 + r)`.
+- With `1 + r`, #181's two cases went wrong:
+  - a 98.8% print (caliper 19.76 mm, r = +0.012) was flagged, the sources 2.4% apart;
+  - caliper 20.3 mm with r = +0.015, which contradict each other, showed no gap.
+  Corrected, they are 0.01% apart (not flagged) and 3.0% apart (flagged).
+- The comparison rule, the ~2% threshold and the board-pitch anchor are unchanged.
+- The contract's `ScaleAgreement` exposes only `sources_compared` and `flagged`, not the ratios,
+  so `contracts/openapi.yaml` is unchanged and there is no D-031 round.
+- Agreed by the team through both approvals of PR #401, as R-41's first criterion requires.
 
 **D-040 · `capture/`'s npm project is Vite + vanilla TypeScript + Vitest, local to `capture/`,
 on Node 24.** (2026-09-29)
