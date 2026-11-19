@@ -91,6 +91,7 @@ they do.
 | **Claimed** | Someone has put their `@github-handle` on it, in the story file and in this index, before starting. |
 | **In review** | Pull request open, waiting on one approval. |
 | **Done** | Merged, and the completion record below is filled in. P stories have one exception here, stated in `AGENTS.md`'s definition of done (D-052). |
+| **Cut** | Decided, not left silently open (working agreement 4, §10's boundary call): never started, and won't be. The story file records why and points to the decision. Owner is `_unclaimed_`. A story that depends on a Cut one does not become Ready by waiting — the checker's cascade only treats `Done` as satisfied, so re-scope or re-point its own dependency instead of leaving it Blocked forever. |
 
 ### Completion record
 
@@ -235,7 +236,7 @@ Full detail in each story file.
 | [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Done | @dalwalyk |
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Done | @TabeenRaoof |
-| [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Ready | _unclaimed_ |
+| [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Cut | _unclaimed_ |
 | [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Claimed | @TabeenRaoof |
 
 ---
