@@ -725,7 +725,9 @@ describe("mountAppShell", () => {
       height: imageData.height,
     });
     expect(measurements[0]?.pre_jpeg_variance).toBe(measureBlurVariance(imageData));
-    expect(mounted.blurDebugStatus.textContent).toMatch(/1 measurement\(s\) stored for this session/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(
+      /1 measurement\(s\) stored for this session/i,
+    );
   });
 
   it("blur-debug reports a per-session count when the storage key already has another session", async () => {
@@ -763,7 +765,9 @@ describe("mountAppShell", () => {
       if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
     });
 
-    expect(mounted.blurDebugStatus.textContent).toMatch(/1 measurement\(s\) stored for this session/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(
+      /1 measurement\(s\) stored for this session/i,
+    );
   });
 
   it("blur-debug warns immediately when measurement storage is unavailable", () => {
