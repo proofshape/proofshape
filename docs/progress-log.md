@@ -2654,6 +2654,60 @@ tab.
 this merges. An abandoned `capturing` session still never expires on the server (#352's second
 point), with no story.
 
+## 2026-11-18 — Sheet and card reference tiers cut; the board is the only reference (D-083)
+
+**Who:** @dalwalyk, prompted by a question about which Ready story has no physical requirement.
+Reviewed by @mbj1994 and @TabeenRaoof (PR #394), who both requested changes on the first pass.
+
+**What changed:** `stories/G/G-10.md` and its index row set to a new state, `Cut` (added to
+`stories/README.md`'s state table, with a note on what a dependent of a Cut story should do).
+`docs/decisions.md` gets D-083. `scripts/check_story_states.py` gained the `KNOWN_STATES` check
+the review found was missing (see below) plus `Cut` in `UNOWNED_STATES`, with new tests. Stale
+forward pointers to "pending G-10" fixed in `docs/glossary.md`, `docs/sprint-plan.md`,
+`stories/I/I-09.md` and `stories/R/R-39.md`.
+
+**Why this came up:** G-10 looked like a normal Ready story (just "take real photos of a sheet
+and a card"), but checking what it actually needs surfaced a gap nobody had named: detecting a
+plain sheet's or a credit card's pose and scale isn't built anywhere. Both are markerless by
+design (unlike the board's printed ChArUco pattern), so R-02/R-04's scale-fixing path can't see
+either one, and the live service hardcodes `reference_tier_used: "charuco_board"`
+(`recon/service.py:603`) — no buyer-facing path can reach a sheet or card tier today, regardless
+of G-10's own measurement work.
+
+**This is bigger than one story, per @TabeenRaoof's review.** Proposal §6.1 commits to all
+three reference tiers under "Core pipeline (Tier 1)," not just G-10's measurement of them; the
+risk table's own mitigation for "board detection flaky in the field" is "sheet and card
+fallbacks." None of that exists. **The board is now the only reference tier this project
+ships with** — a session with an undetectable board simply has no dimensional claims, not a
+fallback onto a sheet or card with wider error bars. That is a real capability gap against the
+proposal, and it sits outside the sprint plan's own §10 cut order, so it needs to be declared at
+the defense, not discovered there. D-083 states this plainly.
+
+**What was checked before cutting it:**
+- No detection code for a generic known-rectangle reference exists anywhere in `recon/`.
+- The sprint plan scheduled that detection capability as its own S5 block (12 days, ending
+  2026-11-14), separate from G-10's measurement step. It was never built, and no story was ever
+  written for it.
+- The proposal's own M5 milestone (Fri Nov 13, already past) names "sheet and card tiers" under
+  its stated rule: "anything not working is cut, not deferred." `stories/README.md`'s working
+  agreement 4 says the same for anything still open past that boundary.
+- No `Blocked` story names G-10 as a dependency — cutting it opens nothing and blocks nothing.
+
+**A real gap in the checker, found independently by both reviewers:** `check_story_states.py`
+had no actual check for whether a state name was valid at all — a comment claimed one existed
+("an unknown state is reported by the state checks, not here") but it didn't. @TabeenRaoof
+proved it by setting both the file and index to `**State:** Cutt` with `**Owner:** @nobody`;
+the script printed "All story states consistent" and exited 0. Fixed with a `KNOWN_STATES` set
+and a real check in `collect_problems`, plus regression tests for Cut + `_unclaimed_` passing,
+Cut + an owner failing, and an unrecognised state failing even when file and index agree (so
+the existing mismatch check never catches it).
+
+**Concluded:** cut, not carried, per D-083. Full rationale and the conditions for revisiting it
+in `docs/decisions.md`.
+
+**Next:** none expected. If multi-tier reference support is ever wanted again, it needs a new
+detection story first, scoped separately from G-10's measurement work.
+
 ## 2026-11-18/19 — A-09 Done: report narrative, served as a deterministic template, not an LLM (PR #387, PR #391)
 
 **Who:** @dalwalyk.
@@ -2693,3 +2747,21 @@ model in the served path (alongside O-001's similar open question about the reco
 backbone), and the Tier-1-vs-Tier-3/cut-list contradiction the story has flagged since it was
 claimed. A follow-up story for the constrained/structured-output LLM path (D-082's option B) has
 no story yet.
+
+## 2026-11-18 — G-09 the G-05 control and 4 mm hole shift photographed (built, PR #397)
+
+**Who:** @TabeenRaoof
+**What changed:** `g05_00` and `g05_02` joined `fixtures/specimen_capture_manifest.json`, at
+28 stills each under G-08's setup and on Drive under `g-08`. The manifest's `.sha256` lock was
+regenerated.
+**Command / how to reproduce:** `GOLDEN_CAPTURE_MANIFEST=fixtures/specimen_capture_manifest.json
+bash fixtures/download_golden_capture.sh fixtures/data/specimen_capture`
+**Result:**
+- Every frame is from the main camera, and R-02 posed all 56 (median RMS 2.66 and 2.84 px).
+- The softest frame scored 210, against the golden set's 40.
+- The real downloader fetched both parts and verified both hashes.
+- 2 h actual against 1.5.
+**Concluded:** M4's planted-defect pair is ready for reconstruction.
+**Next:** X-03 (I3) stays Blocked. At @dalwalyk's review, its two unstoried prerequisites became
+stories and dependencies: R-41 (#181's reversed scale ratio, which still needs the team's D-039
+decision) and R-42 (the service calling `check_scale_agreement`).

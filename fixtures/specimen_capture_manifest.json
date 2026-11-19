@@ -59,10 +59,30 @@
       "reflective": false,
       "sample_id": "g02_06",
       "content_sha256": "787de197d4aeeb9efdd65b9cd654dd0bddf89dad4081e9b7cab1c7e35cf8d56b"
+    },
+    {
+      "aggregate_bytes": 110035776,
+      "drive_folder_id": "1EY3Yk4lz-8PEcFv_IAVmrNVn16Tw6ciZ",
+      "frames": 28,
+      "lighting": "condition A",
+      "object": "grey L-plate 50 x 32 x 20 mm, 12 mm square through-hole (G-05 control)",
+      "reflective": false,
+      "sample_id": "g05_00",
+      "content_sha256": "ea9d3de0c5ad88aa7e66a3852a8ad22d985012155f651f75496602c444bfd922"
+    },
+    {
+      "aggregate_bytes": 107178016,
+      "drive_folder_id": "11AWrKzrE9HC-PdmkPoYW4X7wlzFmamsa",
+      "frames": 28,
+      "lighting": "condition A",
+      "object": "grey L-plate 50 x 32 x 20 mm, 12 mm square through-hole moved 4 mm along +x (G-05 planted defect)",
+      "reflective": false,
+      "sample_id": "g05_02",
+      "content_sha256": "e0d8334dc61bc43162e0b241cefb16a225e5d90933bda41a29e69ad7bb139631"
     }
   ],
   "drive_root_folder_id": "1xrqH2t14ZOUbIa7Ke3XiJIBQkBc3SwwY",
-  "notes": "G-08: the six G-02 specimens, photographed 2026-11-15 by @TabeenRaoof on the same G-06-calipered board sheet as the golden set (F-06), at the same table under lighting condition A. iPhone 16 main camera, 5712 x 4284 landscape stills. Photos remain outside git.",
+  "notes": "G-08: the six G-02 specimens, photographed 2026-11-15 by @TabeenRaoof on the same G-06-calipered board sheet as the golden set (F-06), at the same table under lighting condition A. iPhone 16 main camera, 5712 x 4284 landscape stills. G-09 added G-05's two printed parts (g05_00, g05_02), photographed 2026-11-18 the same way. Photos remain outside git.",
   "reference_cad": [
     {
       "filename": "g02_01_square_20x20x15mm.stl",
@@ -93,6 +113,16 @@
       "filename": "g02_06_rect_70x45x40mm.stl",
       "path": "fixtures/reference_cad/g02_06_rect_70x45x40mm.stl",
       "sample_id": "g02_06"
+    },
+    {
+      "filename": "g05_00_control_50x32x20mm.stl",
+      "path": "fixtures/reference_cad/g05_00_control_50x32x20mm.stl",
+      "sample_id": "g05_00"
+    },
+    {
+      "filename": "g05_02_hole_shift_4mm.stl",
+      "path": "fixtures/reference_cad/g05_02_hole_shift_4mm.stl",
+      "sample_id": "g05_02"
     }
   ],
   "version": 1
