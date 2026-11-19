@@ -2653,3 +2653,43 @@ tab.
 **Next:** R-36's runbook (#371) drops its "don't switch apps" warning and the old 500 text once
 this merges. An abandoned `capturing` session still never expires on the server (#352's second
 point), with no story.
+
+## 2026-11-18/19 — A-09 Done: report narrative, served as a deterministic template, not an LLM (PR #387, PR #391)
+
+**Who:** @dalwalyk.
+**What changed:** two pull requests, six review rounds across both.
+- **PR #387** built `recon/report_narrative.py`: a narrative generator over `VerdictResult`'s
+  own fields only. Four review rounds (@TabeenRaoof, @mbj1994) each found a real way a model's
+  free-text explanation could still approve/condemn a part contrary to the deterministic
+  verdict — a per-verdict word ban, then a direction-phrase gap, then plain outcome words
+  ("looks perfect", "is unacceptable") that no vocabulary list converges against. **D-082**:
+  `generate_narrative`, the actual v1 entry point, serves the deterministic `template_narrative`
+  only — no model call, no key, no network request, by construction. The LLM path
+  (`generate_llm_narrative`) stays in the module as tested groundwork for a follow-up story that
+  would constrain the model to *selecting* evidence rather than writing prose.
+- **PR #391** wired that template narrative into the contract (`VerdictResult.narrative`,
+  v1.8.0, D-031 — both other members' approval), `recon/service.py` (all three
+  `VerdictResult`-serving sites, including the order-level verdict), and `capture/src/report.ts`'s
+  reserved slot. A sixth review round found the sanitizer that protects buyer-controlled region
+  names/reason codes didn't fire inside snake_case (`part_passed_inspection`), since `_` is a
+  word character — fixed by normalizing a region name's underscores before the check, and, for
+  a reason code, isolating the buyer-controlled portion from I-07/I-09/I-10's own fixed
+  prefixes/suffixes first, so a legitimate code like `observed_deviation_out_of_spec` is never
+  wrongly swallowed.
+**Command / how to reproduce:** `PYTHONPATH=inspect .venv/bin/python -m pytest tests/test_report_narrative.py tests/test_verdict_endpoint.py tests/test_order_store.py -q`; `cd capture && npm test && npm run typecheck`.
+**Result:**
+- 99 tests in `tests/test_report_narrative.py` alone; full suite 1529 Python / 324 TypeScript,
+  all green. `ruff`, `ruff format`, `tsc --noEmit` and `check_story_states.py` clean on both PRs.
+- 3.0 h actual against a 5 h estimate (reconstructed from commit/review timestamps, not measured
+  directly — see the story file's completion record for the breakdown).
+**Concluded:** the report's narrative section is real and shipping, but it is templated text,
+not generative AI, in v1 — five rounds of trying to make free LLM prose safe against AGENTS.md's
+hard rule concluded it can't be, not with a lexical filter. Proposal §7.5 already named the
+templated half as the floor ("an LLM narrative is a Tier 3 add-on"), so this isn't a retreat from
+what was promised.
+**Next:** two questions raised in the story file, not resolved by either PR, for the team at the
+next sync: whether A-09's hours still count toward the generative-AI share given v1 runs no
+model in the served path (alongside O-001's similar open question about the reconstruction
+backbone), and the Tier-1-vs-Tier-3/cut-list contradiction the story has flagged since it was
+claimed. A follow-up story for the constrained/structured-output LLM path (D-082's option B) has
+no story yet.
