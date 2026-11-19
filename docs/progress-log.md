@@ -2765,3 +2765,19 @@ bash fixtures/download_golden_capture.sh fixtures/data/specimen_capture`
 **Next:** X-03 (I3) stays Blocked. At @dalwalyk's review, its two unstoried prerequisites became
 stories and dependencies: R-41 (#181's reversed scale ratio, which still needs the team's D-039
 decision) and R-42 (the service calling `check_scale_agreement`).
+
+## 2026-11-19 — R-41 the CAD scale ratio is 1/(1+r), not 1+r (built, PR #401)
+
+**Who:** @TabeenRaoof
+**What changed:** `check_scale_agreement` converts the CAD registration residual r to
+`1 / (1 + r)`, so all three scale sources estimate true printed pitch ÷ nominal (#181). D-039 is
+amended under its original text.
+**Command / how to reproduce:** `PYTHONPATH=inspect python -m pytest tests/test_scale_agreement.py`
+**Result:**
+- #181's false flag (98.8% print) went from 2.43% apart, flagged, to 0.01%.
+- Its missed contradiction (caliper 20.3, r = +0.015) went from 0.0% to 3.02%, flagged.
+- 5 new or rewritten tests fail under the old formula.
+- The full suite passed: 1,533.
+- 1 h actual against 2.
+**Concluded:** the scale check can now be trusted with a CAD residual. Nothing calls it yet.
+**Next:** R-42 (Ready) wires it into the service after registration. X-03 still waits on R-42.

@@ -303,11 +303,19 @@ reference.
 
 `recon.scale_agreement.check_scale_agreement` compares the three independent scale sources from
 D-007 -- the nominal printed board pitch, an optional caliper reading, and an optional CAD
-registration residual (`inspect/`, not built yet) -- and flags the session if any two disagree
-by more than about 2%. All three are converted to a scale ratio relative to the board pitch
-before comparing, since they start out as different kinds of quantities; see D-039 for the full
-reasoning. Board pitch alone is never accepted -- at least one of the other two sources must also
-be supplied.
+registration residual (I-03's `free_scale_residual`, model ÷ CAD − 1) -- and flags the session
+if any two disagree by more than about 2%. Each is converted to the same quantity before
+comparing, true printed pitch ÷ nominal pitch, since they start out as different kinds of
+quantities; see D-039 for the full reasoning. Board pitch alone is never accepted -- at least one
+of the other two sources must also be supplied.
+
+The conversions are:
+- board pitch: 1.0;
+- caliper: `caliper_reading_mm / board_pitch_mm`;
+- CAD: `1 / (1 + r)`.
+
+The CAD one is a reciprocal because a page printed small makes the model come out large (#181,
+R-41, D-039's 2026-11-19 amendment). The service doesn't call the check yet; R-42 wires it in.
 
 ## R-13 · per-stage latency table
 

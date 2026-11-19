@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
-import { DEFAULT_BLUR_VARIANCE_THRESHOLD } from "./frame_gate.js";
+import { DEFAULT_BLUR_VARIANCE_THRESHOLD, measureBlurVariance } from "./frame_gate.js";
 import {
   browserSessionStorage,
   CAPTURE_SESSION_STORAGE_KEY,
@@ -684,6 +684,7 @@ describe("mountAppShell", () => {
       if (mounted.captureStatus.textContent === "Uploading…") throw new Error("still uploading");
     });
     expect(mounted.captureStatus.textContent).toMatch(/accepted/i);
+    expect(window.sessionStorage.getItem(C25_BLUR_DEBUG_STORAGE_KEY)).toBeNull();
   });
 
   it("blur-debug records the exact pre-JPEG gate metric beside the accepted server frame index", async () => {
@@ -719,7 +720,7 @@ describe("mountAppShell", () => {
       width: imageData.width,
       height: imageData.height,
     });
-    expect(measurements[0]?.pre_jpeg_variance).toBeGreaterThan(DEFAULT_BLUR_VARIANCE_THRESHOLD);
+    expect(measurements[0]?.pre_jpeg_variance).toBe(measureBlurVariance(imageData));
   });
 
   it("captures stay available but never enable without a real gyro reading, even with the camera playing", async () => {
