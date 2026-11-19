@@ -513,7 +513,7 @@ highest decision anywhere was D-038, so D-039 was the first free number.
 - The comparison rule, the ~2% threshold and the board-pitch anchor are unchanged.
 - The contract's `ScaleAgreement` exposes only `sources_compared` and `flagged`, not the ratios,
   so `contracts/openapi.yaml` is unchanged and there is no D-031 round.
-- Agreed by the team through both approvals of PR #PRNUM, as R-41's first criterion requires.
+- Agreed by the team through both approvals of PR #401, as R-41's first criterion requires.
 
 **D-040 · `capture/`'s npm project is Vite + vanilla TypeScript + Vitest, local to `capture/`,
 on Node 24.** (2026-09-29)
