@@ -725,7 +725,45 @@ describe("mountAppShell", () => {
       height: imageData.height,
     });
     expect(measurements[0]?.pre_jpeg_variance).toBe(measureBlurVariance(imageData));
-    expect(mounted.blurDebugStatus.textContent).toMatch(/1 measurement\(s\) stored/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 measurement\(s\) stored for this session/i);
+  });
+
+  it("blur-debug reports a per-session count when the storage key already has another session", async () => {
+    window.sessionStorage.setItem(
+      C25_BLUR_DEBUG_STORAGE_KEY,
+      JSON.stringify([
+        {
+          session_id: "sess_previous",
+          frame_index: 0,
+          pre_jpeg_variance: 123,
+          width: 640,
+          height: 480,
+        },
+      ]),
+    );
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 measurement\(s\) stored for this session/i);
   });
 
   it("blur-debug warns immediately when measurement storage is unavailable", () => {
@@ -767,6 +805,58 @@ describe("mountAppShell", () => {
     });
 
     expect(mounted.blurDebugStatus.textContent).toMatch(/could not be stored/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/evidence is incomplete/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
+  });
+
+  it("blur-debug keeps an earlier storage failure visible after a later successful write", async () => {
+    let writes = 0;
+    let saved = "[]";
+    const flakyStorage = {
+      getItem: () => saved,
+      setItem: (_key: string, value: string) => {
+        writes += 1;
+        if (writes === 1) {
+          throw new Error("first write blocked");
+        }
+        saved = value;
+      },
+      removeItem: () => undefined,
+    };
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true, blurDebugStorage: flakyStorage });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    const canvas = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 failure\(s\)/i);
+
+    canvas.setImageData(sharpWellExposedImageData(4, 6));
+    setVideoDimensions(mounted.cameraPreview, 480, 640);
+    dispatchOrientation(30, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 failed/i);
     expect(mounted.blurDebugStatus.textContent).toMatch(/evidence is incomplete/i);
     expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
   });

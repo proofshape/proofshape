@@ -124,7 +124,7 @@ function appendC25BlurDebugMeasurement(
     }
     measurements.push(measurement);
     storage.setItem(C25_BLUR_DEBUG_STORAGE_KEY, JSON.stringify(measurements));
-    return measurements.length;
+    return measurements.filter((item) => item.session_id === measurement.session_id).length;
   } catch {
     // Debug evidence must never interrupt a supplier capture. The caller surfaces the failure in
     // the debug-only status line so an operator cannot mistake a partial table for complete data.
@@ -276,6 +276,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // Capture a few milliseconds after a tap disabled it -- a second tap started a second, concurrent
   // upload. Also gates Finish, which could otherwise run while an upload was still in flight.
   let uploadInFlight = false;
+  // C-25: once any blur-debug measurement fails to store, that run is unusable for calibration.
+  // Keep the warning sticky across later successful writes so the operator cannot miss it.
+  let blurDebugStorageFailures = 0;
   // The reverse race of uploadInFlight, caught on a second pass of the same review: clicking
   // Finish only ever disabled Finish, not Capture, so a capture started right after could still
   // be mid-upload when finishSession resolved -- and that upload's own `finally` called
@@ -772,15 +775,22 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
               height: captured.pixels.height,
             });
             if (storedCount === null) {
+              blurDebugStorageFailures += 1;
               setStatus(
                 blurDebugStatus,
-                `Blur debug warning: frame ${String(result.body.frame_index)} was accepted, but its pre-JPEG measurement could not be stored; paired evidence is incomplete.`,
+                `Blur debug warning: frame ${String(result.body.frame_index)} was accepted, but its pre-JPEG measurement could not be stored; ${String(blurDebugStorageFailures)} failure(s), paired evidence is incomplete.`,
+                "error",
+              );
+            } else if (blurDebugStorageFailures > 0) {
+              setStatus(
+                blurDebugStatus,
+                `Blur debug: ${String(storedCount)} measurement(s) stored for this session, ${String(blurDebugStorageFailures)} failed; paired evidence is incomplete.`,
                 "error",
               );
             } else {
               setStatus(
                 blurDebugStatus,
-                `Blur debug: ${String(storedCount)} measurement(s) stored; latest frame index ${String(result.body.frame_index)}.`,
+                `Blur debug: ${String(storedCount)} measurement(s) stored for this session; latest frame index ${String(result.body.frame_index)}.`,
                 "info",
               );
             }
