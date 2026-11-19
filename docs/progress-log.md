@@ -2707,3 +2707,21 @@ in `docs/decisions.md`.
 
 **Next:** none expected. If multi-tier reference support is ever wanted again, it needs a new
 detection story first, scoped separately from G-10's measurement work.
+
+## 2026-11-18 — G-09 the G-05 control and 4 mm hole shift photographed (built, PR #397)
+
+**Who:** @TabeenRaoof
+**What changed:** `g05_00` and `g05_02` joined `fixtures/specimen_capture_manifest.json`, at
+28 stills each under G-08's setup and on Drive under `g-08`. The manifest's `.sha256` lock was
+regenerated.
+**Command / how to reproduce:** `GOLDEN_CAPTURE_MANIFEST=fixtures/specimen_capture_manifest.json
+bash fixtures/download_golden_capture.sh fixtures/data/specimen_capture`
+**Result:**
+- Every frame is from the main camera, and R-02 posed all 56 (median RMS 2.66 and 2.84 px).
+- The softest frame scored 210, against the golden set's 40.
+- The real downloader fetched both parts and verified both hashes.
+- 2 h actual against 1.5.
+**Concluded:** M4's planted-defect pair is ready for reconstruction.
+**Next:** X-03 (I3) stays Blocked. At @dalwalyk's review, its two unstoried prerequisites became
+stories and dependencies: R-41 (#181's reversed scale ratio, which still needs the team's D-039
+decision) and R-42 (the service calling `check_scale_agreement`).
