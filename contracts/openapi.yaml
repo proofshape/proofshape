@@ -2,7 +2,7 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.7.0"
+  version: "1.8.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
@@ -20,7 +20,10 @@ info:
     or not a finite positive number at verdict time. 1.7.0 (I-10, D-079) additively adds an
     optional order-level `verdict`, using the existing `VerdictResult` schema, so a critical
     tolerance below the measured method floor can resolve to `Unverifiable` at intake before any
-    session exists.
+    session exists. 1.8.0 (A-09, D-082) additively adds an optional `VerdictResult.narrative`: a
+    short plain-language summary built deterministically from the verdict's own fields, never
+    from a model -- D-082 found no way to make a free-text LLM narrative safe against the hard
+    rule, so v1 serves the templated half only.
 
 servers:
   - url: /v1
@@ -704,6 +707,13 @@ components:
           items:
             type: string
           description: Machine-readable reasons behind an Unverifiable, Rescan or Fail, for the report page to explain in plain language.
+        narrative:
+          type: string
+          description: >
+            A-09/D-082: a short plain-language summary of this verdict, built deterministically
+            from this same object's own fields -- never from a photograph or the 3D model, and
+            never written by a model. Optional so a client built against an older version of
+            this schema is unaffected.
       x-proofshape-extends-at:
         description: >
           Not a real field — a vendor-extension marker at the schema level, so tooling and

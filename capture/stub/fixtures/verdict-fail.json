@@ -16,5 +16,6 @@
       "contributes_to_verdict": true
     }
   ],
-  "reason_codes": ["observed_deviation_out_of_spec"]
+  "reason_codes": ["observed_deviation_out_of_spec"],
+  "narrative": "Verdict: Fail. At least one measured region was outside its checked tolerance. 2 regions counted toward this verdict: mounting_hole_A (1.80 mm), sealing_face (-0.90 mm). Reason codes: observed_deviation_out_of_spec. Declared at: post reconstruction."
 }

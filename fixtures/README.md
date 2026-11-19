@@ -61,11 +61,11 @@ own. `stories/G/G-11.md` has the design.
 
 ## G-08 specimen capture
 
-The six G-02 specimens (`g02_01` to `g02_06`) were photographed for G-04's accuracy runs. The
-photos are on the same Google Drive as the golden set, and `specimen_capture_manifest.json`
-describes them in the golden manifest's own format: Drive folder IDs, frame counts, aggregate
-byte counts and a `content_sha256` per sample. Its `reference_cad` block points at each
-specimen's CAD under `reference_cad/`.
+The six G-02 specimens (`g02_01` to `g02_06`) were photographed for G-04's accuracy runs, and G-09
+added G-05's two defect parts. The photos are on the same Google Drive as the golden set, and
+`specimen_capture_manifest.json` describes them in the golden manifest's own format: Drive folder
+IDs, frame counts, aggregate byte counts and a `content_sha256` per sample. Its `reference_cad`
+block points at each part's CAD under `reference_cad/`.
 
 - **Capture:** 25–30 landscape stills each, 2026-11-15, on the same G-06-calipered board sheet
   and table as the golden set, under lighting condition A. iPhone 16 main camera, 5712 × 4284,
@@ -73,6 +73,12 @@ specimen's CAD under `reference_cad/`.
 - **Checks:** the board was posed in every frame by R-02's own detection, and no frame was
   softer than the golden set's softest. One frame taken on the ultra-wide lens was dropped
   before the hashes were computed: a second lens would break the single-camera calibration.
+- **G-09 added G-05's two printed parts** to the same manifest: the control `g05_00` and the
+  4 mm hole shift `g05_02` (D-069), 28 stills each, shot 2026-11-18 under the same setup. Their
+  `reference_cad` entries point at G-05's STLs. Every frame was posed by R-02, and the softest
+  scored 210 against the golden set's softest of 40. The real downloader fetched both from
+  Drive and verified their hashes. These parts aren't prisms, so G-04's script (which lists
+  `g02_*` by name) doesn't pick them up.
 
 The same script downloads either set; point it at this manifest and give it its own output
 directory:

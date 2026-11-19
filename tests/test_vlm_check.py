@@ -39,10 +39,25 @@ def reply(index=0, **changes):
 
 @pytest.mark.parametrize(
     "count,expected",
-    [(0, []), (1, [0]), (5, [0, 4]), (6, [0, 5]), (12, [0, 5, 10, 11])],
+    [
+        (0, []),
+        (1, [0]),
+        (5, [0, 4]),
+        (6, [0, 5]),
+        (12, [0, 5, 10, 11]),
+        (15, [0, 5, 10, 14]),
+    ],
 )
 def test_sample_indices_include_final_exactly_once(count, expected):
     assert sampled_indices(count) == expected
+
+
+def test_a14_keeps_frame_six_outside_the_15_frame_sample_set():
+    # R-36/#354: a screen photograph on frame 6 was not checked. A-14 deliberately keeps
+    # A-01's sampling rule until a 25-30-frame free-tier run is actually measured.
+    indices = sampled_indices(15)
+    assert indices == [0, 5, 10, 14]
+    assert 6 not in indices
 
 
 @pytest.mark.parametrize(
@@ -194,6 +209,28 @@ def test_sdk_adapter_sends_reference_only_after_frame_zero_and_closes_client(
     assert len(requests[1]["contents"]) == 4
     assert requests[1]["contents"][1].inline_data.data == b"reference"
     assert requests[1]["contents"][3].inline_data.data == b"current"
+
+    frame_zero_instruction = requests[0]["config"].system_instruction
+    orbit_instruction = requests[1]["config"].system_instruction
+    assert "reference frame 0 itself" in frame_zero_instruction
+    assert "there is no earlier reference image" in frame_zero_instruction
+    assert (
+        "Never ask the supplier to provide or compare against reference frame 0"
+        in frame_zero_instruction
+    )
+    assert "lighting, hands, screen-photo status" in frame_zero_instruction
+    assert (
+        "intentionally moves the camera around a stationary physical part"
+        in orbit_instruction
+    )
+    assert (
+        "viewpoint and apparent image orientation are expected to change"
+        in orbit_instruction
+    )
+    assert (
+        "camera orbit alone must not be reported as a change to the part"
+        in orbit_instruction
+    )
     for client in clients:
         assert client["api_key"] == "private-key"
         assert client["vertexai"] is False

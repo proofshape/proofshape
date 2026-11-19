@@ -200,17 +200,18 @@ def test_committed_manifest_matches_its_committed_sha256(manifest_name: str) -> 
     assert actual_hash == expected_hash
 
 
-def test_specimen_manifest_lists_every_g02_specimen_with_its_hash_and_cad() -> None:
+def test_specimen_manifest_lists_every_specimen_with_its_hash_and_cad() -> None:
     # G-08: one capture per G-02 specimen, 25-30 frames each (the story's criterion), every one
     # hash-locked so the downloader refuses rather than falls back to a count-only check, and
-    # each mapped to the reference CAD it will be compared against (G-04).
+    # each mapped to the reference CAD it will be compared against (G-04). G-09 added G-05's
+    # two printed parts, the control and the 4 mm hole shift (D-069), under the same rules.
     data = json.loads(
         (REPO_ROOT / "fixtures" / "specimen_capture_manifest.json").read_text(
             encoding="utf-8"
         )
     )
     sample_ids = [capture["sample_id"] for capture in data["captures"]]
-    assert sample_ids == [f"g02_0{i}" for i in range(1, 7)]
+    assert sample_ids == [f"g02_0{i}" for i in range(1, 7)] + ["g05_00", "g05_02"]
     for capture in data["captures"]:
         assert 25 <= capture["frames"] <= 30, capture["sample_id"]
         assert len(capture["content_sha256"]) == 64
@@ -221,6 +222,8 @@ def test_specimen_manifest_lists_every_g02_specimen_with_its_hash_and_cad() -> N
     for entry in cad.values():
         assert (REPO_ROOT / entry["path"]).is_file(), entry["path"]
         assert entry["path"].endswith(entry["filename"])
+    assert cad["g05_00"]["filename"] == "g05_00_control_50x32x20mm.stl"
+    assert cad["g05_02"]["filename"] == "g05_02_hole_shift_4mm.stl"
 
 
 def test_robustness_manifest_lists_the_three_g11_parts_with_hash_and_cad() -> None:

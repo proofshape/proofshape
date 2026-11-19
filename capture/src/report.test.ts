@@ -115,7 +115,11 @@ describe("C-15 report page", () => {
     expect(target.textContent).toContain("checked — no disagreement flagged");
     expect(target.textContent).toContain(sessionId);
     expect(target.textContent).toContain("2026-11-11T08:00:00.000Z");
-    expect(target.textContent).toContain("AI narrative slot (A-09)");
+    // A-09/D-082: the real, deterministic narrative -- never a model's -- now lands in C-15's
+    // reserved slot.
+    expect(target.textContent).toContain(
+      "Verdict: Pass. Every measured region was within its checked tolerance.",
+    );
     expect(mountViewer).toHaveBeenCalledOnce();
     expect(mountViewer.mock.calls[0]?.[2]).toMatchObject({ initialColourMode: "deviation" });
   });

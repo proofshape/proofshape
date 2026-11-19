@@ -300,10 +300,13 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    are not appended, and stale replies are ignored. The mock `finished` field is display-only
    until the real D-031 phone contract defines lifecycle behavior, including the end-of-session
    summary. The service does not yet invoke the agent loop for supplier sessions.
-- **A vision-language model checks sampled frames** (A-01, A-02) — roughly seven calls a session,
-  not one per frame. It catches things geometry cannot: the wrong part, hands in shot, a
-  photograph of a screen. **It can veto a Pass**, downgrading the session to Rescan, and the
-  report names the reason.
+- **A vision-language model checks sampled frames** (A-01/A-11; A-02 will own the verdict veto):
+  frame 0, indices divisible by 5, and the final accepted frame. It is **not an all-frame check**.
+  R-36 demonstrated the limit directly: in a 15-frame session, a screen photograph on frame 6
+  was not checked because the sampled set was 0, 5, 10 and 14. A-14 keeps that rule because no
+  measured 25-30-frame free-tier rate/latency run exists in the repository to justify multiplying
+  the API work. So an unsampled bad frame can still enter reconstruction today; A-02's future veto
+  will cover only the sampled frames unless a later measured change widens the rule.
 
 ---
 
@@ -462,8 +465,13 @@ snapshots the WebGL heatmap and copies its active legend so the exported page ke
 and the signed-mm scale. The one-page mobile print layout still needs the whole-system mobile
 check at X-04.
 
-The narrative section is a marked placeholder only. **Planned:** A-09 supplies the LLM narrative;
-C-15 does not generate one.
+The narrative section shows a short, plain-language summary of the verdict: which regions
+counted toward it, their measured deviation, the reason codes, and whether orientation is
+ambiguous. It is built deterministically from the verdict's own fields, in code — **not** by a
+model. A-09 originally planned an LLM-written narrative, but D-082 found no way to make one safe
+against the hard rule (a model's prose could end up stating an outcome the deterministic verdict
+disagreed with) across five rounds of review, so v1 serves the templated half only; the LLM path
+is kept as tested groundwork for a future story.
 
 ---
 

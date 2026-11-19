@@ -15,6 +15,7 @@ from inspection import cad, synthetic
 from recon import service
 from recon.mesh_cleanup import write_glb
 from recon.provenance import labels_to_colors
+from recon.report_narrative import VerdictInput, template_narrative
 from recon.uncertainty import write_sigma_npz
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,6 +134,12 @@ def test_getverdict_passes_a_clean_part_end_to_end(tmp_path):
     assert body["orientation_ambiguous"] is False
     assert body["regions"][0]["name"] == "overall_A"
     assert body["regions"][0]["contributes_to_verdict"] is True
+    # A-09/D-082: narrative is the deterministic template over this same served payload, never
+    # a model's -- pins the wiring itself, not report_narrative's own already-tested logic.
+    verdict_input = VerdictInput.model_validate(
+        {key: value for key, value in body.items() if key != "narrative"}
+    )
+    assert body["narrative"] == template_narrative(verdict_input)
 
 
 def test_getverdict_refuses_a_null_tolerance_feature_end_to_end(tmp_path):
@@ -267,10 +274,14 @@ def test_i10_getverdict_returns_intake_unverifiable_before_reconstruction(tmp_pa
         ).json()["session_id"]
         response = client.get(f"/v1/sessions/{session_id}/verdict")
     assert response.status_code == 200
-    assert response.json() == {
+    expected = {
         "verdict": "Unverifiable",
         "declared_at": "intake",
         "orientation_ambiguous": False,
         "regions": [],
         "reason_codes": ["intake_tolerance_below_k_sigma_floor:hole_A"],
     }
+    # A-09/D-082: narrative is the deterministic template over this same payload, never a
+    # model's.
+    expected["narrative"] = template_narrative(VerdictInput.model_validate(expected))
+    assert response.json() == expected

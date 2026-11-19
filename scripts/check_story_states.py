@@ -70,7 +70,9 @@ NEVER_ESTIMATED = "—"
 PLANNING_LANE_PREFIX = "P-"
 UNCLAIMED = "_unclaimed_"
 OWNED_STATES = {"Claimed", "In review", "Done"}
-UNOWNED_STATES = {"Blocked", "Ready"}
+# Cut (D-083): decided, never started, and never will be -- same ownerless shape as Blocked/Ready.
+UNOWNED_STATES = {"Blocked", "Ready", "Cut"}
+KNOWN_STATES = OWNED_STATES | UNOWNED_STATES
 # One or more GitHub handles separated by "; " (F-06 has two owners). GitHub handles are
 # letters, digits and single hyphens.
 HANDLE_RE = re.compile(r"^@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$")
@@ -157,7 +159,7 @@ def owner_problems(sid, state, owner):
         return problems
 
     if state not in OWNED_STATES:
-        return problems  # an unknown state is reported by the state checks, not here
+        return problems  # an unknown state is reported by collect_problems's KNOWN_STATES check
 
     if not owner or owner == UNCLAIMED:
         problems.append(
@@ -201,6 +203,11 @@ def collect_problems(rows):
         if fstate is None:
             problems.append(f"{sid}: no story file, or no **State:** line found")
             continue
+        if fstate not in KNOWN_STATES:
+            problems.append(
+                f"{sid}: '{fstate}' is not a recognised state "
+                f"({', '.join(sorted(KNOWN_STATES))})"
+            )
         if fstate != info["index_state"]:
             problems.append(
                 f"{sid}: index says '{info['index_state']}', story file says '{fstate}' — these must match"

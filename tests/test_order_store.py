@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from recon import service
 from recon.order_store import OrderStore
+from recon.report_narrative import VerdictInput, template_narrative
 
 ORDER_RE = re.compile(r"^PO-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{8}$")
 
@@ -617,13 +618,19 @@ def test_i10_order_resolves_unverifiable_at_intake_before_any_session_exists(tmp
         assert created.status_code == 201
         body = created.json()
         assert body["intake_check"][0]["status"] == "unverifiable"
-        assert body["verdict"] == {
+        expected = {
             "verdict": "Unverifiable",
             "declared_at": "intake",
             "orientation_ambiguous": False,
             "regions": [],
             "reason_codes": ["intake_tolerance_below_k_sigma_floor:hole_A"],
         }
+        # A-09/D-082: narrative is the deterministic template over this same payload, never a
+        # model's.
+        expected["narrative"] = template_narrative(
+            VerdictInput.model_validate(expected)
+        )
+        assert body["verdict"] == expected
         fetched = client.get(f"/v1/orders/{body['order_code']}")
         assert fetched.status_code == 200
         assert fetched.json()["verdict"] == body["verdict"]
@@ -667,7 +674,7 @@ def test_i10_axis_ambiguous_critical_floor_failure_is_unverifiable_at_intake(
     assert created.status_code == 201
     body = created.json()
     assert body["intake_check"][0]["status"] == "refused"
-    assert body["verdict"] == {
+    expected = {
         "verdict": "Unverifiable",
         "declared_at": "intake",
         "orientation_ambiguous": False,
@@ -676,6 +683,10 @@ def test_i10_axis_ambiguous_critical_floor_failure_is_unverifiable_at_intake(
             f"intake_tolerance_below_method_floor_any_axis:{feature_name}"
         ],
     }
+    # A-09/D-082: narrative is the deterministic template over this same payload, never a
+    # model's.
+    expected["narrative"] = template_narrative(VerdictInput.model_validate(expected))
+    assert body["verdict"] == expected
 
 
 def test_i10_axis_ambiguous_feature_above_any_axis_floor_stays_refused_without_verdict(

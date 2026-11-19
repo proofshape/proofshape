@@ -124,6 +124,8 @@ export interface VerdictResult {
   orientation_ambiguous: boolean;
   regions: Region[];
   reason_codes?: string[];
+  /** A-09/D-082: a deterministic, code-built summary -- never a model's. */
+  narrative?: string;
 }
 
 /**
