@@ -530,7 +530,7 @@ Full detail in each story file.
 | [R-37](R/R-37.md) | cad_size_check: corner-to-corner edge measurement and a pose search that can't land wrong | 5 h | R-22 | Done | @mbj1994 |
 | [R-38](R/R-38.md) | R-23's alignment solve needs per-frame outlier rejection and a real residual gate | 4 h | R-23 | Done | @dalwalyk |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Done | @mbj1994 |
-| [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Claimed | @mbj1994 |
+| [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Done | @mbj1994 |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone | 3 h | C-13, C-20 | Done | @dalwalyk |
 | [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
 | [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Done | @mbj1994 |
@@ -656,7 +656,7 @@ Full detail in each story file.
 | [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Done | @TabeenRaoof |
 | [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Done | @TabeenRaoof |
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
-| [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Ready | _unclaimed_ |
+| [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
 
 ---
 

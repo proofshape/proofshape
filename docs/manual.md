@@ -159,7 +159,9 @@ is deliberate, and the margins are doing three jobs:
 
 1. Keeping the paper's outline clearly separated from the pattern, so the outline scale check
    works.
-2. Reserving space for the per-order QR code and orientation arrow (**Planned**, C-17 — see §4).
+2. Keeping the per-order marks clear of the calibration pattern. C-17 now embeds this exact
+   200 × 150 mm board page at 1:1 on a landscape A4 sheet and puts the order code, QR and +X arrow
+   in a separate right-side panel (§4, D-074).
 3. Giving a part that is larger than the pattern somewhere to sit without hanging off the sheet.
 
 **If the part is larger than the pattern but still roughly sheet-sized, that is fine for pose.**
@@ -189,9 +191,9 @@ decision the team has made. **Undecided.**
 
 ## 4 · Setting up an order — the buyer
 
-**Status: Works now for order setup.** R-34 provides the file-backed order store and C-16 provides
-the browser buyer page. C-17's printable sheet/QR code and the remaining inspection workflow are
-still planned.
+**Status: Works now for order setup and the printable per-order sheet.** R-34 provides the
+file-backed order store, C-16 provides the browser buyer page, and C-17 generates the printable
+sheet in the browser. The remaining inspection workflow is still planned.
 
 Open **`buyer.html`** in the capture app. On GitHub Pages the address is
 **`https://proofshape.github.io/proofshape/buyer.html`**; that hosted page can create real orders
@@ -212,8 +214,9 @@ The buyer flow is:
 4. **Add the placement note and buyer reference, then create the order.** R-34 stores the CAD/spec
    and returns a server-generated `PO-` code.
 5. **Use the result.** The page shows the order code, the CAD dimensions read by the service (or
-   model-only when there is no CAD), and a supplier capture link with `?order=<code>` already
-   filled in.
+   model-only when there is no CAD), a supplier capture link with `?order=<code>` already filled
+   in, and **Print the sheet**. The button creates a landscape A4 PDF in the browser; it does not
+   call the reconstruction service.
 
 The page explicitly does **not** claim that any entered tolerance is achievable: I-09 has not yet
 checked tolerances against the measured noise floor (D-003). Parser/network failures keep the
@@ -222,10 +225,24 @@ buyer's form intact and give a next step instead of exposing browser error text.
 The real service checks every supplier code against the R-34 order store. The mock keeps its
 existing `PO-48213-A` fixture and also supports the buyer order routes for local C-16 testing.
 
-**Planned** (C-17): the order code, a QR code and an orientation arrow in the sheet's margin, with
-the board itself unchanged. Where they sit is recorded as a decision when C-17 is built (D-034 left
-it open). The golden-capture set does not need them, since there is no real purchase order to bind
-to yet.
+**C-17 printable sheet (D-074).** The output is landscape A4 (297 × 210 mm). The exact
+`charuco_board.pdf` page is embedded unchanged at 1:1 at x=5 mm, y=30 mm; its browser copy is
+refused if its SHA-256 differs from
+`1b64d0328a7551da20fee6ccf5c6edacd5f48858be4004dffb093a60c9c9a354`. The right-side panel
+starts at x=212 mm and carries the printed order code, a QR encoding **only the order code**, a
+**Board +X** arrow pointing left-to-right along the board's square columns, and
+**Print at Scale: 100%**. The capture app does not read that QR yet; it is printed binding/context,
+not session-integrity enforcement.
+
+Print this generated PDF exactly like the base board: **100% scale, never Fit to Page / Scale to
+Fit**, then caliper two or three squares and confirm they are close to 20 mm before capturing
+(manual §3.3).
+
+**Paper-size note from C-17's physical check (2026-11-19):** the generated page is A4. A US Letter
+printer can clip the right-side panel if the A4 page is sent straight to Letter at 100%. Do not
+solve that with Fit to Page because that rescales the calibration board. If only Letter is
+available, keep the PDF content at 1:1 and rotate/centre it on the Letter page so the full content
+fits, or use A4 paper.
 
 ---
 

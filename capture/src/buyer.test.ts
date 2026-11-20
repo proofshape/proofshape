@@ -207,9 +207,11 @@ describe("C-16 buyer setup", () => {
     );
     const root = document.createElement("main");
     document.body.append(root);
+    const printOrderSheet = vi.fn().mockResolvedValue(undefined);
     mountBuyerPage(root, {
       baseUrl: "",
       locationHref: "https://example.test/proofshape/buyer.html",
+      printOrderSheet,
     });
 
     const key = required(root, "#buyer-key") as HTMLInputElement;
@@ -226,5 +228,15 @@ describe("C-16 buyer setup", () => {
     expect(root.querySelector<HTMLAnchorElement>("#buyer-result a")?.href).toBe(
       "https://example.test/proofshape/?order=PO-7K2M9Q4R",
     );
+
+    const printButton = Array.from(root.querySelectorAll("button")).find(
+      (button) => button.textContent === "Print the sheet",
+    );
+    expect(printButton).toBeDefined();
+    printButton?.click();
+    await vi.waitFor(() => {
+      expect(printOrderSheet).toHaveBeenCalledWith("PO-7K2M9Q4R");
+    });
+    expect(root.querySelector("#buyer-status")?.textContent).toContain("100% scale");
   });
 });
