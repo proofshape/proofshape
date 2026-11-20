@@ -2621,8 +2621,10 @@ C-17 waiting on its physical print/caliper check.
   by name and size.
 - **Reshoot:** the glossy part and the tray were reshot after a pen label turned up on a side
   face the camera saw.
-- **Calipers:** the glossy and dark parts match the grey `g02_04` control within 0.07 mm. The
-  tray's 1.2 mm wall reads 1.10 mm in all ten placements.
+- **Calipers:** the glossy and dark parts' heights are within 0.03 mm of the grey `g02_04`
+  control's. (Corrected on #392: this first said "within 0.07 mm". The glossy part's edge,
+  25.87 mm, is 0.01 mm below the control's 25.88–26.02 range.) The tray's 1.2 mm wall reads
+  1.10 mm in all ten placements.
 
 **Next:** the `.3mf` files, the screen-photo and wrong-part stills, and each part through
 reconstruction.
@@ -2781,3 +2783,85 @@ amended under its original text.
 - 1 h actual against 2.
 **Concluded:** the scale check can now be trusted with a CAD residual. Nothing calls it yet.
 **Next:** R-42 (Ready) wires it into the service after registration. X-03 still waits on R-42.
+
+## 2026-11-18 — Print files on Drive: G-01 and G-05 kept; G-02's and G-11's sliced files are gone (G-11)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- A `print-files/` folder on the golden set's Drive, with one subfolder per story, kept apart
+  from the photo folders. The photo downloader fetches whole folders, so a `.3mf` beside the
+  photos would land in every download.
+- G-01's two cube files and G-05's two sliced files are in it.
+- G-01's story now records its two SHA-256 values, which it never had.
+- G-11 records that its three jobs' sliced files weren't kept, so its printer, process and
+  filament presets can't be read from a file. G-02 records the same for its six specimens.
+**Command / how to reproduce:** each Drive file was downloaded and checked with
+`shasum -a 256` against the owner's local copy.
+**Result:**
+- All four G-01 and G-05 files match their local copies byte for byte.
+- G-05's two match the hashes it recorded on 2026-11-13.
+- The two files in `print-files/g-11` are model-only `.3mf` files with exactly the committed STLs'
+  vertices, so they're copies of the CAD, not a print record.
+**Concluded:** only G-01 and G-05 can show their slicer settings from a file. For G-11's finish
+parts, the evidence is the caliper comparison with the grey control: heights within 0.03 mm,
+from one print per finish. Nothing shows which preset the silk part used.
+**Next:** G-11 still needs the screen-photo and wrong-part stills, the VLM's reading of the
+parts, and the A-01/A-02 cross-references.
+
+## 2026-11-18 — G-11's parts through reconstruction: glossy fine, dark noisier, thin walls lost
+
+**Who:** @TabeenRaoof.
+**What changed:** nothing in code. G-11 records criterion 3's runs: the glossy, dark and
+thin-walled parts and the grey `g02_04` control, each through the service in-process on `main`
+(`d205149`), on the M2 Max.
+**Command / how to reproduce:** a throwaway driver created an order with the CAD, uploaded each
+Drive photo set, finished and polled; then `python -m recon.cad_size_check <artifacts>/reconstruction
+<artifacts>/board_pose --cad fixtures/reference_cad/g02_04_pentagon_r22x25mm.stl`. Outputs are in
+`proofshape-data/g11-runs/` (outside git).
+**Result:**
+- All four completed, metric on the board, with no warnings, in 37–49 s of reconstruction.
+- The control reproduces G-04's numbers (board scale 0.9976, height +0.85 mm against +0.86).
+- Height against calipers: glossy −0.54 mm, dark −1.65 mm.
+- The thin tray's 1.1 mm walls come back as single slabs. The served model loses about 5 mm of
+  their top, since fusion's voxel is 2.0 mm. Its registration fails ("No candidate could be
+  refined").
+- Every solid pentagon is flagged orientation-ambiguous, as a regular pentagon should be.
+**Concluded:** gloss didn't hurt. The dark finish makes the walls noisier and reads the height
+short. Walls thinner than a voxel are outside what the pipeline can measure, and this one also
+breaks registration. The pentagon's symmetry means none of these parts can Pass through I-07.
+**Next:** the VLM run (needs a Gemini key), the stills, the A-01/A-02 cross-references.
+
+## 2026-11-18 — G-11's stills hash-locked; the VLM catches both controls, not the thin tray
+
+**Who:** @TabeenRaoof.
+**What changed:** `fixtures/robustness_capture_manifest.json` gains a `stills` list, made of the
+screen photo (Drive `vlm_checks/`) and the wrong part (golden s-05 `IMG_4161.jpeg`, the same bytes
+A-01 used). Each is locked by sha256, and the manifest's `.sha256` is refreshed. A test in
+`tests/test_download_golden_capture.py` checks the entries. `fixtures/README.md` describes them.
+**Command / how to reproduce:** `scripts/check_vlm.py <capture> --screen-photo screen_photo.jpeg
+--wrong-part IMG_4161.jpeg --api-tier free --billing-account "ProofShape (free tier)"`, on
+`main` `788c256`. It ran once each for s-04 and the three G-11 captures, 44 requests in all.
+The evidence files are in `proofshape-data/g11-runs/vlm/` (outside git).
+**Result:**
+- All 44 requests came back `checked`.
+- s-04 gives the same booleans A-01 recorded, on all 11 results.
+- On every G-11 part, the screen photo is flagged and the wrong part reads `same_part` false.
+- No glossy, dark or thin frame is flagged.
+**Concluded:** both controls work against every finish, and the glossy and dark parts aren't
+falsely flagged. The VLM has no field that could catch the thin tray, whose failure shows up only
+at registration. G-11's four criteria now have written results.
+**Next:** reviews on #392.
+
+## 2026-11-19 — G-11 Done: the lost slicer files accepted as a gap (D-085) (PR #392)
+
+**Who:** @TabeenRaoof.
+**What changed:** D-085 records G-11's lost sliced `.3mf` files as an accepted, permanent gap in
+criterion 1's print record. That answers @mbj1994's review on #392. G-11 is set to Done in the
+story and the index, with its completion record: 7.5 h actual against an estimate of 4.
+**Command / how to reproduce:** `python scripts/check_story_states.py --fix` is clean, so
+there's no cascade, because nothing depends on G-11.
+**Result:** all four criteria have written results. A reprint was not chosen, because its
+record would describe a new part, not the one photographed and run. The calipers put the
+glossy and dark parts within 0.03 mm of the grey control's height.
+**Concluded:** G-11 closes on this PR. This frees one of @TabeenRaoof's two WIP slots (D-064).
+**Next:** @mbj1994's re-review of #392's final commit, then the author merges.
