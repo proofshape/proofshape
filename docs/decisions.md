@@ -1260,16 +1260,15 @@ Re-checked after R-26 merged: D-059 and D-060 are now on `main`, and D-061 is st
 *Agreement:* proposed in I-05's PR, which asks both @mbj1994 and @dalwalyk to agree and merges
 only with both approving.
 
-*Proposed I-13 amendment (2026-11-19; pending real-session validation and both other members'
-approval):* replace the 20% inlier-RMSE comparison with a coverage-aware residual ratio: capped
-nearest distances from the Observed model surface to CAD samples within the refinement radius
-under any candidate pose. On I-01 output at σ = 0.3 mm with the 20% Unobserved patch, the
+*Proposed I-13 amendment (2026-11-19; pending both other members' approval):* replace the 20% inlier-RMSE comparison with a coverage-aware residual ratio: capped
+nearest distances from CAD samples to the Observed model surface, using samples within the
+refinement radius under any candidate pose. On I-01 output at σ = 0.3 mm with the 20% Unobserved patch, the
 12-seed D-061 table separates at 1.0225: the largest true-ambiguity ratio is 1.018260 and the
 smallest disambiguated ratio is 1.026777. The G-05 missing-notch case is 0.999362, so it remains
-ambiguous even though fitness differs by 0.003125. The four saved real sessions (`g05_00`,
-`g05_02`, s-04 and s-05) are unavailable in this checkout and must be re-run before this
-amendment can be settled. No behavior or tolerance is considered final before both reviewers
-approve the amended rule.
+ambiguous even though fitness differs by 0.003125. Fresh reconstructions from the G-05 frames used in #407 and
+golden s-04/s-05 gave coverage ratios of 1.217135, 1.046073, 1.049089, and 0.997502 respectively,
+so only s-05 was flagged at 1.0225. The I-13 story records the setup, fitness and inlier RMSE
+ratios. Both reviewers must approve the amended rule.
 
 **D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
 provenance, and the viewer does the colouring.** (2026-11-09)
