@@ -89,6 +89,24 @@ def _face_center_vertex_index(
     )
 
 
+def _top_face_center_vertex_index(
+    cad_vertices_mm: np.ndarray, sample: synthetic.SyntheticSample
+) -> int:
+    """The model vertex nearest the CAD top-face centre (15, 15, 30)."""
+    rotation = np.asarray(sample.sidecar["transform"]["rotation"], dtype=float)
+    translation = np.asarray(sample.sidecar["transform"]["translation_mm"], dtype=float)
+    cad_frame_vertices = (sample.vertices_mm - translation) @ rotation
+    target = np.array([15.0, 15.0, 30.0])
+    return int(np.argmin(np.linalg.norm(cad_frame_vertices - target, axis=1)))
+
+
+def _top_face_outward_direction(sample: synthetic.SyntheticSample) -> np.ndarray:
+    """CAD-frame +z mapped into the model frame; stays inside the xy footprint."""
+    rotation = np.asarray(sample.sidecar["transform"]["rotation"], dtype=float)
+    direction = np.array([0.0, 0.0, 1.0]) @ rotation.T
+    return direction / np.linalg.norm(direction)
+
+
 def test_compute_deviation_sign_matches_a_known_planted_offset():
     # I-06's acceptance criteria: "the sign convention is checked against a synthetic part
     # (I-01's generator) with a known planted offset." sigma_mm=0 and patch_fraction=0 give a
@@ -100,8 +118,11 @@ def test_compute_deviation_sign_matches_a_known_planted_offset():
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
     )
     transform = _ground_truth_transform(sample)
-    vertex_index = _face_center_vertex_index(cad_vertices, sample)
-    outward_direction = _outward_offset_direction(cad_vertices, sample, vertex_index)
+    # I-14 deliberately leaves surface outside the xy footprint unmeasured, so keep this
+    # sign-convention regression on the top face: +/- z changes signed distance without moving
+    # the probe outside the registered xy footprint.
+    vertex_index = _top_face_center_vertex_index(cad_vertices, sample)
+    outward_direction = _top_face_outward_direction(sample)
 
     for planted_offset_mm in (0.6, -0.6):
         model_vertices = sample.vertices_mm.copy()
