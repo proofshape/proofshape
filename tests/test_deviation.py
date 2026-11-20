@@ -26,6 +26,7 @@ from recon.provenance import LABEL_INFERRED, LABEL_UNOBSERVED
 ROOT = Path(__file__).resolve().parents[1]
 G01_CUBE = ROOT / "fixtures" / "reference_cad" / "g01_calibration_cube_30mm.stl"
 G05_CONTROL = ROOT / "fixtures" / "reference_cad" / "g05_00_control_50x32x20mm.stl"
+REFERENCE_CADS = sorted((ROOT / "fixtures" / "reference_cad").glob("*.stl"))
 
 # A flat board at z=0 (slope 0, offset 0): height_above_board_mm is exactly -z, matching
 # inspection.synthetic's own convention (the fixed CAD->board flip keeps the CAD's z=0 base at
@@ -242,6 +243,20 @@ def test_compute_deviation_pins_the_cad_outer_outline_boundary():
     beyond_index = at_index + 1
     assert deviation_measured[at_index] == 1.0
     assert deviation_measured[beyond_index] == 0.0
+
+
+@pytest.mark.parametrize("cad_path", REFERENCE_CADS, ids=lambda path: path.stem)
+def test_outer_outline_builder_handles_every_reference_cad(cad_path: Path):
+    # Review on #416 found that the first silhouette implementation raised on pockets, bumps and
+    # the open-top tray because feature edges at different z levels projected to the same xy
+    # segment with opposite winding. Every shipped reference CAD must produce a usable outer
+    # outline instead of turning the whole order into Rescan.
+    cad_vertices, cad_faces, _units = cad.load_mesh(cad_path)
+
+    loops = _cad_outer_outline_loops(cad_vertices, cad_faces)
+
+    assert loops
+    assert all(len(loop) >= 3 for loop in loops)
 
 
 def test_g05_outer_outline_excludes_notch_but_keeps_through_hole_measurable():
