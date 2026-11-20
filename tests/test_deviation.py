@@ -8,8 +8,11 @@ import numpy as np
 import pytest
 from inspection import cad, synthetic
 from inspection.deviation import (
+    DEFAULT_FOOTPRINT_MARGIN_MM,
     DEVIATION_MEASURED_ATTRIBUTE,
     DEVIATION_MM_ATTRIBUTE,
+    _cad_outer_outline_loops,
+    _within_cad_outer_outline,
     compute_deviation,
     publish_deviation_glb,
     write_deviation_glb,
@@ -22,6 +25,8 @@ from recon.provenance import LABEL_INFERRED, LABEL_UNOBSERVED
 
 ROOT = Path(__file__).resolve().parents[1]
 G01_CUBE = ROOT / "fixtures" / "reference_cad" / "g01_calibration_cube_30mm.stl"
+G05_CONTROL = ROOT / "fixtures" / "reference_cad" / "g05_00_control_50x32x20mm.stl"
+REFERENCE_CADS = sorted((ROOT / "fixtures" / "reference_cad").glob("*.stl"))
 
 # A flat board at z=0 (slope 0, offset 0): height_above_board_mm is exactly -z, matching
 # inspection.synthetic's own convention (the fixed CAD->board flip keeps the CAD's z=0 base at
@@ -88,6 +93,24 @@ def _face_center_vertex_index(
     )
 
 
+def _top_face_center_vertex_index(
+    cad_vertices_mm: np.ndarray, sample: synthetic.SyntheticSample
+) -> int:
+    """The model vertex nearest the CAD top-face centre (15, 15, 30)."""
+    rotation = np.asarray(sample.sidecar["transform"]["rotation"], dtype=float)
+    translation = np.asarray(sample.sidecar["transform"]["translation_mm"], dtype=float)
+    cad_frame_vertices = (sample.vertices_mm - translation) @ rotation
+    target = np.array([15.0, 15.0, 30.0])
+    return int(np.argmin(np.linalg.norm(cad_frame_vertices - target, axis=1)))
+
+
+def _top_face_outward_direction(sample: synthetic.SyntheticSample) -> np.ndarray:
+    """CAD-frame +z mapped into the model frame; stays inside the xy footprint."""
+    rotation = np.asarray(sample.sidecar["transform"]["rotation"], dtype=float)
+    direction = np.array([0.0, 0.0, 1.0]) @ rotation.T
+    return direction / np.linalg.norm(direction)
+
+
 def test_compute_deviation_sign_matches_a_known_planted_offset():
     # I-06's acceptance criteria: "the sign convention is checked against a synthetic part
     # (I-01's generator) with a known planted offset." sigma_mm=0 and patch_fraction=0 give a
@@ -99,8 +122,11 @@ def test_compute_deviation_sign_matches_a_known_planted_offset():
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
     )
     transform = _ground_truth_transform(sample)
-    vertex_index = _face_center_vertex_index(cad_vertices, sample)
-    outward_direction = _outward_offset_direction(cad_vertices, sample, vertex_index)
+    # I-14 deliberately leaves surface outside the xy footprint unmeasured, so keep this
+    # sign-convention regression on the top face: +/- z changes signed distance without moving
+    # the probe outside the registered xy footprint.
+    vertex_index = _top_face_center_vertex_index(cad_vertices, sample)
+    outward_direction = _top_face_outward_direction(sample)
 
     for planted_offset_mm in (0.6, -0.6):
         model_vertices = sample.vertices_mm.copy()
@@ -124,34 +150,33 @@ def test_compute_deviation_sign_matches_a_known_planted_offset():
         assert np.abs(deviation_mm[untouched]).max() < 1e-3
 
 
-def test_compute_deviation_does_not_hide_a_real_defect_at_g05s_largest_size():
-    # Review on #309: a spatial footprint margin must not sit below the largest defect the buyer
-    # cares about (G-05's bumps go to 8 mm) the same way a plain distance cutoff can't. Pushing
-    # the face-centre vertex outward along the *model frame's own x axis* (not its CAD-surface
-    # normal) is deliberate: a push along the surface normal can land anywhere relative to the
-    # footprint's axis-aligned bounding box depending on the random yaw, so it doesn't reliably
-    # stress the margin at all (confirmed while writing this test: an 8 mm surface-normal push
-    # here still passed even with the margin shrunk to 1 mm, because that particular push
-    # happened to be diagonal to the box). A pure +x push from the box's own x-max edge is a
-    # deterministic, worst-case probe of the margin in the direction that actually matters.
+def _cad_point_to_model(
+    sample: synthetic.SyntheticSample, point_cad_mm: np.ndarray
+) -> np.ndarray:
+    transform = _ground_truth_transform(sample)
+    point_h = np.append(np.asarray(point_cad_mm, dtype=float), 1.0)
+    return (transform @ point_h)[:3]
+
+
+@pytest.mark.parametrize("height_mm", [4.0, 8.0])
+def test_compute_deviation_keeps_top_face_defects_inside_the_footprint_measured(
+    height_mm: float,
+):
+    # I-14: narrowing the xy footprint must not hide the defects G-05 actually plants. Its bump
+    # ladder grows upward from the top face, inside the outer footprint; the largest is 8 mm.
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
     )
     transform = _ground_truth_transform(sample)
-    rotation = np.asarray(sample.sidecar["transform"]["rotation"], dtype=float)
-    translation = np.asarray(sample.sidecar["transform"]["translation_mm"], dtype=float)
-    posed_cad_vertices = cad_vertices @ rotation.T + translation
-    x_max_index = int(np.argmax(posed_cad_vertices[:, 0]))
-    probe_xy = posed_cad_vertices[x_max_index, :2] + np.array([8.0, 0.0])
-    probe = np.array(
-        [probe_xy[0], probe_xy[1], -15.0]
-    )  # 15 mm above the board, well clear.
 
+    # The cube top is z=30 mm in CAD coordinates. Probe its centre, raised by the planted amount,
+    # so the xy position remains safely inside the registered footprint.
+    probe = _cad_point_to_model(sample, np.array([15.0, 15.0, 30.0 + height_mm]))
     model_vertices = np.vstack([sample.vertices_mm, probe])
     model_labels = np.concatenate([sample.labels, [sample.labels[0]]])
 
-    _deviation_mm, deviation_measured = compute_deviation(
+    deviation_mm, deviation_measured = compute_deviation(
         (model_vertices, sample.faces, model_labels),
         (cad_vertices, cad_faces),
         transform,
@@ -160,6 +185,99 @@ def test_compute_deviation_does_not_hide_a_real_defect_at_g05s_largest_size():
 
     probe_index = len(sample.vertices_mm)
     assert deviation_measured[probe_index] == 1.0
+    assert deviation_mm[probe_index] == pytest.approx(height_mm, abs=1e-3)
+
+
+def test_compute_deviation_excludes_outward_flare_beyond_the_cad_outer_outline():
+    # I-14 / #407: the false base flare is multi-millimetre geometry beyond the CAD outline.
+    # Put the probe 2 mm beyond the CAD's +x outline in CAD-local coordinates, then transform it
+    # with I-01's nonzero-yaw pose. This specifically prevents a rotated board-frame AABB from
+    # re-admitting outside-outline geometry at its enlarged corners.
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    flare_probe = _cad_point_to_model(sample, np.array([32.0, 15.0, 5.4]))
+
+    model_vertices = np.vstack([sample.vertices_mm, flare_probe])
+    model_labels = np.concatenate([sample.labels, [sample.labels[0]]])
+    deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, model_labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+
+    probe_index = len(sample.vertices_mm)
+    assert deviation_measured[probe_index] == 0.0
+    assert deviation_mm[probe_index] == 0.0
+
+
+def test_compute_deviation_pins_the_cad_outer_outline_boundary():
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    cad_max_x = float(cad_vertices[:, 0].max())
+    cad_mid_y = float((cad_vertices[:, 1].min() + cad_vertices[:, 1].max()) / 2.0)
+    at_boundary = _cad_point_to_model(
+        sample, np.array([cad_max_x + DEFAULT_FOOTPRINT_MARGIN_MM, cad_mid_y, 15.0])
+    )
+    beyond_boundary = _cad_point_to_model(
+        sample,
+        np.array([cad_max_x + DEFAULT_FOOTPRINT_MARGIN_MM + 1e-4, cad_mid_y, 15.0]),
+    )
+
+    model_vertices = np.vstack([sample.vertices_mm, at_boundary, beyond_boundary])
+    model_labels = np.concatenate([sample.labels, [sample.labels[0], sample.labels[0]]])
+    _deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, model_labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+
+    at_index = len(sample.vertices_mm)
+    beyond_index = at_index + 1
+    assert deviation_measured[at_index] == 1.0
+    assert deviation_measured[beyond_index] == 0.0
+
+
+@pytest.mark.parametrize("cad_path", REFERENCE_CADS, ids=lambda path: path.stem)
+def test_outer_outline_builder_handles_every_reference_cad(cad_path: Path):
+    # Review on #416 found that the first silhouette implementation raised on pockets, bumps and
+    # the open-top tray because feature edges at different z levels projected to the same xy
+    # segment with opposite winding. Every shipped reference CAD must produce a usable outer
+    # outline instead of turning the whole order into Rescan.
+    cad_vertices, cad_faces, _units = cad.load_mesh(cad_path)
+
+    loops = _cad_outer_outline_loops(cad_vertices, cad_faces)
+
+    assert loops
+    assert all(len(loop) >= 3 for loop in loops)
+
+
+def test_g05_outer_outline_excludes_notch_but_keeps_through_hole_measurable():
+    # Tabeen's I-14 review: a CAD-local bounding box still admits the 16 x 11 corner notch.
+    # The eligibility outline must follow that concavity, but it must *not* turn the 12 x 12
+    # through-hole into "unmeasured" geometry because X-03 needs the hole shift to stay measurable.
+    cad_vertices, cad_faces, _units = cad.load_mesh(G05_CONTROL)
+    loops = _cad_outer_outline_loops(cad_vertices, cad_faces)
+    probes_xy = np.array(
+        [
+            [42.0, 26.0],  # inside the designed corner notch: outside the outer outline
+            [12.0, 16.0],  # centre of the through-hole: keep measurable
+            [40.0, 10.0],  # ordinary material inside the outline
+            [51.0, 16.0],  # beyond the plate's +x edge
+        ],
+        dtype=float,
+    )
+
+    within = _within_cad_outer_outline(probes_xy, loops, DEFAULT_FOOTPRINT_MARGIN_MM)
+
+    assert within.tolist() == [False, True, True, False]
 
 
 def test_compute_deviation_excludes_board_skin_and_stray_geometry_outside_the_footprint():

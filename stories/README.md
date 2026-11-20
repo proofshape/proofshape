@@ -477,7 +477,7 @@ freeze, as R-41 and R-42 did. `stories/P/P-35.md` has the capacity note.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [I-13](I/I-13.md) | Orientation ambiguity weighs fitness, not inlier RMSE alone (#407) | 3 h | I-05 | Claimed | @dalwalyk |
+| [I-13](I/I-13.md) | Orientation ambiguity uses coverage, not inlier RMSE alone (#407) | 3 h | I-05 | Done | @dalwalyk |
 | [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Claimed | @mbj1994 |
 
 ---
@@ -657,6 +657,7 @@ Full detail in each story file.
 | [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Done | @TabeenRaoof |
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-37](P/P-37.md) | Write up the final report, the final presentation, and the two Dec 2 options | — | nothing | Claimed | @TabeenRaoof |
 
 ---
 
