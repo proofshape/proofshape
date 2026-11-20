@@ -173,9 +173,9 @@ def test_planted_deviation_beyond_tolerance_fails():
     vertex_index = _top_face_center_vertex_index(cad_vertices, sample)
     outward = _outward_offset_direction(cad_vertices, sample, vertex_index)
     model_vertices = sample.vertices_mm.copy()
-    # Keep this D-078 regression inside I-14's footprint as an inward wall defect; an outward
-    # 2 mm flare is now intentionally unmeasured and would Rescan for the wrong reason.
-    model_vertices[vertex_index] = model_vertices[vertex_index] - 2.0 * outward
+    # This is a top-face defect: moving it outward changes z but stays inside the CAD's xy
+    # footprint, so I-14 must not hide it. It remains in D-073's out-of-plane pool.
+    model_vertices[vertex_index] = model_vertices[vertex_index] + 2.0 * outward
 
     deviation_mm, deviation_measured = compute_deviation(
         (model_vertices, sample.faces, sample.labels),
@@ -258,7 +258,9 @@ def test_in_plane_deviation_within_the_measured_floor_margin_rescans_not_passes(
     vertex_index = _face_center_vertex_index(cad_vertices, sample)
     outward = _outward_offset_direction(cad_vertices, sample, vertex_index)
     model_vertices = sample.vertices_mm.copy()
-    model_vertices[vertex_index] = model_vertices[vertex_index] + 2.0 * outward
+    # Keep this D-078 regression inside I-14's footprint as an inward wall defect; an outward
+    # 2 mm wall flare is now intentionally unmeasured and would Rescan for the wrong reason.
+    model_vertices[vertex_index] = model_vertices[vertex_index] - 2.0 * outward
 
     deviation_mm, deviation_measured = compute_deviation(
         (model_vertices, sample.faces, sample.labels),
