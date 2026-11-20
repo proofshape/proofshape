@@ -18,11 +18,11 @@ export interface FramePixels {
 
 export type FrameGateResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
 
-// C-25 is measuring this against real gate-input pixels before changing it. The earlier
-// JPEG-decoded R-36 measurements are useful context but cannot by themselves calibrate the live
-// pre-JPEG gate, because JPEG encoding changes high-frequency content and therefore this metric.
-// Until the paired gate-input/JPEG evidence is recorded, keep C-06's original starting value.
-export const DEFAULT_BLUR_VARIANCE_THRESHOLD = 100;
+// C-25 calibrated this against the R-36 phone sessions plus a paired real-iPhone
+// pre-JPEG/stored-JPEG run. On the paired run, JPEG raised this metric by only 0.88%–2.11% with
+// unchanged ordering; correcting the R-36 stored values keeps the two blur candidates (~156–167)
+// well below the lowest sharp frame (~241–244). 200 sits inside that measured separating gap.
+export const DEFAULT_BLUR_VARIANCE_THRESHOLD = 200;
 export const DEFAULT_EXPOSURE_CLIP_FRACTION = 0.05;
 export const DEFAULT_DUPLICATE_GYRO_DELTA_DEG = 2;
 export const DEFAULT_DUPLICATE_IMAGE_DIFF_THRESHOLD = 5;
