@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
 import { measureBlurVariance } from "./frame_gate.js";
 import {
@@ -2100,7 +2100,7 @@ describe("mountAppShell", () => {
     }
   }
 
-  function frameUploads(fetchSpy: ReturnType<typeof vi.spyOn>): number {
+  function frameUploads(fetchSpy: MockInstance<typeof fetch>): number {
     return fetchSpy.mock.calls.filter(([url]) => typeof url === "string" && url.includes("/frames"))
       .length;
   }
@@ -2161,8 +2161,10 @@ describe("mountAppShell", () => {
     await vi.waitFor(() => {
       if (frameUploads(fetchSpy) === 0) throw new Error("first auto upload not started");
     });
-    // Well past both the hold and the retry gap, on a new target-sized position.
-    holdAt(clock, 45, 1700, 8000);
+    // Well past both the hold and the retry gap, 5 degrees over: still on target, and far enough
+    // from the hanging frame (2 degree duplicate threshold) that the duplicate gate would pass it.
+    // Only the shutter-enabled guard (no upload in flight) can stop this second capture.
+    holdAt(clock, 50, 1700, 8000);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(frameUploads(fetchSpy)).toBe(1);
   });
