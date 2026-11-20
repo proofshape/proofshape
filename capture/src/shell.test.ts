@@ -2069,4 +2069,11 @@ describe("mountAppShell", () => {
     expect(mounted.captureButton.disabled).toBe(true);
     expect(document.querySelector("#shell-viewfinder #shell-gyro-overlay")).not.toBeNull();
   });
+
+  it("C-26: Finish session is the large primary button and keeps its id and name", () => {
+    const mounted = mount();
+    expect(mounted.finishButton.classList.contains("primary-action")).toBe(true);
+    expect(mounted.finishButton.textContent.trim()).toBe("Finish session");
+    expect(mounted.finishButton.disabled).toBe(true);
+  });
 });
