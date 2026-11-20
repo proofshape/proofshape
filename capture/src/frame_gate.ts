@@ -18,10 +18,11 @@ export interface FramePixels {
 
 export type FrameGateResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
 
-// All four thresholds below are starting assumptions, not measured/calibrated values -- same
-// honesty this project already applies to recon/uncertainty.py's DEFAULT_SIGMA_DOWNGRADE_THRESHOLD_MM.
-// Tuning them against real capture data is follow-up work this story was never going to do.
-export const DEFAULT_BLUR_VARIANCE_THRESHOLD = 100;
+// C-25 calibrated this against the R-36 phone sessions plus a paired real-iPhone
+// pre-JPEG/stored-JPEG run. On the paired run, JPEG raised this metric by only 0.88%–2.11% with
+// unchanged ordering; correcting the R-36 stored values keeps the two blur candidates (~156–167)
+// well below the lowest sharp frame (~241–244). 200 sits inside that measured separating gap.
+export const DEFAULT_BLUR_VARIANCE_THRESHOLD = 200;
 export const DEFAULT_EXPOSURE_CLIP_FRACTION = 0.05;
 export const DEFAULT_DUPLICATE_GYRO_DELTA_DEG = 2;
 export const DEFAULT_DUPLICATE_IMAGE_DIFF_THRESHOLD = 5;
@@ -64,12 +65,18 @@ function laplacianVariance(gray: Float64Array, width: number, height: number): n
   return variance;
 }
 
+// Exported so C-25 can measure the exact quantity the live gate uses on real, out-of-git
+// capture frames instead of reimplementing a near-copy in an ad-hoc analysis script.
+export function measureBlurVariance(frame: FramePixels): number {
+  const gray = toGrayscale(frame);
+  return laplacianVariance(gray, frame.width, frame.height);
+}
+
 export function checkBlur(
   frame: FramePixels,
   threshold = DEFAULT_BLUR_VARIANCE_THRESHOLD,
 ): FrameGateResult {
-  const gray = toGrayscale(frame);
-  const variance = laplacianVariance(gray, frame.width, frame.height);
+  const variance = measureBlurVariance(frame);
   if (variance < threshold) {
     return {
       ok: false,
