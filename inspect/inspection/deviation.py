@@ -159,7 +159,9 @@ def _cad_outer_outline_loops(
             if point is None:
                 raise ValueError("CAD top-view silhouette contains an open chain.")
         if point != start or len(loop) < 3:
-            raise ValueError("CAD top-view silhouette does not close into simple loops.")
+            raise ValueError(
+                "CAD top-view silhouette does not close into simple loops."
+            )
         loops.append(np.asarray(loop, dtype=np.float64))
 
     def signed_area(loop: np.ndarray) -> float:
