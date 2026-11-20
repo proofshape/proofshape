@@ -99,18 +99,16 @@ the signed point-to-mesh distance from each Observed model vertex to the CAD (D-
   (fusion's real D-063 cut for that board), but on a real served mesh this excludes essentially
   nothing — fusion's own cut already removed that surface before this function ever sees it, so
   its real job is defending against a degenerate input, not filtering real board skin. The
-  footprint gate now uses the registered CAD's own **CAD-local xy bounding box** plus the **0.1 mm
-  measured allowance from I-14/D-086**, replacing I-06's unmeasured 10 mm ring. Model vertices
-  are transformed back into CAD coordinates for this gate, so part yaw cannot inflate the
-  footprint with corner regions from a board-frame axis-aligned box. G-05's calipered wall
-  dimensions differ from nominal by at most 0.09 mm in their recorded means, on a 0.1 mm-resolution
-  instrument; the allowance rounds that measured print-size departure outward. Multi-millimetre
-  Observed surface beyond the registered footprint is therefore left unmeasured
-  (`_DEVIATION_MEASURED = 0`) and stays grey in the heatmap. It is **not checked and not Pass
-  evidence** (D-005/D-062). This intentionally gives up local deviation claims for flash or an
-  oversized outline beyond the CAD footprint; R-16/R-42's independent size/scale checks remain
-  responsible for those gross mismatches. G-05's 2/4/8 mm planted bumps grow upward inside the
-  footprint and remain measured.
+  footprint gate now uses the registered CAD's **actual outer top-view outline in CAD-local
+  coordinates** (I-14/D-086), not a bounding box. Concave outer features such as G-05's corner
+  notch are excluded. Interior through-holes are deliberately left inside the eligibility region
+  so hole defects remain measurable. The added margin is 0 mm: the real-session review found that
+  the attempted 0.1 mm margin came from print accuracy rather than reconstruction noise, biased
+  wall readings inward, and that widening it toward the measured wall scatter simply admits the
+  flare again. Surface outside the outer outline is served with
+  `_DEVIATION_MEASURED = 0`, stays grey, and is explicitly **not checked / not Pass evidence**.
+  This means a local outward wall oversize beyond the outline cannot itself Fail today; there is
+  no current substitute local check, and D-086 records that limitation for team approval.
 - **Sign convention.** Positive means the part has extra material there, negative means material
   is missing. This is Open3D's own `RaycastingScene.compute_signed_distance` convention
   (negative inside a closed mesh, positive outside) applied directly once the CAD is posed into
