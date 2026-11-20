@@ -165,20 +165,15 @@ def test_compute_deviation_keeps_top_face_defects_inside_the_footprint_measured(
 
 def test_compute_deviation_excludes_outward_flare_beyond_the_measured_footprint_margin():
     # I-14 / #407: the false base flare is multi-millimetre geometry beyond the CAD outline.
-    # It is still Observed and above the board cut, so the footprint gate alone must grey it out.
+    # Put the probe 2 mm beyond the CAD's +x outline in CAD-local coordinates, then transform it
+    # with I-01's nonzero-yaw pose. This specifically prevents a rotated board-frame AABB from
+    # re-admitting outside-outline geometry at its enlarged corners.
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
     )
     transform = _ground_truth_transform(sample)
-    posed_cad_vertices = np.asarray(
-        [_cad_point_to_model(sample, vertex) for vertex in cad_vertices]
-    )
-    x_max = float(posed_cad_vertices[:, 0].max())
-    y_mid = float(
-        (posed_cad_vertices[:, 1].min() + posed_cad_vertices[:, 1].max()) / 2.0
-    )
-    flare_probe = np.array([x_max + 2.0, y_mid, -5.4])
+    flare_probe = _cad_point_to_model(sample, np.array([32.0, 15.0, 5.4]))
 
     model_vertices = np.vstack([sample.vertices_mm, flare_probe])
     model_labels = np.concatenate([sample.labels, [sample.labels[0]]])
@@ -200,16 +195,14 @@ def test_compute_deviation_pins_the_measured_footprint_margin_boundary():
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
     )
     transform = _ground_truth_transform(sample)
-    posed_cad_vertices = np.asarray(
-        [_cad_point_to_model(sample, vertex) for vertex in cad_vertices]
+    cad_max_x = float(cad_vertices[:, 0].max())
+    cad_mid_y = float((cad_vertices[:, 1].min() + cad_vertices[:, 1].max()) / 2.0)
+    at_boundary = _cad_point_to_model(
+        sample, np.array([cad_max_x + DEFAULT_FOOTPRINT_MARGIN_MM, cad_mid_y, 15.0])
     )
-    x_max = float(posed_cad_vertices[:, 0].max())
-    y_mid = float(
-        (posed_cad_vertices[:, 1].min() + posed_cad_vertices[:, 1].max()) / 2.0
-    )
-    at_boundary = np.array([x_max + DEFAULT_FOOTPRINT_MARGIN_MM, y_mid, -15.0])
-    beyond_boundary = np.array(
-        [x_max + DEFAULT_FOOTPRINT_MARGIN_MM + 1e-4, y_mid, -15.0]
+    beyond_boundary = _cad_point_to_model(
+        sample,
+        np.array([cad_max_x + DEFAULT_FOOTPRINT_MARGIN_MM + 1e-4, cad_mid_y, 15.0]),
     )
 
     model_vertices = np.vstack([sample.vertices_mm, at_boundary, beyond_boundary])
