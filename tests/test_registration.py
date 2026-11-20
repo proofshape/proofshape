@@ -965,6 +965,9 @@ def test_check_ambiguity_flags_four_fold_s05(patch_fraction: float):
         >= 80.0
     )
     assert result.coverage_ratio is not None
+    # D-061's original 20% boundary still checks the reported inlier RMSE ratio.
+    assert result.rmse_ratio is not None
+    assert result.rmse_ratio <= 1.20
     assert result.coverage_ratio <= 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
 
 
@@ -983,6 +986,9 @@ def test_check_ambiguity_clears_scalene_s04(patch_fraction: float):
     assert not result.orientation_ambiguous
     assert result.reason_codes == ()
     assert result.coverage_ratio is not None
+    # D-061's original 20% boundary still checks the reported inlier RMSE ratio.
+    assert result.rmse_ratio is not None
+    assert result.rmse_ratio > 1.20
     assert result.coverage_ratio > 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
     assert _symmetric_vertex_rmse(vertices, result.best.transformation, expected) <= 0.3
 
