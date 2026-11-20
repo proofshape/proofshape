@@ -655,7 +655,7 @@ Full detail in each story file.
 | [P-32](P/P-32.md) | The WIP cap counts active stories only (D-064) | — | nothing | Done | @TabeenRaoof |
 | [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Done | @TabeenRaoof |
 | [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Done | @TabeenRaoof |
-| [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Claimed | @TabeenRaoof |
+| [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Ready | _unclaimed_ |
 
 ---
