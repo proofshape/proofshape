@@ -70,9 +70,11 @@ DEFAULT_SCALE_RESIDUAL_SANITY_BOUND = 0.25
 # not a tuned optimum.
 DEFAULT_TUKEY_K_FACTOR = 1.0
 DEFAULT_REFINE_ICP_ITERATIONS = 100
-# I-05. The session is ambiguous when the runner-up's inlier RMSE is within this fraction of the
-# best's (D-061, superseding D-008's 10%). The parameter is the decision's, not a tuned value.
-DEFAULT_AMBIGUITY_THRESHOLD = 0.20
+# I-13 uses the same dense surface sample count as the scale diagnostic for coverage scoring.
+DEFAULT_AMBIGUITY_SAMPLE_COUNT = 20_000
+# I-13's measured midpoint separates the D-061 missing-hole maximum (1.018260) from the 3 mm
+# shifted-hole minimum (1.026777) on the 12-seed synthetic table.
+DEFAULT_AMBIGUITY_THRESHOLD = 0.0225
 # The contract's reason code for an ambiguous orientation
 # (contracts/examples/getVerdict.response-200-rescan-unobserved.json). I-07 puts it in the verdict.
 REASON_ORIENTATION_AMBIGUOUS = "registration_orientation_ambiguous"
@@ -96,15 +98,17 @@ class CandidatePose:
 class AmbiguityCheck:
     """I-05's result: every refined pose, ranked, and whether the orientation is ambiguous.
 
-    `best` is the pose I-06/I-07 measure deviations against. `rmse_ratio` is the runner-up's
-    inlier RMSE over the best's (None without a runner-up). `failed` lists each candidate that
-    couldn't be refined, as (source, reason), so nothing drops out silently.
+    `best` is the pose I-06/I-07 measure deviations against. `rmse_ratio` and `coverage_ratio`
+    are the runner-up's inlier RMSE and coverage-aware residual over the best's (None without a
+    runner-up). `failed` lists each candidate that couldn't be refined, as (source, reason), so
+    nothing drops out silently.
     """
 
     orientation_ambiguous: bool
     best: CandidatePose
     runner_up: CandidatePose | None
     rmse_ratio: float | None
+    coverage_ratio: float | None
     threshold: float
     refined: tuple[CandidatePose, ...]
     failed: tuple[tuple[str, str], ...]
@@ -448,6 +452,40 @@ def _deduplicate_candidates(
         ):
             unique.append(candidate)
     return unique
+
+
+def _coverage_residuals(
+    candidates: Sequence[CandidatePose],
+    cad_surface: o3d.geometry.PointCloud,
+    observed_model_surface: o3d.geometry.PointCloud,
+    *,
+    max_correspondence_distance_mm: float,
+) -> list[float]:
+    """Score candidates on shared CAD samples visible from at least one Observed-model pose."""
+    distances_by_candidate: list[np.ndarray] = []
+    visible_cad_samples = np.zeros(len(cad_surface.points), dtype=bool)
+    for candidate in candidates:
+        aligned_cad_surface = o3d.geometry.PointCloud(cad_surface)
+        aligned_cad_surface.transform(candidate.transformation)
+        distances = np.asarray(
+            aligned_cad_surface.compute_point_cloud_distance(observed_model_surface),
+            dtype=np.float64,
+        )
+        distances_by_candidate.append(distances)
+        visible_cad_samples |= distances <= max_correspondence_distance_mm
+
+    if not np.any(visible_cad_samples):
+        raise ValueError(
+            "check_ambiguity found no CAD surface samples within the Observed-model coverage radius."
+        )
+
+    residuals: list[float] = []
+    for distances in distances_by_candidate:
+        capped_distances = np.minimum(
+            distances[visible_cad_samples], max_correspondence_distance_mm
+        )
+        residuals.append(float(np.sqrt(np.mean(capped_distances**2))))
+    return residuals
 
 
 def _run_ransac(
@@ -975,11 +1013,10 @@ def check_ambiguity(
     symmetry are kept separate: for the printed part they are different poses, and the
     difference is where the defect would be.
 
-    The refined poses are ranked as I-03 ranks candidates, fitness first, then inlier RMSE. The
-    session is ambiguous when the runner-up's inlier RMSE is within `ambiguity_threshold` of the
-    best's, relative to the best (D-061: 20%, superseding D-008's 10%). The comparison is
-    multiplied out, so a noise-free best RMSE of zero still compares correctly. A single
-    surviving pose is not ambiguous.
+    The refined poses retain I-03's fitness/RMSE ranking. Ambiguity is decided using capped
+    CAD-to-Observed residuals on the union of CAD samples visible under any candidate pose. This
+    coverage-aware ratio uses `ambiguity_threshold` (I-13/D-061), rather than inlier-only RMSE;
+    `rmse_ratio` remains diagnostic. A single surviving pose is not ambiguous.
 
     A candidate that can't be refined (I-03's `ransac:0` is often an identity pose at fitness 0)
     is recorded in `failed` with its reason; if none can be refined, this raises. A model without
@@ -992,8 +1029,8 @@ def check_ambiguity(
     if not (math.isfinite(ambiguity_threshold) and ambiguity_threshold >= 0):
         raise ValueError("ambiguity_threshold must be finite and non-negative.")
 
-    _model_vertices, model_faces, model_labels = _mesh_arrays(model, name="model")
-    cad_vertices, _cad_faces, _cad_labels = _mesh_arrays(cad, name="cad")
+    model_vertices, model_faces, model_labels = _mesh_arrays(model, name="model")
+    cad_vertices, cad_faces, _cad_labels = _mesh_arrays(cad, name="cad")
     observed_model_faces = _observed_faces(model_faces, model_labels)
     if observed_model_faces is None:
         raise ValueError(
@@ -1032,8 +1069,38 @@ def check_ambiguity(
 
     ambiguous = False
     rmse_ratio: float | None = None
+    coverage_ratio: float | None = None
     if runner_up is not None:
-        ambiguous = runner_up.inlier_rmse <= best.inlier_rmse * (
+        observed_model_surface = _sample_surface(
+            model_vertices,
+            observed_model_faces,
+            sample_count=DEFAULT_AMBIGUITY_SAMPLE_COUNT,
+            seed=seed,
+        )
+        cad_surface = _sample_surface(
+            cad_vertices,
+            cad_faces,
+            sample_count=DEFAULT_AMBIGUITY_SAMPLE_COUNT,
+            seed=seed + 1,
+        )
+        correspondence_distance = (
+            _extent_mm(cad_vertices)
+            * DEFAULT_VOXEL_FRACTION
+            * DEFAULT_CORRESPONDENCE_FACTOR
+        )
+        coverage_residuals = _coverage_residuals(
+            unique,
+            cad_surface,
+            observed_model_surface,
+            max_correspondence_distance_mm=correspondence_distance,
+        )
+        best_coverage_residual = coverage_residuals[0]
+        runner_up_coverage_residual = coverage_residuals[1]
+        if best_coverage_residual > 0.0:
+            coverage_ratio = runner_up_coverage_residual / best_coverage_residual
+        else:
+            coverage_ratio = 1.0 if runner_up_coverage_residual == 0.0 else math.inf
+        ambiguous = runner_up_coverage_residual <= best_coverage_residual * (
             1.0 + ambiguity_threshold
         )
         if best.inlier_rmse > 0.0:
@@ -1046,6 +1113,7 @@ def check_ambiguity(
         best=best,
         runner_up=runner_up,
         rmse_ratio=rmse_ratio,
+        coverage_ratio=coverage_ratio,
         threshold=float(ambiguity_threshold),
         refined=tuple(unique),
         failed=tuple(failed),
