@@ -78,8 +78,8 @@ The course requires a progress presentation every two weeks: what we did, and wh
 | R3 | Fri Oct 16 | **S3 boundary = M3** | Guidance arrow driving capture; latency table; the live-vs-batch decision. |
 | R4 | Fri Oct 30 | **S4 boundary = M4 · I3** | Measured accuracy and σ_floor per reference tier. Registration on printed parts. *(2026-10-19: the board reference comes first, G-04; the sheet and card references are G-10. Neither exists yet, so R4 reports the plan, not a number.)* |
 | R5 | Fri Nov 13 | **S5 boundary = M5** | Live: a planted defect comes back as Fail with the region highlighted. |
-| R6 | Fri Nov 27 | inside S6 | Feature-complete walkthrough, including the pre-check and the Unverifiable path. |
-| R7 | Fri Dec 11 | inside S8 | Test results, the recorded demo, and what we would do next. |
+| R6 | Fri Nov 27 | inside S6 | **Not held:** the course has no presentation that day (@TabeenRaoof, 2026-11-20; P-36). Its planned content, a feature-complete walkthrough including the pre-check and the Unverifiable path, moves to the final presentation. |
+| R7 | Fri Dec 11 | inside S8 | The final presentation, most likely this day (unconfirmed, O-002). Test results, the recorded demo, and what we would do next. |
 
 **Why this cadence works.** Re-anchoring to the real class calendar moves reviews onto or just after recent sprint gates instead of preserving the obsolete 11/25 September assumption. The content rule is unchanged: each review shows the most recently completed, tested work rather than forcing a demo to match an outdated planning date.
 
