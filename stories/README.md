@@ -461,6 +461,27 @@ Full detail in each story file.
 
 ---
 
+## X-03's prerequisites from the dry run (P-35)
+
+On 2026-11-19, X-03's planted-shift scenario was dry-run on `main` (`aeadbc4`) with G-09's real
+photographs (#407). The G-05 control and the 4 mm hole shift both came back Rescan, on
+orientation ambiguity alone. With ambiguity set aside, both Fail, the control included, from
+base flare outside the CAD's outline. Neither cause had a story, so X-03 now depends on both.
+They fix shipped behaviour rather than add features, so they can land before the Dec 3–4 code
+freeze, as R-41 and R-42 did. `stories/P/P-35.md` has the capacity note.
+
+- **I-13:** I-05 ranks poses by fitness but decides ambiguity on inlier RMSE alone (D-061).
+  Its fix amends D-061.
+- **I-14:** I-06's declared 10 mm footprint margin lets the base flare be measured as part.
+  Its fix is a new decision. #292 (`s-02`'s board skin) stays open: it's a different place.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [I-13](I/I-13.md) | Orientation ambiguity weighs fitness, not inlier RMSE alone (#407) | 3 h | I-05 | Ready | _unclaimed_ |
+| [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Ready | _unclaimed_ |
+
+---
+
 ## Capture app: heatmap, report, buyer side and hosting
 
 The rest of the capture app, written up on 2026-11-09 (P-30). That is four days before M5's
@@ -573,7 +594,7 @@ Full detail in each story file.
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Done | @dalwalyk |
 | [R-41](R/R-41.md) | Scale agreement compares the CAD ratio the right way round (#181, D-039) | 2 h | nothing | Done | @TabeenRaoof |
 | [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Ready | _unclaimed_ |
-| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42 | Blocked | _unclaimed_ |
+| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42, I-13, I-14 | Blocked | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
@@ -635,6 +656,7 @@ Full detail in each story file.
 | [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Done | @TabeenRaoof |
 | [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Done | @TabeenRaoof |
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Claimed | @TabeenRaoof |
+| [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Ready | _unclaimed_ |
 
 ---
 
