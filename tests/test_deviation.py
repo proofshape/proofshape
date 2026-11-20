@@ -207,19 +207,13 @@ def test_compute_deviation_pins_the_measured_footprint_margin_boundary():
     y_mid = float(
         (posed_cad_vertices[:, 1].min() + posed_cad_vertices[:, 1].max()) / 2.0
     )
-    at_boundary = np.array(
-        [x_max + DEFAULT_FOOTPRINT_MARGIN_MM, y_mid, -15.0]
-    )
+    at_boundary = np.array([x_max + DEFAULT_FOOTPRINT_MARGIN_MM, y_mid, -15.0])
     beyond_boundary = np.array(
         [x_max + DEFAULT_FOOTPRINT_MARGIN_MM + 1e-4, y_mid, -15.0]
     )
 
-    model_vertices = np.vstack(
-        [sample.vertices_mm, at_boundary, beyond_boundary]
-    )
-    model_labels = np.concatenate(
-        [sample.labels, [sample.labels[0], sample.labels[0]]]
-    )
+    model_vertices = np.vstack([sample.vertices_mm, at_boundary, beyond_boundary])
+    model_labels = np.concatenate([sample.labels, [sample.labels[0], sample.labels[0]]])
     _deviation_mm, deviation_measured = compute_deviation(
         (model_vertices, sample.faces, model_labels),
         (cad_vertices, cad_faces),
