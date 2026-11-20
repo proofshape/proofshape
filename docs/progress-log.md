@@ -2908,10 +2908,12 @@ and hash. Its `.sha256` is regenerated. G-09 records the correction, and its hou
 - **Where the shift should show:** the strip where the part has material and the CAD a hole
   reads +1.93 mm, against the control's +1.10. The strip where the part has a hole reads −0.66,
   against −0.50. That's 12–21 vertices each.
-**Concluded:** the capture is fixed, and I-13 and I-14 now check cleanly on it. But a correctly
-captured 4 mm hole shift isn't separated from its control at either spec. That confirms #407's
-cause-1 arithmetic on real data: the shift moves a wall by at most 4 mm, below what an in-plane
-deviation can resolve against D-078's 5.278 mm floor. X-03's first criterion ("the planted 4 mm
-hole shift produces Fail") can't be met with this part as things stand.
+**Concluded:** the capture is fixed, and I-13 and I-14 now check cleanly on it. On this pair of
+captures, with #407's two specs (a 3.7 mm critical and a 0.5 mm non-critical hole), the 4 mm hole
+shift got the same verdicts as its control. That fits #407's cause-1 arithmetic: the shift moves
+a wall by at most 4 mm, and the verdict compares in-plane deviations against D-078's 5.278 mm
+floor. It's one measured pair at two specs, not a resolution limit for every 4 mm in-plane
+defect. On this evidence, X-03's first criterion ("the planted 4 mm hole shift produces Fail")
+isn't met with this part at these specs.
 **Next:** raise X-03's planted-defect choice with the team on #407. Post the `g05_02` rerun on
 #414 and #416.
