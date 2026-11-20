@@ -482,6 +482,32 @@ freeze, as R-41 and R-42 did. `stories/P/P-35.md` has the capacity note.
 
 ---
 
+## Final deliverables and the two Dec 2 options (P-37)
+
+Written up on 2026-11-20, from a check of the sprint plan's S6–S8 work and the open issues
+against the stories. The final report and the final presentation are deliverables the sprint
+plan schedules for S7 and S8, and neither had a story. P-35 left both out on purpose, as later
+work. `stories/P/P-37.md` has the capacity note.
+
+The other two are **options for the team, not decisions.** Each becomes `Cut` if the team takes
+the other path in its issue:
+
+- **G-12** is #407's option 1, a printed top-face bump. The re-shot 4 mm hole shift reads like
+  its control (#421), so X-03 can't show it as `Fail`. G-12 amends D-069. Decide it on #407 now,
+  because it needs the lab before X-03 can run.
+- **A-15** is #406's option 1, serving the capture agent. The alternative is a decision recording
+  it as cut for v1, as D-082 did for the narrative. It's a new route after M5's freeze and a
+  D-031 round, so it merges only at the Dec 2 boundary, by named exception.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
+| [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
+| [G-12](G/G-12.md) | Print, caliper and photograph a top-face bump for X-03's planted defect | 3 h | G-05, G-09 | Ready | _unclaimed_ |
+| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Ready | _unclaimed_ |
+
+---
+
 ## Capture app: heatmap, report, buyer side and hosting
 
 The rest of the capture app, written up on 2026-11-09 (P-30). That is four days before M5's
