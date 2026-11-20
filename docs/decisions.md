@@ -1260,15 +1260,21 @@ Re-checked after R-26 merged: D-059 and D-060 are now on `main`, and D-061 is st
 *Agreement:* proposed in I-05's PR, which asks both @mbj1994 and @dalwalyk to agree and merges
 only with both approving.
 
-*Proposed I-13 amendment (2026-11-19; pending both other members' approval):* replace the 20% inlier-RMSE comparison with a coverage-aware residual ratio: capped
-nearest distances from CAD samples to the Observed model surface, using samples within the
-refinement radius under any candidate pose. On I-01 output at σ = 0.3 mm with the 20% Unobserved patch, the
-12-seed D-061 table separates at 1.0225: the largest true-ambiguity ratio is 1.018260 and the
-smallest disambiguated ratio is 1.026777. The G-05 missing-notch case is 0.999362, so it remains
-ambiguous even though fitness differs by 0.003125. Fresh reconstructions from the G-05 frames used in #407 and
-golden s-04/s-05 gave coverage ratios of 1.217135, 1.046073, 1.049089, and 0.997502 respectively,
-so only s-05 was flagged at 1.0225. The I-13 story records the setup, fitness and inlier RMSE
-ratios. Both reviewers must approve the amended rule.
+*Proposed I-13 amendment (2026-11-19, pending team agreement):* use the ratio of capped
+nearest distances from CAD samples to the Observed model surface. The comparison uses the CAD
+samples within the refinement radius under any candidate pose. The first 12 seeds per class at
+σ = 0.3 mm with a 20% Unobserved patch suggested a cutoff of 1.0225. The largest missing-hole
+ratio was 1.018260, and the smallest shifted-hole ratio was 1.026777.
+
+The extended review at the same settings found overlap between the missing-hole and shifted-hole
+classes. At 1.0225, one of 100 missing-hole cases cleared and 16 of 100 shifted-hole cases
+flagged. At 1.025, zero of 100 missing-hole cases cleared and 22 of 100 shifted-hole cases
+flagged. At 1.030, the counts were zero and 34. These are outcomes for the measured seeds.
+
+Both the original #407 model replay and the fresh G-05 capture runs cleared at 1.0225. Golden
+s-04 cleared and s-05 stayed ambiguous. The tightest real clearance in the review was s-04 at
+1.0483, about 0.023 above 1.025. I-13 records the ratios and fitness values. The team must choose
+the cutoff given the observed trade-off and both other members must approve the amendment.
 
 **D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
 provenance, and the viewer does the colouring.** (2026-11-09)
