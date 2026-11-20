@@ -1,5 +1,6 @@
 /* C-26: the capture viewfinder. The page had no stylesheet before this; only the viewfinder
-   (preview, guidance overlay, shutter) is styled here, the rest of the shell is unchanged. */
+   (preview, guidance overlay, shutter, completion banner) and the Finish button are styled
+   here, the rest of the shell is unchanged. */
 
 :root {
   --guide-arrow: #1d6f8a;
@@ -13,6 +14,11 @@
   --chip-fg: #ffffff;
   --shutter: #ffffff;
   --focus-ring: #1d6f8a;
+  /* Darker than the on-target frame green so the banner's white text passes 4.5:1. */
+  --complete-bg: #23824a;
+  --complete-fg: #ffffff;
+  --primary-action: #1d6f8a;
+  --primary-action-fg: #ffffff;
   --arrow-size: clamp(72px, 22vw, 112px);
   --shutter-size: 76px;
 }
@@ -101,6 +107,107 @@
   stroke: var(--guide-arrow-edge);
   stroke-width: 5;
   stroke-linejoin: round;
+}
+
+/* The end of the orbit: a green banner in the middle of the preview. The small status chip
+   would only repeat it, so it steps aside while the banner shows. */
+.viewfinder[data-guidance="complete"] .gyro-overlay-status {
+  visibility: hidden;
+}
+
+.gyro-overlay-complete {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: min(80%, 320px);
+  height: fit-content;
+  margin: auto;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: var(--complete-bg);
+  color: var(--complete-fg);
+  text-align: center;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 35%);
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.gyro-overlay-complete[hidden] {
+  display: none;
+}
+
+.gyro-overlay-complete svg {
+  width: 56px;
+  height: 56px;
+}
+
+.gyro-overlay-complete circle {
+  fill: none;
+  stroke: var(--complete-fg);
+  stroke-width: 3;
+}
+
+.gyro-overlay-complete path {
+  fill: none;
+  stroke: var(--complete-fg);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.gyro-overlay-complete-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.gyro-overlay-complete-hint {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+/* Finish session: a full-width, thumb-sized button. */
+.primary-action {
+  display: block;
+  box-sizing: border-box;
+  width: min(100%, 480px);
+  min-height: 56px;
+  margin: 8px 0;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--primary-action);
+  color: var(--primary-action-fg);
+  font:
+    600 19px/1.2 system-ui,
+    -apple-system,
+    sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.primary-action:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.primary-action:disabled {
+  background: var(--frame-idle);
+  opacity: 0.6;
+  cursor: default;
+}
+
+.primary-action:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 
 /* A round shutter, bottom centre over the preview. */

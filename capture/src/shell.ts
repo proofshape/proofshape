@@ -183,7 +183,9 @@ export const APP_SHELL_HTML = `
   </section>
   <section>
     <h2>Finish and reconstruct (C-10)</h2>
-    <button id="shell-finish-button" type="button" disabled>Finish session</button>
+    <button id="shell-finish-button" class="primary-action" type="button" disabled>
+      Finish session
+    </button>
     <button id="shell-retry-reconstruction-button" type="button" hidden>
       Retry reconstruction
     </button>

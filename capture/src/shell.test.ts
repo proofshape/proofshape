@@ -2185,4 +2185,11 @@ describe("mountAppShell", () => {
     expect(frameUploads(fetchSpy)).toBe(0);
     expect(coveredCountText()).toMatch(/^Covered: 1\//);
   });
+
+  it("C-26: Finish session is the large primary button and keeps its id and name", () => {
+    const mounted = mount();
+    expect(mounted.finishButton.classList.contains("primary-action")).toBe(true);
+    expect(mounted.finishButton.textContent.trim()).toBe("Finish session");
+    expect(mounted.finishButton.disabled).toBe(true);
+  });
 });

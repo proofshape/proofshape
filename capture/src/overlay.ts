@@ -36,7 +36,8 @@ export interface GyroOverlayHandle {
 
 // C-26: the arrow is an SVG shape, not a text glyph, so it can be sized and coloured (capture.css)
 // and stays crisp at any size. It still points "up" at rotate(0) and is turned by the same
-// transform as before.
+// transform as before. The completion banner (hidden until every slot is covered) sits in the
+// middle of the preview, so the end of the orbit can't be missed in the small top-left chip.
 const OVERLAY_HTML = `
   <div class="gyro-overlay">
     <div class="gyro-overlay-chips">
@@ -47,6 +48,14 @@ const OVERLAY_HTML = `
       <svg viewBox="0 0 100 100" focusable="false">
         <path d="M50 6 L92 50 L64 50 L64 94 L36 94 L36 50 L8 50 Z" />
       </svg>
+    </div>
+    <div class="gyro-overlay-complete" role="status" hidden>
+      <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+        <circle cx="24" cy="24" r="22" />
+        <path d="M13 25 L21 33 L35 17" />
+      </svg>
+      <p class="gyro-overlay-complete-title">Orbit complete</p>
+      <p class="gyro-overlay-complete-hint">Tap Finish session below.</p>
     </div>
   </div>
 `;
@@ -80,6 +89,7 @@ export function mountGyroOverlay(
   const status = requireElement(container, ".gyro-overlay-status");
   const arrow = requireElement(container, ".gyro-overlay-arrow");
   const count = requireElement(container, ".gyro-overlay-count");
+  const completeBanner = requireElement(container, ".gyro-overlay-complete");
 
   const acceptedReadings: Gyro[] = [];
   let latestLiveGyro: Gyro | null = null;
@@ -92,6 +102,13 @@ export function mountGyroOverlay(
   }
   emit("idle", null);
 
+  function showComplete(gyro: Gyro | null): void {
+    status.textContent = "Orbit complete.";
+    arrow.style.visibility = "hidden";
+    completeBanner.hidden = false;
+    emit("complete", gyro);
+  }
+
   function render(): void {
     const coverage = computeCoverage(acceptedReadings, orbit);
     count.textContent = formatCount(coverage.covered.filter(Boolean).length, orbit.length);
@@ -100,9 +117,7 @@ export function mountGyroOverlay(
   function updateArrow(liveGyro: Gyro): void {
     const coverage = computeCoverage(acceptedReadings, orbit);
     if (coverage.nextTargetIndex === null) {
-      status.textContent = "Orbit complete.";
-      arrow.style.visibility = "hidden";
-      emit("complete", liveGyro);
+      showComplete(liveGyro);
       return;
     }
     const anchorDeg = anchorHeadingDeg(acceptedReadings);
@@ -163,8 +178,7 @@ export function mountGyroOverlay(
         updateArrow(latestLiveGyro);
       } else if (computeCoverage(acceptedReadings, orbit).nextTargetIndex === null) {
         // No live reading to judge position by, but a complete orbit is complete regardless.
-        status.textContent = "Orbit complete.";
-        emit("complete", null);
+        showComplete(null);
       }
     },
     dispose,

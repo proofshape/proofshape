@@ -153,6 +153,47 @@ describe("mountGyroOverlay", () => {
     expect(text(container, ".gyro-overlay-status")).toMatch(/orbit complete/i);
   });
 
+  it("shows the centred completion banner only once every slot is covered", () => {
+    const { container } = mount();
+    const handle = mountOverlay(container);
+    const banner = container.querySelector<HTMLElement>(".gyro-overlay-complete");
+    expect(banner?.hidden).toBe(true);
+
+    DEFAULT_ORBIT.slice(0, -1).forEach((slot) => {
+      handle.reportAcceptedFrame({
+        alpha: slot.azimuthDeg,
+        beta: elevationToBeta(slot.elevationDeg),
+        gamma: 0,
+      });
+    });
+    dispatchOrientation(0, elevationToBeta(45), 0);
+    expect(banner?.hidden).toBe(true);
+
+    const last = requireSlot(DEFAULT_ORBIT.length - 1);
+    handle.reportAcceptedFrame({
+      alpha: last.azimuthDeg,
+      beta: elevationToBeta(last.elevationDeg),
+      gamma: 0,
+    });
+    expect(banner?.hidden).toBe(false);
+    expect(banner?.getAttribute("role")).toBe("status");
+    expect(banner?.textContent).toMatch(/orbit complete/i);
+    expect(banner?.textContent).toMatch(/finish/i);
+  });
+
+  it("shows the completion banner even when the orbit completes with no live reading", () => {
+    const { container } = mount();
+    const handle = mountOverlay(container);
+    for (const slot of DEFAULT_ORBIT) {
+      handle.reportAcceptedFrame({
+        alpha: slot.azimuthDeg,
+        beta: elevationToBeta(slot.elevationDeg),
+        gamma: 0,
+      });
+    }
+    expect(container.querySelector<HTMLElement>(".gyro-overlay-complete")?.hidden).toBe(false);
+  });
+
   it("ignores a deviceorientation event with a null component rather than crashing", () => {
     const { container } = mount();
     const handle = mountOverlay(container);
