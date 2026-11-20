@@ -219,6 +219,7 @@ def test_compute_deviation_pins_the_measured_footprint_margin_boundary():
     assert deviation_measured[at_index] == 1.0
     assert deviation_measured[beyond_index] == 0.0
 
+
 def test_compute_deviation_excludes_board_skin_and_stray_geometry_outside_the_footprint():
     # Review on #309: D-062's "measures Observed vertices only" excludes "surface outside the
     # registered part" too -- not just Unobserved surface. Two orphan probe vertices (not
