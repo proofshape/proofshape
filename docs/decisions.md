@@ -2447,11 +2447,13 @@ measured print-size departure outward to one instrument step instead of preservi
 multi-millimetre unmeasured ring.
 
 This is a **measurement-eligibility boundary, not a new pass/fail tolerance**. An Observed vertex
-outside the CAD bounding box plus 0.1 mm gets `_DEVIATION_MEASURED = 0`, stays grey in the
+outside the CAD-local xy bounding box plus 0.1 mm gets `_DEVIATION_MEASURED = 0`, stays grey in the
 heatmap, and cannot contribute to Pass or Fail (D-005/D-062). That is intentionally conservative:
 real flash or an oversized outer wall beyond the registered footprint is not locally judged by
-I-06; gross size/scale mismatch is left to R-16/R-42. G-05's planted 2/4/8 mm bumps grow upward on
-the top face, inside the xy footprint, so the rule does not hide those defects.
+I-06; gross size/scale mismatch is left to R-16/R-42. The model vertices are transformed back into that CAD-local frame before this test; using a
+board-frame axis-aligned box around a rotated CAD would create false corner allowance as yaw
+increases. G-05's planted 2/4/8 mm bumps grow upward on the top face, inside the xy footprint, so
+the rule does not hide those defects.
 
 The evidence is strong enough to choose the rule but does **not** substitute for I-14's required
 close-out rerun of `g05_00`, `g05_02`, s-04 and s-05 on current `main`; that run must still
