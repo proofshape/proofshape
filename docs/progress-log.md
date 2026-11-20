@@ -2467,3 +2467,401 @@ timing exception but still requires both other members to approve its final head
 **Close-out:** owner-confirmed actual time is **2 h** against the 5 h estimate. C-16 and its index
 row are Done on the final close-out branch; both other members still approve that exact final head
 under D-031 before merge.
+
+## 2026-11-16 — R-36 home pre-check: the demo path runs on the M2 Max (PR #340)
+
+**Who:** @TabeenRaoof
+**What changed:** no code. R-36's story records the measurement runs, and its runbook criterion
+gains the order step that R-34 and C-16 made necessary.
+**Result:** on `main` at `5407b7d`, with the service on the M2 Max and an iPhone in Safari through
+`npm run dev:device` on home Wi-Fi:
+- golden s-04 through the HTTP smoke flow: 30 frames reconstructed in 47–50 s;
+- three real iPhone sessions of s-04: 31–51 s from Finish to model, metric on the board;
+- the clean 23-frame run against nominal CAD: height 0.947, edges 0.95–1.04, fit residual 2.32 mm,
+  comparable to golden;
+- the same main wide lens in every frame;
+- the live Gemini check: it flagged a screen photo at frame 5, and the tip reached the phone;
+- stopping the service mid-session twice (91 s, 138 s): the session continued and finished both
+  times.
+
+Seven gaps are listed in R-36's notes for their own issues, among them the raw outage message,
+Safari backgrounding losing the session, a screen frame getting into the model, and
+`cad_size_check`'s blob selection.
+**Next:** the rehearsal in the defense room, and the runbook in `recon/README.md`.
+
+## 2026-11-15 — G-05 Done: the control and the 4 mm shift printed and calipered; printed shift 4.00 mm (PR #347)
+
+**Who:** @TabeenRaoof. Claimed in #273; cut to two parts by D-069 (#331); readings in #332.
+
+**What changed:** `stories/G/G-05.md` records the print and the result.
+- The print record was read from the sliced files: the lab's only A1 mini, grey, one spool, G-01's
+  settings, Bambu Studio 02.09.01.70, and each file's SHA-256.
+- Both parts printed unrotated: `g05_00`'s placement comes from its project, `g05_02`'s from its
+  G-code.
+
+**Measured, not judged** (#332's readings, 2026-11-13):
+- The hole centres are 11.91 mm (control, CAD 12) and 15.91 mm (shift, CAD 16).
+- That puts **the printed shift at 4.00 mm** against 4.00 in CAD.
+- An independent repeat on 2026-11-15 gave 4.005 mm, with each centre within 0.025 mm.
+
+**Result:** G-05 is Done at 6 h actual (est 4). `check_story_states.py --fix` makes G-09 Ready.
+
+**Next:** G-09 photographs the two parts under G-08's conditions, and X-03 uses `g05-02` once I-07
+exists.
+
+## 2026-11-16 — P-34: the 16 open issues reconciled with stories (PR #369)
+
+**Who:** @TabeenRaoof. Claimed in #368.
+**What changed:** no code. Of the 16 open issues, only #157 (I-07) had an open story. Each one now
+has a story, a home in an existing story, or a recorded reason to wait (`stories/P/P-34.md`).
+- **New stories:**
+  - C-24, the outage message and a session that survives a reload (#351, #352);
+  - C-25, the blur gate checked against a real blurred frame (#355);
+  - A-14, the VLM hints for frame 0 and orbit motion, plus the sampling fork (#353 and #354's
+    sampling half);
+  - R-39, `cad_size_check`'s blob selection (#356), Blocked on R-37;
+  - R-40, mesh cleanup that terminates and stays manifold (#263, #300), which also re-checks #247.
+- **A-02** gains #354's veto and frame-exclusion criterion: 3 h becomes 4 h, and it now depends on
+  A-14.
+- **No story:**
+  - #181 and #200 still wait on team decisions;
+  - #107 waits on D-072's public path;
+  - #246 and #292 are known limitations;
+  - #231 is fully owned and closes by hand, pointing to #292.
+
+**Capacity:** +18 h, so 65.5 h of open estimates become 83.5 h. S6 (the last sprint for code)
+has 52 h in the sprint table, or 46 h in its own heading. The suggested order for the Dec 2 call
+is R-40, C-24, A-14, then C-25.
+**Next:** after merge, comment on each mapped issue and close #231 by hand.
+
+## 2026-11-15 — G-08 Done: the six specimens photographed and hash-locked (PR #339)
+
+**Who:** @TabeenRaoof (claim #336, work #339), approved by @dalwalyk, who also ran the
+second-member checks (1222 passed).
+
+**What changed:**
+- **The photos.** 25–30 landscape stills of each G-02 specimen, on the same G-06-calipered board
+  sheet and table as the golden set, under lighting condition A. iPhone 16 main camera,
+  5712 × 4284. They're on the golden set's Drive and never committed.
+- **`fixtures/specimen_capture_manifest.json`** holds frames (29, 30, 25, 27, 29, 29), aggregate
+  bytes and a `content_sha256` per sample, plus each sample's G-02 STL.
+- **The lock.** `specimen_capture_manifest.sha256` locks the manifest, and `.gitignore` now tracks
+  top-level `fixtures/*.sha256` files.
+- **Tests:** both manifests' locks, the specimen manifest's contents, and the ignore rule.
+
+**Result:**
+- **Board pose:** R-02 posed the board in every frame, at 2.0–2.4 px median RMS against golden
+  s-04's 2.48 px.
+- **One frame dropped:** an ultra-wide-lens frame in `g02_03` was deleted before hashing.
+- **Byte-for-byte agreement:** the owner's original photos hash to all six manifest values.
+- **The downloader end to end:**
+  - `g02_01` to `g02_03` verified on the owner's Mac, and `g02_01` again on @dalwalyk's.
+  - Both runs then hit gdown being refused by Drive partway through. The script correctly never
+    swapped in a partial sample.
+- **Hours:** 4 h actual (est 4), the owner's figure.
+
+**Concluded:** G-08 gave G-04 its last input: G-03's calipers, G-06's board, G-08's photos and
+R-23's scale. This entry was first written with a `check_story_states.py --fix` flip of G-04 to
+Ready. `main` reached that state without this PR. G-04 was then claimed and closed (@dalwalyk,
+#348, D-073) before this PR merged, so the entry is now the record only. It was recorded late, on 2026-11-17, in #342.
+
+**Next:** a small downloader-resilience follow-up would fix gdown being refused partway for both
+sets: retry and back off, or use Drive's plain download URL. Until then, fetch the specimen folders
+as browser zips and unzip them into `fixtures/data/specimen_capture/`. The manifest hashes still
+verify them.
+
+## 2026-11-17 — C-24 claimed; WIP accounting reviewed (PR #373)
+
+**Who:** @dalwalyk; PR #373 by @TabeenRaoof.
+**What changed:** approved the claim-only update for C-24 and the dated D-064 waiting notes for
+R-36 (defense-room access) and G-11 (lab slot/materials). C-24's dependencies, C-13 and C-18, are
+Done; the story and backlog claim match.
+**Result:** CI passed (ruff, TypeScript, pytest). No implementation code is included.
+**Concluded:** the active claims are G-09 and C-24; R-36 and G-11 are explicitly waiting on
+external access/resources under D-064.
+**Next:** begin C-24 implementation; the claim is merged separately from its code PR.
+
+## 2026-11-17 — I-09 follows merged D-078 and refuses malformed tolerances (PR #372)
+
+**Who:** @dalwalyk; reviewed by @mbj1994.
+**What changed:** synced R-37/D-078 from `main`; `hole`/`edge` now use the measured 5.278 mm
+in-plane floor, while `face`/`overall` retain D-073's measured height floor. Invalid tolerances are
+refused, with pure and endpoint regression tests.
+**Result:** 1,337 tests passed, 4 skipped, 6 warnings; Ruff, format, and story-state checks passed.
+I-09 remains Done with 5 h actual and now depends on R-37.
+**Concluded:** both measured board floors are used only for their corresponding feature kinds;
+malformed opaque order specs are refused safely.
+**Next:** @mbj1994 to re-review PR #372's current head.
+
+## 2026-11-17 — R-39 claimed; WIP accounting reviewed (PR #376)
+
+**Who:** @dalwalyk; PR #376 by @mbj1994.
+**What changed:** approved the claim-only update for R-39. R-37 is Done, satisfying the
+dependency. C-24, C-13 and C-18 states are consistent. The WIP notes show C-21/R-39 active and
+C-17 waiting on its physical print/caliper check.
+**Result:** CI passed (ruff, TypeScript, pytest). No implementation code is included.
+**Concluded:** the claim and D-064 WIP accounting are consistent on the reviewed head.
+**Next:** begin R-39 implementation after the claim merges.
+
+## 2026-11-18 — G-11 parts photographed and calipered; the thin wall prints at 1.10 mm (PR #388)
+
+**Who:** @TabeenRaoof.
+
+**What changed:**
+- `fixtures/robustness_capture_manifest.json` and its `.sha256` lock: the glossy, dark and
+  thin-walled pentagons, 30, 30 and 29 frames, on their own Drive folder.
+- `fixtures/caliper_g-11.json`: 70 readings, the height and one edge of each part and the tray's
+  wall.
+- `stories/G/G-11.md` records the print, the photos and the measurements. The story stays
+  Claimed.
+
+**Measurement runs:**
+- **Photos:** R-02 posed the board in every frame (median reprojection RMS 2.00–2.22 px), and
+  no frame was softer than the golden set's softest. Every Drive file matched its local original
+  by name and size.
+- **Reshoot:** the glossy part and the tray were reshot after a pen label turned up on a side
+  face the camera saw.
+- **Calipers:** the glossy and dark parts' heights are within 0.03 mm of the grey `g02_04`
+  control's. (Corrected on #392: this first said "within 0.07 mm". The glossy part's edge,
+  25.87 mm, is 0.01 mm below the control's 25.88–26.02 range.) The tray's 1.2 mm wall reads
+  1.10 mm in all ten placements.
+
+**Next:** the `.3mf` files, the screen-photo and wrong-part stills, and each part through
+reconstruction.
+
+## 2026-11-18 — C-24 Done: a plain outage message, and a capture session that survives a reload (PR #375)
+
+**Who:** @TabeenRaoof.
+**What changed:** two capture-side fixes from R-36's home pre-check, with no contract change.
+- **#351:** a 5xx with a non-JSON body (Vite's empty 500 for a stopped service, or a proxy's HTML
+  502) now reads "The service isn't reachable right now — wait a moment and try again." A failed
+  upload adds "Frames already accepted are kept."
+- **#352:** the session id, the accepted count and the gyro readings are kept in `sessionStorage`.
+  After a reload, the page offers Continue session, or Show result once Finish has succeeded.
+
+`docs/manual.md` §9 covers both.
+**Command / how to reproduce:** `cd capture && npm test`. For the device check, R-36's runbook,
+then switch apps mid-session and stop uvicorn mid-session.
+**Result:**
+- 324 capture tests pass, 41 of them new or changed. `tsc`, ESLint, Prettier and the build are
+  clean.
+- Three mutation checks each failed the new tests.
+- On the iPhone (`sess_71afa24c2640`, 18 frames), the session continued across an app switch
+  (frame 7 to 8) and a service restart (frame 9 to 10) with no gap in frame numbers. It finished
+  complete, metric, with observed fraction 0.910.
+- 6 h actual against 5.
+**Concluded:** neither interruption ends a live demo any more. The rule is to stay in one Safari
+tab.
+**Next:** R-36's runbook (#371) drops its "don't switch apps" warning and the old 500 text once
+this merges. An abandoned `capturing` session still never expires on the server (#352's second
+point), with no story.
+
+## 2026-11-18 — Sheet and card reference tiers cut; the board is the only reference (D-083)
+
+**Who:** @dalwalyk, prompted by a question about which Ready story has no physical requirement.
+Reviewed by @mbj1994 and @TabeenRaoof (PR #394), who both requested changes on the first pass.
+
+**What changed:** `stories/G/G-10.md` and its index row set to a new state, `Cut` (added to
+`stories/README.md`'s state table, with a note on what a dependent of a Cut story should do).
+`docs/decisions.md` gets D-083. `scripts/check_story_states.py` gained the `KNOWN_STATES` check
+the review found was missing (see below) plus `Cut` in `UNOWNED_STATES`, with new tests. Stale
+forward pointers to "pending G-10" fixed in `docs/glossary.md`, `docs/sprint-plan.md`,
+`stories/I/I-09.md` and `stories/R/R-39.md`.
+
+**Why this came up:** G-10 looked like a normal Ready story (just "take real photos of a sheet
+and a card"), but checking what it actually needs surfaced a gap nobody had named: detecting a
+plain sheet's or a credit card's pose and scale isn't built anywhere. Both are markerless by
+design (unlike the board's printed ChArUco pattern), so R-02/R-04's scale-fixing path can't see
+either one, and the live service hardcodes `reference_tier_used: "charuco_board"`
+(`recon/service.py:603`) — no buyer-facing path can reach a sheet or card tier today, regardless
+of G-10's own measurement work.
+
+**This is bigger than one story, per @TabeenRaoof's review.** Proposal §6.1 commits to all
+three reference tiers under "Core pipeline (Tier 1)," not just G-10's measurement of them; the
+risk table's own mitigation for "board detection flaky in the field" is "sheet and card
+fallbacks." None of that exists. **The board is now the only reference tier this project
+ships with** — a session with an undetectable board simply has no dimensional claims, not a
+fallback onto a sheet or card with wider error bars. That is a real capability gap against the
+proposal, and it sits outside the sprint plan's own §10 cut order, so it needs to be declared at
+the defense, not discovered there. D-083 states this plainly.
+
+**What was checked before cutting it:**
+- No detection code for a generic known-rectangle reference exists anywhere in `recon/`.
+- The sprint plan scheduled that detection capability as its own S5 block (12 days, ending
+  2026-11-14), separate from G-10's measurement step. It was never built, and no story was ever
+  written for it.
+- The proposal's own M5 milestone (Fri Nov 13, already past) names "sheet and card tiers" under
+  its stated rule: "anything not working is cut, not deferred." `stories/README.md`'s working
+  agreement 4 says the same for anything still open past that boundary.
+- No `Blocked` story names G-10 as a dependency — cutting it opens nothing and blocks nothing.
+
+**A real gap in the checker, found independently by both reviewers:** `check_story_states.py`
+had no actual check for whether a state name was valid at all — a comment claimed one existed
+("an unknown state is reported by the state checks, not here") but it didn't. @TabeenRaoof
+proved it by setting both the file and index to `**State:** Cutt` with `**Owner:** @nobody`;
+the script printed "All story states consistent" and exited 0. Fixed with a `KNOWN_STATES` set
+and a real check in `collect_problems`, plus regression tests for Cut + `_unclaimed_` passing,
+Cut + an owner failing, and an unrecognised state failing even when file and index agree (so
+the existing mismatch check never catches it).
+
+**Concluded:** cut, not carried, per D-083. Full rationale and the conditions for revisiting it
+in `docs/decisions.md`.
+
+**Next:** none expected. If multi-tier reference support is ever wanted again, it needs a new
+detection story first, scoped separately from G-10's measurement work.
+
+## 2026-11-18/19 — A-09 Done: report narrative, served as a deterministic template, not an LLM (PR #387, PR #391)
+
+**Who:** @dalwalyk.
+**What changed:** two pull requests, six review rounds across both.
+- **PR #387** built `recon/report_narrative.py`: a narrative generator over `VerdictResult`'s
+  own fields only. Four review rounds (@TabeenRaoof, @mbj1994) each found a real way a model's
+  free-text explanation could still approve/condemn a part contrary to the deterministic
+  verdict — a per-verdict word ban, then a direction-phrase gap, then plain outcome words
+  ("looks perfect", "is unacceptable") that no vocabulary list converges against. **D-082**:
+  `generate_narrative`, the actual v1 entry point, serves the deterministic `template_narrative`
+  only — no model call, no key, no network request, by construction. The LLM path
+  (`generate_llm_narrative`) stays in the module as tested groundwork for a follow-up story that
+  would constrain the model to *selecting* evidence rather than writing prose.
+- **PR #391** wired that template narrative into the contract (`VerdictResult.narrative`,
+  v1.8.0, D-031 — both other members' approval), `recon/service.py` (all three
+  `VerdictResult`-serving sites, including the order-level verdict), and `capture/src/report.ts`'s
+  reserved slot. A sixth review round found the sanitizer that protects buyer-controlled region
+  names/reason codes didn't fire inside snake_case (`part_passed_inspection`), since `_` is a
+  word character — fixed by normalizing a region name's underscores before the check, and, for
+  a reason code, isolating the buyer-controlled portion from I-07/I-09/I-10's own fixed
+  prefixes/suffixes first, so a legitimate code like `observed_deviation_out_of_spec` is never
+  wrongly swallowed.
+**Command / how to reproduce:** `PYTHONPATH=inspect .venv/bin/python -m pytest tests/test_report_narrative.py tests/test_verdict_endpoint.py tests/test_order_store.py -q`; `cd capture && npm test && npm run typecheck`.
+**Result:**
+- 99 tests in `tests/test_report_narrative.py` alone; full suite 1529 Python / 324 TypeScript,
+  all green. `ruff`, `ruff format`, `tsc --noEmit` and `check_story_states.py` clean on both PRs.
+- 3.0 h actual against a 5 h estimate (reconstructed from commit/review timestamps, not measured
+  directly — see the story file's completion record for the breakdown).
+**Concluded:** the report's narrative section is real and shipping, but it is templated text,
+not generative AI, in v1 — five rounds of trying to make free LLM prose safe against AGENTS.md's
+hard rule concluded it can't be, not with a lexical filter. Proposal §7.5 already named the
+templated half as the floor ("an LLM narrative is a Tier 3 add-on"), so this isn't a retreat from
+what was promised.
+**Next:** two questions raised in the story file, not resolved by either PR, for the team at the
+next sync: whether A-09's hours still count toward the generative-AI share given v1 runs no
+model in the served path (alongside O-001's similar open question about the reconstruction
+backbone), and the Tier-1-vs-Tier-3/cut-list contradiction the story has flagged since it was
+claimed. A follow-up story for the constrained/structured-output LLM path (D-082's option B) has
+no story yet.
+
+## 2026-11-18 — G-09 the G-05 control and 4 mm hole shift photographed (built, PR #397)
+
+**Who:** @TabeenRaoof
+**What changed:** `g05_00` and `g05_02` joined `fixtures/specimen_capture_manifest.json`, at
+28 stills each under G-08's setup and on Drive under `g-08`. The manifest's `.sha256` lock was
+regenerated.
+**Command / how to reproduce:** `GOLDEN_CAPTURE_MANIFEST=fixtures/specimen_capture_manifest.json
+bash fixtures/download_golden_capture.sh fixtures/data/specimen_capture`
+**Result:**
+- Every frame is from the main camera, and R-02 posed all 56 (median RMS 2.66 and 2.84 px).
+- The softest frame scored 210, against the golden set's 40.
+- The real downloader fetched both parts and verified both hashes.
+- 2 h actual against 1.5.
+**Concluded:** M4's planted-defect pair is ready for reconstruction.
+**Next:** X-03 (I3) stays Blocked. At @dalwalyk's review, its two unstoried prerequisites became
+stories and dependencies: R-41 (#181's reversed scale ratio, which still needs the team's D-039
+decision) and R-42 (the service calling `check_scale_agreement`).
+
+## 2026-11-19 — R-41 the CAD scale ratio is 1/(1+r), not 1+r (built, PR #401)
+
+**Who:** @TabeenRaoof
+**What changed:** `check_scale_agreement` converts the CAD registration residual r to
+`1 / (1 + r)`, so all three scale sources estimate true printed pitch ÷ nominal (#181). D-039 is
+amended under its original text.
+**Command / how to reproduce:** `PYTHONPATH=inspect python -m pytest tests/test_scale_agreement.py`
+**Result:**
+- #181's false flag (98.8% print) went from 2.43% apart, flagged, to 0.01%.
+- Its missed contradiction (caliper 20.3, r = +0.015) went from 0.0% to 3.02%, flagged.
+- 5 new or rewritten tests fail under the old formula.
+- The full suite passed: 1,533.
+- 1 h actual against 2.
+**Concluded:** the scale check can now be trusted with a CAD residual. Nothing calls it yet.
+**Next:** R-42 (Ready) wires it into the service after registration. X-03 still waits on R-42.
+
+## 2026-11-18 — Print files on Drive: G-01 and G-05 kept; G-02's and G-11's sliced files are gone (G-11)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- A `print-files/` folder on the golden set's Drive, with one subfolder per story, kept apart
+  from the photo folders. The photo downloader fetches whole folders, so a `.3mf` beside the
+  photos would land in every download.
+- G-01's two cube files and G-05's two sliced files are in it.
+- G-01's story now records its two SHA-256 values, which it never had.
+- G-11 records that its three jobs' sliced files weren't kept, so its printer, process and
+  filament presets can't be read from a file. G-02 records the same for its six specimens.
+**Command / how to reproduce:** each Drive file was downloaded and checked with
+`shasum -a 256` against the owner's local copy.
+**Result:**
+- All four G-01 and G-05 files match their local copies byte for byte.
+- G-05's two match the hashes it recorded on 2026-11-13.
+- The two files in `print-files/g-11` are model-only `.3mf` files with exactly the committed STLs'
+  vertices, so they're copies of the CAD, not a print record.
+**Concluded:** only G-01 and G-05 can show their slicer settings from a file. For G-11's finish
+parts, the evidence is the caliper comparison with the grey control: heights within 0.03 mm,
+from one print per finish. Nothing shows which preset the silk part used.
+**Next:** G-11 still needs the screen-photo and wrong-part stills, the VLM's reading of the
+parts, and the A-01/A-02 cross-references.
+
+## 2026-11-18 — G-11's parts through reconstruction: glossy fine, dark noisier, thin walls lost
+
+**Who:** @TabeenRaoof.
+**What changed:** nothing in code. G-11 records criterion 3's runs: the glossy, dark and
+thin-walled parts and the grey `g02_04` control, each through the service in-process on `main`
+(`d205149`), on the M2 Max.
+**Command / how to reproduce:** a throwaway driver created an order with the CAD, uploaded each
+Drive photo set, finished and polled; then `python -m recon.cad_size_check <artifacts>/reconstruction
+<artifacts>/board_pose --cad fixtures/reference_cad/g02_04_pentagon_r22x25mm.stl`. Outputs are in
+`proofshape-data/g11-runs/` (outside git).
+**Result:**
+- All four completed, metric on the board, with no warnings, in 37–49 s of reconstruction.
+- The control reproduces G-04's numbers (board scale 0.9976, height +0.85 mm against +0.86).
+- Height against calipers: glossy −0.54 mm, dark −1.65 mm.
+- The thin tray's 1.1 mm walls come back as single slabs. The served model loses about 5 mm of
+  their top, since fusion's voxel is 2.0 mm. Its registration fails ("No candidate could be
+  refined").
+- Every solid pentagon is flagged orientation-ambiguous, as a regular pentagon should be.
+**Concluded:** gloss didn't hurt. The dark finish makes the walls noisier and reads the height
+short. Walls thinner than a voxel are outside what the pipeline can measure, and this one also
+breaks registration. The pentagon's symmetry means none of these parts can Pass through I-07.
+**Next:** the VLM run (needs a Gemini key), the stills, the A-01/A-02 cross-references.
+
+## 2026-11-18 — G-11's stills hash-locked; the VLM catches both controls, not the thin tray
+
+**Who:** @TabeenRaoof.
+**What changed:** `fixtures/robustness_capture_manifest.json` gains a `stills` list, made of the
+screen photo (Drive `vlm_checks/`) and the wrong part (golden s-05 `IMG_4161.jpeg`, the same bytes
+A-01 used). Each is locked by sha256, and the manifest's `.sha256` is refreshed. A test in
+`tests/test_download_golden_capture.py` checks the entries. `fixtures/README.md` describes them.
+**Command / how to reproduce:** `scripts/check_vlm.py <capture> --screen-photo screen_photo.jpeg
+--wrong-part IMG_4161.jpeg --api-tier free --billing-account "ProofShape (free tier)"`, on
+`main` `788c256`. It ran once each for s-04 and the three G-11 captures, 44 requests in all.
+The evidence files are in `proofshape-data/g11-runs/vlm/` (outside git).
+**Result:**
+- All 44 requests came back `checked`.
+- s-04 gives the same booleans A-01 recorded, on all 11 results.
+- On every G-11 part, the screen photo is flagged and the wrong part reads `same_part` false.
+- No glossy, dark or thin frame is flagged.
+**Concluded:** both controls work against every finish, and the glossy and dark parts aren't
+falsely flagged. The VLM has no field that could catch the thin tray, whose failure shows up only
+at registration. G-11's four criteria now have written results.
+**Next:** reviews on #392.
+
+## 2026-11-19 — G-11 Done: the lost slicer files accepted as a gap (D-085) (PR #392)
+
+**Who:** @TabeenRaoof.
+**What changed:** D-085 records G-11's lost sliced `.3mf` files as an accepted, permanent gap in
+criterion 1's print record. That answers @mbj1994's review on #392. G-11 is set to Done in the
+story and the index, with its completion record: 7.5 h actual against an estimate of 4.
+**Command / how to reproduce:** `python scripts/check_story_states.py --fix` is clean, so
+there's no cascade, because nothing depends on G-11.
+**Result:** all four criteria have written results. A reprint was not chosen, because its
+record would describe a new part, not the one photographed and run. The calipers put the
+glossy and dark parts within 0.03 mm of the grey control's height.
+**Concluded:** G-11 closes on this PR. This frees one of @TabeenRaoof's two WIP slots (D-064).
+**Next:** @mbj1994's re-review of #392's final commit, then the author merges.

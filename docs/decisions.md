@@ -261,6 +261,15 @@ that same exception because it is the buyer UI for R-34 and adds only the server
 route needed to land A-03 safely. C-16 still must receive both other members' approvals on its
 final head before merge; this note records the exception, not an approval.
 
+*Timing exception record (2026-11-18, I-10 / PR #385):* @mbj1994 explicitly requested an
+early-boundary merge because the capstone schedule no longer has room to hold this additive
+contract change until Dec 2. This exception waives **only the sprint-boundary timing** for
+PR #385. It does **not** waive D-031's substantive review requirement: both other team members
+must still approve the final head, all required CI must be green, and any later code change
+invalidates those approvals in the normal way. The exception changes no runtime behavior or
+contract semantics; it only allows the already-reviewed I-10 contract addition to merge as soon
+as the final-head review gates are satisfied.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
@@ -489,6 +498,22 @@ check "Planned"); R-05 does not depend on it or stub it out, it only defines the
 takes once that residual exists.
 *Checked against D-028 at write time:* every branch on `origin` was fetched and checked. The
 highest decision anywhere was D-038, so D-039 was the first free number.
+*Amended 2026-11-19 (R-41, #181): the CAD ratio is `1 / (1 + cad_registration_residual)`, not
+`1.0 + cad_registration_residual`.*
+- The text above is left as written. The ratio it gives for the CAD source points the wrong way.
+  Every ratio is meant to estimate the same thing, true printed pitch ÷ nominal pitch, and the
+  caliper ratio does.
+- The reconstruction is scaled assuming the nominal pitch, so a page printed small makes the
+  model come out *large*: model ÷ CAD = nominal ÷ true. The residual is model ÷ CAD − 1, so true
+  ÷ nominal is `1 / (1 + r)`.
+- With `1 + r`, #181's two cases went wrong:
+  - a 98.8% print (caliper 19.76 mm, r = +0.012) was flagged, the sources 2.4% apart;
+  - caliper 20.3 mm with r = +0.015, which contradict each other, showed no gap.
+  Corrected, they are 0.01% apart (not flagged) and 3.0% apart (flagged).
+- The comparison rule, the ~2% threshold and the board-pitch anchor are unchanged.
+- The contract's `ScaleAgreement` exposes only `sources_compared` and `flagged`, not the ratios,
+  so `contracts/openapi.yaml` is unchanged and there is no D-031 round.
+- Agreed by the team through both approvals of PR #401, as R-41's first criterion requires.
 
 **D-040 · `capture/`'s npm project is Vite + vanilla TypeScript + Vitest, local to `capture/`,
 on Node 24.** (2026-09-29)
@@ -1525,7 +1550,6 @@ part.
 *Checked against D-028:* fetched all origin branches on 2026-11-12; D-068 was highest anywhere,
 so D-069 was free.
 
-
 **D-070 · Orders are file-backed, use server-generated Crockford codes, and createOrder is guarded by a server-held buyer key.** (2026-11-15)
 R-34 stores each order under `PROOFSHAPE_ORDERS_DIR` (default
 `proofshape-data/orders`) as `<order_code>/order.json`, with an uploaded CAD beside it as
@@ -1584,6 +1608,211 @@ this closes the M2 gate on real evidence rather than leaving the decision implic
 *Checked against D-028:* fetched all origin branches on 2026-11-15; D-070 (held on
 `recon/R-34-order-store`) was highest anywhere, so D-071 was free.
 
+**D-072 · The demo's reconstruction service runs on the M2 Max, reached from the phone over the
+local network; a public URL comes later only if four conditions hold.** (2026-11-15)
+This covers the integration runs (X-03, X-04), the Dec 2 backup recording (X-05) and the live
+defense. They all run against `recon.service` on @TabeenRaoof's M2 Max (32 GB). The phone reaches
+it through the capture dev server's HTTPS proxy (`npm run dev:device` with
+`PROOFSHAPE_RECON_PROXY`, D-049), as C-13 and C-18 did. R-36 owns the runbook and the rehearsal.
+The hosted GitHub Pages app (C-21) stays fail-closed. It calls a public service only once all four
+of these hold:
+- Lightning Deployments work again;
+- credits are allocated to the teamspace;
+- a cost guard that actually stops an idle deployment exists (#107);
+- O-005 is answered and R-34's order-code gate is merged.
+
+*Why:*
+- **Lightning is unavailable twice over.** Its credits ran out on 2026-10-07, after a deployment
+  was left running for about 28.5 h (R-15). C-21's close-out notes (2026-11-15, not yet on `main`)
+  report a Lightning platform security incident, with Deployments still down. And `--max-runtime`
+  doesn't stop a deployment, so nothing caps the cost today (#107).
+- **The Mac path is proven where it counts.**
+  - It completed real iPhone sessions: C-13 with 19 frames, and C-18's pass on 2026-11-11 with
+    20 frames.
+  - It takes about a minute per session (R-31: 56 s through uvicorn), comparable to a T4.
+  - The M2 Max runs 30-frame sessions; uncapped, 19 frames peaked at about 17 GB.
+- **Nothing in the plan needs a public URL.** X-03 asks for "the real service" and X-05 for one
+  recording. The sprint plan's own stand-in for a GPU service is "natively on Apple Silicon;
+  rented pod as backup" (D6), and the recording is the plan of record if anything fails (M8).
+- **It costs nothing, and nothing generative is lost.** The Lightning image has no completion
+  runner either (D-058), so shape completion is `unavailable` on both hosts.
+
+*What it changes:*
+- X-04's open question about its run mode is settled: local dev mode on the Mac, so C-21 is not a
+  dependency.
+- C-21's "which service the hosted page calls" is answered for this term by the four conditions
+  above.
+- S6's "rehearse losing the pod and bringing it back" becomes losing the Mac service
+  mid-session and bringing it back (R-36).
+
+*Limits, stated plainly:*
+- **One machine.** If the M2 Max fails on the day, the recording is the demo.
+- **The network.** The phone and the Mac must reach each other on the room's network. Campus Wi-Fi
+  may block that, which is why R-36 rehearses in the room, with the iPhone's personal hotspot as
+  the fallback. The sprint plan's rule stands: never demo live on a laptop not tested in the room.
+- **Memory on smaller Macs.** A teammate's 18 GB Mac fits about 14 frames. That was measured on
+  #146 with Metal capped to match an 18 GB machine; 16 and 19 frames ran out of memory. So a
+  fallback laptop caps sessions there.
+*Checked against D-028:* fetched every origin branch on 2026-11-15. D-069 is the highest on
+`main`, and D-070 and D-071 are held on open branches, so D-072 was the first free number.
+Re-checked when syncing with `main` before merge: D-070 and D-071 have since merged, and D-072
+is still held only here.
+*Agreement:* it settles X-04's run mode and C-21's open question, which @mbj1994 holds, so its pull
+request asks both @mbj1994 and @dalwalyk to agree.
+
+---
+
+**D-073 · G-04: the board reference's σ_floor, from heights only, is 0.86 mm — edges are not
+yet trustworthy enough to include.** (2026-11-16, corrected same-day on review)
+Real chain (R-01 → R-02 → R-04/R-23 → `cad_size_check.build_report`, extended for caliper truth
+and G-06's measured board pitch) run on all six G-02 specimens (`fixtures/data/g04_board_error/
+g04-board-error-evidence.json`), confidence filter `--min-confidence 1.0001` (D-045).
+
+**This decision originally reported σ_floor = 7.52 mm from pooled edges and heights.** Review
+on PR #348 (@TabeenRaoof) re-ran the identical chain on the identical photos and got different
+edge numbers (board scale agreed to 4 decimals; edges did not) and traced it to two real,
+pre-existing bugs this story's extension newly depends on, neither invented by this review:
+
+1. `measure_prism`'s edge length is the 2nd–98th-percentile point extent along the edge, which
+   reads a perfect, noiseless, reconstruction-free prism about 4% short of its true corner-to-
+   corner length by construction (confirmed by sampling each G-02 CAD's own walls densely with
+   no noise at all and running `measure_prism` on that alone). A caliper reads corner to corner;
+   this convention mismatch alone explains most of g02_06's "consistent" negative edge errors.
+2. `_fit_rigid_2d`'s exhaustive discrete pose search can land in a visibly wrong pose for a
+   right triangle (g02_03) and the square (g02_01), confirmed against the point cloud directly,
+   and is not stable run to run on identical input — tiny reconstruction differences can flip
+   which discrete candidate scores best, landing a qualitatively different pose, not just a
+   numerically close one. This is why the original run and the review's re-run disagreed by
+   whole millimetres on individual edges while agreeing on the (robust, averaged) board scale.
+
+Both make every edge-level number untrustworthy right now, for every specimen, not only the
+symmetric/near-regular ones this decision originally named. **Fixing them — corner-to-corner
+edge measurement via fitted-wall-line intersection, and a pose search that cannot land wrong on
+these shapes — is real, open work, filed as R-37, not attempted here** (per the review's own
+suggested path: report what can be trusted, record the gap honestly, rather than ship a number
+from a known fitting artifact).
+
+**Height has no such dependency** (it comes from the top-face point-density peak, computed
+before `_fit_rigid_2d` ever runs) and is the only feature this decision now trusts:
+
+| Specimen | Board scale | Height error (mm) |
+|---|---:|---:|
+| g02_01 (square, 15 mm) | 0.9947 | −0.76 |
+| g02_02 (rect, 25 mm) | 0.8311 | **excluded entirely** — see below |
+| g02_03 (triangle, 20 mm) | 0.9984 | −0.40 |
+| g02_04 (pentagon, 25 mm) | 0.9976 | +0.86 |
+| g02_05 (hexagon, 35 mm) | 0.9970 | −0.14 |
+| g02_06 (rect, 40 mm) | 0.9959 | +0.61 |
+
+Pooled over the 5 included heights: mean error **+0.03 mm**, **σ_floor_mm (95th percentile,
+nearest-rank) = 0.86 mm**, equal to `max_error_mm` here — with n = 5, nearest-rank p95 is the
+maximum, reported alongside rather than implied to be a finer-grained percentile than 5 points
+support.
+
+*Run-to-run noise, found by the review's independent re-run, not investigated further here:*
+the reviewer's re-run agreed with these heights to within 0.03 mm on four of five specimens,
+but `g02_05` read +0.14 mm against this run's −0.14 mm — a 0.28 mm swing, plausibly the top-face
+search's 0.5 mm histogram bins. It doesn't change `sigma_floor_mm` here, but ~0.3 mm of run-to-
+run noise is a third of 0.86 mm, worth keeping in mind as a lower bound on how tight this figure
+can get without addressing the histogram bin width too.
+
+*Conditions this holds under:* landscape phone stills (G-08's capture convention), the board
+reference only (not app capture, not the sheet/card references — G-10's job), R-01's raw point
+cloud (not the R-07/R-08 mesh), **heights only — edges are an open gap, not covered**.
+*Why not the originally-reported 7.52 mm:* that number was itself a measurement artifact (the
+two bugs above), not a real, reproducible finding about the board reference — reporting it
+without the review's reproduction attempt would have been reporting noise as signal. 0.86 mm is
+the smallest the real evidence currently supports; it is likely optimistic (n = 5, no edges),
+not a claim that the board reference's true floor is this good.
+*What 0.86 mm covers, stated precisely because R-16 and I-07 will read this literally:* 0.86 mm
+is σ_floor **for out-of-plane (height) features on the board reference only.** At the time
+D-073 was recorded, in-plane features — edge lengths and wall positions — had no measured floor
+and were pending R-37. **D-078 now closes that gap with an independently rerun in-plane
+σ_floor of 5.278 mm; D-073 remains authoritative for heights only.** Concretely, the bullets
+below describe the historical pre-R-37 state and must not be read as the current in-plane rule:
+- **R-16** judges in-plane comparisons (e.g. s-04's B–C leg, a 60 mm in-plane length) as
+  **insufficient-evidence**, not within/out-of-tolerance against 0.86 mm — that story's own
+  criteria already provide for this case.
+- **I-07**'s `max(σ, σ_floor)` does **not** apply 0.86 to in-plane deviation (most Observed
+  vertices are wall vertices, i.e. in-plane) until R-37 lands and a real in-plane figure exists.
+- "Does not trigger M3's fallback" holds **for height tolerances only** — M3 ("every demo
+  tolerance is set from it") is met for height, not for in-plane, which remains ungated.
+- One interim bound for in-plane *scale* (not edge localisation) exists already in the board-
+  scale column above: 0.9947–0.9984, i.e. −0.16% to −0.53% over the board's own span. That is a
+  separate, smaller claim than an edge-localisation σ_floor and is not this decision's result.
+*g02_02, with the real root cause named (not "the alignment didn't converge"):* one frame,
+`IMG_4665`, has a median per-corner residual of 124.8 mm against every other frame's single
+digits; R-23's unweighted least-squares has no per-frame outlier rejection, and
+`metric_alignment.main` prints `PASS` with no residual threshold at all, so this failure would
+reach the live service silently today. Dropping that one frame gives board scale ≈0.99, in line
+with every other specimen — confirming the raw reconstruction is fine and the fault is R-23's
+solve. **Filed as R-38**: a per-frame-rejecting R-23 solve, plus a real residual threshold
+(`metric_alignment.main` stops printing unconditional `PASS`), with the question of whether that
+threshold should also expand the `Unverifiable` verdict beyond its current intake-time-only use
+(`docs/glossary.md`) left as R-38's own explicit design fork, not assumed here either way. This
+matters beyond G-04: R-36 serves live sessions through this exact chain.
+*Design note, scoped deliberately:* the pitch correction for G-06's measured (anisotropic)
+board pitch is applied only inside `cad_size_check.py`'s new `apply_board_pitch_correction`,
+never inside `recon/metric_alignment.py`, which R-23's live alignment also depends on — a future
+story touching R-23's alignment should see this rather than rediscover it. Unaffected by the
+edge-measurement finding above (pitch correction is a pre-`_fit_rigid_2d` coordinate scale, not
+part of either buggy step).
+*Checked against D-028:* fetched all origin branches on 2026-11-16; D-072 (held on
+`recon/R-36-demo-host`) was highest anywhere, so D-073 was free.
+*Related, checked, not a problem here:* GitHub issue #356 (@TabeenRaoof, found during R-36's
+pre-check) found `cad_size_check`'s candidate-region blob selection can pick a low pile of
+stray points instead of the part on low-resolution, few-frame phone-style captures. Checked
+G-04's own six runs against it: every measured height lands in the right ballpark for its
+specimen (a stray-point blob would read near zero), and none raised the error #356 reproduces.
+Likely because G-08's captures (5712×4284, 25–30 stills) are far denser than the 480×640/10–16-
+frame captures #356 reproduces on. Not re-investigated beyond this check.
+
+**D-076 · R-16: known-size heights are within tolerance on two independent golden parts;
+in-plane comparisons remain insufficient-evidence.** (2026-11-17, revised same day on review)
+`scripts/judge_known_size_tolerance.py` judges every known reconstruction-vs-caliper comparison
+against D-073's measured height tolerance (0.86 mm, the team-agreed figure recorded as a named
+constant, `D073_HEIGHT_SIGMA_FLOOR_MM` — not re-read from a local, gitignored G-04 evidence file
+by default, since different machines' own re-runs give slightly different figures from
+run-to-run noise; `--evidence PATH` recomputes from one when wanted) by each comparison's
+declared `feature_kind`.
+
+*Heights: within tolerance, on two independent parts.* Review on PR #363 (@TabeenRaoof) found
+that `fixtures/caliper_g-06.json` already has calipered heights for `s-04` and `s-05` — both on
+the board reference, both out-of-plane, both with golden-set reconstructions, and neither in
+G-04's `g02_*` set, so judging them against D-073's floor is not circular. Reproduced
+independently here (`cad_size_check.build_report` with G-06's caliper features and board pitch,
+the same call G-04 uses, on the current board-anchored `load_and_align`): `s-04` board_scale
+0.9987, rms 2.078 mm, height error **−0.515 mm**; `s-05` board_scale 0.9982, rms 2.349 mm, height
+error **−0.207 mm** — matching the reviewer's own −0.52/−0.21 mm. Both fall inside 0.86 mm, so
+R-04's known-size criterion now has a real two-part answer: **heights within tolerance on two
+independent golden parts; in-plane insufficient-evidence pending R-37.** Caveat, stated not
+hidden: `s-04`'s −0.515 mm sits only 0.345 mm inside the floor, while D-073 separately notes
+about 0.3 mm of run-to-run noise in the top-face search the height comes from — and two parts is
+two parts, not a study.
+
+*In-plane: insufficient-evidence, now including every known comparison, not just one.* R-04's
+original comparison (PR #39: s-04's B-C leg, reconstruction 60.27 mm vs. caliper mean 60.011 mm,
++0.259 mm) is an edge length. G-06's own edges — s-04's three legs (nominal 26/60/65 mm) and
+s-05's four wall edges (nominal 30 mm each) — are comparisons too, listed so they're shown
+considered rather than missed; their real `cad_size_check.build_report` differences run from
+−0.36 mm to −8.76 mm, confirming (not just by tolerance-absence but by D-073's own independently
+flagged `measure_prism`/`_fit_rigid_2d` bugs, pending R-37) that these numbers aren't trustworthy
+regardless of what any floor said. All eight land **insufficient_evidence**: D-073 has no
+in-plane floor yet, so the only honest verdict is that one, never a pass/fail dressed up from a
+tolerance this story would otherwise have to invent (D-003).
+
+*No other specimen comparison exists to judge.* G-03 produces caliper-vs-CAD readings
+(fabrication accuracy, not a reconstruction comparison); G-04's own six `g02_*` height-error
+figures (D-073's table) are the data `sigma_floor_mm` was computed *from* — judging them against
+a threshold derived from themselves would be circular, not a real validation, so they are not
+treated as additional specimen comparisons here. R-22's older s-04/s-05 shrinkage comparison used
+the pre-R-23 camera-centre alignment, superseded by R-04/R-23's board-anchored one; it is closed
+investigative work, not a current known-size comparison.
+*Recorded back in `stories/R-04.md`'s notes* per this story's own acceptance criteria, so R-04's
+known-size acceptance criterion has a final, traceable answer instead of a permanent forward
+reference.
+*Checked against D-028:* fetched all origin branches on 2026-11-17; D-075 (held on
+`recon/R-38-per-frame-rejection`, unmerged) was highest anywhere, so D-076 was free.
 
 ---
 
@@ -1606,8 +1835,623 @@ paper outline for the scale-integrity checks in D-034/manual §3. The generator 
 `capture/`, so printing works without a GPU endpoint once an order code exists.
 *Libraries:* `pdf-lib@1.17.1` embeds the existing PDF page and writes the added marks;
 `qr@0.7.2` supplies a zero-dependency QR matrix that C-17 draws as PDF vector rectangles.
-*Checked against D-028:* D-072 is held by open PR #340 and D-073 by open PR #348. An open-PR/code
-search on 2026-11-16 found no D-074, so D-074 was free.
+*Checked against D-028:* D-072 was held by PR #340 and D-073 by PR #348 when this number was
+chosen. An open-PR/code search on 2026-11-16 found no D-074, and current `main` still has no
+D-074 before this close-out.
+
+**D-075 · R-38: R-23's alignment solve now rejects per-frame outliers; the residual gate is
+8.0 mm, measured against all 11 real captures available.** (2026-11-16)
+`recon/metric_alignment.py`'s `solve_similarity` had no per-frame outlier rejection — found on
+G-04/PR #348 review (@TabeenRaoof), D-073: one bad frame (`g02_02`'s `IMG_4665`, median per-
+corner residual 124.8 mm) pulled the whole board-anchored fit's RMS residual to 23.3 mm, and
+`metric_alignment.main` printed `PASS` unconditionally, with no threshold at all.
+
+New `solve_similarity_rejecting_outlier_frames` (`recon/metric_alignment.py`): iteratively
+solves, takes each present frame's *median* point residual, MAD-trims across those per-frame
+medians (the same robust-fit style as `cad_size_check.fit_board_plane`), and drops the single
+worst frame if it clears `reject_sigma_k` MAD-widths above the group's median — repeating up to
+`DEFAULT_MAX_FRAME_REJECT_ITERATIONS=4` times, never below `MIN_FRAMES_AFTER_REJECTION=2`
+distinct frames. `align_board_geometry` now calls it instead of `solve_similarity` directly;
+`BoardAlignmentResult` gains `rejected_frame_names` and `per_frame_residual_mm` (written into
+`metric_alignment.json` too). `metric_alignment.main` gains `--max-residual-mm` and a real
+`FAIL`/exit-1 path instead of unconditional `PASS`.
+
+**The real sweep (`reject_sigma_k=8.0`, every available real capture, no VGGT re-run needed —
+all 11 already cached on disk). "Worst/threshold" is the worst frame's own median residual
+divided by the first-iteration MAD-trim threshold — how close each capture came to rejecting
+anything, not just whether it did:**
+
+| Capture | RMS before fix (mm) | RMS after fix (mm) | Rejected frame | Worst/threshold |
+|---|---:|---:|---|---:|
+| **s-01** | **2.545** | **2.101** | **`IMG_3927.jpeg`** | **1.04** |
+| s-02 | 3.019 | 3.019 | none | 0.56 |
+| s-03 | 1.608 | 1.608 | none | 0.62 |
+| s-04 | 2.080 | 2.080 | none | 0.51 |
+| s-05 | 2.351 | 2.351 | none | 0.64 |
+| g02_01 | 3.914 | 3.914 | none | 0.56 |
+| **g02_02** | **23.353** | **1.863** | **`IMG_4665.JPG`** | **8.38** |
+| g02_03 | 2.155 | 2.155 | none | 0.68 |
+| g02_04 | 2.732 | 2.732 | none | 0.65 |
+| g02_05 | 3.190 | 3.190 | none | 0.45 |
+| g02_06 | 3.789 | 3.789 | none | 0.42 |
+
+`g02_02`'s fix matches Tabeen's own manual estimate (RMS ≈1.86 mm after dropping `IMG_4665` by
+hand) almost exactly, and the worst/threshold ratio (8.38) separates it by a wide margin from
+every other capture.
+
+**`s-01` is a genuine but borderline rejection, not a second confirmed-clean-margin case like
+g02_02 — stated precisely, not oversold.** Its worst frame (`IMG_3927.jpeg`, 7.15 mm) clears the
+threshold (6.88 mm) by only ~4%, a 1.04 ratio against every other clean capture's 0.42–0.68.
+Review on PR #358 re-ran this independently and got 7.16/6.99 = 1.02 — close enough to confirm
+the same conclusion, but the two runs' own ~0.01–0.03 mm-level differences (consistent with the
+~0.3 mm run-to-run noise D-073 already noted for `measure_prism`'s top-face search, a different
+but related floating-point/VGGT non-determinism) mean a future re-run could plausibly land
+`s-01` on either side of the line. The effect either way is small and harmless: `s-01`'s scale
+moves about +0.13% and its RMS goes from 2.545 to 2.101 mm. Kept as a rejection here because it
+clears the line as measured, not because it's an obviously-bad frame the way `IMG_4665` is.
+
+Every clean-after-fix result falls in **1.6–3.9 mm**. `DEFAULT_MAX_RESIDUAL_MM = 8.0 mm`, about
+2x the highest of those (3.914 mm) — comfortable margin above real clean results, while far
+below the ~23 mm the real g02_02 failure produced before rejection, so the gate would have
+caught it even without the rejection fix alone.
+
+*Why `reject_sigma_k=8.0`, not swept separately as its own parameter:* the same value correctly
+separates the real g02_02 case (124.8 mm, worst/threshold 8.38, an unambiguous outlier) from the
+9 unambiguously-clean captures (worst/threshold 0.42–0.68) without any false rejection among
+them. `s-01` sits right at the boundary (1.04) rather than cleanly on either side — confirmed
+live, not assumed to generalize from one case, and not claimed to be a crisp separation in every
+instance.
+*Known limit, found and recorded, not hidden:* the per-frame rejection is a single-shot
+threshold on the initial (uncorrected) solve's residuals. If a single frame's corruption has
+enough leverage to distort that initial solve severely (confirmed separately: an extreme,
+~2x-true-depth synthetic corruption can collapse the fitted scale toward zero, at which point
+the corrupted frame's own residual can shrink rather than stand out), this design will not
+recover it. The real g02_02 failure (scale pulled to 0.83, not collapsed to near-zero) is well
+within what this design handles; a future, more severe failure mode is not guaranteed to be.
+Separately, the MAD-trim threshold has no absolute floor — on a capture whose own clean frames
+happen to agree very tightly (`s-03`'s threshold is 4.62 mm), a frame only a few mm off could
+still be rejected. That costs a frame's worth of observations, not correctness, so it's left as
+is, not a bug.
+*Rejected frames must stay excluded through every later stage too, not only alignment — this
+took two review rounds to get right, and both rounds' real findings are kept here, not
+smoothed over:*
+
+Round one (@TabeenRaoof): `rejected_frame_names` was written to `metric_alignment.json` but
+nothing downstream read it, so a rejected frame's depth — exactly the bad data the rejection
+found — still reached `tsdf_fusion.fuse_run`. Confirmed live: once g02_02's alignment was fixed
+in isolation, fusion then failed outright on `IMG_4665`'s own depth (R-30's per-frame
+re-anchoring correctly refused it), with an error that didn't name the real cause.
+
+**The first fix for this was itself wrong, and review caught it (round two, @TabeenRaoof and
+@mbj1994):** it removed the rejected frame from `fuse_run`'s arrays entirely, shrinking the frame
+axis. `provenance_run` and `completion.choose_view_frame` both index frames by *position* into
+`poses.npz`'s own full list, so this silently misaligned every frame after the rejected one —
+surfaced as `provenance_run` crashing on a `corrected_extrinsic.npz` shape mismatch, which is
+worse than the round-one bug (that one failed loudly at fusion; this one would have failed, or
+silently misattributed observations, one stage further in). Fixed properly: `fuse_run` and
+`provenance_run` both now mark a rejected frame's pixels untrusted (`valid_depth`/
+`trusted_pixel_mask` set `False` for its rows) without ever changing the frame axis's length —
+`reanchor_frames_to_board` gained a `skip_frame_indices` parameter so it doesn't also try (and
+correctly fail) to fit a per-frame correction on a frame already known bad. `corrected_
+extrinsic.npz` is now always written at the same length `poses.npz` has, rejected frame
+included, holding just its unreanchored global-alignment value.
+
+**Confirmed for real this time, the whole way through, not assumed from a scratch-file
+check:** ran `metric_alignment.load_and_align` → `tsdf_fusion.fuse_run` →
+`mesh_cleanup.cleanup_run` → `provenance.provenance_run` on g02_02's actual captured data, in
+that order, exactly as `run_reconstruction_pipeline` does. Alignment: 1.863 mm, `IMG_4665.JPG`
+rejected. Fusion: succeeds, `frame_count=30` (not shrunk). Provenance: succeeds,
+`extrinsic_source="reanchored"` (confirms it read fusion's real `corrected_extrinsic.npz` with
+no shape error), `observed_fraction≈0.887`. Separately, `cad_size_check.build_report` on this
+same alignment gives a board scale of 0.9989 and a height of −0.17 mm against caliper truth —
+inside D-073's 0.86 mm σ_floor. `g02_02` rejoining G-04's aggregate (still a follow-up, not done
+in this story) now has real evidence across the *entire* live chain, not just one downstream
+measurement script.
+*The live service never checked the residual either, only the CLI did (review on PR #358,
+@mbj1994):* `recon/service.py::run_reconstruction_pipeline` called `metric_alignment.load_and_
+align` directly and went straight to fusion, never through `metric_alignment.main`, so
+`--max-residual-mm` only ever existed on the command line. A live session whose post-rejection
+RMS still exceeds `DEFAULT_MAX_RESIDUAL_MM` now raises the pipeline's existing
+`metric_alignment_failed` error right after alignment, before fusion ever starts.
+*Design fork, decided explicitly (not assumed either way):* the residual-threshold failure is
+`metric_alignment.main`'s own new `FAIL`/exit-1, **not** wired into the `Unverifiable` verdict.
+No verdict-computation code exists anywhere in the repo today (`GET /v1/sessions/{id}/verdict`
+unconditionally 404s "not available yet"), so there is no existing intake-time setter to extend
+by analogy — expanding `Unverifiable`'s definition (`docs/glossary.md`, currently "declared at
+intake, before any photo") to also cover a post-reconstruction alignment failure would be a
+semantic/spec decision for whoever builds real verdict logic, not a code hookup this story can
+make safely. `recon/service.py`'s `VerdictResult.declared_at` already has an unused
+`"post_reconstruction"` enum value that looks purpose-built for exactly this — flagged for that
+future story, not acted on here.
+*What's given up:* none of G-04's own aggregate is re-run or changed by this story (explicitly
+out of scope per R-38's acceptance criteria) — `g02_02` could now rejoin it, but that is a
+follow-up, not done here. `s-01`'s newly-rejected frame changes more than its
+`metric_alignment.json`: its fused mesh and provenance output also now leave `IMG_3927.jpeg`
+out, the same as g02_02's does for `IMG_4665.JPG`. Other stories' historical numbers computed
+from the old (unrejected) s-01 alignment, fusion or provenance are not retroactively audited or
+corrected here.
+*Checked against D-028:* fetched all origin branches on 2026-11-16; D-074 (held on
+`capture/C-17-order-sheet-impl`) was highest anywhere, so D-075 was free.
+
+---
+
+**D-077 · G-07: per-vertex sigma weakly but genuinely predicts per-vertex *scatter* (k ≈ 0.25) —
+but I-07/I-09 need a different, larger k ≈ 0.70 for the total-error formula they actually use.**
+(2026-11-17, revised twice on review — PR #367, @TabeenRaoof and @mbj1994)
+
+`scripts/g07_reliability_curve.py` runs the R-04 (alignment) → R-07 (TSDF fusion) → R-08 (mesh
+cleanup) → R-09 (provenance) → R-10 (uncertainty) chain **fresh, every run** for every
+board-reference specimen with independent caliper height truth (`s-04`, `s-05` from G-06;
+`g02_01`–`g02_06` from G-03), pairing each near-top-face Observed vertex's own R-10 sigma with
+its *signed* height-above-board error against caliper truth — 1494 pairs across all 8 specimens.
+
+*Two real bugs found by review, independently reproduced here before touching any code, not
+taken on faith:*
+
+1. **The first version's `g02_02` figure (3.84 mm) came from a stale cached alignment, not an
+   unpatched code path, as the first version of this decision wrongly claimed.** Checked
+   directly: `g02_02`'s cached `metric_alignment.json` carried `"alignment_anchor": "in-scene
+   ChArUco board geometry (R-23)"` — it *is* R-23's board-anchored output, just written before
+   R-38 merged. Re-running `metric_alignment.load_and_align` fresh gives **RMS residual
+   1.863 mm**, `IMG_4665.JPG` rejected — not 23.35 mm. `ensure_pipeline` silently trusted
+   whatever was already on disk. Fixed: it now calls `load_and_align` + `write_alignment`
+   unconditionally every run (the same two calls `recon/service.py`'s live path makes) and
+   rebuilds the entire mesh pipeline from that fresh alignment (`shutil.rmtree`s `mesh/` first).
+   No specimen needs excluding; the "legacy align_camera_centres path" claim in the first version
+   of this decision was simply wrong.
+
+2. **The pooled correlation mixed each specimen's own systematic offset with its per-vertex
+   scatter, and sigma only claims to predict the scatter.** Independently reproduced: each
+   specimen sits at a near-constant *signed* offset from its own caliper height (`s-04` −0.73 mm,
+   `s-05` +0.46 mm, `g02_01` +0.23 mm, `g02_02` +0.12 mm, `g02_03` −0.51 mm, `g02_04` +0.15 mm,
+   `g02_05` +0.17 mm, `g02_06` +0.65 mm — all within D-073's 0.86 mm height floor), with much
+   smaller vertex-to-vertex scatter around that offset (MAD 0.04–0.25 mm). The two biggest
+   offsets (`s-04`, `g02_06`) happen to have the lowest median sigma, which is what made the
+   *pooled* absolute-error correlation negative (r = −0.30, reproduced here, close to the first
+   version's −0.22 to −0.32). R-10's sigma is the spread of depth residuals **at a vertex** — it
+   structurally cannot see a whole-part offset; that is `max(sigma, sigma_floor)`'s job (D-073),
+   specifically sigma_floor's. Removing each specimen's own median error before pooling
+   (`specimen_offsets_mm`/`scatter_pairs`) reverses the sign: **Pearson r = +0.24**, and mean
+   scatter rises across five of six increasing-sigma bins (0.053 → 0.111 → 0.100 → 0.156 → 0.186
+   → 0.243 mm — one small non-monotonic dip, not a clean monotone, but the overall trend is
+   clearly upward, not flat or falling).
+
+*The real conclusion: sigma shows a real, if modest, positive relationship with per-vertex
+scatter once the offset is removed — the first version's "weak negative correlation, sigma does
+not predict error" was an artefact of pooling offset and scatter together, not the honest result
+it was presented as.* **k at 95% coverage on the scatter-only pooling = 0.243.** This is a
+genuinely surprising direction: the planning prior of 3 assumed sigma *understates* real error,
+needing a 3x safety margin; this measurement says the opposite — sigma *overstates* real
+per-vertex scatter by roughly 4x. One concrete reason, independently reproduced: each fused
+vertex's sigma is the spread of a *single* depth residual, while each vertex typically averages
+25–29 of them (`residual_count`, read from `sigma_mm.npz`) going into its final position —
+dividing sigma by √(residual_count) gives r = +0.30 and a 95th-percentile ratio of 1.27, closer
+to (though still well below) 3. **Not proposed as `k`** — nothing downstream stores or serves a
+√(residual_count)-normalized sigma, only raw sigma — but it is the clearest available
+explanation for why the usable k differs from the planning prior by so much, and is worth
+carrying forward into whatever story next revisits this.
+
+**Third real problem, found on the second review round (@TabeenRaoof): the scatter-only k=0.25
+and the formulas I-07/I-09 actually use don't match.** D-077's first revision fit `k` on scatter
+(offset removed) against raw sigma, and proposed 0.25 as *the* chosen `k`. But I-07's Fail row
+(`deviation > tolerance + k·max(sigma, sigma_floor)`) and Pass row (`sigma ≤ tolerance / k`), and
+I-09's Unverifiable row (`tolerance < k·sigma_floor`), all apply `k` to **total** deviation
+(offset included) against `max(sigma, sigma_floor)` — never to scatter alone against raw sigma.
+Checked directly, independently, on this run's own 1494 vertices: a `k` of 0.25 in I-07's Fail
+condition is violated by **50% of all vertices, 100% on `s-04` and `g02_06`** (the two largest
+offsets) — because `0.25 × sigma` (0.29–0.64 mm per specimen) is smaller than the offsets
+themselves (up to 0.73 mm). I-09's Unverifiable threshold would fall to `0.25 × 0.86 = 0.215 mm`,
+below every offset this study measured — undoing exactly what `sigma_floor` exists to cover.
+
+**Two numbers, not one, answer two different questions:**
+
+- **k ≈ 0.25** (measured: 0.243, scatter-only, 95% coverage, raw sigma) answers this story's own
+  research question — does sigma predict per-vertex scatter — in isolation. Real but modest
+  evidence: Pearson r = 0.24 (≈6% of variance), within-specimen correlations individually weak
+  and mixed (roughly −0.3 to +0.5 across the 8 specimens).
+- **k ≈ 0.70** (measured: 0.688, `consumable_k_estimate`, **total** error against
+  `max(sigma, sigma_floor)`, 95% coverage) is the number I-07's Fail/Pass rows and I-09's
+  Unverifiable row should actually consume, since that is the exact quantity their formulas use
+  — the smallest change that keeps the proposal's §7.2 table and I-07's acceptance criteria as
+  written (option 1 of three @TabeenRaoof offered; a formula redesign splitting offset and
+  scatter into separate additive terms was also on the table, but changes I-07's own acceptance
+  criteria and needs its own decision, not a line here). **I-09 still has a residual gap even at
+  k = 0.70**: `0.70 × 0.86 = 0.60 mm`, still below `s-04`'s own 0.73 mm offset — flagged
+  explicitly in `I-09.md`, not resolved here, since fixing it is either a higher `k`, a higher
+  `sigma_floor`, or a design change to the Unverifiable row itself, each a real tradeoff for
+  whoever claims I-09.
+
+Both are provisional, not settled calibrations — the evidence behind either is a first
+measurement (8 specimens, ~1500 vertices), worth re-running with more data, not a number to stop
+questioning.
+
+*Caveats, stated not hidden:* `error_mm` compares each vertex to **one** caliper reading per
+specimen; real top-face vertices span genuine surface geometry a single-point reading can't
+distinguish from reconstruction noise. Near-top-face vertex selection is a percentile cut on each
+mesh's own observed-height distribution (53–363 vertices per specimen after R-08's decimation +
+R-09's Observed-only filter), not `measure_prism`'s density-peak method — necessary on data this
+sparse (confirmed empirically: the density-peak search raises "too few points" on these meshes),
+but a different methodology than G-04's own. Only 8 specimens, ~1500 vertices total. The script's
+own regenerated alignment/mesh/provenance/uncertainty outputs are written to this story's own
+`fixtures/data/g07_reliability/<specimen_id>/`, not into the shared `fixtures/data/recon_runs/`
+in place (an earlier revision did exactly that, risking silently deleting another story's own
+cached R-07 outputs on a machine that keeps them there — caught on review, round two).
+
+Recorded back in `stories/G/G-07.md`'s notes, and in `stories/I/I-07.md` and `stories/I/I-09.md`
+(both now cite `k ≈ 0.70`, not the scatter-only 0.25, with I-09's own residual gap stated
+explicitly), per this story's own acceptance criteria.
+*Checked against D-028:* fetched all origin branches on 2026-11-17; D-076 (held on `main`) was
+highest anywhere at the time of the first version of this decision, unchanged on this revision.
+
+---
+
+**D-078 · R-37: the board reference's measured in-plane σ_floor is 5.278 mm; D-073's
+out-of-plane height floor remains 0.86 mm.** (2026-11-17, PR #364)
+
+R-37 fixed the two edge-measurement defects that forced D-073 to leave in-plane features
+unmeasured: `measure_prism` now measures each footprint edge corner-to-corner from adjacent
+robust fitted-wall intersections, and `_fit_rigid_2d` uses a whole-outline pose search with a
+scale-free edge-length-pattern tie-breaker for scalene polygons. Real-data review also exposed
+and fixed two integration problems before this decision was accepted: sparse outlier bridges
+could make the largest 2-D connected blob span most of the board, and direct-script execution
+could import a stale `recon` package instead of the checked-out branch. The G-04 measurement
+entry point now pins imports to the checkout and refuses mixed/stale code.
+
+@dalwalyk reran the existing G-04 real-data chain on R-37 head `035baa2` twice using
+`python scripts/measure_g04_board_error.py ...`, then once more through the module-import
+entry style. **All three outputs were byte-identical.** All six G-02 specimens completed:
+
+| Specimen | Rotation | Edge ratios (measured/CAD) |
+|---|---:|---|
+| g02_01 (square) | 34.16° | 1.103, 0.849, 0.848, 0.932 |
+| g02_02 (rect) | −177.37° | 0.989, 0.955, 0.986, 0.951 |
+| g02_03 (triangle) | 44.60° | 1.070, 1.015, 1.115 |
+| g02_04 | 168.94° | 0.898, 0.931, 1.009, 0.955, 0.996 |
+| g02_05 | 25.96° | 0.901, 0.960, 0.933, 0.927, 0.944, 0.928 |
+| g02_06 | −174.68° | 0.966, 0.959, 0.954, 0.954 |
+
+The corrected `in_plane_summary_r37` contains **11 unambiguous edge comparisons**, no excluded
+specimens, signed mean error **−0.108 mm**, nearest-rank p95 absolute error
+**σ_floor_mm = 5.278 mm**, and **max_error_mm = 5.278 mm**. The p95 implementation itself was
+also corrected during review to the true nearest-rank index `ceil(0.95 * n) - 1`, with an
+N=12 regression that distinguishes it from the previous formula.
+
+The height result did not regress: the same run reports mean height error **−0.002 mm** and
+`sigma_floor_mm = 0.856 mm`, consistent with D-073's rounded **0.86 mm** out-of-plane floor.
+Therefore D-073 remains authoritative for board-reference heights, while **this decision
+supersedes only D-073's statement that in-plane features have no measured floor yet.**
+
+*Interpretation:* 5.278 mm is not a claim of high in-plane accuracy; it is the measured floor
+the evidence supports. Per the project rule, a large measured floor is recorded rather than
+tuned downward. Any downstream story that previously returned `insufficient_evidence` solely
+because D-073 lacked an in-plane floor (notably R-16/I-07 consumers) must rerun its own
+comparison against the fixed R-37 measurement path before changing a verdict; historical
+pre-R-37 edge numbers are not retroactively treated as valid.
+*Conditions:* same as G-04/D-073 — landscape phone stills, board reference, R-01 raw point cloud
+rather than the cleaned mesh, G-06 measured board pitch, and the current board-anchored
+alignment path including R-38's frame rejection.
+*Evidence:* PR #364 comment by @dalwalyk, 2026-11-17; owner-local
+`fixtures/data/g04_board_error/g04-board-error-evidence.json`.
+*Checked against D-028:* D-077 is held by G-07/PR #367; an open-PR search found no D-078 use,
+so D-078 was free.
+
+---
+
+**D-079 · One critical intake-floor failure makes the whole order Unverifiable; non-critical features do not trigger it at intake.** (2026-11-17, I-10)
+
+I-09 flags features independently, but the frozen `VerdictResult` has one verdict for the whole
+order/session. I-10 resolves that mismatch conservatively: if any critical `hole`/`edge` is
+below its measured `k * sigma_floor` threshold, the order-level verdict is `Unverifiable` at
+intake. The same outcome applies to a critical axis-ambiguous `face`/`overall` only when its
+valid tolerance is below the larger of the two measured thresholds used by I-07's global v1
+verdict path: `max(0.70 * 0.86, 0.70 * 5.278) = 3.6946 mm`. I-09 still reports that feature as
+`refused` because intake does not know its axis; I-10 is not choosing an axis, only recognizing
+that I-07 applies both vertex pools to every named feature and the current method path cannot
+reach Pass for that requirement. Other refused, malformed or unrecognised features are not
+relabelled. Every blocked critical feature is named in `reason_codes`; no geometry region
+contributes because no photo or reconstruction exists yet.
+
+A feature explicitly marked `critical: false` does **not** make the order Unverifiable at
+intake, even if its own `intake_check` entry is `unverifiable`. I-07 currently still evaluates
+any feature with a valid tolerance after capture, regardless of `critical`, so a non-critical
+feature can still affect a later post-reconstruction Rescan/Fail. I-10 does not change that I-07
+behavior; this sentence records the distinction instead of calling such features purely advisory.
+
+*Why:* returning Pass or Fail while one critical requirement is outside the method's measured
+capability would dress an incomplete inspection up as complete. Sending a requirement that the
+current method path cannot Pass into repeated capture would instead produce endless Rescans. The
+single overall enum has no honest partial-Pass state, so the whole critical inspection is routed
+to a CMM before capture.
+
+*D-004 still applies:* no CAD means no verdict. Creating a capture session is not blocked; if
+one is created anyway, `getVerdict` returns the same intake Unverifiable result immediately and
+reconstruction cannot upgrade it to Pass or Fail.
+
+*Contract effect:* I-10 adds optional `Order.verdict` using the existing `VerdictResult` schema.
+This is D-031-governed and needs both other members' approval plus the sprint-boundary merge
+rule, unless a separate exception is recorded.
+
+*Checked against D-028:* D-079 was unused on `main` and every open PR branch checked before
+this implementation.
+
+---
+**D-080 · v1 expresses D-005's hard rule mesh-wide, not per-feature: a hidden defect on
+Unobserved/Inferred geometry does not change a verdict a session's real, measured evidence
+would otherwise Pass.** (2026-11-18, PR #384)
+
+No code anywhere in v1 binds a named spec feature to actual CAD geometry (I-07's own "what a
+region is in v1" note, `inspect/inspection/verdict.py`) -- `compute_verdict` judges every
+feature against the same global per-vertex measurement; binding a feature to a specific region
+is the Tier 3 extension, not built yet. So proposal 7.2's "a critical region is Unobserved"
+Rescan row can only be expressed at the whole-session level in v1: either some Observed,
+measured data exists (the verdict proceeds from it) or none does at all (Rescan,
+`{name}_not_seen`). A defect that happens to land only on Unobserved or Inferred geometry is,
+by design (D-062, I-06's `compute_deviation`), never measured there (`deviation_measured == 0`)
+and so cannot numerically affect Pass/Fail -- that is the real guarantee D-005 gives in v1, and
+`tests/test_hard_rule.py` (I-08) confirms it structurally: `compute_verdict`'s output is
+byte-for-byte identical with and without such a hidden defect planted.
+*Why:* this was implemented in I-07/PR #379 and not objected to across two reviewers' four
+review rounds, but was never recorded as its own decision -- caught on I-08's own review
+(@mbj1994, PR #384): a story file's working note is not a team decision, and I-08's acceptance
+criterion 3 ("produces Rescan... the table's third row") was written against the literal
+proposal table, before this mesh-wide reduction existed in code or was reviewed on its own
+terms. This decision gives that reduction the standing I-08 asked for, and I-08.md's criterion 3
+is restated to the invariant v1 can actually express, rather than left reading as unmet.
+*Conditions:* v1 only -- once Tier 3 binds a named feature to actual CAD geometry (per-feature
+region tracking), a defect hidden specifically within *that* feature's own Unobserved region
+becomes expressible, and this decision's mesh-wide reduction no longer applies.
+*Evidence:* PR #384 review (@mbj1994), 2026-11-18; `inspect/inspection/verdict.py`'s
+`observed_measured`/`has_observed_data` logic (PR #379); `tests/test_hard_rule.py`'s
+identical-output comparison (PR #384).
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-079 (held by
+`inspect/I-10-unverifiable-path-impl`) was highest anywhere, so D-080 was free.
+
+---
+
+**D-081 · A-09's report-narrative generator independently pins Gemini Flash-Lite, and builds
+only the generator, not the contract wiring.** (2026-11-18)
+`recon/report_narrative.py` pins `gemini-3.5-flash-lite` as its own `MODEL` constant, following
+A-01/A-03/A-13's own precedent (D-055, D-067, D-068): a stable Developer API snapshot, never
+`-latest`, named independently rather than importing another story's constant, even though all
+four currently agree on the same snapshot. On an invalid, blocked, timed-out or failed reply --
+or a reply containing an invented tolerance/accuracy/sigma figure, checked by the generator
+itself rather than trusted from the prompt alone -- it falls back to a deterministic templated
+paragraph built from the same `VerdictResult` fields, distinguished from a real model narrative
+only by `NarrativeResult.source`/`reason`. This story is split into two pull requests: this one
+builds the generator and its tests only; a second, separate pull request will add the actual
+`contracts/openapi.yaml` field, the `recon.service` wiring, and the frontend render, raised as
+its own explicit D-031 request.
+*Why:* `VerdictResult`'s only `x-proofshape-extends-at` marker (D-032) is scoped to the tolerance
+table/`k`/`σ_floor`, not narrative text, so serving this narrative at all is a genuine contract
+change needing both other members' approval at a sprint boundary (D-031) -- not something to fold
+unilaterally into the story that also builds the generator. Splitting lets the generator (which
+touches no frozen file) merge now under the ordinary one-approval rule, while the contract
+change is raised properly and on its own. A narrative is never simply withheld on failure (unlike
+A-01/A-03's checked/unchecked results) because the report's slot must always show something; the
+in-code figure check exists because a system-instruction request is not proof the model complied,
+and a quiet wrong number in a report is worse than a loud refusal (AGENTS.md's "no silent
+failures").
+*Conditions:* A-09's own acceptance criteria ("lands exactly in C-15's reserved slot") are not met
+by this pull request alone -- the story's `State` stays `Claimed` until the second pull request
+lands the wiring.
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-080 (held by `main` and
+several other branches) was highest anywhere, so D-081 was free.
+
+---
+
+**D-082 · A-09 v1 serves the deterministic template narrative only; the LLM path is kept as
+tested groundwork, not served.** (2026-11-18)
+Four rounds of review on PR #387 grew `recon/report_narrative.py`'s safety checks against a
+model's free-text explanation: a per-verdict word ban (round 1), figure-check holes closed
+(round 1), a direction-phrase gap closed (round 2), a full redesign to a deterministic-
+verdict-first structure with a verdict-independent outcome ban (round 3), then a structural
+groundedness requirement plus sanitizing buyer-controlled region names/reason codes in the
+*deterministic* path too (round 4). Round 5, both `@TabeenRaoof` and `@mbj1994` independently:
+ordinary words with no figure and no banned term ("looks perfect", "is unacceptable", "is OK",
+"is within limits") still passed a grounded, vocabulary-banned explanation, and negated/prefixed
+forms ("**un**acceptable", "**non**conforming") structurally cannot be caught by a word-boundary
+ban at all. Both concluded independently that no lexical filter over free prose can guarantee
+AGENTS.md's hard rule ("a model's guess must never approve or condemn a component") for an
+open-ended explanation sentence. `generate_narrative` (the actual entry point a later PR wires
+into `recon.service`) therefore calls only `template_narrative` -- no model, no key, no network
+call, and no parameter through which one could be supplied. `generate_llm_narrative`,
+`GeminiNarrator`, and every guard built across all four rounds remain in the module, fully
+exercised by `tests/test_report_narrative.py` (81 tests), as groundwork for a follow-up story.
+*Why:* proposal §7.5 already says "Templated text; an LLM narrative is a Tier 3 add-on" -- v1
+serving the templated half only is not a retreat from the proposal, it is what the proposal
+itself describes as the floor. Three options were on the table (`@TabeenRaoof`, PR #387): (A)
+template-only for v1, keeping the generator as groundwork; (B) a follow-up story that constrains
+the model to *selecting* evidence (which regions/reason codes, in what order) from a fixed set,
+with Python rendering every word a reader sees, so no model output can state an outcome by
+construction; (C) keep free prose and record the residual risk as accepted. (C) was rejected --
+AGENTS.md says not to weaken the hard rule "for convenience," and shipping a narrative that
+cannot be guaranteed safe is exactly that. (A) now, with (B) as a real follow-up if there is
+time, keeps the generative component's groundwork rather than discarding it, while not serving
+anything the hard rule cannot back.
+*Conditions:* this governs only what `generate_narrative`/v1 serves. If a later story implements
+(B) and it is reviewed and found to close the gap by construction, this decision's "template
+only" scope is what that story's own review should revisit, not silently expand past.
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-081 (held by this same
+branch) was highest anywhere, so D-082 was free.
+
+---
+
+**D-083 · The sheet and card reference tiers are cut; the board is the only reference this
+project ships with.** (2026-11-18)
+This is bigger than G-10 (its measurement story) not getting done. Proposal §6.1, under "Core
+pipeline (Tier 1)," commits to three reference tiers, auto-detected: the ChArUco board, a blank
+A4/Letter sheet classified by aspect ratio, and a credit card by its ISO/IEC 7810 dimensions.
+The Tier 2 feature list separately names a "blank-sheet fallback reference with wider error
+bars," M5 (Fri Nov 13, already past) names "sheet and card tiers" as a feature-complete item,
+and the risk table's stated mitigation for "board detection flaky in the field" is exactly
+"sheet and card fallbacks." None of that was built, and no story anywhere was ever scoped to
+build it (G-10 only measures σ_floor for tiers that already detect — it was never the detection
+work itself). Concretely, today: **the board is the only reference tier that exists.** If a
+session's board can't be detected, there is no fallback — that session simply has no
+dimensional claims (D-003's honest-refusal path), not a session on a sheet or card with wider
+error bars as the proposal describes.
+
+Both are markerless by design (glossary: "a blank sheet," "a credit card" — unlike the board's
+printed ChArUco pattern), so `recon/board_pose.py`'s `make_board()` and every scale-fixing path
+built on it (R-02/R-04) cannot see either one; there is no generic known-rectangle detector
+anywhere in `recon/`. `recon/service.py:603` confirms this in the live system:
+`reference_tier_used` is hardcoded to `"charuco_board"`, never detected or selected — no
+buyer-facing path can reach a sheet or card tier today, even though the contract
+(`contracts/openapi.yaml`) reserves `blank_sheet`/`credit_card` as enum values for forward
+compatibility. The sprint plan scheduled the detection capability as its own S5 block ("Sheet
+and card tiers," 12 days, ending 2026-11-14); it was never built. `stories/README.md`'s working
+agreement 4 says anything open past the M5 boundary gets decided, "carried or cut," "never
+silently rolled forward."
+
+*Why:* the detection work (contour-based rectangle detection against a known physical size,
+classified by aspect ratio for the sheet) is real, new scope, not in any existing story's
+estimate. It is past its own M5 deadline, and nothing in the backlog depends on it — no
+`Blocked` story names G-10. Building it now would be new Tier-1 feature work this close to Dec
+2, for a fallback nothing currently reachable needs. **This cut sits outside the sprint plan's
+own §10 cut order** (visual hole filling → … → LLM report narrative never mentions it), so it
+is not a cut the plan already anticipated — it must be declared in the final report and the
+defense, not discovered there. A session with an undetectable board failing outright, with no
+sheet/card fallback, is a real capability gap against the proposal, not a cosmetic one.
+
+*Conditions:* this governs the sheet and card reference tiers only, not the board reference
+(G-04, Done) or anything else in the ground-truth lane. If a future need for multi-tier
+reference support arises, it needs a new detection story first (scoped separately from G-10's
+measurement), and that story should re-open this decision rather than silently reviving G-10 as
+written.
+
+*Checked against D-028:* fetched all origin branches on 2026-11-18; D-082 (held by `main`) was
+highest anywhere, so D-083 was free.
+
+---
+
+**D-084 · A-02: an `unchecked` A-01 result blocks a Pass, the same as a failed VLM semantic
+check — a named trade-off against live-demo availability, not an overlooked one.** (2026-11-19)
+`recon/vlm_veto.py`'s `apply_vlm_veto` reads A-01's already-recorded `<session>/vlm_checks.json`
+and combines it with `inspection.verdict.compute_verdict`'s own result, in `recon/service.py`'s
+`get_verdict`, right before the existing `verdict_result_with_narrative(...)` return. It treats
+every one of A-01's sampled frames (`recon.vlm_check.sampled_indices` — frame 0, every fifth
+index, the final frame) the same way: a `checked` frame with `screen_photo`, `hands_occluding`,
+`lighting_adequate is False`, or `same_part is False` (non-reference frames only) downgrades the
+verdict to at least `Rescan`, named by its own `vlm_*_frame_<index>` reason code; an `unchecked`
+frame (any reason — `missing_api_key`, `api_timeout`, a blocked or malformed reply, …) does
+exactly the same, named `vlm_unchecked_frame_<index>_<reason>`. The combination reuses
+`compute_verdict`'s own `{"Pass": 0, "Rescan": 1, "Fail": 2}` rank, via `max(...)`: a veto can
+raise a `Pass` to `Rescan` but never raises a `Rescan` to `Fail`, and never touches an already-
+`Fail` result — AGENTS.md's hard rule is that a model's guess must never approve or condemn a
+component, so a VLM semantic flag can only ever ask for another look.
+*Why:* proposal §6.5's own wording is "no session reaches Pass until every sampled frame **has
+passed**" — an unchecked frame has not passed, so the literal reading blocks it too, not only an
+explicit `screen_photo`/`hands_occluding` failure. `recon/README.md` and this story's own file
+both refused to let this be invented silently. The alternative — treating `unchecked` leniently,
+as if it were a clean check — was rejected because it would let an outage silently mask exactly
+the kind of defect (wrong part, a screen photo) this story exists to catch; this project's
+recent precedent (A-09/D-082) is to prefer the safer outcome when a check cannot be run, not the
+more convenient one.
+*The cost is measured, not hypothetical (review, @TabeenRaoof, PR #396):* of 11 completed real
+phone sessions on the demo host (R-36/R-39's own runs), **9 have every sampled frame
+`unchecked: missing_api_key`**, including `sess_8fdecd4b3a02` — R-36's own `s-04` demo-host run
+(42 s, edges 0.95–1.04, the clean result R-36 recorded). Under this decision, that session's
+verdict is `Rescan`, not `Pass`, through the real `getVerdict` path, unless it is re-run with a
+working `GEMINI_API_KEY` configured. `queue_full` (`MAX_PENDING = 16`, shared across every
+session's checks including A-14's), `api_timeout`, and free-tier `api_error` (e.g. a 429) can
+all produce the same outcome without any outage at all. This decision does not soften the
+policy in light of that cost — proposal §6.5 is unambiguous — but two consequences follow
+directly and need the team's action, not silent discovery at the demo: (1) the R-36 runbook
+(#371) needs a stated key requirement and a pre-demo check that at least one sampled frame comes
+back `checked`, not just that reconstruction succeeds; (2) X-03's "clean part → Pass" exercise,
+run through the real `getVerdict` path, now needs a live Gemini call against golden frames, so
+the team needs to agree that sending those frames to Gemini for that check is acceptable, or
+X-03 cannot demonstrate a `Pass` through the real service at all.
+*A `Fail` stands even under a `screen_photo`/wrong-part flag — a real choice, not the only
+hard-rule-compliant one (review, @TabeenRaoof, PR #396):* the flag casts some doubt on whether
+the measured geometry is even this supplier's real part, and *overriding* `Fail` to `Rescan`
+specifically for those two flags would also be hard-rule-compliant (it approves nothing either).
+This decision keeps `Fail` standing, so the module's one rule — a veto only ever raises rank,
+never lowers it — stays uniform across every flag rather than special-casing two of them, and
+because a geometric `Fail` already requires an Observed, measured deviation past tolerance
+(`inspection.verdict`'s own rule): the VLM's doubt is about the photographed session, not a claim
+that the measurement itself is fabricated. Recorded as an open option, not a closed one, if the
+team weighs it differently.
+*Scope, stated rather than silently narrowed:* this covers only A-01's *sampled* frames — an
+unsampled bad frame (R-36/#354: a screen photo on frame 6 of a 15-frame session, outside the
+sampled set `[0, 5, 10, 14]`) is still missed, a known limitation of sampled rather than
+all-frame supervision (`recon/README.md`), not something this decision changes. **Confirmed on
+review (@TabeenRaoof, PR #396), from the sessions' own already-recorded `vlm_checks.json`** (on
+their Mac, outside this repo): `sess_fb1b028da4cd`'s sampled frame 5 (`screen_photo: true`)
+correctly produces `vlm_screen_photo_frame_5` under this policy; `sess_1a215dae88d7`'s screen
+photo on unsampled frame 6 is, as expected, missed entirely.
+*Resolved: a vetoed frame does not need to be kept out of the reconstruction, on the evidence
+measured by `@TabeenRaoof` (re-run on `f40dddb`, recorded in #403).* `run_session` keeps
+scheduling VLM checks and starting reconstruction without waiting for them, **unchanged, on
+measured evidence rather than left open**: re-running both sessions' raw frames on current
+`main` (R-38/D-075 included, Gemini key unset) found R-38's outlier rejection drops
+`sess_1a215dae88d7`'s unsampled frame 6 from the fused mesh but keeps `sess_fb1b028da4cd`'s
+sampled frame 5. (R-36's own figures were right as given — `sess_1a215dae88d7` reads 1.345,
+`sess_fb1b028da4cd` 1.286, clean `sess_8fdecd4b3a02` 0.961 — an uncertainty about which figure
+belonged to which session was this story's own, not R-36's.) **On `sess_1a215dae88d7` only, the
+screen frame wasn't the cause — and only up to a point** (correction, @TabeenRaoof, PR #403
+review): dropping frame 6 barely moved the *old* tool's reading (1.345 → 1.352), and the
+*current* `cad_size_check.py` (changed by R-37, after these numbers were first recorded) reads
+the saved output and the fresh re-run as 0.916/0.917 either way — level with clean — but reading
+1.756 with the frame **removed from the input entirely**, a failed measurement with 6.9×/8.2×
+impossible long edges. **On `sess_fb1b028da4cd`, whether the screen frame was the cause can't be
+isolated at all**: R-38 never rejects its frame 5, so there is no before/after-rejection
+comparison, and the *old* tool fails outright if frame 5 is removed from the input by hand.
+Height stayed reliable throughout (0.947–0.952) in every variant, and neither session shows a
+measured benefit to keeping the frame out. **This justifies not adding the wait, on two sessions
+of one part from one phone — it does not prove a screen frame can never matter**, stated as the
+actual strength of the evidence rather than oversold. A real, separate problem surfaced during
+this measurement and is not this decision's to fix: the edge-ratio reading itself shifted by
+0.1–0.4 between tool versions and by up to 0.8 when a frame was removed, and gave impossible
+long-edge readings (4.8–8.2×) on some runs — a `cad_size_check.py` reliability bug, which
+`@TabeenRaoof` is filing as its own issue separately (see `stories/A/A-02.md`).
+*Also recorded, a judgment call open to correction on review:* the contract's `vlm_veto`
+`ErrorDetail.code` (reserved since A-11 freed it from its malformed-upload borrow, D-056) is
+*not* used by this story. `docs/manual.md` lists it under "not produced yet," and the closest
+precedent in this codebase — I-10's Unverifiable-at-intake, also "the session is rejected" in
+plain language — is delivered as an ordinary `200 VerdictResult` value, never a distinct HTTP
+error; `recon/README.md` itself describes A-02's effect as turning a session's verdict into
+"Rescan," a value, not an error code. This story follows that precedent: the veto's outcome is
+`verdict: "Rescan"` in the normal response, with descriptive `reason_codes` (already an
+unconstrained string array — no contract change needed). `vlm_veto` the error code stays
+reserved and unused, exactly as before this story. `@TabeenRaoof` agreed with this reading on
+review.
+*Conditions:* a missing `vlm_checks.json` (should not occur — `VlmSupervisor.join` writes it
+unconditionally) is treated as its own veto (`vlm_checks_missing`), never as a clean session,
+rather than 500ing the endpoint (review, @TabeenRaoof, PR #396).
+*Checked against D-028:* fetched all origin branches on 2026-11-19; D-083 (held by
+`main`, merged) was highest anywhere, so D-084 was free.
+
+---
+
+**D-085 · G-11's lost slicer files are an accepted, permanent gap in its print record; the
+story closes without them.** (2026-11-19)
+G-11's first criterion asks for its glossy, dark and thin parts printed "on G-01's recorded
+printer and settings". The three parts exist and were photographed, measured and run through the
+pipeline. But their sliced `.3mf` files weren't kept (owner, 2026-11-18), so the printer, the
+process settings and the glossy part's silk filament preset can't be read from a file, as they
+can for G-01 and G-05. Drive's `print-files/g-11` holds only two model-only `.3mf` files, which
+are copies of the committed STLs. @mbj1994's review on #392 asked for either the missing evidence
+or an explicit decision that the gap is accepted.
+
+*Why accept it rather than reprint:* a reprint would carry a print record for a new part, not for
+the parts that were photographed and run. Every G-11 result (Drive photos, the hash-locked
+manifest, the caliper file, the reconstruction and VLM runs) would then have to be redone to
+describe the new part. What the print record is for is still shown another way. The caliper
+readings put the glossy and dark parts within 0.03 mm of the grey `g02_04` control's height
+(+0.02 and −0.03 mm). Their edges read 25.87 and 25.89 mm, against the control's five at
+25.88–26.02 mm: the dark part's is inside that range, and the glossy part's is 0.01 mm below it.
+Each result is judged against the printed part's measured size rather than an assumed one. That
+comparison is one print per finish, not a claim about the finishes in general. What stays
+unknown is which settings produced those sizes. G-11 doesn't claim them.
+
+*Conditions:* this covers G-11's three parts only. It doesn't relax G-01's printer-and-settings
+requirement for any other story. G-02's own lost sliced files are recorded in G-02, which is
+already Done, and aren't decided here. Any future print for a ground-truth story keeps its sliced
+`.3mf` on Drive's `print-files/`.
+
+*Checked against D-028:* fetched all origin branches on 2026-11-19; D-084 (held by
+`generative-ai/A-02-vlm-veto`) was highest anywhere, so D-085 was free.
 
 ---
 

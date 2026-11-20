@@ -8,12 +8,21 @@ against it whenever they are available: a caliper measurement of one printed
 square, typed in by the supplier, and the CAD registration residual produced
 once a part is aligned to its design file (inspect/, not yet built).
 
-All three are expressed as a scale ratio relative to the nominal board pitch,
-so they can be compared on the same footing even though they start out as
-different kinds of quantities (a length, a length, and a fractional
-alignment error). Ratio 1.0 means "matches the nominal board pitch exactly."
-The board-pitch source is always the anchor at 1.0: it is the assumption the
-whole reconstruction is built on, not an independent measurement of itself.
+All three are expressed as the same quantity -- the true printed pitch divided
+by the nominal pitch -- so they can be compared on the same footing even though
+they start out as different kinds of quantities (a length, a length, and a
+fractional alignment error). Ratio 1.0 means "the page printed at exactly the
+nominal pitch." The board-pitch source is always the anchor at 1.0: it is the
+assumption the whole reconstruction is built on, not an independent
+measurement of itself.
+
+The CAD source points the other way before conversion (#181, R-41). The
+reconstruction is scaled assuming the nominal pitch, so a page printed small
+(true pitch < nominal) makes the model come out *large*: model / CAD =
+nominal / true. The CAD registration residual r is model / CAD - 1, so its
+ratio is 1 / (1 + r), not 1 + r. With 1 + r, a caliper and a CAD fit that both
+saw the same 98.8% print would be flagged, and two that contradicted each
+other could go unflagged. D-039's amendment of 2026-11-19 records this.
 
 The caliper reading and the CAD registration residual are each optional --
 neither is guaranteed to be present on a given session -- but at least one of
@@ -54,7 +63,10 @@ def check_scale_agreement(
         cad_registration_residual: The fractional scale error reported once
             the reconstructed part is aligned to its CAD design (inspect/).
             A residual of 0.0 means the model matched the design exactly;
-            0.03 means the model came out 3% larger than the design implies.
+            0.03 means the model came out 3% larger than the design implies
+            (model / CAD - 1, as `free_scale_residual` from I-03 reports it).
+            Its ratio is 1 / (1 + r): a model 3% large means the page printed
+            about 2.9% small.
         disagreement_threshold: The fractional disagreement that flags the
             session. D-007 states "about 2%"; this is a team rule, not a
             measured value, so it is a parameter rather than a hardcoded
@@ -62,7 +74,8 @@ def check_scale_agreement(
 
     Returns:
         A dict with `sources_compared` (the source names actually used),
-        `ratios` (each source's ratio to the nominal board pitch), and
+        `ratios` (each source's estimate of true printed pitch / nominal
+        pitch), and
         `flagged` (True if any two of the compared ratios disagree by more
         than `disagreement_threshold`).
 
@@ -90,13 +103,14 @@ def check_scale_agreement(
     if cad_registration_residual is not None:
         if not math.isfinite(cad_registration_residual):
             raise ValueError("cad_registration_residual must be finite when supplied.")
-        cad_ratio = 1.0 + cad_registration_residual
-        if not (cad_ratio > 0):
+        model_to_cad = 1.0 + cad_registration_residual
+        if not (model_to_cad > 0):
             raise ValueError(
                 "cad_registration_residual implies a non-positive scale ratio "
                 "(must be greater than -1.0)."
             )
-        ratios[CAD_RESIDUAL_SOURCE] = cad_ratio
+        # model / CAD = nominal / true, so true / nominal is its reciprocal (#181).
+        ratios[CAD_RESIDUAL_SOURCE] = 1.0 / model_to_cad
 
     if len(ratios) < 2:
         raise ValueError(

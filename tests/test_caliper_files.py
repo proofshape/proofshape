@@ -46,7 +46,8 @@ FEATURE_KEYS = {
     "std_mm",
 }
 # `wall` and `hole_width` are G-05's: a web between a face and a hole wall, and a hole read with
-# the inside jaws. The printed hole's centre is the left web plus half the hole width.
+# the inside jaws. The printed hole's centre is the left web plus half the hole width. G-11 uses
+# `wall` for its thin tray too: one wall's thickness, read across both of its faces.
 KINDS = {"edge", "height", "board_span", "cube_axis", "wall", "hole_width"}
 NOMINAL_SOURCES = {"cad", "D-034", "cube"}
 READINGS_PER_FEATURE = 10  # the Ground truth protocol: 10 independent placements

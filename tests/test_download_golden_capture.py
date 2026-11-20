@@ -180,12 +180,17 @@ def bin_dir(tmp_path: Path) -> Path:
 
 
 @pytest.mark.parametrize(
-    "manifest_name", ["golden_capture_manifest.json", "specimen_capture_manifest.json"]
+    "manifest_name",
+    [
+        "golden_capture_manifest.json",
+        "specimen_capture_manifest.json",
+        "robustness_capture_manifest.json",
+    ],
 )
 def test_committed_manifest_matches_its_committed_sha256(manifest_name: str) -> None:
     # F-08: each manifest's committed .sha256 is the checksum of the versioned inventory manifest
     # (fixtures/README.md) -- it only catches an accidental edit to the manifest if something
-    # actually checks the two still agree. G-08 added the specimen set's.
+    # actually checks the two still agree. G-08 added the specimen set's, G-11 the robustness set's.
     manifest_path = REPO_ROOT / "fixtures" / manifest_name
     sha_path = manifest_path.with_suffix(".sha256")
     expected_line = sha_path.read_text(encoding="utf-8").strip()
@@ -195,17 +200,18 @@ def test_committed_manifest_matches_its_committed_sha256(manifest_name: str) -> 
     assert actual_hash == expected_hash
 
 
-def test_specimen_manifest_lists_every_g02_specimen_with_its_hash_and_cad() -> None:
+def test_specimen_manifest_lists_every_specimen_with_its_hash_and_cad() -> None:
     # G-08: one capture per G-02 specimen, 25-30 frames each (the story's criterion), every one
     # hash-locked so the downloader refuses rather than falls back to a count-only check, and
-    # each mapped to the reference CAD it will be compared against (G-04).
+    # each mapped to the reference CAD it will be compared against (G-04). G-09 added G-05's
+    # two printed parts, the control and the 4 mm hole shift (D-069), under the same rules.
     data = json.loads(
         (REPO_ROOT / "fixtures" / "specimen_capture_manifest.json").read_text(
             encoding="utf-8"
         )
     )
     sample_ids = [capture["sample_id"] for capture in data["captures"]]
-    assert sample_ids == [f"g02_0{i}" for i in range(1, 7)]
+    assert sample_ids == [f"g02_0{i}" for i in range(1, 7)] + ["g05_00", "g05_02"]
     for capture in data["captures"]:
         assert 25 <= capture["frames"] <= 30, capture["sample_id"]
         assert len(capture["content_sha256"]) == 64
@@ -216,6 +222,63 @@ def test_specimen_manifest_lists_every_g02_specimen_with_its_hash_and_cad() -> N
     for entry in cad.values():
         assert (REPO_ROOT / entry["path"]).is_file(), entry["path"]
         assert entry["path"].endswith(entry["filename"])
+    assert cad["g05_00"]["filename"] == "g05_00_control_50x32x20mm.stl"
+    assert cad["g05_02"]["filename"] == "g05_02_hole_shift_4mm.stl"
+
+
+def test_robustness_manifest_lists_the_three_g11_parts_with_hash_and_cad() -> None:
+    # G-11: one capture per printed robustness part, 25-30 frames each (G-08's convention),
+    # every one hash-locked so the downloader refuses rather than falls back to a count-only
+    # check. The glossy and dark parts are g02_04 itself in another filament, so they map to its
+    # CAD; the thin tray maps to the hollowed g11_01.
+    data = json.loads(
+        (REPO_ROOT / "fixtures" / "robustness_capture_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    sample_ids = [capture["sample_id"] for capture in data["captures"]]
+    assert sample_ids == ["g11_glossy", "g11_dark", "g11_thin"]
+    for capture in data["captures"]:
+        assert 25 <= capture["frames"] <= 30, capture["sample_id"]
+        assert len(capture["content_sha256"]) == 64
+        int(capture["content_sha256"], 16)
+        assert capture["drive_folder_id"]
+    cad = {entry["sample_id"]: entry for entry in data["reference_cad"]}
+    assert sorted(cad) == sorted(sample_ids)
+    assert cad["g11_glossy"]["filename"] == "g02_04_pentagon_r22x25mm.stl"
+    assert cad["g11_dark"]["filename"] == "g02_04_pentagon_r22x25mm.stl"
+    assert cad["g11_thin"]["filename"] == "g11_01_thin_wall_pentagon_r22x25mm.stl"
+    for entry in cad.values():
+        assert (REPO_ROOT / entry["path"]).is_file(), entry["path"]
+        assert entry["path"].endswith(entry["filename"])
+
+
+def test_robustness_manifest_hash_locks_the_two_vlm_stills() -> None:
+    # G-11 criterion 2: A-01's screen-photo and wrong-part controls, formalised by file hash.
+    # The screen photo has its own Drive file; the wrong part is golden s-05's IMG_4161.jpeg,
+    # the same bytes A-01 used, so it points at that sample instead of a second copy on Drive.
+    # The downloader only fetches `captures`; these are verified by hash after a manual download.
+    data = json.loads(
+        (REPO_ROOT / "fixtures" / "robustness_capture_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    stills = {still["still_id"]: still for still in data["stills"]}
+    assert sorted(stills) == ["g11_screen_photo", "g11_wrong_part"]
+    assert stills["g11_screen_photo"]["role"] == "screen_photo"
+    assert stills["g11_screen_photo"]["drive_file_id"]
+    assert stills["g11_wrong_part"]["role"] == "wrong_part"
+    golden = json.loads(
+        (REPO_ROOT / "fixtures" / "golden_capture_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    golden_ids = {capture["sample_id"] for capture in golden["captures"]}
+    assert stills["g11_wrong_part"]["golden_sample_id"] in golden_ids
+    for still in stills.values():
+        assert len(still["content_sha256"]) == 64
+        int(still["content_sha256"], 16)
+        assert still["filename"].lower().endswith((".jpg", ".jpeg"))
 
 
 def test_missing_gdown_fails_with_install_hint(tmp_path: Path) -> None:

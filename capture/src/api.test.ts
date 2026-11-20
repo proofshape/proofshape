@@ -6,6 +6,7 @@ import {
   getReconstruction,
   getVerdict,
   parseInspectionSpec,
+  ServiceUnreachableError,
   uploadFrame,
 } from "./api.js";
 import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
@@ -286,6 +287,21 @@ describe("api against the contract stub", () => {
     }
   });
 
+  // I-07 (PR #379 review, @TabeenRaoof): getVerdict previously threw unexpectedStatus on a 422,
+  // which report.ts's own generic error branch never gets a chance to show.
+  it("returns tolerance_missing as the contract 422 from getVerdict, not an unexpected status", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+    stub.setVerdictScenario("tolerance_missing");
+
+    const result = await getVerdict(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(422);
+      expect(result.error.code).toBe("tolerance_missing");
+    }
+  });
+
   it("fails loudly, not as a contract status, when the frame isn't a JPEG", async () => {
     const session = await createSession(baseUrl, "PO-48213-A");
     if (!session.ok) throw new Error("setup: createSession failed");
@@ -340,5 +356,73 @@ describe("api against the contract stub", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(authorizationHeaderOf(fetchSpy.mock.calls[0]?.[1])).toBeNull();
     });
+  });
+});
+
+// C-24 (#351): what a proxy in front of an unreachable recon.service answers. Vite's dev proxy
+// (the D-049 Mac path R-36 measured) gives an empty 500; a hosting proxy gives an HTML 5xx. Only
+// a non-JSON 5xx is "unreachable": a non-JSON 2xx/4xx still means a broken contract, and a 5xx
+// with a JSON body came from the service itself.
+describe("a non-JSON 5xx means the service is unreachable (C-24, #351)", () => {
+  const frame = new Blob([FAKE_JPEG_BYTES], { type: "image/jpeg" });
+  const gyro = { alpha: 1, beta: 2, gamma: 3 };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function answerEveryFetchWith(body: string, status: number, contentType = "text/plain"): void {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(new Response(body, { status, headers: { "Content-Type": contentType } })),
+    );
+  }
+
+  it("throws ServiceUnreachableError for Vite's empty 500 on every session call", async () => {
+    answerEveryFetchWith("", 500);
+    await expect(createSession("http://svc", "PO-1")).rejects.toBeInstanceOf(
+      ServiceUnreachableError,
+    );
+    await expect(uploadFrame("http://svc", "sess_1", frame, gyro)).rejects.toBeInstanceOf(
+      ServiceUnreachableError,
+    );
+    await expect(finishSession("http://svc", "sess_1")).rejects.toBeInstanceOf(
+      ServiceUnreachableError,
+    );
+    await expect(getReconstruction("http://svc", "sess_1")).rejects.toBeInstanceOf(
+      ServiceUnreachableError,
+    );
+  });
+
+  it("throws ServiceUnreachableError for a proxy's HTML 502, and keeps the status", async () => {
+    answerEveryFetchWith("<html><body>Bad Gateway</body></html>", 502, "text/html");
+    const error: unknown = await uploadFrame("http://svc", "sess_1", frame, gyro).catch(
+      (thrown: unknown) => thrown,
+    );
+    expect(error).toBeInstanceOf(ServiceUnreachableError);
+    expect((error as ServiceUnreachableError).status).toBe(502);
+    expect((error as ServiceUnreachableError).operation).toBe("uploadFrame");
+  });
+
+  it("still fails loudly as a broken contract for a non-JSON 2xx", async () => {
+    answerEveryFetchWith("not json", 202);
+    const error: unknown = await uploadFrame("http://svc", "sess_1", frame, gyro).catch(
+      (thrown: unknown) => thrown,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ServiceUnreachableError);
+    expect((error as Error).message).toMatch(/response body was not valid JSON \(status 202\)/);
+  });
+
+  it("does not call a 5xx with a JSON body unreachable: that answer came from the service", async () => {
+    answerEveryFetchWith(
+      JSON.stringify({ code: "internal_error", message: "boom" }),
+      500,
+      "application/json",
+    );
+    const error: unknown = await uploadFrame("http://svc", "sess_1", frame, gyro).catch(
+      (thrown: unknown) => thrown,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ServiceUnreachableError);
   });
 });

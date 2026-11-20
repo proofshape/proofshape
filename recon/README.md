@@ -303,11 +303,19 @@ reference.
 
 `recon.scale_agreement.check_scale_agreement` compares the three independent scale sources from
 D-007 -- the nominal printed board pitch, an optional caliper reading, and an optional CAD
-registration residual (`inspect/`, not built yet) -- and flags the session if any two disagree
-by more than about 2%. All three are converted to a scale ratio relative to the board pitch
-before comparing, since they start out as different kinds of quantities; see D-039 for the full
-reasoning. Board pitch alone is never accepted -- at least one of the other two sources must also
-be supplied.
+registration residual (I-03's `free_scale_residual`, model ÷ CAD − 1) -- and flags the session
+if any two disagree by more than about 2%. Each is converted to the same quantity before
+comparing, true printed pitch ÷ nominal pitch, since they start out as different kinds of
+quantities; see D-039 for the full reasoning. Board pitch alone is never accepted -- at least one
+of the other two sources must also be supplied.
+
+The conversions are:
+- board pitch: 1.0;
+- caliper: `caliper_reading_mm / board_pitch_mm`;
+- CAD: `1 / (1 + r)`.
+
+The CAD one is a reciprocal because a page printed small makes the model come out large (#181,
+R-41, D-039's 2026-11-19 amendment). The service doesn't call the check yet; R-42 wires it in.
 
 ## R-13 · per-stage latency table
 
@@ -365,11 +373,21 @@ an absent key before touching Lightning. Existing environment credentials do not
 another Google backend: this code explicitly uses the Developer API.
 
 Samples are frame 0, indices divisible by 5, and the final accepted frame exactly once.
-Frame 0 is the reference; a wrong reference cannot be detected merely by comparing later
-frames against it. Each worker writes `<session>/vlm/frame_NNNN.json`; `run_session` writes
-`<session>/vlm_checks.json` after the pipeline, including failure paths. API/parse failures
-are `unchecked`, never guessed observations. Empty `token_usage` means usage was not
-reported, not a zero-cost call. Queue and time bounds are in D-055.
+A-14 deliberately keeps that A-01 rule: the repository has no measured 25-30-frame free-tier
+rate/latency run that would justify increasing the session to one Gemini call per accepted frame.
+That means this is **sampled supervision, not all-frame supervision**. An unsampled bad frame can
+be missed; R-36/#354 observed exactly that when a screen photograph landed on frame 6 of a
+15-frame session (the checked set is 0, 5, 10, 14). A-02's future veto therefore covers exactly
+the sampled frames unless a later measured change widens the rule.
+
+Frame 0 is the reference and is inspected as the reference itself: its prompt must not ask the
+supplier to provide or compare against frame 0. For later frames the prompt states that the camera
+intentionally orbits a stationary part, so a changed viewpoint or apparent image orientation is
+not by itself a change to the physical part. A wrong reference still cannot be detected merely by
+comparing later frames against it. Each worker writes `<session>/vlm/frame_NNNN.json`;
+`run_session` writes `<session>/vlm_checks.json` after the pipeline, including failure paths.
+API/parse failures are `unchecked`, never guessed observations. Empty `token_usage` means usage
+was not reported, not a zero-cost call. Queue and time bounds are in D-055.
 
 Since contract v1.1 (A-11, D-056), each upload's 202 response carries the newest *checked*
 result as `vlm_feedback` (`vlm_check.latest_checked`, read from disk, never waiting on the

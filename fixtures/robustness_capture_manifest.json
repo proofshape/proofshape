@@ -1,0 +1,74 @@
+{
+  "captures": [
+    {
+      "aggregate_bytes": 115399130,
+      "drive_folder_id": "14n6DPJbgCXgpy5OUVXJoBGVc5T2bwRQB",
+      "frames": 30,
+      "lighting": "condition A",
+      "object": "silver silk PLA pentagonal prism, r22 x 25 mm (g02_04 geometry)",
+      "reflective": true,
+      "sample_id": "g11_glossy",
+      "content_sha256": "6a9ed13b20f27c0e10d021d0f3df1dd698896035e3676e130618bd9dba40af67"
+    },
+    {
+      "aggregate_bytes": 115267425,
+      "drive_folder_id": "11Umt-atmvRBt6QN3Ee9GSV0Rg0ZpkM_1",
+      "frames": 30,
+      "lighting": "condition A",
+      "object": "black PLA Basic pentagonal prism, r22 x 25 mm (g02_04 geometry)",
+      "reflective": false,
+      "sample_id": "g11_dark",
+      "content_sha256": "4b0dfe816a475d484b920feeb5e195cb7dfd2cea8890133afd9127670a66f5f2"
+    },
+    {
+      "aggregate_bytes": 112431297,
+      "drive_folder_id": "1iw_ghxxMIGIqRpSDlUpRAJE-zuEUijoA",
+      "frames": 29,
+      "lighting": "condition A",
+      "object": "grey open-top pentagonal tray, r22 x 25 mm, 1.2 mm walls, 2.0 mm floor",
+      "reflective": false,
+      "sample_id": "g11_thin",
+      "content_sha256": "b48ac8518b9241d74cdfeee828d6d4cfc2f7511d9ea35e8d19aede7c9be58879"
+    }
+  ],
+  "drive_root_folder_id": "1ywjkf54eHQ2DxDhCjDSGKYR5QMYIr6eV",
+  "notes": "G-11: the robustness parts, photographed 2026-11-17 by @TabeenRaoof on the same G-06-calipered board sheet and table as the golden set and G-08, under lighting condition A. iPhone 16 main camera, 5712 x 4284 landscape stills. The glossy and dark parts are g02_04 printed in other filaments; the grey g02_04 in specimen_capture_manifest.json is their control. Photos remain outside git.",
+  "reference_cad": [
+    {
+      "filename": "g02_04_pentagon_r22x25mm.stl",
+      "path": "fixtures/reference_cad/g02_04_pentagon_r22x25mm.stl",
+      "sample_id": "g11_glossy"
+    },
+    {
+      "filename": "g02_04_pentagon_r22x25mm.stl",
+      "path": "fixtures/reference_cad/g02_04_pentagon_r22x25mm.stl",
+      "sample_id": "g11_dark"
+    },
+    {
+      "filename": "g11_01_thin_wall_pentagon_r22x25mm.stl",
+      "path": "fixtures/reference_cad/g11_01_thin_wall_pentagon_r22x25mm.stl",
+      "sample_id": "g11_thin"
+    }
+  ],
+  "stills": [
+    {
+      "bytes": 133309,
+      "content_sha256": "aa9b3b5e23ac7771579ca7f45a4d812707cdd6907b1856ef8efdd9178167691f",
+      "drive_file_id": "1boHgT2eP3afPGn4owLFHNV61gezFFGs-",
+      "filename": "screen_photo.jpeg",
+      "pixels": "1200 x 1600",
+      "role": "screen_photo",
+      "shows": "a phone photograph of a laptop screen displaying golden s-04 frame IMG_4098.jpeg (the yellow triangular prism); the WhatsApp-recompressed copy of A-01's scene, not A-01's original file",
+      "still_id": "g11_screen_photo"
+    },
+    {
+      "content_sha256": "bd4381f2615755afa2b7cbc29e58332d29062897cb40731bdf1ab8dfae8bfd9b",
+      "filename": "IMG_4161.jpeg",
+      "golden_sample_id": "s-05",
+      "role": "wrong_part",
+      "shows": "the golden s-05 part (red rectangular prism), shown against any other part's frame 0; the same file A-01 used as wrong_part.jpeg, so it is not copied a second time",
+      "still_id": "g11_wrong_part"
+    }
+  ],
+  "version": 1
+}

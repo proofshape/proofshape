@@ -1,0 +1,278 @@
+"""Unit tests for G-04's board-error aggregation script. All synthetic -- no GPU, no fixtures
+(`fixtures/data/` is gitignored and no test may depend on it; `ensure_reconstruction` /
+`measure_specimen` / `main` drive the real R-01/R-02/R-04/cad_size_check chain and are exercised
+by the real run itself, a written record, not unit-testable, the same as `smoke_r14.py`/
+`smoke_r13.py`).
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from scripts import measure_g04_board_error as m
+
+
+def _write_caliper_g06(path: Path, across_mm: float, down_mm: float) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "features": [
+                    {
+                        "object": "board",
+                        "kind": "board_span",
+                        "square_count": 8,
+                        "mean_mm": across_mm,
+                    },
+                    {
+                        "object": "board",
+                        "kind": "board_span",
+                        "square_count": 6,
+                        "mean_mm": down_mm,
+                    },
+                    # A decoy single-square reading (square_count=1) shouldn't be picked up.
+                    {
+                        "object": "board",
+                        "kind": "board_span",
+                        "square_count": 1,
+                        "mean_mm": 20.03,
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_load_board_pitch_mm_reads_across_and_down(tmp_path: Path) -> None:
+    path = tmp_path / "caliper_g-06.json"
+    _write_caliper_g06(path, across_mm=160.16, down_mm=120.55)
+
+    across, down = m.load_board_pitch_mm(path)
+
+    assert across == pytest.approx(160.16)
+    assert down == pytest.approx(120.55)
+
+
+def test_load_board_pitch_mm_rejects_missing_span(tmp_path: Path) -> None:
+    path = tmp_path / "caliper_g-06.json"
+    path.write_text(
+        json.dumps(
+            {
+                "features": [
+                    {
+                        "object": "board",
+                        "kind": "board_span",
+                        "square_count": 8,
+                        "mean_mm": 160.16,
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="square_count 6 and 8"):
+        m.load_board_pitch_mm(path)
+
+
+def test_reference_cad_path_finds_the_one_match(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(m, "REFERENCE_CAD_DIR", tmp_path)
+    (tmp_path / "g02_01_square_20x20x15mm.stl").write_text("solid x\nendsolid x\n")
+    (tmp_path / "g02_02_rect_50x20x25mm.stl").write_text("solid x\nendsolid x\n")
+
+    found = m._reference_cad_path("g02_01")
+
+    assert found.name == "g02_01_square_20x20x15mm.stl"
+
+
+def test_reference_cad_path_rejects_no_match(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(m, "REFERENCE_CAD_DIR", tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="g02_09"):
+        m._reference_cad_path("g02_09")
+
+
+def _result(
+    edges: list[dict],
+    height_error_mm: float | None,
+    board_alignment_ok: bool = True,
+    specimen_id: str = "g02_00",
+) -> dict:
+    return {
+        "specimen_id": specimen_id,
+        "board_alignment_ok": board_alignment_ok,
+        "caliper": {
+            "edges": [{"caliper_error_mm": e} for e in edges],
+            "height": (
+                {"caliper_error_mm": height_error_mm}
+                if height_error_mm is not None
+                else None
+            ),
+        },
+    }
+
+
+def test_measure_specimen_records_pose_and_raw_edges_for_r37(
+    tmp_path: Path, monkeypatch
+) -> None:
+    recon_dir = tmp_path / "recon"
+    board_dir = tmp_path / "board"
+    cad_path = tmp_path / "part.stl"
+    monkeypatch.setattr(
+        m,
+        "ensure_reconstruction",
+        lambda specimen_id, device: (recon_dir, board_dir),
+    )
+    monkeypatch.setattr(m, "_reference_cad_path", lambda specimen_id: cad_path)
+    monkeypatch.setattr(
+        m,
+        "build_report",
+        lambda *args, **kwargs: {
+            "board_scale": {"scale": 0.998, "rms_residual_mm": 2.1},
+            "prism": {
+                "rotation_deg": 37.25,
+                "alignment_residual_mm": 0.42,
+                "edges": [
+                    {"cad_length_mm": 30.0, "measured_length_mm": 29.95},
+                    {"cad_length_mm": 40.0, "measured_length_mm": 40.08},
+                ],
+                "caliper": {
+                    "edges": [{"caliper_error_mm": -0.05}],
+                    "height": {"caliper_error_mm": 0.1},
+                },
+            },
+        },
+    )
+
+    result = m.measure_specimen(
+        "g02_01",
+        "mps",
+        {"g02_01": []},
+        (160.16, 120.55),
+    )
+
+    assert result["prism_rotation_deg"] == pytest.approx(37.25)
+    assert result["prism_alignment_residual_mm"] == pytest.approx(0.42)
+    assert result["prism_edges"][0]["measured_length_mm"] == pytest.approx(29.95)
+    assert result["caliper"]["edges"][0]["caliper_error_mm"] == pytest.approx(-0.05)
+
+
+def test_aggregate_pools_only_heights_ignoring_edges() -> None:
+    # Edges here are huge (-80/90 mm) and must never enter the aggregate -- only height does,
+    # per review on PR #348 (measure_prism/_fit_rigid_2d aren't trustworthy for edges yet).
+    results = [
+        _result([-80.0, 90.0], height_error_mm=0.05, specimen_id="g02_01"),
+        _result([], height_error_mm=-0.20, specimen_id="g02_03"),
+        _result([70.0], height_error_mm=0.30, specimen_id="g02_04"),
+        _result([], height_error_mm=-0.10, specimen_id="g02_05"),
+        _result([-60.0], height_error_mm=0.15, specimen_id="g02_06"),
+    ]
+
+    summary = m.aggregate(results)
+
+    assert summary["excluded_specimen_ids"] == []
+    assert summary["feature_count"] == 5  # one height per specimen, no edges
+    heights = [0.05, -0.20, 0.30, -0.10, 0.15]
+    assert summary["mean_error_mm"] == pytest.approx(sum(heights) / len(heights))
+    # p95 (nearest-rank) of |heights| sorted [0.05, 0.10, 0.15, 0.20, 0.30] -> round(0.95*4)=4 -> 0.30
+    assert summary["sigma_floor_mm"] == pytest.approx(0.30)
+    assert summary["max_error_mm"] == pytest.approx(0.30)
+
+
+def test_aggregate_excludes_specimens_with_failed_board_alignment() -> None:
+    results = [
+        _result(
+            [], height_error_mm=0.05, board_alignment_ok=True, specimen_id="g02_01"
+        ),
+        _result(
+            [-80.0, 90.0],
+            height_error_mm=-40.0,
+            board_alignment_ok=False,
+            specimen_id="g02_02",
+        ),  # g02_02-style: huge errors from a failed alignment, not real part error
+    ]
+
+    summary = m.aggregate(results)
+
+    assert summary["excluded_specimen_ids"] == ["g02_02"]
+    assert summary["feature_count"] == 1
+    assert summary["sigma_floor_mm"] == pytest.approx(0.05)
+
+
+def test_aggregate_in_plane_pools_edges_without_changing_height_summary() -> None:
+    results = [
+        _result([-0.10, 0.20], height_error_mm=9.0, specimen_id="g02_01"),
+        _result([0.30], height_error_mm=-8.0, specimen_id="g02_03"),
+        _result([-0.05], height_error_mm=7.0, specimen_id="g02_04"),
+    ]
+
+    edge_summary = m.aggregate_in_plane(results)
+    height_summary = m.aggregate(results)
+
+    assert edge_summary["measurable"] is True
+    assert edge_summary["feature_count"] == 4
+    assert edge_summary["mean_error_mm"] == pytest.approx(0.0875)
+    assert edge_summary["sigma_floor_mm"] == pytest.approx(0.30)
+    assert edge_summary["max_error_mm"] == pytest.approx(0.30)
+    assert height_summary["feature_count"] == 3
+    assert height_summary["mean_error_mm"] == pytest.approx((9.0 - 8.0 + 7.0) / 3)
+
+
+def test_aggregate_in_plane_uses_true_nearest_rank_p95_for_twelve_edges() -> None:
+    # Nearest-rank p95 with N=12 is ceil(0.95 * 12) = 12: the largest observation.
+    # The previous round(0.95 * (N - 1)) formula selected index 10 and incorrectly returned 0.
+    results = [
+        _result([0.0] * 11 + [10.0], height_error_mm=0.0, specimen_id="g02_01"),
+    ]
+
+    summary = m.aggregate_in_plane(results)
+
+    assert summary["feature_count"] == 12
+    assert summary["sigma_floor_mm"] == pytest.approx(10.0)
+    assert summary["max_error_mm"] == pytest.approx(10.0)
+
+
+def test_aggregate_in_plane_excludes_failed_alignment_and_reports_no_evidence() -> None:
+    results = [
+        _result(
+            [12.0, -11.0],
+            height_error_mm=0.1,
+            board_alignment_ok=False,
+            specimen_id="g02_02",
+        ),
+        _result([], height_error_mm=0.2, specimen_id="g02_05"),
+    ]
+
+    summary = m.aggregate_in_plane(results)
+
+    assert summary["measurable"] is False
+    assert summary["feature_count"] == 0
+    assert summary["excluded_specimen_ids"] == ["g02_02"]
+    assert summary["mean_error_mm"] is None
+    assert summary["sigma_floor_mm"] is None
+    assert summary["max_error_mm"] is None
+
+
+def test_aggregate_rejects_empty_input() -> None:
+    with pytest.raises(ValueError, match="No specimen"):
+        m.aggregate([_result([], height_error_mm=None)])
+
+
+def test_measure_g04_uses_recon_from_checked_out_repository() -> None:
+    assert m.REPO_ROOT == Path(m.__file__).resolve().parents[1]
+    for module in (m.board_pose, m.metric_alignment, m.vggt_runner):
+        assert m.REPO_ROOT in Path(module.__file__).resolve().parents
+
+
+def test_measure_g04_board_error_module_is_importable() -> None:
+    assert m.SPECIMEN_IDS == (
+        "g02_01",
+        "g02_02",
+        "g02_03",
+        "g02_04",
+        "g02_05",
+        "g02_06",
+    )

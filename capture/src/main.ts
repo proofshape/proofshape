@@ -48,12 +48,15 @@ if (viewerDemo === "unavailable") {
     // A capture link pre-fills the order code so a supplier is not typing one in. This remains
     // relative to the current page, so the same ?order= link works at / locally and under the
     // /proofshape/ GitHub Pages base path.
-    const initialOrderCode = new URLSearchParams(window.location.search).get("order") ?? undefined;
+    const searchParams = new URLSearchParams(window.location.search);
+    const initialOrderCode = searchParams.get("order") ?? undefined;
+    const blurDebug = searchParams.get("blur-debug") === "1";
 
     mountAppShell(shellRoot, {
       baseUrl,
       ...(authToken !== undefined ? { authToken } : {}),
       ...(initialOrderCode !== undefined ? { initialOrderCode } : {}),
+      ...(blurDebug ? { blurDebug: true } : {}),
     });
   }
 }

@@ -29,7 +29,18 @@ const REFERENCE_TEXT: Record<string, string> = {
   none: "no reference",
 };
 
+const INTAKE_UNVERIFIABLE_REASON_PREFIX = "intake_tolerance_below_k_sigma_floor:";
+const INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX = "intake_tolerance_below_method_floor_any_axis:";
+
 export function describeReasonCode(code: string): string {
+  if (code.startsWith(INTAKE_UNVERIFIABLE_REASON_PREFIX)) {
+    const feature = code.slice(INTAKE_UNVERIFIABLE_REASON_PREFIX.length).trim();
+    return `${feature || "Critical feature"}: the requested tolerance is below ProofShape's measured method floor for this inspection.`;
+  }
+  if (code.startsWith(INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX)) {
+    const feature = code.slice(INTAKE_ANY_AXIS_UNVERIFIABLE_REASON_PREFIX.length).trim();
+    return `${feature || "Critical feature"}: the requested tolerance is below a measured method floor that the current verdict path applies to every feature.`;
+  }
   return REASON_TEXT[code] ?? code;
 }
 
@@ -108,7 +119,7 @@ export const REPORT_HTML = `
 
     <section aria-labelledby="report-narrative-title">
       <h2 id="report-narrative-title">Narrative</h2>
-      <p id="report-narrative">AI narrative slot (A-09) — not available yet.</p>
+      <p id="report-narrative">No narrative for this session.</p>
     </section>
 
     <p id="report-status" role="status"></p>
@@ -190,6 +201,11 @@ function renderVerdict(
     note.textContent = `Placement note: ${placementNote}`;
     note.hidden = false;
   }
+
+  // A-09/D-082: a deterministic, code-built summary -- never a model's. The fallback keeps
+  // this meaningful for a session served by an older backend without the field.
+  requireElement(root, "#report-narrative", HTMLElement).textContent =
+    result.narrative ?? "No narrative for this session.";
 }
 
 function renderModelOnly(root: HTMLElement): void {

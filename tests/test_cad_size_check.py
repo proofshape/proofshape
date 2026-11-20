@@ -15,19 +15,24 @@ import cv2
 import numpy as np
 import pytest
 
-from recon import cad_size_check
+from recon import cad_size_check, mesh_cleanup, provenance
 from recon.board_pose import make_board
 from recon.cad_size_check import (
     PrismCAD,
     _RunBundle,
+    apply_board_pitch_correction,
     build_argument_parser,
     build_report,
+    caliper_edge_errors,
     compute_height_above_board,
     fit_board_plane,
+    load_observed_surface_vertex_indices,
     main,
+    match_caliper_edge_truth,
     measure_board_scale,
     measure_legacy_camera_centre_board_scale,
     measure_prism,
+    per_vertex_height_reliability,
     prism_from_cad,
     read_ascii_stl,
     reconstruct_confidence_filtered_points,
@@ -395,6 +400,54 @@ def test_measure_prism_reports_shrunk_dimensions_when_part_is_smaller() -> None:
         assert edge.ratio < 0.98  # must not be reported as full-size
 
 
+def test_measure_prism_perfect_edges_are_corner_to_corner_within_point_two_mm() -> None:
+    # R-37 regression: the old 2nd-98th-percentile extent reads a perfect uniformly sampled edge
+    # about 4% short by construction (30 mm -> ~28.8 mm). A caliper reads corner to corner, so a
+    # noiseless reconstruction-free prism must recover the actual CAD edge length instead.
+    for prism in (
+        _box_prism(side_mm=30.0, height_mm=60.0),
+        _triangle_prism(legs=(60.0, 26.0), height_mm=30.0),
+    ):
+        points = _synthesize_prism_points(
+            prism,
+            rotation_deg=23.7,
+            offset_xy=(70.0, 55.0),
+            noise_mm=0.0,
+            points_per_edge=2000,
+            rng=np.random.default_rng(31),
+        )
+
+        result = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+        measured = sorted(edge.measured_length_mm for edge in result.edges)
+        expected = sorted(float(np.linalg.norm(p1 - p0)) for p0, p1 in prism.edges)
+        assert measured == pytest.approx(expected, abs=0.2)
+
+
+def test_measure_prism_pose_is_repeatable_for_square_and_right_triangle() -> None:
+    # R-37's two reproduction shape classes. The exact same point cloud must not jump to a
+    # qualitatively different discrete pose on a second run.
+    for prism in (
+        _box_prism(side_mm=30.0, height_mm=60.0),
+        _triangle_prism(legs=(60.0, 26.0), height_mm=30.0),
+    ):
+        points = _synthesize_prism_points(
+            prism,
+            rotation_deg=37.0,
+            offset_xy=(70.0, 55.0),
+            noise_mm=0.3,
+            rng=np.random.default_rng(32),
+        )
+
+        first = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+        second = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+        assert second.rotation_deg == pytest.approx(first.rotation_deg, abs=1e-9)
+        assert [edge.measured_length_mm for edge in second.edges] == pytest.approx(
+            [edge.measured_length_mm for edge in first.edges], abs=1e-9
+        )
+
+
 def test_measure_prism_ignores_stray_point_cluster() -> None:
     prism = _box_prism(side_mm=30.0, height_mm=60.0)
     rng = np.random.default_rng(14)
@@ -410,11 +463,434 @@ def test_measure_prism_ignores_stray_point_cluster() -> None:
         assert edge.ratio == pytest.approx(1.0, abs=0.08)
 
 
+def test_measure_prism_rejects_sparse_bridge_to_oversized_outlier_blob() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    rng = np.random.default_rng(140)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=0.0,
+        offset_xy=(80.0, 60.0),
+        noise_mm=0.2,
+        rng=rng,
+    )
+
+    def sparse_segment(
+        start: tuple[float, float], end: tuple[float, float], spacing_mm: float = 1.2
+    ) -> np.ndarray:
+        p0 = np.asarray(start, dtype=np.float64)
+        p1 = np.asarray(end, dtype=np.float64)
+        count = max(2, int(np.linalg.norm(p1 - p0) / spacing_mm) + 1)
+        t = np.linspace(0.0, 1.0, count)
+        xy = p0 + t[:, None] * (p1 - p0)
+        return np.column_stack([xy, np.full(count, -30.0)])
+
+    # A huge sparse outline plus a one-cell-wide bridge touches the real part. The historical
+    # largest-occupied-component rule treats everything as one blob, so the convex hull spans
+    # most of the board and the 30 mm square measures absurdly large. The R-37 selector must use
+    # the dense physical part core instead without forcing its measured dimensions to CAD truth.
+    stray = np.concatenate(
+        [
+            sparse_segment((10.0, 10.0), (160.0, 10.0)),
+            sparse_segment((160.0, 10.0), (160.0, 110.0)),
+            sparse_segment((160.0, 110.0), (10.0, 110.0)),
+            sparse_segment((10.0, 110.0), (10.0, 10.0)),
+            sparse_segment((110.0, 75.0), (160.0, 75.0)),
+        ]
+    )
+    contaminated = np.concatenate([points, stray])
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(60.0, abs=1.5)
+    for edge in result.edges:
+        assert edge.measured_length_mm == pytest.approx(30.0, abs=3.0)
+        assert edge.ratio == pytest.approx(1.0, abs=0.10)
+
+
+def test_measure_prism_keeps_historical_blob_when_it_already_has_a_valid_top() -> None:
+    # R-39 is a recovery path, not a new global ranking rule. A small spatially separate cluster
+    # can sit higher than the real part while the historical largest component is perfectly
+    # measurable; in that case the old component must still win.
+    prism = _triangle_prism(height_mm=30.0)
+    rng = np.random.default_rng(143)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=12.0,
+        offset_xy=(90.0, 70.0),
+        noise_mm=0.15,
+        rng=rng,
+    )
+
+    stray_xy = rng.uniform([15.0, 15.0], [19.0, 19.0], size=(120, 2))
+    stray_height = rng.normal(36.0, 0.05, size=120)
+    stray = np.column_stack([stray_xy, -stray_height])
+    contaminated = np.concatenate([points, stray])
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(30.0, abs=1.5)
+    assert result.alignment_residual_mm < 3.0
+    assert [edge.ratio for edge in result.edges] == pytest.approx(
+        [1.0, 1.0, 1.0], abs=0.12
+    )
+
+
+def test_measure_prism_prefers_real_top_over_larger_low_stray_blob() -> None:
+    # R-39 reproduction of #356: on sparse phone-style scans, a broad low pile can occupy more
+    # XY cells than the actual part. The historical largest-component prefilter therefore keeps
+    # the pile, whose maximum height is below the expected top range, and measurement fails
+    # before it can see the real top face.
+    prism = _triangle_prism(height_mm=30.0)
+    rng = np.random.default_rng(142)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=0.0,
+        offset_xy=(90.0, 70.0),
+        noise_mm=0.15,
+        points_per_edge=600,
+        top_points=1200,
+        rng=rng,
+    )
+
+    stray_x, stray_y = np.meshgrid(
+        np.arange(5.0, 71.0, 1.0),
+        np.arange(5.0, 51.0, 1.0),
+    )
+    stray_xy = np.column_stack([stray_x.ravel(), stray_y.ravel()])
+    stray_height = np.full(len(stray_xy), 8.0)
+    stray = np.column_stack([stray_xy, -stray_height])
+    contaminated = np.concatenate([points, stray])
+
+    height = compute_height_above_board(contaminated, (0.0, 0.0, 0.0))
+    region = (
+        (contaminated[:, 0] > -10)
+        & (contaminated[:, 0] < 170)
+        & (contaminated[:, 1] > -10)
+        & (contaminated[:, 1] < 130)
+        & (height > 1.5)
+        & (height < max(prism.height_mm * 1.6, 40.0))
+    )
+    historical_mask = cad_size_check._largest_connected_blob(contaminated[region, :2])
+    # Prove the fixture actually reproduces the old failure instead of merely testing the fix.
+    assert float(height[region][historical_mask].max()) < 0.5 * prism.height_mm
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(30.0, abs=1.5)
+    assert result.alignment_residual_mm < 3.0
+    assert [edge.ratio for edge in result.edges] == pytest.approx(
+        [1.0, 1.0, 1.0], abs=0.12
+    )
+
+
+def test_measure_prism_height_ignores_denser_spatially_separate_stray_cluster() -> None:
+    # Regression for the pre-R-37 spatial isolation guarantee. A compact stray cluster can have
+    # more samples in one height bin than the real top face; height detection must choose the
+    # real part's connected spatial component, not the densest histogram peak globally.
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    rng = np.random.default_rng(141)
+    points = _synthesize_prism_points(
+        prism,
+        rotation_deg=0.0,
+        offset_xy=(80.0, 60.0),
+        noise_mm=0.15,
+        top_points=1200,
+        rng=rng,
+    )
+
+    stray_xy = rng.uniform([20.0, 20.0], [24.0, 24.0], size=(2000, 2))
+    stray_height = rng.normal(45.0, 0.04, size=2000)
+    stray = np.column_stack([stray_xy, -stray_height])
+    contaminated = np.concatenate([points, stray])
+
+    result = measure_prism(contaminated, prism, board_plane=(0.0, 0.0, 0.0))
+
+    assert result.height_mm == pytest.approx(60.0, abs=1.5)
+    for edge in result.edges:
+        assert edge.measured_length_mm == pytest.approx(30.0, abs=3.0)
+
+
 def test_measure_prism_rejects_too_few_candidate_points() -> None:
     prism = _box_prism(30.0, 60.0)
     points = np.array([[80.0, 60.0, -30.0], [80.0, 60.0, -31.0]])
     with pytest.raises(ValueError, match="Too few candidate points"):
         measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+
+# --- G-07: per-vertex reliability --------------------------------------------------------------
+
+
+def _labelled_prism_glb(
+    path: Path, prism: PrismCAD, *, rng: np.random.Generator
+) -> np.ndarray:
+    """A synthetic provenance GLB whose vertices are a dense, noiseless prism point cloud (same
+    generator ``measure_prism``'s own tests use), all labelled Observed. Face topology is
+    arbitrary (``label_faces`` only reads the labels of the vertices a face references, not real
+    mesh geometry), so points are simply grouped into disjoint triples.
+    """
+    points = _synthesize_prism_points(prism, noise_mm=0.0, rng=rng)
+    usable = (len(points) // 3) * 3
+    vertices = points[:usable]
+    faces = np.arange(usable).reshape(-1, 3)
+    labels = np.full(len(vertices), provenance.LABEL_OBSERVED, dtype=object)
+    mesh_cleanup.write_glb(path, vertices, faces, provenance.labels_to_colors(labels))
+    return vertices
+
+
+def test_load_observed_surface_vertex_indices_returns_indices_and_positions(
+    tmp_path: Path,
+) -> None:
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [20.0, 20.0, 0.0],
+        ]
+    )
+    faces = np.array([[0, 1, 2], [1, 3, 4]])
+    labels = np.array(
+        [
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_OBSERVED,
+            provenance.LABEL_UNOBSERVED,
+        ],
+        dtype=object,
+    )
+    path = tmp_path / "mesh_provenance.glb"
+    mesh_cleanup.write_glb(path, vertices, faces, provenance.labels_to_colors(labels))
+
+    indices, positions = load_observed_surface_vertex_indices(path)
+
+    # Vertex 3 is Observed, but its only face has an Unobserved corner, so it is left out too
+    # (R-09's conservative rule) -- same expectation as load_observed_surface_points's own test.
+    assert sorted(indices.tolist()) == [0, 1, 2]
+    assert sorted(map(tuple, positions)) == sorted(
+        tuple(vertices[i]) for i in (0, 1, 2)
+    )
+
+
+def test_per_vertex_height_reliability_pairs_sigma_with_height_error(
+    tmp_path: Path,
+) -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    path = tmp_path / "mesh_uncertainty.glb"
+    vertices = _labelled_prism_glb(path, prism, rng=np.random.default_rng(21))
+    vertex_count = len(vertices)
+
+    sigma_full = np.full(vertex_count, 1.5)
+    pairs_full = per_vertex_height_reliability(
+        path,
+        sigma_full,
+        board_plane=(0.0, 0.0, 0.0),
+        caliper_height_truth_mm=59.7,
+    )
+
+    assert len(pairs_full) >= 30
+    sigmas = [s for s, _err in pairs_full]
+    errors = [err for _s, err in pairs_full]  # signed, not abs (D-077)
+    # noise_mm=0.0, so the top 10% of this mesh's own observed heights sits very close to 60.0mm
+    # -- the +0.3mm gap to the 59.7mm caliper truth is most pairs' signed error.
+    assert sigmas == pytest.approx([1.5] * len(pairs_full))
+    assert np.median(errors) == pytest.approx(0.3, abs=0.1)
+    assert max(abs(e) for e in errors) < 5.0
+
+    # A NaN sigma (fewer than 2 observations, R-10's own convention) is dropped, not propagated.
+    # Every other vertex, not a contiguous half: _synthesize_prism_points appends wall points
+    # before top points, so a contiguous first/last half can miss the top-face vertices entirely.
+    sigma_alternating_nan = sigma_full.copy()
+    sigma_alternating_nan[::2] = np.nan
+    pairs_alternating = per_vertex_height_reliability(
+        path,
+        sigma_alternating_nan,
+        board_plane=(0.0, 0.0, 0.0),
+        caliper_height_truth_mm=59.7,
+    )
+
+    assert len(pairs_alternating) < len(pairs_full)
+    assert all(not math.isnan(s) for s, _err in pairs_alternating)
+
+
+def test_per_vertex_height_reliability_uses_a_nonlevel_board_plane(
+    tmp_path: Path,
+) -> None:
+    """Regression test for D-077: a first version of this function recommended re-fitting
+    board_plane on the served mesh's own (board-free) vertices, which silently produced a badly
+    tilted/offset plane. Every other test in this file passes board_plane=(0,0,0), which would
+    pass identically whether or not the plane argument is actually used -- this one passes a
+    plane with a real z-offset and asserts the resulting errors shift by exactly that offset,
+    which only holds if board_plane genuinely propagates through to the height computation."""
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    path = tmp_path / "mesh_uncertainty.glb"
+    vertices = _labelled_prism_glb(path, prism, rng=np.random.default_rng(22))
+    sigma_full = np.full(len(vertices), 1.5)
+
+    level_pairs = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.0, 0.0, 0.0), caliper_height_truth_mm=59.7
+    )
+    # z = a*x + b*y + c: compute_height_above_board's sign convention is
+    # height = -(z - (a*x+b*y+c)) = c - z, so raising c by 5mm raises every computed
+    # height-above-board (and so every error) by exactly 5mm too.
+    offset_pairs = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.0, 0.0, 5.0), caliper_height_truth_mm=59.7
+    )
+
+    assert len(level_pairs) == len(offset_pairs)
+    level_errors = sorted(err for _s, err in level_pairs)
+    offset_errors = sorted(err for _s, err in offset_pairs)
+    assert offset_errors == pytest.approx([e + 5.0 for e in level_errors], abs=1e-6)
+
+
+def test_per_vertex_height_reliability_does_not_swap_the_slope_axes(
+    tmp_path: Path,
+) -> None:
+    """A second regression test alongside the z-offset one above: a pure c-offset test alone
+    would not catch an a/b (x-slope/y-slope) mix-up, since it never exercises the slope terms at
+    all. Uses a small slope (0.002 mm per mm -- tiny enough not to disturb which vertices the
+    90th-percentile top-face cut selects) and asserts swapping a and b changes the result -- the
+    synthetic prism's own asymmetric placement (_synthesize_prism_points' default offset_xy is
+    (80, 60), not square) means a correct implementation cannot give the same answer both ways."""
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    path = tmp_path / "mesh_uncertainty.glb"
+    vertices = _labelled_prism_glb(path, prism, rng=np.random.default_rng(23))
+    sigma_full = np.full(len(vertices), 1.5)
+
+    pairs_ab = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(0.002, -0.001, 0.0), caliper_height_truth_mm=59.7
+    )
+    pairs_ba = per_vertex_height_reliability(
+        path, sigma_full, board_plane=(-0.001, 0.002, 0.0), caliper_height_truth_mm=59.7
+    )
+
+    errors_ab = sorted(err for _s, err in pairs_ab)
+    errors_ba = sorted(err for _s, err in pairs_ba)
+    assert errors_ab != pytest.approx(errors_ba, abs=1e-9)
+
+
+# --- G-04: board pitch correction, caliper truth ------------------------------------------------
+
+
+def test_apply_board_pitch_correction_scales_x_and_y_independently() -> None:
+    points = np.array([[160.0, 120.0, 5.0], [80.0, 60.0, -5.0]])
+
+    corrected = apply_board_pitch_correction(
+        points,
+        measured_span_across_mm=160.16,
+        measured_span_down_mm=120.55,
+        nominal_span_across_mm=160.0,
+        nominal_span_down_mm=120.0,
+    )
+
+    assert corrected[:, 0] == pytest.approx(points[:, 0] * (160.16 / 160.0))
+    assert corrected[:, 1] == pytest.approx(points[:, 1] * (120.55 / 120.0))
+    assert corrected[:, 2] == pytest.approx(points[:, 2])  # z untouched
+
+
+def test_apply_board_pitch_correction_rejects_wrong_shape() -> None:
+    with pytest.raises(ValueError, match="shape"):
+        apply_board_pitch_correction(
+            np.zeros((5, 2)),
+            measured_span_across_mm=160.16,
+            measured_span_down_mm=120.55,
+        )
+
+
+def _rect_prism(long_mm: float, short_mm: float, height_mm: float = 60.0) -> PrismCAD:
+    footprint = np.array(
+        [[0.0, 0.0], [long_mm, 0.0], [long_mm, short_mm], [0.0, short_mm]]
+    )
+    edges = [(footprint[i], footprint[(i + 1) % 4]) for i in range(4)]
+    return PrismCAD(footprint_xy=footprint, height_mm=height_mm, edges=edges)
+
+
+def test_match_caliper_edge_truth_applies_one_reading_to_both_edges_of_its_length_class() -> (
+    None
+):
+    # A 50x20 rectangle: one caliper reading per length class, matching G-03's own convention
+    # of measuring "the two long sides"/"the two short sides" once each, not edge-by-edge.
+    prism = _rect_prism(long_mm=50.0, short_mm=20.0)
+    features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [50.0, 0.0]], "mean_mm": 49.93},
+        {"kind": "edge", "cad_vertices": [[50.0, 0.0], [50.0, 20.0]], "mean_mm": 19.9},
+        {"kind": "height", "cad_vertices": None, "mean_mm": 59.8},
+    ]
+
+    truth_mm = match_caliper_edge_truth(prism, features)
+
+    # Both long edges (index 0 and 2) get the long reading; both short edges (1 and 3) the short.
+    assert truth_mm == [49.93, 19.9, 49.93, 19.9]
+
+
+def test_match_caliper_edge_truth_leaves_unmeasured_length_class_as_none() -> None:
+    prism = _rect_prism(long_mm=50.0, short_mm=20.0)
+    features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [50.0, 0.0]], "mean_mm": 49.93},
+    ]
+
+    truth_mm = match_caliper_edge_truth(prism, features)
+
+    assert truth_mm == [49.93, None, 49.93, None]
+
+
+def test_match_caliper_edge_truth_excludes_ambiguous_length_class() -> None:
+    # A square: all 4 edges share one CAD length, but two different physical sides were
+    # calipered differently (g02_01's real situation) -- excluded, not guessed.
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [30.0, 0.0]], "mean_mm": 29.9},
+        {"kind": "edge", "cad_vertices": [[30.0, 0.0], [30.0, 30.0]], "mean_mm": 29.81},
+    ]
+
+    truth_mm = match_caliper_edge_truth(prism, features)
+
+    assert truth_mm == [None, None, None, None]
+
+
+def test_match_caliper_edge_truth_averages_agreeing_duplicate_readings() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [30.0, 0.0]], "mean_mm": 29.90},
+        {"kind": "edge", "cad_vertices": [[30.0, 0.0], [30.0, 30.0]], "mean_mm": 29.92},
+    ]
+
+    truth_mm = match_caliper_edge_truth(prism, features)
+
+    assert truth_mm == pytest.approx([29.91, 29.91, 29.91, 29.91])
+
+
+def test_caliper_edge_errors_reports_bias_apart_from_spread() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    points = _synthesize_prism_points(
+        prism, noise_mm=0.3, rng=np.random.default_rng(13)
+    )
+    measurement = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+    # One real measurement, one caliper-missing (None) -- only the first should be reported.
+    caliper_truth_mm = [29.9, None, None, None]
+
+    errors = caliper_edge_errors(measurement, caliper_truth_mm)
+
+    assert len(errors) == 1
+    entry = errors[0]
+    assert entry["edge_index"] == 0
+    assert entry["caliper_truth_mm"] == 29.9
+    assert entry["caliper_error_mm"] == pytest.approx(
+        measurement.edges[0].measured_length_mm - 29.9
+    )
+    assert (
+        entry["perpendicular_spread_mm"] == measurement.edges[0].perpendicular_spread_mm
+    )
+
+
+def test_caliper_edge_errors_rejects_wrong_length() -> None:
+    prism = _box_prism(side_mm=30.0, height_mm=60.0)
+    points = _synthesize_prism_points(prism, rng=np.random.default_rng(14))
+    measurement = measure_prism(points, prism, board_plane=(0.0, 0.0, 0.0))
+
+    with pytest.raises(ValueError, match="expected 4"):
+        caliper_edge_errors(measurement, [29.9, None])
 
 
 # --- measure_board_scale -----------------------------------------------------------------------
@@ -727,6 +1203,51 @@ def test_build_report_with_and_without_cad(tmp_path: Path) -> None:
     assert with_cad["prism"]["height_ratio"] == pytest.approx(1.0, abs=0.08)
     for edge in with_cad["prism"]["edges"]:
         assert edge["ratio"] == pytest.approx(1.0, abs=0.08)
+
+
+def test_build_report_with_caliper_truth_and_board_pitch(tmp_path: Path) -> None:
+    prism = _box_prism(30.0, 60.0)
+    run_dir, board_dir = tmp_path / "run", tmp_path / "board"
+    _write_synthetic_run(run_dir, board_dir, prism)
+    stl_path = tmp_path / "box.stl"
+    stl_path.write_text(_box_ascii_stl_text(30.0, 60.0), encoding="ascii")
+    # Every edge agrees (29.9, within conflict_atol_mm of each other) -- a consistent reading,
+    # not g02_01's genuine conflict, so every edge should get caliper truth, not None.
+    caliper_features = [
+        {"kind": "edge", "cad_vertices": [[0.0, 0.0], [30.0, 0.0]], "mean_mm": 29.9},
+        {"kind": "height", "cad_vertices": None, "mean_mm": 59.8},
+    ]
+
+    report = build_report(
+        run_dir,
+        board_dir,
+        cad_path=stl_path,
+        caliper_features=caliper_features,
+        board_pitch_mm=(160.16, 120.55),  # G-06's real measured board pitch
+    )
+
+    assert report["prism"]["board_pitch_mm"] == {"across": 160.16, "down": 120.55}
+    caliper = report["prism"]["caliper"]
+    assert len(caliper["edges"]) == 4
+    for edge in caliper["edges"]:
+        assert edge["caliper_truth_mm"] == pytest.approx(29.9)
+    assert caliper["height"]["caliper_truth_mm"] == pytest.approx(59.8)
+    assert caliper["height"]["caliper_error_mm"] == pytest.approx(
+        report["prism"]["height_mm"] - 59.8
+    )
+
+    # Without board_pitch_mm, no x/y correction is applied -- edge lengths should differ (z,
+    # i.e. height, is untouched by design, so that alone wouldn't show the correction).
+    uncorrected = build_report(
+        run_dir, board_dir, cad_path=stl_path, caliper_features=caliper_features
+    )
+    assert uncorrected["prism"]["board_pitch_mm"] is None
+    assert uncorrected["prism"]["height_mm"] == pytest.approx(
+        report["prism"]["height_mm"]
+    )
+    assert uncorrected["prism"]["edges"][0]["measured_length_mm"] != pytest.approx(
+        report["prism"]["edges"][0]["measured_length_mm"]
+    )
 
 
 def _fused_wall_glb(path: Path, outward_mm: float, decoy_outward_mm: float) -> None:
