@@ -121,6 +121,18 @@ GOLDEN_CAPTURE_MANIFEST=fixtures/robustness_capture_manifest.json \
   bash fixtures/download_golden_capture.sh fixtures/data/robustness_capture
 ```
 
+The manifest's `stills` list holds the two single-image controls that A-01's live VLM check and
+A-02's veto testing share. Both are locked by their file's sha256. The downloader fetches
+`captures` only, so these come down by hand, and you check them against the hash.
+
+| Still | File | Where it is |
+|---|---|---|
+| `g11_screen_photo` | `screen_photo.jpeg`, a phone photo of a laptop screen showing s-04's `IMG_4098.jpeg` | Drive `vlm_checks/`, by `drive_file_id` |
+| `g11_wrong_part` | `IMG_4161.jpeg`, the red s-05 part | the golden set's `s-05` sample, so there's no second copy |
+
+`scripts/check_vlm.py` takes them as `--screen-photo` and `--wrong-part`. Any capture folder can
+be the first argument, and the wrong part only has to be a different part from that capture's.
+
 ## Caliper readings
 
 The ground-truth stories (`stories/G/`) record caliper readings as one file per story,

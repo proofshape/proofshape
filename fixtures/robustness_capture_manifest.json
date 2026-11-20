@@ -50,5 +50,25 @@
       "sample_id": "g11_thin"
     }
   ],
+  "stills": [
+    {
+      "bytes": 133309,
+      "content_sha256": "aa9b3b5e23ac7771579ca7f45a4d812707cdd6907b1856ef8efdd9178167691f",
+      "drive_file_id": "1boHgT2eP3afPGn4owLFHNV61gezFFGs-",
+      "filename": "screen_photo.jpeg",
+      "pixels": "1200 x 1600",
+      "role": "screen_photo",
+      "shows": "a phone photograph of a laptop screen displaying golden s-04 frame IMG_4098.jpeg (the yellow triangular prism); the WhatsApp-recompressed copy of A-01's scene, not A-01's original file",
+      "still_id": "g11_screen_photo"
+    },
+    {
+      "content_sha256": "bd4381f2615755afa2b7cbc29e58332d29062897cb40731bdf1ab8dfae8bfd9b",
+      "filename": "IMG_4161.jpeg",
+      "golden_sample_id": "s-05",
+      "role": "wrong_part",
+      "shows": "the golden s-05 part (red rectangular prism), shown against any other part's frame 0; the same file A-01 used as wrong_part.jpeg, so it is not copied a second time",
+      "still_id": "g11_wrong_part"
+    }
+  ],
   "version": 1
 }

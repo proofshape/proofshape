@@ -237,7 +237,7 @@ Full detail in each story file.
 | [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Done | @TabeenRaoof |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Cut | _unclaimed_ |
-| [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Claimed | @TabeenRaoof |
+| [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Done | @TabeenRaoof |
 
 ---
 
