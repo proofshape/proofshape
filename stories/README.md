@@ -657,6 +657,7 @@ Full detail in each story file.
 | [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Done | @TabeenRaoof |
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-37](P/P-37.md) | Write up the final report, the final presentation, and the two Dec 2 options | — | nothing | Claimed | @TabeenRaoof |
 
 ---
 
