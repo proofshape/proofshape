@@ -80,9 +80,11 @@ def _cad_outer_outline_loops(
     The CAD is already required to be watertight. For an orthographic view along +z, silhouette
     edges separate front/back-facing triangles (or a facing triangle from an edge-on side).
     Choosing each edge's direction from the +z-facing side gives outer loops one winding sign and
-    hole loops the opposite sign. The largest loop establishes the outer sign; all loops with that
-    sign are kept, so disjoint solids remain supported while through-holes are deliberately filled
-    for eligibility purposes.
+    hole loops the opposite sign. Projected segments that occur with opposite windings at different
+    heights are internal feature boundaries (steps, pockets, bosses or cavity rims), so they are
+    dropped. The largest remaining loop establishes the outer sign; all loops with that sign are
+    kept, so disjoint solids remain supported while through-holes are deliberately filled for
+    eligibility purposes.
     """
     triangles = cad_vertices[cad_faces]
     normals = np.cross(
@@ -103,6 +105,14 @@ def _cad_outer_outline_loops(
         tuple[tuple[float, float], tuple[float, float]],
         tuple[tuple[float, float], tuple[float, float]],
     ] = {}
+    # A pocket, boss, step or cavity can contribute the same projected xy segment at two
+    # different heights with opposite windings. That segment has material on both sides in the
+    # top-view projection, so it is an *interior feature edge*, not part of the outer silhouette.
+    # Once such a conflict is seen, suppress that projected segment permanently rather than
+    # letting a later duplicate add it back.
+    interior_projected_segments: set[
+        tuple[tuple[float, float], tuple[float, float]]
+    ] = set()
     for (u, v), adjacent in edge_faces.items():
         if len(adjacent) != 2:
             raise ValueError("CAD silhouette needs a two-manifold watertight mesh.")
@@ -130,9 +140,13 @@ def _cad_outer_outline_loops(
         if p == q:
             continue
         undirected = (p, q) if p < q else (q, p)
+        if undirected in interior_projected_segments:
+            continue
         prior = directed_segments.get(undirected)
         if prior is not None and prior != (p, q):
-            raise ValueError("CAD silhouette has inconsistent projected edge winding.")
+            directed_segments.pop(undirected, None)
+            interior_projected_segments.add(undirected)
+            continue
         directed_segments[undirected] = (p, q)
 
     if not directed_segments:
