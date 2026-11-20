@@ -86,7 +86,8 @@ def compute_deviation(
       guessed threshold). Review on #309, second round: on real served meshes this excludes
       essentially nothing, since fusion's own cut already removed that surface before this
       function ever sees the mesh -- it defends against a degenerate input, not real skin;
-    - within the posed CAD's own xy footprint, expanded by `footprint_margin_mm` on every side.
+    - within the registered CAD's own xy footprint, evaluated in CAD-local coordinates and
+      expanded by `footprint_margin_mm` on every side.
       I-14/D-086 sets the default allowance to 0.1 mm from G-05's caliper evidence, replacing the
       old unmeasured 10 mm ring. Observed geometry outside that registered footprint is served
       with `_DEVIATION_MEASURED = 0`: it is not Pass evidence and cannot Fail the part (D-005).
@@ -138,11 +139,16 @@ def compute_deviation(
         o3d.core.Tensor(cad_faces.astype(np.uint32)),
     )
 
-    footprint_min_xy = posed_cad_vertices[:, :2].min(axis=0) - footprint_margin_mm
-    footprint_max_xy = posed_cad_vertices[:, :2].max(axis=0) + footprint_margin_mm
-    model_xy = model_vertices[:, :2]
+    # Evaluate the registered footprint in the CAD's own xy frame, not in an axis-aligned
+    # board-frame box around the rotated CAD. The latter grows triangular corner regions as yaw
+    # increases and would re-admit exactly the outside-outline surface I-14 is meant to exclude.
+    model_to_cad_transform = np.linalg.inv(cad_to_model_transform)
+    model_vertices_cad = _transform_points(model_vertices, model_to_cad_transform)
+    footprint_min_xy = cad_vertices[:, :2].min(axis=0) - footprint_margin_mm
+    footprint_max_xy = cad_vertices[:, :2].max(axis=0) + footprint_margin_mm
+    model_xy_cad = model_vertices_cad[:, :2]
     within_footprint = np.all(
-        (model_xy >= footprint_min_xy) & (model_xy <= footprint_max_xy), axis=1
+        (model_xy_cad >= footprint_min_xy) & (model_xy_cad <= footprint_max_xy), axis=1
     )
     above_board = (
         board_surface.height_above_board_mm(model_vertices)
