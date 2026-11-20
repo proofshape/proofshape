@@ -9,10 +9,10 @@ import pytest
 from inspection import cad, synthetic
 from inspection.deviation import (
     DEFAULT_FOOTPRINT_MARGIN_MM,
-    _cad_outer_outline_loops,
-    _within_cad_outer_outline,
     DEVIATION_MEASURED_ATTRIBUTE,
     DEVIATION_MM_ATTRIBUTE,
+    _cad_outer_outline_loops,
+    _within_cad_outer_outline,
     compute_deviation,
     publish_deviation_glb,
     write_deviation_glb,
