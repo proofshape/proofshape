@@ -25,9 +25,7 @@ from recon.provenance import LABEL_INFERRED, LABEL_UNOBSERVED
 
 ROOT = Path(__file__).resolve().parents[1]
 G01_CUBE = ROOT / "fixtures" / "reference_cad" / "g01_calibration_cube_30mm.stl"
-G05_CONTROL = (
-    ROOT / "fixtures" / "reference_cad" / "g05_00_control_50x32x20mm.stl"
-)
+G05_CONTROL = ROOT / "fixtures" / "reference_cad" / "g05_00_control_50x32x20mm.stl"
 
 # A flat board at z=0 (slope 0, offset 0): height_above_board_mm is exactly -z, matching
 # inspection.synthetic's own convention (the fixed CAD->board flip keeps the CAD's z=0 base at
@@ -262,9 +260,7 @@ def test_g05_outer_outline_excludes_notch_but_keeps_through_hole_measurable():
         dtype=float,
     )
 
-    within = _within_cad_outer_outline(
-        probes_xy, loops, DEFAULT_FOOTPRINT_MARGIN_MM
-    )
+    within = _within_cad_outer_outline(probes_xy, loops, DEFAULT_FOOTPRINT_MARGIN_MM)
 
     assert within.tolist() == [False, True, True, False]
 
