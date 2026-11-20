@@ -67,20 +67,20 @@ alignment that explains it away.
 - **Merged only when the transforms agree** (I-03's 2° and 1% of CAD extent, 0.25 mm floor).
   Poses that are equivalent only under the CAD's symmetry stay separate: for the printed part
   they are different poses, and the difference is where a defect would be.
-- **Ranked fitness first, then RMSE.** The session is ambiguous when the runner-up's inlier RMSE
-  is within 20% of the best's (D-061, which raised D-008's 10%). One surviving pose isn't
-  ambiguous.
+- **Ranked fitness first, then inlier RMSE.** I-13 compares the coverage residuals of the best
+  pose and its fitness-ranked runner-up. It measures capped nearest distances from shared CAD
+  samples to the fully Observed model surface. The comparison uses the union of CAD samples
+  within the refinement radius under any candidate pose. One surviving pose is unambiguous.
 - **The result** is an `AmbiguityCheck`: `orientation_ambiguous`, the `best` pose to measure
-  against, the `runner_up`, `rmse_ratio`, every `refined` pose, the `failed` candidates with their
-  reasons, and `reason_codes` (`registration_orientation_ambiguous` when ambiguous). I-07 turns it
-  into the verdict's `orientation_ambiguous` and reason code.
+  against, the `runner_up`, the decision's `coverage_ratio`, the diagnostic `rmse_ratio`, every
+  `refined` pose, the `failed` candidates with their reasons, and `reason_codes`
+  (`registration_orientation_ambiguous` when ambiguous). I-07 uses the flag and reason code
+  in the verdict.
 - **Failures are listed, not hidden.** A candidate that can't be refined goes into `failed`;
   if none can be, it raises. A model without provenance is refused up front.
 
-On I-01 output with its 20% hidden patch: s-05 (four-fold) is ambiguous and s-04 (scalene) isn't,
-every time; a plate whose symmetry-breaking hole is missing is caught 12/12 at 20%, against 9/12
-at D-008's 10%. D-061 has the full table and its narrow margins.
-
+D-061 records the original inlier-RMSE rule and the proposed coverage comparison. I-13 records
+the synthetic overlap and the real-capture results for the proposed cutoff.
 
 ## I-06 · deviation computation
 
