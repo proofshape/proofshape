@@ -2476,6 +2476,76 @@ already Done, and aren't decided here. Any future print for a ground-truth story
 
 ---
 
+**D-086 · I-14 uses the CAD's actual outer top-view outline, with no added xy margin, as the deviation-eligibility boundary.** (2026-11-19; amended on review 2026-11-20)
+I-06 originally measured every Observed vertex inside a CAD-local **axis-aligned bounding box plus
+10 mm**. The real-session review shows two separate problems with that rule. First, the broad
+ring admits reconstruction flare: on the 2026-11-20 rerun, the proposed narrow-box gate excluded
+497/1,331 measured vertices on `g05_00` (37%), 468/1,602 on s-04 (29%), and 490/2,247 on
+s-05 (22%). Those excluded vertices were mostly positive extra material, with median/p95 signed
+deviation +2.25/+7.44 mm on `g05_00`, +1.50/+6.67 mm on s-04 and +0.68/+4.05 mm on s-05.
+Their median contributing-frame counts were 7, 10 and 10 respectively. This is consistent with
+reconstruction smear rather than the physical print: G-05's calipered wall dimensions are within
+0.09 mm of nominal in the recorded means.
+
+Second, **a bounding box is not the CAD outline**. Under the 0.1 mm box experiment, 41 of
+`g05_00`'s 43 remaining vertices above 4.2 mm were inside the box but over empty CAD space in
+the designed 16 × 11 mm corner notch, and s-04 still had measured vertices outside its triangular
+outline. I-14 therefore gates against the CAD's actual **outer silhouette in CAD-local xy**.
+Concave outer features such as the G-05 notch are excluded. Interior through-holes are deliberately
+*not* cut out of this eligibility region: a reconstructed bridge, shifted wall or other hole
+geometry must remain measurable for X-03.
+
+The added margin is **0 mm**. The earlier 0.1 mm proposal is withdrawn. Its 0.09 mm source measured
+the *printed part*, not reconstruction scatter, and the first rerun showed that a narrow gate drops
+outward wall noise while retaining inward noise. **That truncation bias remains under the final
+0 mm rule, slightly stronger; withdrawing 0.1 mm does not remove it.** On the final-rule rerun,
+mid-height wall medians moved `g05_00` +0.89 → **−0.78 mm**, s-04 −0.08 →
+**−0.78 mm**, and s-05 −1.34 → **−2.12 mm**. Those retained inward wall readings drive the
+non-critical Fail values −4.48 mm on s-04 and −4.80 mm on s-05. Registration RMSE is already
+around 1.3–2.0 mm and prior G-11 wall-point spread is 4–5 mm, so no positive margin in the tested
+range cleanly separates ordinary wall scatter from the multi-millimetre flare; widening the margin
+would admit the flare again. The team accepts this as an explicit measurement limitation, not as
+evidence that the retained wall values are unbiased.
+
+**Consequence accepted for review:** an outward local side-wall oversize beyond the CAD's outer
+outline is unmeasured (`_DEVIATION_MEASURED = 0`) and therefore cannot itself Fail under I-06.
+There is currently **no separate check that replaces that local deviation claim**; R-42 is a global
+scale-agreement check and does not detect one proud wall. This is a known conservative limitation,
+not silently delegated to R-16/R-42. The team must agree to this trade-off by approving this
+decision before I-14 merges. Geometry outside the outline is grey/not checked, never Pass evidence
+(D-005/D-062).
+
+The final 0 mm outer-outline rerun on `c677991` measured `g05_00` 668/1,331 vertices,
+s-04 955/1,602 and s-05 1,711/2,247, with **zero measured vertices outside the outline**.
+Top-face |deviation| p95 was essentially unchanged on those valid controls (2.50 → 2.54 mm,
+0.78 → 0.74 mm and 1.54 → 1.57 mm respectively). Under the critical 3.7 spec,
+`g05_00` moved Fail 12.85 → Rescan (`hole_in_plane_high_sigma`), s-04 Fail 10.25 → Rescan,
+and s-05 remained Rescan. Under the non-critical 0.5 spec, `g05_00` still Fails +5.58 mm,
+mostly from fusion bridging the through-hole top, while s-04 and s-05 Fail −4.48/−4.80 mm from
+the retained inward wall bias described above.
+
+The 2026-11-20 rerun also invalidated `g05_02` as ground-truth evidence for I-14/X-03: its saved
+capture has the printed plate top-face-down, producing a mirror image that no rigid rotation can
+match. Its apparent top-face p95 signal therefore comes from a wrong pose. The session may be kept
+as a debugging record, but it is excluded from acceptance evidence until the part is photographed
+right-side up again.
+
+*Implementation:* the outer outline is derived from the watertight CAD's orthographic +z silhouette.
+Outer loops are retained; oppositely wound interior loops (through-holes) are ignored for
+eligibility. If the same projected xy segment appears at different feature heights with opposite
+windings, it is an internal step/pocket/boss/cavity boundary and is suppressed rather than treated
+as an outline error. This is regression-tested over every committed reference CAD. The model
+vertices are transformed into CAD-local coordinates before this test, so part yaw cannot inflate
+the eligible region.
+*Why not the other forks:* a near-board height band adds a second shape threshold and still trusts
+higher flare; fixing fusion/segmentation is the larger source-level change and does not fit this
+story's pre-freeze scope.
+*Checked against D-028:* D-086 is still unmerged and belongs to this PR, so this review amends it
+rather than allocating a second D-number.
+
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**
