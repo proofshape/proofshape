@@ -25,6 +25,8 @@ export interface GuidanceUpdate {
 
 export interface GyroOverlayOptions {
   onGuidance?: (update: GuidanceUpdate) => void;
+  // C-27: the on-target status line. The shell words it by whether auto-capture is on.
+  onTargetText?: () => string;
 }
 
 export interface GyroOverlayHandle {
@@ -115,7 +117,7 @@ export function mountGyroOverlay(
     }
     const guidance = computeArrowGuidance(liveGyro, anchorDeg, target);
     if (guidance.onTarget) {
-      status.textContent = "On target — take the photo.";
+      status.textContent = options.onTargetText?.() ?? "On target — take the photo.";
       arrow.style.visibility = "hidden";
       emit("on-target", liveGyro);
       return;

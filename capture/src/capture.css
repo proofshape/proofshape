@@ -151,3 +151,30 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* C-27: a brief, soft flash when a photo is taken. */
+.viewfinder::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(255 255 255 / 35%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease-out;
+}
+.viewfinder.viewfinder-flash::after {
+  opacity: 1;
+  transition: none;
+}
+
+.auto-capture-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+  font-size: 16px;
+}
+.auto-capture-toggle input {
+  width: 22px;
+  height: 22px;
+}
