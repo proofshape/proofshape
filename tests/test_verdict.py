@@ -173,6 +173,8 @@ def test_planted_deviation_beyond_tolerance_fails():
     vertex_index = _top_face_center_vertex_index(cad_vertices, sample)
     outward = _outward_offset_direction(cad_vertices, sample, vertex_index)
     model_vertices = sample.vertices_mm.copy()
+    # This is a top-face defect: moving it outward changes z but stays inside the CAD's xy
+    # footprint, so I-14 must not hide it. It remains in D-073's out-of-plane pool.
     model_vertices[vertex_index] = model_vertices[vertex_index] + 2.0 * outward
 
     deviation_mm, deviation_measured = compute_deviation(
@@ -202,7 +204,7 @@ def test_planted_deviation_beyond_tolerance_fails():
 
 def test_in_plane_deviation_beyond_the_measured_floor_margin_fails():
     """D-078/R-37 gives in-plane (wall) comparisons their own real measured floor (5.278mm) --
-    a genuine, large wall-side defect, well beyond even that floor's margin, must still Fail.
+    a genuine, large inward wall-side defect, well beyond even that floor's margin, must still Fail.
     tolerance 0.5mm + k*D078_SIGMA_FLOOR_IN_PLANE_MM (0.70*5.278=3.6946mm) margin = 4.1946mm;
     a 6.0mm planted deviation clears it comfortably."""
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
@@ -213,7 +215,10 @@ def test_in_plane_deviation_beyond_the_measured_floor_margin_fails():
     vertex_index = _face_center_vertex_index(cad_vertices, sample)
     outward = _outward_offset_direction(cad_vertices, sample, vertex_index)
     model_vertices = sample.vertices_mm.copy()
-    model_vertices[vertex_index] = model_vertices[vertex_index] + 6.0 * outward
+    # I-14 excludes excess geometry outside the CAD outline from local deviation evidence.
+    # Plant the same 6 mm in-plane defect inward instead: it remains inside the registered
+    # footprint and still exercises D-078's measured wall-noise floor.
+    model_vertices[vertex_index] = model_vertices[vertex_index] - 6.0 * outward
 
     deviation_mm, deviation_measured = compute_deviation(
         (model_vertices, sample.faces, sample.labels),
@@ -253,7 +258,9 @@ def test_in_plane_deviation_within_the_measured_floor_margin_rescans_not_passes(
     vertex_index = _face_center_vertex_index(cad_vertices, sample)
     outward = _outward_offset_direction(cad_vertices, sample, vertex_index)
     model_vertices = sample.vertices_mm.copy()
-    model_vertices[vertex_index] = model_vertices[vertex_index] + 2.0 * outward
+    # Keep this D-078 regression inside I-14's footprint as an inward wall defect; an outward
+    # 2 mm wall flare is now intentionally unmeasured and would Rescan for the wrong reason.
+    model_vertices[vertex_index] = model_vertices[vertex_index] - 2.0 * outward
 
     deviation_mm, deviation_measured = compute_deviation(
         (model_vertices, sample.faces, sample.labels),

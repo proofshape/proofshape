@@ -99,16 +99,16 @@ the signed point-to-mesh distance from each Observed model vertex to the CAD (D-
   (fusion's real D-063 cut for that board), but on a real served mesh this excludes essentially
   nothing — fusion's own cut already removed that surface before this function ever sees it, so
   its real job is defending against a degenerate input, not filtering real board skin. The
-  footprint gate (the posed CAD's own xy bounding box plus `DEFAULT_FOOTPRINT_MARGIN_MM`, 10 mm)
-  is what does real work, but only beyond the margin — 31% of s-04's measured vertices and 15%
-  of s-05's sit outside the CAD's own hull but within the margin (mostly base flare), so the
-  margin is doing real work keeping legitimate geometry in, but board skin sitting within that
-  same margin of the hull (#292's s-02 case) would also still be measured today. A declared,
-  recorded gap (`stories/I/I-06.md`'s notes), not something either gate actually closes — #292's
-  or I-07's call. The margin itself is a declared parameter: G-05's defects grow upward on the
-  top face, not outward in xy, so they can't justify this number the way an earlier version of
-  this note claimed; real data just shows 10 mm isn't obviously too tight for s-04's own base
-  flare.
+  footprint gate now uses the registered CAD's **actual outer top-view outline in CAD-local
+  coordinates** (I-14/D-086), not a bounding box. Concave outer features such as G-05's corner
+  notch are excluded. Interior through-holes are deliberately left inside the eligibility region
+  so hole defects remain measurable. The added margin is 0 mm: the real-session review found that
+  the attempted 0.1 mm margin came from print accuracy rather than reconstruction noise, biased
+  wall readings inward, and that widening it toward the measured wall scatter simply admits the
+  flare again. Surface outside the outer outline is served with
+  `_DEVIATION_MEASURED = 0`, stays grey, and is explicitly **not checked / not Pass evidence**.
+  This means a local outward wall oversize beyond the outline cannot itself Fail today; there is
+  no current substitute local check, and D-086 records that limitation for team approval.
 - **Sign convention.** Positive means the part has extra material there, negative means material
   is missing. This is Open3D's own `RaycastingScene.compute_signed_distance` convention
   (negative inside a closed mesh, positive outside) applied directly once the CAD is posed into
