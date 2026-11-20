@@ -530,7 +530,7 @@ Full detail in each story file.
 | [R-37](R/R-37.md) | cad_size_check: corner-to-corner edge measurement and a pose search that can't land wrong | 5 h | R-22 | Done | @mbj1994 |
 | [R-38](R/R-38.md) | R-23's alignment solve needs per-frame outlier rejection and a real residual gate | 4 h | R-23 | Done | @dalwalyk |
 | [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Done | @mbj1994 |
-| [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Claimed | @mbj1994 |
+| [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Done | @mbj1994 |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone | 3 h | C-13, C-20 | Done | @dalwalyk |
 | [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
 | [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Done | @mbj1994 |
