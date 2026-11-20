@@ -477,7 +477,7 @@ freeze, as R-41 and R-42 did. `stories/P/P-35.md` has the capacity note.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [I-13](I/I-13.md) | Orientation ambiguity weighs fitness, not inlier RMSE alone (#407) | 3 h | I-05 | Claimed | @dalwalyk |
+| [I-13](I/I-13.md) | Orientation ambiguity uses coverage, not inlier RMSE alone (#407) | 3 h | I-05 | Done | @dalwalyk |
 | [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Claimed | @mbj1994 |
 
 ---
