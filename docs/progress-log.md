@@ -2882,3 +2882,38 @@ RMSE diagnostic assertions.
 clear ambiguity around a wrong pose, so that capture cannot validate criterion 3.
 The valid control and golden results still match the expected outcomes. The shifted-hole
 check needs a right-side-up recapture.
+
+## 2026-11-20 — G-09's `g05_02` re-photographed right side up; it registers correctly but reads like the control
+
+**Who:** @TabeenRaoof.
+**What changed:** the 2026-11-18 `g05_02` set had the plate top face down: a mirror image of the
+CAD, which no upright registration pose can match (#407). It was re-shot under G-09's setup,
+and `fixtures/specimen_capture_manifest.json`'s `g05_02` entry now points at the new Drive folder
+and hash. Its `.sha256` is regenerated. G-09 records the correction, and its hours go from 2 h to
+2.5 h.
+**Command / how to reproduce:**
+- `python -m recon.board_pose <folder>` for the frame checks;
+- the downloader on a one-entry manifest;
+- the in-process service on `main` `06fcfd2`, then `global_register` + `check_ambiguity`, and
+  I-14's `compute_deviation` + `compute_verdict` at #416's `a820cdb`, with #407's specs.
+  Outputs are in `proofshape-data/g05_02-recapture/` (outside git).
+**Result:**
+- **Frames:** 28/28 posed, RMS 1.95 / 2.62 px, softest 303, main camera only. The downloader
+  verified the hash.
+- **Registration:** the best pose is upright at yaw −0.3° (the control's is −0.9°). I-13's coverage
+  ratio is 1.2734, so it isn't ambiguous.
+- **Top face:** I-14 leaves it unchanged (p95 1.17 mm under `main` and #416).
+- **Verdicts (I-14, ambiguity set aside):** Rescan at critical 3.7 (1.92 mm) and Fail at
+  non-critical 0.5 (5.01 mm). These are the same as the control's: Rescan 2.48 mm and Fail 5.58 mm.
+- **Where the shift should show:** the strip where the part has material and the CAD a hole
+  reads +1.93 mm, against the control's +1.10. The strip where the part has a hole reads −0.66,
+  against −0.50. That's 12–21 vertices each.
+**Concluded:** the capture is fixed, and I-13 and I-14 now check cleanly on it. On this pair of
+captures, with #407's two specs (a 3.7 mm critical and a 0.5 mm non-critical hole), the 4 mm hole
+shift got the same verdicts as its control. That fits #407's cause-1 arithmetic: the shift moves
+a wall by at most 4 mm, and the verdict compares in-plane deviations against D-078's 5.278 mm
+floor. It's one measured pair at two specs, not a resolution limit for every 4 mm in-plane
+defect. On this evidence, X-03's first criterion ("the planted 4 mm hole shift produces Fail")
+isn't met with this part at these specs.
+**Next:** raise X-03's planted-defect choice with the team on #407. Post the `g05_02` rerun on
+#414 and #416.
