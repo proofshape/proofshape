@@ -5,6 +5,7 @@ import {
   resolveBaseUrl,
 } from "./config.js";
 import { mountBuyerPage } from "./buyer.js";
+import { downloadOrderSheet } from "./order-sheet.js";
 
 const root = document.getElementById("buyer-app");
 if (!root) throw new Error("buyer-main: #buyer-app element not found");
@@ -17,5 +18,7 @@ if (hostedReconUnavailable(baseUrl, import.meta.env.DEV)) {
   mountBuyerPage(root, {
     baseUrl,
     ...(authToken !== undefined ? { authToken } : {}),
+    printOrderSheet: (orderCode) =>
+      downloadOrderSheet(`${import.meta.env.BASE_URL}charuco_board.pdf`, orderCode),
   });
 }

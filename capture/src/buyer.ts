@@ -9,6 +9,7 @@ export interface BuyerPageOptions {
   baseUrl: string;
   authToken?: string;
   locationHref?: string;
+  printOrderSheet?: (orderCode: string) => Promise<void>;
 }
 
 export interface FeatureDraft {
@@ -397,8 +398,31 @@ export function mountBuyerPage(root: HTMLElement, options: BuyerPageOptions): vo
       link.textContent = "Open supplier capture link";
 
       result.append(heading, code, size, link);
+
+      if (options.printOrderSheet !== undefined) {
+        const printButton = document.createElement("button");
+        printButton.type = "button";
+        printButton.textContent = "Print the sheet";
+        printButton.addEventListener("click", () => {
+          void (async () => {
+            status.textContent = "Preparing the 100% printable order sheet…";
+            try {
+              await options.printOrderSheet?.(created.body.order_code);
+              status.textContent =
+                "Printable sheet downloaded. Print it at 100% scale — never Fit to Page.";
+            } catch (error) {
+              status.textContent = `${describeNetworkError(
+                error,
+              )} Check the calibration-board file and try printing again.`;
+            }
+          })();
+        });
+        result.append(printButton);
+      }
+
       result.hidden = false;
-      status.textContent = "Order created. Review the code and capture link below.";
+      status.textContent =
+        "Order created. Review the code, capture link and printable sheet below.";
     } catch (error) {
       status.textContent = `${describeNetworkError(error)} Check the form and try creating the order again.`;
     }

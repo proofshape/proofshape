@@ -1816,6 +1816,29 @@ reference.
 
 ---
 
+**D-074 · C-17 order sheets use landscape A4, embed the D-034 board at 1:1, and put per-order marks in a right-side panel.** (2026-11-16)
+The browser-generated sheet is 297 × 210 mm (A4 landscape). The existing 200 × 150 mm
+`fixtures/charuco_board.pdf` page is embedded unchanged at physical 1:1 with its lower-left
+corner at x=5 mm, y=30 mm. That keeps the 160 × 120 mm calibration pattern exactly the size D-034
+and R-02/R-03 expect. The browser copy is accepted only when its SHA-256 is
+`1b64d0328a7551da20fee6ccf5c6edacd5f48858be4004dffb093a60c9c9a354`.
+
+The per-order panel begins at x=212 mm, clear of both the board page and the A4 edge. It contains:
+the printed order code; a 52 × 52 mm QR code encoding **only that order code**; a **Board +X**
+arrow pointing left-to-right, parallel to the board's square columns; and the explicit instruction
+**Print at Scale: 100%**. The QR is context/binding for the printed sheet only; C-17 does not add
+QR reading or service-side sheet/session verification.
+
+*Why A4:* C-17's source board page is 200 × 150 mm. A4 landscape leaves enough width for a
+separate per-order panel without scaling or redrawing the board, while keeping a clean measurable
+paper outline for the scale-integrity checks in D-034/manual §3. The generator stays entirely in
+`capture/`, so printing works without a GPU endpoint once an order code exists.
+*Libraries:* `pdf-lib@1.17.1` embeds the existing PDF page and writes the added marks;
+`qr@0.7.2` supplies a zero-dependency QR matrix that C-17 draws as PDF vector rectangles.
+*Checked against D-028:* D-072 was held by PR #340 and D-073 by PR #348 when this number was
+chosen. An open-PR/code search on 2026-11-16 found no D-074, and current `main` still has no
+D-074 before this close-out.
+
 **D-075 · R-38: R-23's alignment solve now rejects per-frame outliers; the residual gate is
 8.0 mm, measured against all 11 real captures available.** (2026-11-16)
 `recon/metric_alignment.py`'s `solve_similarity` had no per-frame outlier rejection — found on
@@ -2443,6 +2466,10 @@ December 7 to 18 came from an earlier draft where it was explicitly provisional 
 a different course's calendar. It has since hardened into the milestone table, the sprint plan
 and the horizontal axis of both Gantt charts without ever being verified against SFBU's academic
 calendar. Confirm it before the schedule is treated as fixed.
+*Update 2026-11-20 (P-36):* the final presentation is most likely on **Fri 2026-12-11**, R7's
+slot, as given by @TabeenRaoof on 2026-11-20. That is still the team's working assumption, not a
+confirmed date, so this stays open. The same report says there is no presentation on Nov 27
+(R6), so the final presentation is the only one left.
 
 **O-003 · Exact biweekly review dates. — Closed 2026-10-20.**
 ~~Planned for every second Friday from 11 September; re-anchor if the real dates differ.~~
@@ -2451,6 +2478,7 @@ Progress Review 2 on 2 October 2026. The sprint plan is therefore re-anchored to
 Friday from 18 September: 18 Sep, 2 Oct, 16 Oct, 30 Oct, 13 Nov, 27 Nov, 11 Dec. No separate
 written instructor-confirmation message is stored in the repo, Gmail or calendar; the delivered
 class-review artifacts are the evidence used for this closure, and the plan says so explicitly.
+*Note 2026-11-20 (P-36):* 27 Nov (R6) is not held; see O-002.
 
 **O-004 · Whether a formal user study is expected this semester.** An informal one is planned;
 a formal one with IRB approval is future work.
