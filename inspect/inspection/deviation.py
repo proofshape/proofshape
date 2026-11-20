@@ -52,15 +52,195 @@ from recon.provenance import LABEL_OBSERVED, _mesh_is_watertight, colors_to_labe
 DEVIATION_MM_ATTRIBUTE = "_DEVIATION_MM"
 DEVIATION_MEASURED_ATTRIBUTE = "_DEVIATION_MEASURED"
 
-# I-14 / D-086 replaces I-06's unmeasured 10 mm allowance with a measured print-dimension
-# allowance. G-05's calipered control/4 mm-shift parts differ from their nominal wall dimensions
-# by at most 0.09 mm in the recorded means; the instrument itself resolves 0.1 mm. Round that
-# evidence outward to 0.1 mm rather than preserving a multi-millimetre ring that real sessions
-# show is dominated by reconstruction flare. This is an xy registration-footprint allowance,
-# not an inspection tolerance: geometry beyond it is explicitly unmeasured and therefore cannot
-# contribute to Pass or Fail (D-005/D-062). G-05's real 8 mm defects grow upward on the top face,
-# inside the footprint, so this gate does not hide them.
-DEFAULT_FOOTPRINT_MARGIN_MM = 0.1
+# I-14 / D-086: the saved-session rerun found no positive xy margin that cleanly separates
+# reconstruction flare from ordinary wall scatter. Use the CAD's actual outer top-view outline
+# itself (0 mm extra allowance), rather than I-06's axis-aligned bounding box + 10 mm. Concave
+# outer corners/notches are therefore excluded, while interior holes are deliberately ignored by
+# the outline gate so reconstructed hole geometry stays measurable. Geometry outside this outline
+# is explicitly unmeasured and cannot contribute to Pass or Fail (D-005/D-062).
+DEFAULT_FOOTPRINT_MARGIN_MM = 0.0
+
+
+def _oriented_edge_in_face(face: np.ndarray, u: int, v: int) -> tuple[int, int]:
+    """Return edge (u, v) in the winding direction used by one triangle."""
+    a, b, c = (int(value) for value in face)
+    for start, end in ((a, b), (b, c), (c, a)):
+        if start == u and end == v:
+            return u, v
+        if start == v and end == u:
+            return v, u
+    raise ValueError("edge is not present in face")
+
+
+def _cad_outer_outline_loops(
+    cad_vertices: np.ndarray, cad_faces: np.ndarray
+) -> list[np.ndarray]:
+    """Return the CAD's outer top-view silhouette loops, with interior holes omitted.
+
+    The CAD is already required to be watertight. For an orthographic view along +z, silhouette
+    edges separate front/back-facing triangles (or a facing triangle from an edge-on side).
+    Choosing each edge's direction from the +z-facing side gives outer loops one winding sign and
+    hole loops the opposite sign. The largest loop establishes the outer sign; all loops with that
+    sign are kept, so disjoint solids remain supported while through-holes are deliberately filled
+    for eligibility purposes.
+    """
+    triangles = cad_vertices[cad_faces]
+    normals = np.cross(
+        triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]
+    )
+    normal_z = normals[:, 2]
+    scale = max(float(np.linalg.norm(normals, axis=1).max(initial=0.0)), 1.0)
+    eps = scale * 1e-12
+
+    edge_faces: dict[tuple[int, int], list[int]] = {}
+    for face_index, face in enumerate(cad_faces):
+        a, b, c = (int(value) for value in face)
+        for u, v in ((a, b), (b, c), (c, a)):
+            key = (min(u, v), max(u, v))
+            edge_faces.setdefault(key, []).append(face_index)
+
+    directed_segments: dict[
+        tuple[tuple[float, float], tuple[float, float]],
+        tuple[tuple[float, float], tuple[float, float]],
+    ] = {}
+    for (u, v), adjacent in edge_faces.items():
+        if len(adjacent) != 2:
+            raise ValueError("CAD silhouette needs a two-manifold watertight mesh.")
+
+        signs = [
+            1 if normal_z[index] > eps else -1 if normal_z[index] < -eps else 0
+            for index in adjacent
+        ]
+        if signs[0] == signs[1] or (signs[0] == 0 and signs[1] == 0):
+            continue
+
+        positive = [index for index in adjacent if normal_z[index] > eps]
+        if positive:
+            face_index = max(positive, key=lambda index: normal_z[index])
+            start, end = _oriented_edge_in_face(cad_faces[face_index], u, v)
+        else:
+            negative = [index for index in adjacent if normal_z[index] < -eps]
+            if not negative:
+                continue
+            face_index = min(negative, key=lambda index: normal_z[index])
+            end, start = _oriented_edge_in_face(cad_faces[face_index], u, v)
+
+        p = tuple(float(value) for value in np.round(cad_vertices[start, :2], 9))
+        q = tuple(float(value) for value in np.round(cad_vertices[end, :2], 9))
+        if p == q:
+            continue
+        undirected = (p, q) if p < q else (q, p)
+        prior = directed_segments.get(undirected)
+        if prior is not None and prior != (p, q):
+            raise ValueError("CAD silhouette has inconsistent projected edge winding.")
+        directed_segments[undirected] = (p, q)
+
+    if not directed_segments:
+        raise ValueError("CAD has no usable top-view outer outline.")
+
+    next_point: dict[tuple[float, float], tuple[float, float]] = {}
+    for p, q in directed_segments.values():
+        prior = next_point.get(p)
+        if prior is not None and prior != q:
+            raise ValueError("CAD top-view silhouette is not a set of simple loops.")
+        next_point[p] = q
+
+    loops: list[np.ndarray] = []
+    visited: set[tuple[float, float]] = set()
+    for start in list(next_point):
+        if start in visited:
+            continue
+        loop: list[tuple[float, float]] = []
+        point = start
+        while point not in visited:
+            visited.add(point)
+            loop.append(point)
+            point = next_point.get(point)
+            if point is None:
+                raise ValueError("CAD top-view silhouette contains an open chain.")
+        if point != start or len(loop) < 3:
+            raise ValueError("CAD top-view silhouette does not close into simple loops.")
+        loops.append(np.asarray(loop, dtype=np.float64))
+
+    def signed_area(loop: np.ndarray) -> float:
+        x = loop[:, 0]
+        y = loop[:, 1]
+        return 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+
+    areas = np.asarray([signed_area(loop) for loop in loops], dtype=np.float64)
+    if not np.any(np.abs(areas) > 1e-12):
+        raise ValueError("CAD top-view silhouette has zero projected area.")
+    outer_area = areas[int(np.argmax(np.abs(areas)))]
+    outer_loops = [
+        loop for loop, area in zip(loops, areas, strict=True) if area * outer_area > 0.0
+    ]
+    if not outer_loops:
+        raise ValueError("CAD top-view silhouette has no outer loop.")
+    return outer_loops
+
+
+def _points_in_polygon(points_xy: np.ndarray, polygon: np.ndarray) -> np.ndarray:
+    """Vectorized even-odd point-in-polygon with boundary points included."""
+    points_xy = np.asarray(points_xy, dtype=np.float64)
+    result = np.zeros(len(points_xy), dtype=bool)
+    x = points_xy[:, 0]
+    y = points_xy[:, 1]
+    tol = 1e-9
+
+    for i in range(len(polygon)):
+        a = polygon[i]
+        b = polygon[(i + 1) % len(polygon)]
+        edge = b - a
+        rel = points_xy - a
+        cross = np.abs(rel[:, 0] * edge[1] - rel[:, 1] * edge[0])
+        edge_len = max(float(np.linalg.norm(edge)), tol)
+        on_line = cross <= tol * edge_len
+        within_segment = (
+            (points_xy[:, 0] >= min(a[0], b[0]) - tol)
+            & (points_xy[:, 0] <= max(a[0], b[0]) + tol)
+            & (points_xy[:, 1] >= min(a[1], b[1]) - tol)
+            & (points_xy[:, 1] <= max(a[1], b[1]) + tol)
+        )
+        result |= on_line & within_segment
+
+        crosses = (a[1] > y) != (b[1] > y)
+        denominator = b[1] - a[1]
+        safe_denominator = denominator if abs(denominator) > tol else tol
+        x_intersection = a[0] + (y - a[1]) * edge[0] / safe_denominator
+        result ^= crosses & (x < x_intersection)
+
+    return result
+
+
+def _distance_to_outline(points_xy: np.ndarray, loops: list[np.ndarray]) -> np.ndarray:
+    distances = np.full(len(points_xy), np.inf, dtype=np.float64)
+    for loop in loops:
+        for i in range(len(loop)):
+            a = loop[i]
+            b = loop[(i + 1) % len(loop)]
+            edge = b - a
+            length_sq = float(np.dot(edge, edge))
+            if length_sq == 0.0:
+                continue
+            t = np.clip(((points_xy - a) @ edge) / length_sq, 0.0, 1.0)
+            nearest = a + t[:, None] * edge
+            distances = np.minimum(
+                distances, np.linalg.norm(points_xy - nearest, axis=1)
+            )
+    return distances
+
+
+def _within_cad_outer_outline(
+    points_xy: np.ndarray,
+    outer_loops: list[np.ndarray],
+    margin_mm: float,
+) -> np.ndarray:
+    inside = np.zeros(len(points_xy), dtype=bool)
+    for loop in outer_loops:
+        inside |= _points_in_polygon(points_xy, loop)
+    if margin_mm > 0.0:
+        inside |= _distance_to_outline(points_xy, outer_loops) <= margin_mm
+    return inside
 
 
 def compute_deviation(
@@ -86,14 +266,13 @@ def compute_deviation(
       guessed threshold). Review on #309, second round: on real served meshes this excludes
       essentially nothing, since fusion's own cut already removed that surface before this
       function ever sees the mesh -- it defends against a degenerate input, not real skin;
-    - within the registered CAD's own xy footprint, evaluated in CAD-local coordinates and
-      expanded by `footprint_margin_mm` on every side.
-      I-14/D-086 sets the default allowance to 0.1 mm from G-05's caliper evidence, replacing the
-      old unmeasured 10 mm ring. Observed geometry outside that registered footprint is served
-      with `_DEVIATION_MEASURED = 0`: it is not Pass evidence and cannot Fail the part (D-005).
-      This deliberately leaves genuine excess material beyond the CAD outline to the independent
-      size/scale checks rather than pretending the reconstruction smear is a trustworthy local
-      deviation measurement.
+    - within the registered CAD's actual outer xy outline, evaluated in CAD-local coordinates.
+      Concave outer features such as G-05's notch are part of that outline; interior holes are
+      intentionally filled for this eligibility test so a reconstructed hole/shift remains
+      measurable. I-14/D-086 sets the default extra allowance to 0 mm because the real-session
+      rerun found no positive margin that separates flare from normal wall scatter. Observed
+      geometry outside that outer outline is served with `_DEVIATION_MEASURED = 0`: it is not
+      Pass evidence and cannot Fail the part (D-005).
 
     Sign convention: positive where the part has extra material, negative where material is
     missing. This is Open3D's own signed-distance convention for a closed mesh (negative inside,
@@ -139,16 +318,14 @@ def compute_deviation(
         o3d.core.Tensor(cad_faces.astype(np.uint32)),
     )
 
-    # Evaluate the registered footprint in the CAD's own xy frame, not in an axis-aligned
-    # board-frame box around the rotated CAD. The latter grows triangular corner regions as yaw
-    # increases and would re-admit exactly the outside-outline surface I-14 is meant to exclude.
+    # Evaluate the registered footprint in CAD-local coordinates against the actual outer
+    # silhouette, not an axis-aligned box. Concave outer notches are excluded; interior holes are
+    # deliberately ignored by _cad_outer_outline_loops so hole defects remain measurable.
     model_to_cad_transform = np.linalg.inv(cad_to_model_transform)
     model_vertices_cad = _transform_points(model_vertices, model_to_cad_transform)
-    footprint_min_xy = cad_vertices[:, :2].min(axis=0) - footprint_margin_mm
-    footprint_max_xy = cad_vertices[:, :2].max(axis=0) + footprint_margin_mm
-    model_xy_cad = model_vertices_cad[:, :2]
-    within_footprint = np.all(
-        (model_xy_cad >= footprint_min_xy) & (model_xy_cad <= footprint_max_xy), axis=1
+    outer_loops = _cad_outer_outline_loops(cad_vertices, cad_faces)
+    within_footprint = _within_cad_outer_outline(
+        model_vertices_cad[:, :2], outer_loops, footprint_margin_mm
     )
     above_board = (
         board_surface.height_above_board_mm(model_vertices)
