@@ -2865,3 +2865,20 @@ record would describe a new part, not the one photographed and run. The calipers
 glossy and dark parts within 0.03 mm of the grey control's height.
 **Concluded:** G-11 closes on this PR. This frees one of @TabeenRaoof's two WIP slots (D-064).
 **Next:** @mbj1994's re-review of #392's final commit, then the author merges.
+
+## 2026-11-19 — P-35 Done: X-03's prerequisites from the dry run, and the Nov 27 review (PR #408, PR #409, PR #410)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- **The dry run:** X-03's planted-shift scenario ran on `main` (`aeadbc4`), using G-09's photographs and the control's CAD as the order (#407). The G-05 control and the 4 mm hole shift both came back Rescan, on orientation ambiguity alone. With ambiguity set aside, both Fail, the control at 12.85 mm, from the base flare outside the CAD's outline.
+- **New stories, all Ready:**
+  - **I-13 (3 h):** I-05 ranks poses by fitness but decides ambiguity on inlier RMSE alone (D-061).
+  - **I-14 (4 h):** I-06's declared 10 mm footprint margin lets the base flare be measured as part.
+  - **P-36 (2.5 h):** the Nov 27 progress review, R6.
+- **X-03** now depends on I-13 and I-14, and its notes record #407's result.
+- **How it merged:** the claim is #408. #409 merged into the claim branch by mistake, seconds after #408 and before GitHub retargeted it, so #410 re-landed the same reviewed head (`e4b060b`) on `main`.
+
+**Command / how to reproduce:** `python3 scripts/check_story_states.py` is clean on `main` (`25ceb54`). The dry run's commands and numbers are in #407.
+**Result:** open estimates go from 30 h to 39.5 h, with 13 days to the Dec 2 boundary. No code changed and no decision was recorded. I-13 and I-14 each take a D-number when they're built.
+**Concluded:** the next step on X-03's first criterion is a decision in I-13 and I-14, not running X-03 again. The base flare is a separate effect from #292 (`s-02`'s board skin), so #292 stays open.
+**Next:** the Dec 2 boundary call takes the suggested order: I-13, I-14, then X-03 once R-42 (#404) merges. P-36's date (Nov 27 is the day after Thanksgiving) is confirmed by Nov 25.
