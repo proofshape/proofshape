@@ -20,7 +20,13 @@ import {
 } from "./api.js";
 import { mountAgentConversation } from "./agent-conversation.js";
 import { requireElement, requireTyped } from "./dom.js";
-import { checkBlur, checkDuplicate, checkExposure, type FramePixels } from "./frame_gate.js";
+import {
+  checkBlur,
+  checkDuplicate,
+  checkExposure,
+  measureBlurVariance,
+  type FramePixels,
+} from "./frame_gate.js";
 import { requestGyroPermission } from "./gyro.js";
 import {
   describeCreateSession,
@@ -81,6 +87,49 @@ export interface AppShellOptions {
   // C-24: where an in-progress session is kept across a reload. Defaults to the tab's
   // sessionStorage; tests pass their own, and null turns resume off.
   captureSessionStorage?: KeyValueStorage | null;
+  // C-25 review calibration aid. When true, store the exact pre-JPEG Laplacian variance for each
+  // server-accepted frame in sessionStorage, keyed by the server frame index. No pixels/photos are
+  // retained. main.ts enables this only with ?blur-debug=1.
+  blurDebug?: boolean;
+  // Test/debug injection only. When omitted, blur-debug uses the browser's sessionStorage.
+  // A null value deliberately represents unavailable storage so the warning path is testable.
+  blurDebugStorage?: KeyValueStorage | null;
+}
+
+export const C25_BLUR_DEBUG_STORAGE_KEY = "proofshape.c25BlurDebug.v1";
+
+export interface C25BlurDebugMeasurement {
+  session_id: string;
+  frame_index: number;
+  pre_jpeg_variance: number;
+  width: number;
+  height: number;
+}
+
+function appendC25BlurDebugMeasurement(
+  storage: KeyValueStorage | null,
+  measurement: C25BlurDebugMeasurement,
+): number | null {
+  if (storage === null) {
+    return null;
+  }
+  let measurements: C25BlurDebugMeasurement[] = [];
+  try {
+    const raw = storage.getItem(C25_BLUR_DEBUG_STORAGE_KEY);
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        measurements = parsed as C25BlurDebugMeasurement[];
+      }
+    }
+    measurements.push(measurement);
+    storage.setItem(C25_BLUR_DEBUG_STORAGE_KEY, JSON.stringify(measurements));
+    return measurements.filter((item) => item.session_id === measurement.session_id).length;
+  } catch {
+    // Debug evidence must never interrupt a supplier capture. The caller surfaces the failure in
+    // the debug-only status line so an operator cannot mistake a partial table for complete data.
+    return null;
+  }
 }
 
 const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
@@ -103,6 +152,7 @@ export const APP_SHELL_HTML = `
     <video id="shell-camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
     <button id="shell-capture-button" type="button" disabled>Capture frame</button>
     <p id="shell-capture-status"></p>
+    <p id="shell-blur-debug-status" hidden></p>
     <p id="shell-vlm-hint"></p>
     <div id="shell-gyro-overlay"></div>
   </section>
@@ -157,6 +207,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const cameraPreview = requireTyped(root, "#shell-camera-preview", HTMLVideoElement, "<video>");
   const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
   const captureStatus = requireElement(root, "#shell-capture-status");
+  const blurDebugStatus = requireElement(root, "#shell-blur-debug-status");
   const vlmHint = requireElement(root, "#shell-vlm-hint");
   const gyroOverlayContainer = requireElement(root, "#shell-gyro-overlay");
   const agentConversationContainer = requireElement(root, "#shell-agent-conversation");
@@ -173,6 +224,29 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const modelViewer = requireElement(root, "#shell-model-viewer");
 
   const agentConversation = mountAgentConversation(agentConversationContainer);
+
+  const blurDebugStorage =
+    options.blurDebug === true
+      ? options.blurDebugStorage === undefined
+        ? browserSessionStorage()
+        : options.blurDebugStorage
+      : null;
+  if (options.blurDebug === true) {
+    blurDebugStatus.hidden = false;
+    if (blurDebugStorage === null) {
+      setStatus(
+        blurDebugStatus,
+        "Blur debug warning: measurement storage is unavailable; paired evidence will be incomplete.",
+        "error",
+      );
+    } else {
+      setStatus(
+        blurDebugStatus,
+        "Blur debug active: measurement storage is available; stored count will update after accepted frames.",
+        "info",
+      );
+    }
+  }
 
   const state: AppState = {
     sessionId: null,
@@ -202,6 +276,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // Capture a few milliseconds after a tap disabled it -- a second tap started a second, concurrent
   // upload. Also gates Finish, which could otherwise run while an upload was still in flight.
   let uploadInFlight = false;
+  // C-25: once any blur-debug measurement fails to store, that run is unusable for calibration.
+  // Keep the warning sticky across later successful writes so the operator cannot miss it.
+  let blurDebugStorageFailures = 0;
   // The reverse race of uploadInFlight, caught on a second pass of the same review: clicking
   // Finish only ever disabled Finish, not Capture, so a capture started right after could still
   // be mid-upload when finishSession resolved -- and that upload's own `finally` called
@@ -608,6 +685,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       return;
     }
     state.lastCapturedFrame = captured;
+    const c25PreJpegVariance =
+      options.blurDebug === true ? measureBlurVariance(captured.pixels) : null;
 
     // C-20: exposure runs before blur so a uniformly black/white frame reports the lighting
     // problem instead of being mislabelled as blur. Duplicate stays last; first failure wins and
@@ -687,6 +766,35 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
         setStatus(captureStatus, describeUploadFrame(result), result.ok ? "info" : "error");
         if (result.ok) {
+          if (c25PreJpegVariance !== null) {
+            const storedCount = appendC25BlurDebugMeasurement(blurDebugStorage, {
+              session_id: sessionId,
+              frame_index: result.body.frame_index,
+              pre_jpeg_variance: c25PreJpegVariance,
+              width: captured.pixels.width,
+              height: captured.pixels.height,
+            });
+            if (storedCount === null) {
+              blurDebugStorageFailures += 1;
+              setStatus(
+                blurDebugStatus,
+                `Blur debug warning: frame ${String(result.body.frame_index)} was accepted, but its pre-JPEG measurement could not be stored; ${String(blurDebugStorageFailures)} failure(s), paired evidence is incomplete.`,
+                "error",
+              );
+            } else if (blurDebugStorageFailures > 0) {
+              setStatus(
+                blurDebugStatus,
+                `Blur debug: ${String(storedCount)} measurement(s) stored for this session, ${String(blurDebugStorageFailures)} failed; paired evidence is incomplete.`,
+                "error",
+              );
+            } else {
+              setStatus(
+                blurDebugStatus,
+                `Blur debug: ${String(storedCount)} measurement(s) stored for this session; latest frame index ${String(result.body.frame_index)}.`,
+                "info",
+              );
+            }
+          }
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
           gyroOverlayHandle.reportAcceptedFrame(captured.gyro);

@@ -3,6 +3,7 @@ import {
   checkBlur,
   checkDuplicate,
   checkExposure,
+  measureBlurVariance,
   DEFAULT_BLUR_VARIANCE_THRESHOLD,
   DEFAULT_DUPLICATE_GYRO_DELTA_DEG,
   DEFAULT_DUPLICATE_IMAGE_DIFF_THRESHOLD,
@@ -39,6 +40,31 @@ const FLAT_WHITE = makeFrame(8, 8, () => 255);
 
 const GYRO_A: Gyro = { alpha: 10, beta: 20, gamma: 30 };
 
+function applyDiagonalMotionBlur(frame: FramePixels, kernelWidth: number): FramePixels {
+  if (kernelWidth < 1 || kernelWidth % 2 === 0) {
+    throw new Error("motion-blur kernel width must be a positive odd integer");
+  }
+  const radius = Math.floor(kernelWidth / 2);
+  const data = new Uint8ClampedArray(frame.data.length);
+  for (let y = 0; y < frame.height; y++) {
+    for (let x = 0; x < frame.width; x++) {
+      const targetOffset = (y * frame.width + x) * 4;
+      for (let channel = 0; channel < 3; channel++) {
+        let total = 0;
+        for (let offset = -radius; offset <= radius; offset++) {
+          const sourceX = Math.min(frame.width - 1, Math.max(0, x + offset));
+          const sourceY = Math.min(frame.height - 1, Math.max(0, y + offset));
+          const sourceOffset = (sourceY * frame.width + sourceX) * 4;
+          total += frame.data[sourceOffset + channel] ?? 0;
+        }
+        data[targetOffset + channel] = Math.round(total / kernelWidth);
+      }
+      data[targetOffset + 3] = 255;
+    }
+  }
+  return { data, width: frame.width, height: frame.height };
+}
+
 describe("checkBlur", () => {
   it("passes a sharp, high-contrast image", () => {
     expect(checkBlur(CHECKERBOARD)).toEqual({ ok: true });
@@ -58,6 +84,27 @@ describe("checkBlur", () => {
     // just accepted and ignored.
     expect(checkBlur(FLAT_GRAY, DEFAULT_BLUR_VARIANCE_THRESHOLD).ok).toBe(false);
     expect(checkBlur(FLAT_GRAY, 0).ok).toBe(true);
+  });
+
+  it("rejects directional motion blur at the calibrated threshold", () => {
+    const board = makeFrame(64, 64, (x, y) =>
+      (Math.floor(x / 16) + Math.floor(y / 16)) % 2 === 0 ? 255 : 0,
+    );
+    const motionBlurred = applyDiagonalMotionBlur(board, 31);
+    const sharpVariance = measureBlurVariance(board);
+    const blurredVariance = measureBlurVariance(motionBlurred);
+
+    // C-25's paired real-device run established that JPEG encoding shifts the metric only about
+    // 1–2% upward and preserves ordering, so the R-36 blur/sharp gap supports the calibrated 200
+    // threshold. This synthetic regression now pins the intended reject behavior.
+    expect(checkBlur(board)).toEqual({ ok: true });
+    expect(blurredVariance).toBeLessThan(sharpVariance);
+    expect(blurredVariance).toBeLessThan(DEFAULT_BLUR_VARIANCE_THRESHOLD);
+    const result = checkBlur(motionBlurred);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("frame_rejected_blur");
+    }
   });
 });
 

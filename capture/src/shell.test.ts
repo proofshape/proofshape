@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
+import { measureBlurVariance } from "./frame_gate.js";
 import {
   browserSessionStorage,
   CAPTURE_SESSION_STORAGE_KEY,
@@ -8,7 +9,13 @@ import {
   saveCaptureSession,
   type StoredCaptureSession,
 } from "./session-persistence.js";
-import { mountAppShell, type AppShellOptions, type AppState } from "./shell.js";
+import {
+  C25_BLUR_DEBUG_STORAGE_KEY,
+  mountAppShell,
+  type AppShellOptions,
+  type AppState,
+  type C25BlurDebugMeasurement,
+} from "./shell.js";
 import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 
@@ -52,6 +59,7 @@ describe("mountAppShell", () => {
     cameraPreview: HTMLVideoElement;
     captureButton: HTMLButtonElement;
     captureStatus: HTMLElement;
+    blurDebugStatus: HTMLElement;
     finishButton: HTMLButtonElement;
     finishStatus: HTMLElement;
     reconstructionStatus: HTMLElement;
@@ -75,6 +83,7 @@ describe("mountAppShell", () => {
     const cameraPreview = document.getElementById("shell-camera-preview");
     const captureButton = document.getElementById("shell-capture-button");
     const captureStatus = document.getElementById("shell-capture-status");
+    const blurDebugStatus = document.getElementById("shell-blur-debug-status");
     const finishButton = document.getElementById("shell-finish-button");
     const finishStatus = document.getElementById("shell-finish-status");
     const reconstructionStatus = document.getElementById("shell-reconstruction-status");
@@ -90,6 +99,7 @@ describe("mountAppShell", () => {
       !cameraStatus ||
       !gyroStatus ||
       !captureStatus ||
+      !blurDebugStatus ||
       !finishStatus ||
       !reconstructionStatus
     ) {
@@ -105,6 +115,7 @@ describe("mountAppShell", () => {
       cameraPreview,
       captureButton,
       captureStatus,
+      blurDebugStatus,
       finishButton,
       finishStatus,
       reconstructionStatus,
@@ -677,6 +688,181 @@ describe("mountAppShell", () => {
       if (mounted.captureStatus.textContent === "Uploading…") throw new Error("still uploading");
     });
     expect(mounted.captureStatus.textContent).toMatch(/accepted/i);
+    expect(window.sessionStorage.getItem(C25_BLUR_DEBUG_STORAGE_KEY)).toBeNull();
+  });
+
+  it("blur-debug records the exact pre-JPEG gate metric beside the accepted server frame index", async () => {
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    const { imageData } = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    const raw = window.sessionStorage.getItem(C25_BLUR_DEBUG_STORAGE_KEY);
+    expect(raw).not.toBeNull();
+    const measurements = JSON.parse(raw ?? "[]") as C25BlurDebugMeasurement[];
+    expect(measurements).toHaveLength(1);
+    expect(measurements[0]).toMatchObject({
+      session_id: mounted.state.sessionId,
+      frame_index: 0,
+      width: imageData.width,
+      height: imageData.height,
+    });
+    expect(measurements[0]?.pre_jpeg_variance).toBe(measureBlurVariance(imageData));
+    expect(mounted.blurDebugStatus.textContent).toMatch(
+      /1 measurement\(s\) stored for this session/i,
+    );
+  });
+
+  it("blur-debug reports a per-session count when the storage key already has another session", async () => {
+    window.sessionStorage.setItem(
+      C25_BLUR_DEBUG_STORAGE_KEY,
+      JSON.stringify([
+        {
+          session_id: "sess_previous",
+          frame_index: 0,
+          pre_jpeg_variance: 123,
+          width: 640,
+          height: 480,
+        },
+      ]),
+    );
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(
+      /1 measurement\(s\) stored for this session/i,
+    );
+  });
+
+  it("blur-debug warns immediately when measurement storage is unavailable", () => {
+    const mounted = mount({ blurDebug: true, blurDebugStorage: null });
+
+    expect(mounted.blurDebugStatus.hidden).toBe(false);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/storage is unavailable/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
+  });
+
+  it("blur-debug warns after an accepted frame when measurement storage throws", async () => {
+    const throwingStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("storage blocked");
+      },
+      removeItem: () => undefined,
+    };
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true, blurDebugStorage: throwingStorage });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(/could not be stored/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/evidence is incomplete/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
+  });
+
+  it("blur-debug keeps an earlier storage failure visible after a later successful write", async () => {
+    let writes = 0;
+    let saved = "[]";
+    const flakyStorage = {
+      getItem: () => saved,
+      setItem: (_key: string, value: string) => {
+        writes += 1;
+        if (writes === 1) {
+          throw new Error("first write blocked");
+        }
+        saved = value;
+      },
+      removeItem: () => undefined,
+    };
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true, blurDebugStorage: flakyStorage });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    const canvas = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 failure\(s\)/i);
+
+    canvas.setImageData(sharpWellExposedImageData(4, 6));
+    setVideoDimensions(mounted.cameraPreview, 480, 640);
+    dispatchOrientation(30, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 failed/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/evidence is incomplete/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
   });
 
   it("captures stay available but never enable without a real gyro reading, even with the camera playing", async () => {
