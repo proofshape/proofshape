@@ -2352,23 +2352,36 @@ team weighs it differently.
 *Scope, stated rather than silently narrowed:* this covers only A-01's *sampled* frames — an
 unsampled bad frame (R-36/#354: a screen photo on frame 6 of a 15-frame session, outside the
 sampled set `[0, 5, 10, 14]`) is still missed, a known limitation of sampled rather than
-all-frame supervision (`recon/README.md`), not something this decision changes. It also does not
-decide whether a vetoed frame is kept out of the reconstruction itself — today, `run_session`
-schedules VLM checks and starts reconstruction without waiting for them, and that stays
-unchanged here. #354's own acceptance criteria ask for two real device sessions
-(`sess_fb1b028da4cd`, `sess_1a215dae88d7`) to be re-run on current `main` first, to check whether
-R-38's outlier rejection (D-075, which landed after those sessions' numbers were recorded)
-already drops a screen-photo frame's effect on the *reconstruction* on its own. **Confirmed on
+all-frame supervision (`recon/README.md`), not something this decision changes. **Confirmed on
 review (@TabeenRaoof, PR #396), from the sessions' own already-recorded `vlm_checks.json`** (on
 their Mac, outside this repo): `sess_fb1b028da4cd`'s sampled frame 5 (`screen_photo: true`)
 correctly produces `vlm_screen_photo_frame_5` under this policy; `sess_1a215dae88d7`'s screen
-photo on unsampled frame 6 is, as expected, missed entirely. **That confirms this module's own
-behaviour against real data, not the separate, still-open question** — whether R-38 already
-keeps a bad frame's *geometry* out of the fused mesh needs an actual re-run of reconstruction on
-current `main` against both sessions' raw photos, which neither this decision nor PR #396
-performs. Recorded as a follow-up for whoever has that data (`@TabeenRaoof`, who ran R-36's
-device testing and holds both sessions under `proofshape-data/sessions/`) in `stories/A/A-02.md`,
-not silently skipped or guessed at.
+photo on unsampled frame 6 is, as expected, missed entirely.
+*Resolved: a vetoed frame does not need to be kept out of the reconstruction, on the evidence
+measured by `@TabeenRaoof` (re-run on `f40dddb`, recorded in #403).* `run_session` keeps
+scheduling VLM checks and starting reconstruction without waiting for them, **unchanged, on
+measured evidence rather than left open**: re-running both sessions' raw frames on current
+`main` (R-38/D-075 included, Gemini key unset) found R-38's outlier rejection drops
+`sess_1a215dae88d7`'s unsampled frame 6 from the fused mesh but keeps `sess_fb1b028da4cd`'s
+sampled frame 5. (R-36's own figures were right as given — `sess_1a215dae88d7` reads 1.345,
+`sess_fb1b028da4cd` 1.286, clean `sess_8fdecd4b3a02` 0.961 — an uncertainty about which figure
+belonged to which session was this story's own, not R-36's.) **On `sess_1a215dae88d7` only, the
+screen frame wasn't the cause — and only up to a point** (correction, @TabeenRaoof, PR #403
+review): dropping frame 6 barely moved the *old* tool's reading (1.345 → 1.352), and the
+*current* `cad_size_check.py` (changed by R-37, after these numbers were first recorded) reads
+the saved output and the fresh re-run as 0.916/0.917 either way — level with clean — but reading
+1.756 with the frame **removed from the input entirely**, a failed measurement with 6.9×/8.2×
+impossible long edges. **On `sess_fb1b028da4cd`, whether the screen frame was the cause can't be
+isolated at all**: R-38 never rejects its frame 5, so there is no before/after-rejection
+comparison, and the *old* tool fails outright if frame 5 is removed from the input by hand.
+Height stayed reliable throughout (0.947–0.952) in every variant, and neither session shows a
+measured benefit to keeping the frame out. **This justifies not adding the wait, on two sessions
+of one part from one phone — it does not prove a screen frame can never matter**, stated as the
+actual strength of the evidence rather than oversold. A real, separate problem surfaced during
+this measurement and is not this decision's to fix: the edge-ratio reading itself shifted by
+0.1–0.4 between tool versions and by up to 0.8 when a frame was removed, and gave impossible
+long-edge readings (4.8–8.2×) on some runs — a `cad_size_check.py` reliability bug, which
+`@TabeenRaoof` is filing as its own issue separately (see `stories/A/A-02.md`).
 *Also recorded, a judgment call open to correction on review:* the contract's `vlm_veto`
 `ErrorDetail.code` (reserved since A-11 freed it from its malformed-upload borrow, D-056) is
 *not* used by this story. `docs/manual.md` lists it under "not produced yet," and the closest
