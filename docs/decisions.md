@@ -1260,7 +1260,7 @@ Re-checked after R-26 merged: D-059 and D-060 are now on `main`, and D-061 is st
 *Agreement:* proposed in I-05's PR, which asks both @mbj1994 and @dalwalyk to agree and merges
 only with both approving.
 
-*Proposed I-13 amendment (2026-11-19, pending team agreement):* use the ratio of capped
+*Proposed I-13 amendment (2026-11-19, pending final approvals):* use the ratio of capped
 nearest distances from CAD samples to the Observed model surface. The comparison uses the CAD
 samples within the refinement radius under any candidate pose. The first 12 seeds per class at
 σ = 0.3 mm with a 20% Unobserved patch suggested a cutoff of 1.0225. The largest missing-hole
@@ -1274,8 +1274,12 @@ flagged. At 1.030, the counts were zero and 34. These are outcomes for the measu
 The valid real captures agree at both proposed cutoffs: g05_00 and golden s-04 clear, and
 golden s-05 stays ambiguous. The tightest real clearance in the review was s-04 at 1.0483,
 about 0.023 above 1.025. The g05_02 capture was upside down and cannot validate the rule.
-I-13 records the ratios and fitness values. The team must choose
-the cutoff given the observed trade-off and both other members must approve the amendment.
+I-13 records the ratios and fitness values. Both reviewers confirmed 1.025 on PR #414.
+The team chose it to catch the missed missing-hole case in the measured seeds, accepting six
+additional shifted-hole Rescans. The control's coverage ratio differed by about 0.09 between
+its two reconstructions (1.1256 and 1.2171), while s-04 was stable at 1.0483 and 1.0491.
+A scalene part near the cutoff may still produce a false Rescan on some reconstructions.
+Both other members must approve the amendment on the final head.
 
 **D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
 provenance, and the viewer does the colouring.** (2026-11-09)

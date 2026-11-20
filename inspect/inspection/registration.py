@@ -72,9 +72,8 @@ DEFAULT_TUKEY_K_FACTOR = 1.0
 DEFAULT_REFINE_ICP_ITERATIONS = 100
 # I-13 uses the same dense surface sample count as the scale diagnostic for coverage scoring.
 DEFAULT_AMBIGUITY_SAMPLE_COUNT = 20_000
-# I-13's measured midpoint separates the D-061 missing-hole maximum (1.018260) from the 3 mm
-# shifted-hole minimum (1.026777) on the 12-seed synthetic table.
-DEFAULT_AMBIGUITY_THRESHOLD = 0.0225
+# D-061 selects this cutoff to favor catching missing-hole ambiguity in the measured overlap.
+DEFAULT_AMBIGUITY_THRESHOLD = 0.025
 # The contract's reason code for an ambiguous orientation
 # (contracts/examples/getVerdict.response-200-rescan-unobserved.json). I-07 puts it in the verdict.
 REASON_ORIENTATION_AMBIGUOUS = "registration_orientation_ambiguous"

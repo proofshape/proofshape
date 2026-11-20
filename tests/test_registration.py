@@ -1246,8 +1246,8 @@ def test_i13_preserves_d061_twelve_seed_table(
 @pytest.mark.parametrize(
     ("coverage_ratio", "expected_ambiguous"),
     [
-        (1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD, True),
-        (1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD + 1e-9, False),
+        (1.025, True),
+        (1.025 + 1e-9, False),
     ],
 )
 def test_i13_pins_coverage_ratio_boundary(
