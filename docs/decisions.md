@@ -2466,6 +2466,10 @@ December 7 to 18 came from an earlier draft where it was explicitly provisional 
 a different course's calendar. It has since hardened into the milestone table, the sprint plan
 and the horizontal axis of both Gantt charts without ever being verified against SFBU's academic
 calendar. Confirm it before the schedule is treated as fixed.
+*Update 2026-11-20 (P-36):* the final presentation is most likely on **Fri 2026-12-11**, R7's
+slot, as given by @TabeenRaoof on 2026-11-20. That is still the team's working assumption, not a
+confirmed date, so this stays open. The same report says there is no presentation on Nov 27
+(R6), so the final presentation is the only one left.
 
 **O-003 · Exact biweekly review dates. — Closed 2026-10-20.**
 ~~Planned for every second Friday from 11 September; re-anchor if the real dates differ.~~
@@ -2474,6 +2478,7 @@ Progress Review 2 on 2 October 2026. The sprint plan is therefore re-anchored to
 Friday from 18 September: 18 Sep, 2 Oct, 16 Oct, 30 Oct, 13 Nov, 27 Nov, 11 Dec. No separate
 written instructor-confirmation message is stored in the repo, Gmail or calendar; the delivered
 class-review artifacts are the evidence used for this closure, and the plan says so explicitly.
+*Note 2026-11-20 (P-36):* 27 Nov (R6) is not held; see O-002.
 
 **O-004 · Whether a formal user study is expected this semester.** An informal one is planned;
 a formal one with IRB approval is future work.
