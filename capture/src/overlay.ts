@@ -9,21 +9,43 @@ import {
   computeArrowGuidance,
   computeCoverage,
   DEFAULT_ORBIT,
+  guidanceLevel,
+  type GuidanceLevel,
   type OrbitSlot,
 } from "./orbit.js";
 import { requireElement } from "./dom.js";
 import type { Gyro } from "./types.js";
+
+// C-26: what the viewfinder needs to colour its frame (and C-27 to decide when to capture).
+// `gyro` is the live reading the level was computed from; null when no live reading exists yet.
+export interface GuidanceUpdate {
+  level: GuidanceLevel;
+  gyro: Gyro | null;
+}
+
+export interface GyroOverlayOptions {
+  onGuidance?: (update: GuidanceUpdate) => void;
+}
 
 export interface GyroOverlayHandle {
   reportAcceptedFrame(gyro: Gyro): void;
   dispose(): void;
 }
 
+// C-26: the arrow is an SVG shape, not a text glyph, so it can be sized and coloured (capture.css)
+// and stays crisp at any size. It still points "up" at rotate(0) and is turned by the same
+// transform as before.
 const OVERLAY_HTML = `
   <div class="gyro-overlay">
-    <p class="gyro-overlay-status"></p>
-    <div class="gyro-overlay-arrow" aria-hidden="true">&#8593;</div>
-    <p class="gyro-overlay-count"></p>
+    <div class="gyro-overlay-chips">
+      <p class="gyro-overlay-status"></p>
+      <p class="gyro-overlay-count"></p>
+    </div>
+    <div class="gyro-overlay-arrow" aria-hidden="true">
+      <svg viewBox="0 0 100 100" focusable="false">
+        <path d="M50 6 L92 50 L64 50 L64 94 L36 94 L36 50 L8 50 Z" />
+      </svg>
+    </div>
   </div>
 `;
 
@@ -47,6 +69,7 @@ const activeDisposalsByContainer = new WeakMap<HTMLElement, () => void>();
 export function mountGyroOverlay(
   container: HTMLElement,
   orbit: readonly OrbitSlot[] = DEFAULT_ORBIT,
+  options: GyroOverlayOptions = {},
 ): GyroOverlayHandle {
   activeDisposalsByContainer.get(container)?.();
 
@@ -59,8 +82,13 @@ export function mountGyroOverlay(
   const acceptedReadings: Gyro[] = [];
   let latestLiveGyro: Gyro | null = null;
   count.textContent = formatCount(0, orbit.length);
-  status.textContent = "Capture the first frame to start.";
+  status.textContent = "Tap the shutter to take the first photo.";
   arrow.style.visibility = "hidden";
+
+  function emit(level: GuidanceLevel, gyro: Gyro | null): void {
+    options.onGuidance?.({ level, gyro });
+  }
+  emit("idle", null);
 
   function render(): void {
     const coverage = computeCoverage(acceptedReadings, orbit);
@@ -72,11 +100,13 @@ export function mountGyroOverlay(
     if (coverage.nextTargetIndex === null) {
       status.textContent = "Orbit complete.";
       arrow.style.visibility = "hidden";
+      emit("complete", liveGyro);
       return;
     }
     const anchorDeg = anchorHeadingDeg(acceptedReadings);
     if (anchorDeg === null) {
       // No accepted frames yet -- nothing to anchor azimuth to, so no arrow guidance yet.
+      emit("idle", liveGyro);
       return;
     }
     const target = orbit[coverage.nextTargetIndex];
@@ -85,13 +115,15 @@ export function mountGyroOverlay(
     }
     const guidance = computeArrowGuidance(liveGyro, anchorDeg, target);
     if (guidance.onTarget) {
-      status.textContent = "On target.";
+      status.textContent = "On target — take the photo.";
       arrow.style.visibility = "hidden";
+      emit("on-target", liveGyro);
       return;
     }
     status.textContent = "Move toward the next position.";
     arrow.style.visibility = "visible";
     arrow.style.transform = `rotate(${String(arrowRotationDeg(guidance.azimuthDeltaDeg, guidance.elevationDeltaDeg))}deg)`;
+    emit(guidanceLevel(guidance), liveGyro);
   }
 
   // A named reference, not an inline arrow function, specifically so it can be removed again --
@@ -127,6 +159,10 @@ export function mountGyroOverlay(
       // the arrow reflects the new target immediately.
       if (latestLiveGyro) {
         updateArrow(latestLiveGyro);
+      } else if (computeCoverage(acceptedReadings, orbit).nextTargetIndex === null) {
+        // No live reading to judge position by, but a complete orbit is complete regardless.
+        status.textContent = "Orbit complete.";
+        emit("complete", null);
       }
     },
     dispose,

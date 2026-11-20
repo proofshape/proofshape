@@ -222,3 +222,26 @@ export function computeArrowGuidance(
   }
   return { onTarget: false, azimuthDeltaDeg: azimuthDiff, elevationDeltaDeg: elevationDiff };
 }
+
+// C-26: how close the live reading is to the next target, for the viewfinder's frame colour.
+// "on-target" is computeArrowGuidance's own onTarget, so green means exactly "a photo here counts
+// toward coverage". "near" is within NEAR_TOLERANCE_MULTIPLIER times the same tolerance on both
+// axes; anything further is "far". The overlay adds "idle" (no anchor yet) and "complete".
+export type TargetLevel = "on-target" | "near" | "far";
+export type GuidanceLevel = TargetLevel | "idle" | "complete";
+
+export const NEAR_TOLERANCE_MULTIPLIER = 2;
+
+export function guidanceLevel(
+  guidance: ArrowGuidance,
+  toleranceDeg: number = DEFAULT_COVERAGE_TOLERANCE_DEG,
+): TargetLevel {
+  if (guidance.onTarget) {
+    return "on-target";
+  }
+  const worstDeltaDeg = Math.max(
+    Math.abs(guidance.azimuthDeltaDeg),
+    Math.abs(guidance.elevationDeltaDeg),
+  );
+  return worstDeltaDeg <= toleranceDeg * NEAR_TOLERANCE_MULTIPLIER ? "near" : "far";
+}

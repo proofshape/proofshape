@@ -7,6 +7,8 @@ import {
   DEFAULT_COVERAGE_TOLERANCE_DEG,
   DEFAULT_ORBIT,
   elevationFromBeta,
+  guidanceLevel,
+  NEAR_TOLERANCE_MULTIPLIER,
   relativeAzimuthDeg,
   viewAnglesFromGyro,
   type OrbitSlot,
@@ -214,3 +216,46 @@ describe("computeArrowGuidance", () => {
 function elevationFromBetaInverse(elevationDeg: number): number {
   return 90 - elevationDeg;
 }
+
+// C-26: the viewfinder's frame colour.
+describe("guidanceLevel", () => {
+  const near = DEFAULT_COVERAGE_TOLERANCE_DEG * NEAR_TOLERANCE_MULTIPLIER;
+
+  it("is on-target exactly when computeArrowGuidance says onTarget", () => {
+    expect(guidanceLevel({ onTarget: true })).toBe("on-target");
+  });
+
+  it("is near up to twice the coverage tolerance on the worse axis, and far just past it", () => {
+    expect(near).toBe(30);
+    expect(guidanceLevel({ onTarget: false, azimuthDeltaDeg: 30, elevationDeltaDeg: 0 })).toBe(
+      "near",
+    );
+    expect(guidanceLevel({ onTarget: false, azimuthDeltaDeg: 30.01, elevationDeltaDeg: 0 })).toBe(
+      "far",
+    );
+    expect(guidanceLevel({ onTarget: false, azimuthDeltaDeg: 0, elevationDeltaDeg: -30 })).toBe(
+      "near",
+    );
+    expect(guidanceLevel({ onTarget: false, azimuthDeltaDeg: 5, elevationDeltaDeg: -30.01 })).toBe(
+      "far",
+    );
+  });
+
+  it("uses the same 15 degree boundary as coverage for green, via computeArrowGuidance", () => {
+    const target: OrbitSlot = { azimuthDeg: 90, elevationDeg: 45 };
+    const at15 = computeArrowGuidance(gyro(75, elevationFromBetaInverse(45)), 0, target);
+    const past15 = computeArrowGuidance(gyro(74.99, elevationFromBetaInverse(45)), 0, target);
+    expect(guidanceLevel(at15)).toBe("on-target");
+    expect(guidanceLevel(past15)).toBe("near");
+  });
+
+  it("measures across the azimuth wrap the short way, not the long way", () => {
+    const target: OrbitSlot = { azimuthDeg: 350, elevationDeg: 45 };
+    // naive diff 340 (far), shortest -25 (near)
+    const live = gyro(15, elevationFromBetaInverse(45));
+    expect(guidanceLevel(computeArrowGuidance(live, 0, target))).toBe("near");
+    // shortest -40 -> far
+    const farther = gyro(30, elevationFromBetaInverse(45));
+    expect(guidanceLevel(computeArrowGuidance(farther, 0, target))).toBe("far");
+  });
+});

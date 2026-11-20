@@ -51,6 +51,7 @@ import {
   type ModelViewerOptions,
   type ModelViewerState,
 } from "./model-viewer.js";
+import { DEFAULT_ORBIT } from "./orbit.js";
 import { mountGyroOverlay, type GyroOverlayHandle } from "./overlay.js";
 import type { Gyro, ReconstructionResult } from "./types.js";
 
@@ -149,12 +150,20 @@ export const APP_SHELL_HTML = `
     <p id="shell-session-status"></p>
     <p id="shell-camera-status"></p>
     <p id="shell-gyro-status"></p>
-    <video id="shell-camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
-    <button id="shell-capture-button" type="button" disabled>Capture frame</button>
+    <div id="shell-viewfinder" class="viewfinder" data-guidance="idle">
+      <video id="shell-camera-preview" muted playsinline autoplay></video>
+      <div id="shell-gyro-overlay"></div>
+      <button
+        id="shell-capture-button"
+        class="shutter"
+        type="button"
+        aria-label="Capture frame"
+        disabled
+      ><span class="visually-hidden">Capture frame</span></button>
+    </div>
     <p id="shell-capture-status"></p>
     <p id="shell-blur-debug-status" hidden></p>
     <p id="shell-vlm-hint"></p>
-    <div id="shell-gyro-overlay"></div>
   </section>
   <section>
     <div id="shell-agent-conversation"></div>
@@ -206,6 +215,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const gyroStatus = requireElement(root, "#shell-gyro-status");
   const cameraPreview = requireTyped(root, "#shell-camera-preview", HTMLVideoElement, "<video>");
   const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
+  const viewfinder = requireElement(root, "#shell-viewfinder");
   const captureStatus = requireElement(root, "#shell-capture-status");
   const blurDebugStatus = requireElement(root, "#shell-blur-debug-status");
   const vlmHint = requireElement(root, "#shell-vlm-hint");
@@ -260,12 +270,21 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
   // Scoped to this mount, same reasoning as gyro.ts's own `listening` flag.
   let listeningForGyro = false;
-  // C-09: mounted once here (so the shell shows "Capture the first frame to start." immediately),
+  // C-26: every overlay mount colours the viewfinder's frame by the overlay's guidance level
+  // (capture.css reads data-guidance: idle, far, near, on-target, complete).
+  function mountOverlay(): GyroOverlayHandle {
+    return mountGyroOverlay(gyroOverlayContainer, DEFAULT_ORBIT, {
+      onGuidance: (update) => {
+        viewfinder.dataset.guidance = update.level;
+      },
+    });
+  }
+  // C-09: mounted once here (so the shell shows the first-photo prompt immediately),
   // and remounted at the top of every Start click (below) -- overlay.ts's own comment already
   // anticipates this ("a second mount on the same container... can't leak the first mount's
   // listener"), so a retry after an abandoned session starts coverage tracking fresh rather than
   // carrying over slots covered under a session that never actually happened.
-  let gyroOverlayHandle: GyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
+  let gyroOverlayHandle: GyroOverlayHandle = mountOverlay();
   // C-09: the last frame that passed the *local* gate (frame_gate.ts's own "lastAccepted" naming
   // means "accepted by the gate," not "accepted by the server") -- separate from
   // state.lastCapturedFrame, which is just the most recent capture attempt, accepted or not.
@@ -427,7 +446,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // locally accepted under an abandoned session (e.g. a bad order code, then retried) would
     // still anchor duplicate-detection and orbit coverage for the next, real session
     // (overlay.ts's own comment anticipates this exact remount).
-    gyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
+    gyroOverlayHandle = mountOverlay();
     agentConversation.clear();
     lastAcceptedForGate = null;
     // C-24: replaying the accepted readings in order rebuilds coverage exactly, since the overlay
@@ -543,6 +562,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
               state.cameraPlaying = true;
               setStatus(cameraStatus, "Camera started.", "info");
               updateCaptureAvailability();
+              // C-26: bring the whole viewfinder (arrow and shutter included) into view, since
+              // the session controls above it can push it below the fold on a phone.
+              viewfinder.scrollIntoView({ block: "start", behavior: "smooth" });
             },
             (playError: unknown) => {
               if (state.cameraStream !== thisStream) {

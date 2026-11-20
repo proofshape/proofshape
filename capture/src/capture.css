@@ -1,0 +1,153 @@
+/* C-26: the capture viewfinder. The page had no stylesheet before this; only the viewfinder
+   (preview, guidance overlay, shutter) is styled here, the rest of the shell is unchanged. */
+
+:root {
+  --guide-arrow: #1d6f8a;
+  --guide-arrow-edge: #ffffff;
+  --frame-idle: #9aa3ab;
+  --frame-far: #d64545;
+  --frame-near: #e0a526;
+  --frame-on-target: #2e9d5b;
+  --viewfinder-bg: #111417;
+  --chip-bg: rgb(0 0 0 / 55%);
+  --chip-fg: #ffffff;
+  --shutter: #ffffff;
+  --focus-ring: #1d6f8a;
+  --arrow-size: clamp(72px, 22vw, 112px);
+  --shutter-size: 76px;
+}
+
+.viewfinder {
+  position: relative;
+  box-sizing: border-box;
+  width: min(100%, 480px);
+  margin: 8px 0;
+  overflow: hidden;
+  border: 6px solid var(--frame-idle);
+  border-radius: 12px;
+  background: var(--viewfinder-bg);
+  transition: border-color 150ms ease;
+}
+
+/* Colour follows the overlay's guidance level (orbit.ts guidanceLevel). */
+.viewfinder[data-guidance="far"] {
+  border-color: var(--frame-far);
+}
+.viewfinder[data-guidance="near"] {
+  border-color: var(--frame-near);
+}
+.viewfinder[data-guidance="on-target"],
+.viewfinder[data-guidance="complete"] {
+  border-color: var(--frame-on-target);
+}
+
+/* Never cropped (object-fit: contain): the preview shows exactly what the photo will hold. */
+.viewfinder video {
+  display: block;
+  width: 100%;
+  max-height: 72svh;
+  object-fit: contain;
+  background: var(--viewfinder-bg);
+}
+
+#shell-gyro-overlay,
+.gyro-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.gyro-overlay-chips {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  left: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.gyro-overlay-chips p {
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-fg);
+  font:
+    600 14px/1.3 system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.gyro-overlay-arrow {
+  position: absolute;
+  inset: 0;
+  width: var(--arrow-size);
+  height: var(--arrow-size);
+  margin: auto;
+  transition: transform 120ms ease-out;
+}
+
+.gyro-overlay-arrow svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 45%));
+}
+
+.gyro-overlay-arrow path {
+  fill: var(--guide-arrow);
+  stroke: var(--guide-arrow-edge);
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+/* A round shutter, bottom centre over the preview. */
+.shutter {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  width: var(--shutter-size);
+  height: var(--shutter-size);
+  padding: 0;
+  transform: translateX(-50%);
+  border: 5px solid var(--shutter);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 40%);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.shutter::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--shutter);
+  transition: transform 100ms ease;
+}
+
+.shutter:active:not(:disabled)::after {
+  transform: scale(0.88);
+}
+
+.shutter:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.shutter:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

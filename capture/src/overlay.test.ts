@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mountGyroOverlay, type GyroOverlayHandle } from "./overlay.js";
+import { mountGyroOverlay, type GuidanceUpdate, type GyroOverlayHandle } from "./overlay.js";
 import { DEFAULT_ORBIT, type OrbitSlot } from "./orbit.js";
 import type { Gyro } from "./types.js";
 
@@ -80,7 +80,7 @@ describe("mountGyroOverlay", () => {
     expect(text(container, ".gyro-overlay-count")).toBe(
       `Covered: 0/${String(DEFAULT_ORBIT.length)}`,
     );
-    expect(text(container, ".gyro-overlay-status")).toMatch(/capture the first frame/i);
+    expect(text(container, ".gyro-overlay-status")).toMatch(/take the first photo/i);
   });
 
   it("reportAcceptedFrame advances the covered count", () => {
@@ -250,5 +250,81 @@ describe("mountGyroOverlay", () => {
     expect(text(container, ".gyro-overlay-status")).toMatch(/on target/i);
     const arrow = container.querySelector<HTMLElement>(".gyro-overlay-arrow");
     expect(arrow?.style.visibility).toBe("hidden");
+  });
+});
+
+// C-26: the guidance level the viewfinder colours its frame by.
+describe("mountGyroOverlay onGuidance", () => {
+  let handles: GyroOverlayHandle[] = [];
+  afterEach(() => {
+    for (const handle of handles) handle.dispose();
+    handles = [];
+  });
+
+  function mountWithLevels(): { handle: GyroOverlayHandle; levels: GuidanceUpdate[] } {
+    const { container } = mount();
+    const levels: GuidanceUpdate[] = [];
+    const handle = mountGyroOverlay(container, DEFAULT_ORBIT, {
+      onGuidance: (update) => levels.push(update),
+    });
+    handles.push(handle);
+    return { handle, levels };
+  }
+
+  function anchorAtSlot0(handle: GyroOverlayHandle): void {
+    handle.reportAcceptedFrame({
+      alpha: 0,
+      beta: elevationToBeta(requireSlot(0).elevationDeg),
+      gamma: 0,
+    });
+  }
+
+  it("is idle on mount and stays idle on live readings before the first frame", () => {
+    const { levels } = mountWithLevels();
+    expect(levels.at(-1)).toEqual({ level: "idle", gyro: null });
+    dispatchOrientation(10, elevationToBeta(45), 0);
+    expect(levels.at(-1)?.level).toBe("idle");
+    expect(levels.at(-1)?.gyro).toEqual({ alpha: 10, beta: elevationToBeta(45), gamma: 0 });
+  });
+
+  it("reports on-target, near and far for the next target, with the live reading", () => {
+    const { handle, levels } = mountWithLevels();
+    anchorAtSlot0(handle);
+    const target = requireSlot(1);
+    const beta = elevationToBeta(target.elevationDeg);
+
+    dispatchOrientation(target.azimuthDeg, beta, 0);
+    expect(levels.at(-1)).toEqual({
+      level: "on-target",
+      gyro: { alpha: target.azimuthDeg, beta, gamma: 0 },
+    });
+
+    dispatchOrientation(target.azimuthDeg - 25, beta, 0);
+    expect(levels.at(-1)?.level).toBe("near");
+
+    dispatchOrientation(target.azimuthDeg - 40, beta, 0);
+    expect(levels.at(-1)?.level).toBe("far");
+  });
+
+  it("reports complete once every slot is covered, even with no live reading yet", () => {
+    const { handle, levels } = mountWithLevels();
+    for (const slot of DEFAULT_ORBIT) {
+      handle.reportAcceptedFrame({
+        alpha: slot.azimuthDeg,
+        beta: elevationToBeta(slot.elevationDeg),
+        gamma: 0,
+      });
+    }
+    expect(levels.at(-1)).toEqual({ level: "complete", gyro: null });
+    dispatchOrientation(0, elevationToBeta(45), 0);
+    expect(levels.at(-1)?.level).toBe("complete");
+  });
+
+  it("draws the arrow as an SVG shape, not a text glyph", () => {
+    const { container } = mount();
+    handles.push(mountGyroOverlay(container));
+    const arrow = container.querySelector(".gyro-overlay-arrow");
+    expect(arrow?.querySelector("svg path")).not.toBeNull();
+    expect(arrow?.textContent.trim()).toBe("");
   });
 });
