@@ -2432,40 +2432,57 @@ already Done, and aren't decided here. Any future print for a ground-truth story
 
 ---
 
-**D-086 · I-14 narrows I-06's registered xy footprint allowance from an unmeasured 10 mm to 0.1 mm measured from G-05's printed parts.** (2026-11-19)
-I-06 originally measured every Observed vertex inside the posed CAD's xy bounding box plus a
-declared 10 mm margin. Real checks later showed that this ring admits reconstruction flare as if it
-were part geometry: s-04 has 31% and s-05 15% of measured vertices outside the CAD outline but
-inside that margin; #407's G-05 control has 39% (524/1,331), median deviation +2.1 mm versus
--0.2 mm inside the outline, and 124 of its 167 vertices above 4.2 mm sit in that ring.
+**D-086 · I-14 uses the CAD's actual outer top-view outline, with no added xy margin, as the deviation-eligibility boundary.** (2026-11-19; amended on review 2026-11-20)
+I-06 originally measured every Observed vertex inside a CAD-local **axis-aligned bounding box plus
+10 mm**. The real-session review shows two separate problems with that rule. First, the broad
+ring admits reconstruction flare: on the 2026-11-20 rerun, the proposed narrow-box gate excluded
+497/1,331 measured vertices on `g05_00` (37%), 468/1,602 on s-04 (29%), and 490/2,247 on
+s-05 (22%). Those excluded vertices were mostly positive extra material, with median/p95 signed
+deviation +2.25/+7.44 mm on `g05_00`, +1.50/+6.67 mm on s-04 and +0.68/+4.05 mm on s-05.
+Their median contributing-frame counts were 7, 10 and 10 respectively. This is consistent with
+reconstruction smear rather than the physical print: G-05's calipered wall dimensions are within
+0.09 mm of nominal in the recorded means.
 
-I-14 takes fork option 1, the smallest change, and makes the allowance **0.1 mm**. G-05's physical
-caliper record is the measured source: across the control and 4 mm-shift prints, the recorded mean
-wall dimensions differ from nominal by at most 0.09 mm (5.91 vs 6.0 mm and 9.91 vs 10.0 mm are the
-largest departures), and the digital caliper resolves 0.1 mm. The default therefore rounds the
-measured print-size departure outward to one instrument step instead of preserving a
-multi-millimetre unmeasured ring.
+Second, **a bounding box is not the CAD outline**. Under the 0.1 mm box experiment, 41 of
+`g05_00`'s 43 remaining vertices above 4.2 mm were inside the box but over empty CAD space in
+the designed 16 × 11 mm corner notch, and s-04 still had measured vertices outside its triangular
+outline. I-14 therefore gates against the CAD's actual **outer silhouette in CAD-local xy**.
+Concave outer features such as the G-05 notch are excluded. Interior through-holes are deliberately
+*not* cut out of this eligibility region: a reconstructed bridge, shifted wall or other hole
+geometry must remain measurable for X-03.
 
-This is a **measurement-eligibility boundary, not a new pass/fail tolerance**. An Observed vertex
-outside the CAD-local xy bounding box plus 0.1 mm gets `_DEVIATION_MEASURED = 0`, stays grey in the
-heatmap, and cannot contribute to Pass or Fail (D-005/D-062). That is intentionally conservative:
-real flash or an oversized outer wall beyond the registered footprint is not locally judged by
-I-06; gross size/scale mismatch is left to R-16/R-42. The model vertices are transformed back into that CAD-local frame before this test; using a
-board-frame axis-aligned box around a rotated CAD would create false corner allowance as yaw
-increases. G-05's planted 2/4/8 mm bumps grow upward on the top face, inside the xy footprint, so
-the rule does not hide those defects.
+The added margin is **0 mm**. The earlier 0.1 mm proposal is withdrawn. Its 0.09 mm source measured
+the *printed part*, not reconstruction scatter, and the rerun showed it biased wall measurements by
+dropping outward noise while retaining inward noise. Mid-height wall medians moved
+`g05_00` +0.89 → −0.33 mm, `g05_02` +1.06 → −1.13 mm, s-04 −0.08 → −0.51 mm and
+s-05 −1.34 → −2.08 mm. Registration RMSE is already around 1.3–2.0 mm and prior G-11 wall-point
+spread is 4–5 mm, so no positive margin in the tested range cleanly separates ordinary wall scatter
+from the multi-millimetre flare. Adding a wider margin would simply admit the flare again.
 
-The evidence is strong enough to choose the rule but does **not** substitute for I-14's required
-close-out rerun of `g05_00`, `g05_02`, s-04 and s-05 on current `main`; that run must still
-record the outside-ring share/deviation/height/provenance/frame counts and the post-fix verdicts
-before I-14 is marked Done.
+**Consequence accepted for review:** an outward local side-wall oversize beyond the CAD's outer
+outline is unmeasured (`_DEVIATION_MEASURED = 0`) and therefore cannot itself Fail under I-06.
+There is currently **no separate check that replaces that local deviation claim**; R-42 is a global
+scale-agreement check and does not detect one proud wall. This is a known conservative limitation,
+not silently delegated to R-16/R-42. The team must agree to this trade-off by approving this
+decision before I-14 merges. Geometry outside the outline is grey/not checked, never Pass evidence
+(D-005/D-062).
 
-*Why not the other forks:* a near-board height band adds a second measured shape threshold and
-would still treat higher flare as valid deviation evidence; fixing fusion/segmentation is the
-larger source-level change and does not fit this story's pre-freeze scope.
-*Checked against D-028:* current `main` ends at D-085. The open PR set on 2026-11-19 was #415,
-#414, #411, #371, #350 and #338; only #414 and #350 touched `docs/decisions.md`, amending D-061
-and adding D-074 respectively. No open PR held D-086, so D-086 was free.
+The 2026-11-20 rerun also invalidated `g05_02` as ground-truth evidence for I-14/X-03: its saved
+capture has the printed plate top-face-down, producing a mirror image that no rigid rotation can
+match. Its apparent top-face p95 signal therefore comes from a wrong pose. The session may be kept
+as a debugging record, but it is excluded from acceptance evidence until the part is photographed
+right-side up again.
+
+*Implementation:* the outer outline is derived from the watertight CAD's orthographic +z silhouette.
+Outer loops are retained; oppositely wound interior loops (through-holes) are ignored for
+eligibility. The model vertices are transformed into CAD-local coordinates before this test, so
+part yaw cannot inflate the eligible region.
+*Why not the other forks:* a near-board height band adds a second shape threshold and still trusts
+higher flare; fixing fusion/segmentation is the larger source-level change and does not fit this
+story's pre-freeze scope.
+*Checked against D-028:* D-086 is still unmerged and belongs to this PR, so this review amends it
+rather than allocating a second D-number.
+
 
 ---
 
