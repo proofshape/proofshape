@@ -9,6 +9,8 @@ import pytest
 from inspection import cad, synthetic
 from inspection.deviation import (
     DEFAULT_FOOTPRINT_MARGIN_MM,
+    _cad_outer_outline_loops,
+    _within_cad_outer_outline,
     DEVIATION_MEASURED_ATTRIBUTE,
     DEVIATION_MM_ATTRIBUTE,
     compute_deviation,
@@ -23,6 +25,9 @@ from recon.provenance import LABEL_INFERRED, LABEL_UNOBSERVED
 
 ROOT = Path(__file__).resolve().parents[1]
 G01_CUBE = ROOT / "fixtures" / "reference_cad" / "g01_calibration_cube_30mm.stl"
+G05_CONTROL = (
+    ROOT / "fixtures" / "reference_cad" / "g05_00_control_50x32x20mm.stl"
+)
 
 # A flat board at z=0 (slope 0, offset 0): height_above_board_mm is exactly -z, matching
 # inspection.synthetic's own convention (the fixed CAD->board flip keeps the CAD's z=0 base at
@@ -184,7 +189,7 @@ def test_compute_deviation_keeps_top_face_defects_inside_the_footprint_measured(
     assert deviation_mm[probe_index] == pytest.approx(height_mm, abs=1e-3)
 
 
-def test_compute_deviation_excludes_outward_flare_beyond_the_measured_footprint_margin():
+def test_compute_deviation_excludes_outward_flare_beyond_the_cad_outer_outline():
     # I-14 / #407: the false base flare is multi-millimetre geometry beyond the CAD outline.
     # Put the probe 2 mm beyond the CAD's +x outline in CAD-local coordinates, then transform it
     # with I-01's nonzero-yaw pose. This specifically prevents a rotated board-frame AABB from
@@ -210,7 +215,7 @@ def test_compute_deviation_excludes_outward_flare_beyond_the_measured_footprint_
     assert deviation_mm[probe_index] == 0.0
 
 
-def test_compute_deviation_pins_the_measured_footprint_margin_boundary():
+def test_compute_deviation_pins_the_cad_outer_outline_boundary():
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
@@ -239,6 +244,29 @@ def test_compute_deviation_pins_the_measured_footprint_margin_boundary():
     beyond_index = at_index + 1
     assert deviation_measured[at_index] == 1.0
     assert deviation_measured[beyond_index] == 0.0
+
+
+def test_g05_outer_outline_excludes_notch_but_keeps_through_hole_measurable():
+    # Tabeen's I-14 review: a CAD-local bounding box still admits the 16 x 11 corner notch.
+    # The eligibility outline must follow that concavity, but it must *not* turn the 12 x 12
+    # through-hole into "unmeasured" geometry because X-03 needs the hole shift to stay measurable.
+    cad_vertices, cad_faces, _units = cad.load_mesh(G05_CONTROL)
+    loops = _cad_outer_outline_loops(cad_vertices, cad_faces)
+    probes_xy = np.array(
+        [
+            [42.0, 26.0],  # inside the designed corner notch: outside the outer outline
+            [12.0, 16.0],  # centre of the through-hole: keep measurable
+            [40.0, 10.0],  # ordinary material inside the outline
+            [51.0, 16.0],  # beyond the plate's +x edge
+        ],
+        dtype=float,
+    )
+
+    within = _within_cad_outer_outline(
+        probes_xy, loops, DEFAULT_FOOTPRINT_MARGIN_MM
+    )
+
+    assert within.tolist() == [False, True, True, False]
 
 
 def test_compute_deviation_excludes_board_skin_and_stray_geometry_outside_the_footprint():
