@@ -2882,3 +2882,21 @@ glossy and dark parts within 0.03 mm of the grey control's height.
 **Result:** open estimates go from 30 h to 39.5 h, with 13 days to the Dec 2 boundary. No code changed and no decision was recorded. I-13 and I-14 each take a D-number when they're built.
 **Concluded:** the next step on X-03's first criterion is a decision in I-13 and I-14, not running X-03 again. The base flare is a separate effect from #292 (`s-02`'s board skin), so #292 stays open.
 **Next:** the Dec 2 boundary call takes the suggested order: I-13, I-14, then X-03 once R-42 (#404) merges. P-36's date (Nov 27 is the day after Thanksgiving) is confirmed by Nov 25.
+
+## 2026-11-19 — P-36 closed small: R6 (Nov 27) is not held; the final presentation is most likely Dec 11 (PR #415, PR #417)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- **The date check:** this was P-36's first criterion. @TabeenRaoof reported on 2026-11-20 that the course has no presentation on Fri Nov 27. The only presentation left is the final presentation, most likely on Fri Dec 11, which is still unconfirmed. Nothing in the repository names either date, so the source is recorded as that report, as O-006 was.
+- **P-36 Done:** it closes on criterion 1. The deck criteria are not applicable, so no deck was built. What the deck was to show is listed in P-36's notes for the final-presentation story, which isn't written yet:
+  - the pre-check (I-09) and Unverifiable (I-10) walkthrough on the real service;
+  - what still doesn't work: #407 / I-13 / I-14, #406, #405.
+- **Other records:**
+  - `docs/sprint-plan.md` and its HTML mirror mark R6 as not held, and R7 / Dec 11 as the likely final presentation.
+  - O-002 gets a dated update and stays open; O-003 gets a one-line note.
+- **How it merged:** the claim is #415, and the close-out #417 (`122fead`).
+
+**Command / how to reproduce:** `python3 scripts/check_story_states.py` is clean on #417's head.
+**Result:** 0.2 h actual against an estimate of 2.5 h, measured from timestamps; the wait for the claim to merge isn't counted. No decision was recorded, so no D-number was taken.
+**Concluded:** this answers P-35's "P-36's date … is confirmed by Nov 25". S6's last week has no review to prepare.
+**Next:** a final-presentation story (S7/S8), carrying P-36's notes, and confirm the Dec 11 date in O-002 when a written source exists.
