@@ -99,16 +99,16 @@ the signed point-to-mesh distance from each Observed model vertex to the CAD (D-
   (fusion's real D-063 cut for that board), but on a real served mesh this excludes essentially
   nothing — fusion's own cut already removed that surface before this function ever sees it, so
   its real job is defending against a degenerate input, not filtering real board skin. The
-  footprint gate (the posed CAD's own xy bounding box plus `DEFAULT_FOOTPRINT_MARGIN_MM`, 10 mm)
-  is what does real work, but only beyond the margin — 31% of s-04's measured vertices and 15%
-  of s-05's sit outside the CAD's own hull but within the margin (mostly base flare), so the
-  margin is doing real work keeping legitimate geometry in, but board skin sitting within that
-  same margin of the hull (#292's s-02 case) would also still be measured today. A declared,
-  recorded gap (`stories/I/I-06.md`'s notes), not something either gate actually closes — #292's
-  or I-07's call. The margin itself is a declared parameter: G-05's defects grow upward on the
-  top face, not outward in xy, so they can't justify this number the way an earlier version of
-  this note claimed; real data just shows 10 mm isn't obviously too tight for s-04's own base
-  flare.
+  footprint gate now uses the posed CAD's own xy bounding box plus the **0.1 mm measured
+  allowance from I-14/D-086**, replacing I-06's unmeasured 10 mm ring. G-05's calipered wall
+  dimensions differ from nominal by at most 0.09 mm in their recorded means, on a 0.1 mm-resolution
+  instrument; the allowance rounds that measured print-size departure outward. Multi-millimetre
+  Observed surface beyond the registered footprint is therefore left unmeasured
+  (`_DEVIATION_MEASURED = 0`) and stays grey in the heatmap. It is **not checked and not Pass
+  evidence** (D-005/D-062). This intentionally gives up local deviation claims for flash or an
+  oversized outline beyond the CAD footprint; R-16/R-42's independent size/scale checks remain
+  responsible for those gross mismatches. G-05's 2/4/8 mm planted bumps grow upward inside the
+  footprint and remain measured.
 - **Sign convention.** Positive means the part has extra material there, negative means material
   is missing. This is Open3D's own `RaycastingScene.compute_signed_distance` convention
   (negative inside a closed mesh, positive outside) applied directly once the CAD is posed into

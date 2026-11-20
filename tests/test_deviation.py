@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from inspection import cad, synthetic
 from inspection.deviation import (
+    DEFAULT_FOOTPRINT_MARGIN_MM,
     DEVIATION_MEASURED_ATTRIBUTE,
     DEVIATION_MM_ATTRIBUTE,
     compute_deviation,
@@ -124,34 +125,33 @@ def test_compute_deviation_sign_matches_a_known_planted_offset():
         assert np.abs(deviation_mm[untouched]).max() < 1e-3
 
 
-def test_compute_deviation_does_not_hide_a_real_defect_at_g05s_largest_size():
-    # Review on #309: a spatial footprint margin must not sit below the largest defect the buyer
-    # cares about (G-05's bumps go to 8 mm) the same way a plain distance cutoff can't. Pushing
-    # the face-centre vertex outward along the *model frame's own x axis* (not its CAD-surface
-    # normal) is deliberate: a push along the surface normal can land anywhere relative to the
-    # footprint's axis-aligned bounding box depending on the random yaw, so it doesn't reliably
-    # stress the margin at all (confirmed while writing this test: an 8 mm surface-normal push
-    # here still passed even with the margin shrunk to 1 mm, because that particular push
-    # happened to be diagonal to the box). A pure +x push from the box's own x-max edge is a
-    # deterministic, worst-case probe of the margin in the direction that actually matters.
+def _cad_point_to_model(
+    sample: synthetic.SyntheticSample, point_cad_mm: np.ndarray
+) -> np.ndarray:
+    transform = _ground_truth_transform(sample)
+    point_h = np.append(np.asarray(point_cad_mm, dtype=float), 1.0)
+    return (transform @ point_h)[:3]
+
+
+@pytest.mark.parametrize("height_mm", [4.0, 8.0])
+def test_compute_deviation_keeps_top_face_defects_inside_the_footprint_measured(
+    height_mm: float,
+):
+    # I-14: narrowing the xy footprint must not hide the defects G-05 actually plants. Its bump
+    # ladder grows upward from the top face, inside the outer footprint; the largest is 8 mm.
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
     )
     transform = _ground_truth_transform(sample)
-    rotation = np.asarray(sample.sidecar["transform"]["rotation"], dtype=float)
-    translation = np.asarray(sample.sidecar["transform"]["translation_mm"], dtype=float)
-    posed_cad_vertices = cad_vertices @ rotation.T + translation
-    x_max_index = int(np.argmax(posed_cad_vertices[:, 0]))
-    probe_xy = posed_cad_vertices[x_max_index, :2] + np.array([8.0, 0.0])
-    probe = np.array(
-        [probe_xy[0], probe_xy[1], -15.0]
-    )  # 15 mm above the board, well clear.
 
+    # The cube top is z=30 mm in CAD coordinates. Probe its centre, raised by the planted amount,
+    # so the xy position remains safely inside the registered footprint.
+    probe = _cad_point_to_model(sample, np.array([15.0, 15.0, 30.0 + height_mm]))
     model_vertices = np.vstack([sample.vertices_mm, probe])
     model_labels = np.concatenate([sample.labels, [sample.labels[0]]])
 
-    _deviation_mm, deviation_measured = compute_deviation(
+    deviation_mm, deviation_measured = compute_deviation(
         (model_vertices, sample.faces, model_labels),
         (cad_vertices, cad_faces),
         transform,
@@ -160,7 +160,77 @@ def test_compute_deviation_does_not_hide_a_real_defect_at_g05s_largest_size():
 
     probe_index = len(sample.vertices_mm)
     assert deviation_measured[probe_index] == 1.0
+    assert deviation_mm[probe_index] == pytest.approx(height_mm, abs=1e-3)
 
+
+def test_compute_deviation_excludes_outward_flare_beyond_the_measured_footprint_margin():
+    # I-14 / #407: the false base flare is multi-millimetre geometry beyond the CAD outline.
+    # It is still Observed and above the board cut, so the footprint gate alone must grey it out.
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    posed_cad_vertices = np.asarray(
+        [_cad_point_to_model(sample, vertex) for vertex in cad_vertices]
+    )
+    x_max = float(posed_cad_vertices[:, 0].max())
+    y_mid = float(
+        (posed_cad_vertices[:, 1].min() + posed_cad_vertices[:, 1].max()) / 2.0
+    )
+    flare_probe = np.array([x_max + 2.0, y_mid, -5.4])
+
+    model_vertices = np.vstack([sample.vertices_mm, flare_probe])
+    model_labels = np.concatenate([sample.labels, [sample.labels[0]]])
+    deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, model_labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+
+    probe_index = len(sample.vertices_mm)
+    assert deviation_measured[probe_index] == 0.0
+    assert deviation_mm[probe_index] == 0.0
+
+
+def test_compute_deviation_pins_the_measured_footprint_margin_boundary():
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    posed_cad_vertices = np.asarray(
+        [_cad_point_to_model(sample, vertex) for vertex in cad_vertices]
+    )
+    x_max = float(posed_cad_vertices[:, 0].max())
+    y_mid = float(
+        (posed_cad_vertices[:, 1].min() + posed_cad_vertices[:, 1].max()) / 2.0
+    )
+    at_boundary = np.array(
+        [x_max + DEFAULT_FOOTPRINT_MARGIN_MM, y_mid, -15.0]
+    )
+    beyond_boundary = np.array(
+        [x_max + DEFAULT_FOOTPRINT_MARGIN_MM + 1e-4, y_mid, -15.0]
+    )
+
+    model_vertices = np.vstack(
+        [sample.vertices_mm, at_boundary, beyond_boundary]
+    )
+    model_labels = np.concatenate(
+        [sample.labels, [sample.labels[0], sample.labels[0]]]
+    )
+    _deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, model_labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+
+    at_index = len(sample.vertices_mm)
+    beyond_index = at_index + 1
+    assert deviation_measured[at_index] == 1.0
+    assert deviation_measured[beyond_index] == 0.0
 
 def test_compute_deviation_excludes_board_skin_and_stray_geometry_outside_the_footprint():
     # Review on #309: D-062's "measures Observed vertices only" excludes "surface outside the

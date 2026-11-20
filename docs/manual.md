@@ -458,7 +458,11 @@ treating that as a report error.
 
 The C-14 deviation heatmap opens by default. Only surface that is both Observed and measured is
 coloured by deviation; everything else stays grey (D-005). A region that is not Observed shows
-"—" for deviation, never zero.
+"—" for deviation, never zero. **I-14/D-086 also leaves Observed surface outside the registered
+CAD footprint unmeasured:** the footprint has only a 0.1 mm measured print-dimension allowance.
+That grey outer band is explicitly **not checked** and cannot contribute to either Pass or Fail;
+it must not be read as conforming geometry. Gross size/scale mismatch is handled by the separate
+size and scale-integrity checks.
 
 Choose **Print / Save as PDF** to use the browser's print dialog. Before printing, the page
 snapshots the WebGL heatmap and copies its active legend so the exported page keeps both the image

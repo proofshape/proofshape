@@ -2432,6 +2432,41 @@ already Done, and aren't decided here. Any future print for a ground-truth story
 
 ---
 
+**D-086 · I-14 narrows I-06's registered xy footprint allowance from an unmeasured 10 mm to 0.1 mm measured from G-05's printed parts.** (2026-11-19)
+I-06 originally measured every Observed vertex inside the posed CAD's xy bounding box plus a
+declared 10 mm margin. Real checks later showed that this ring admits reconstruction flare as if it
+were part geometry: s-04 has 31% and s-05 15% of measured vertices outside the CAD outline but
+inside that margin; #407's G-05 control has 39% (524/1,331), median deviation +2.1 mm versus
+-0.2 mm inside the outline, and 124 of its 167 vertices above 4.2 mm sit in that ring.
+
+I-14 takes fork option 1, the smallest change, and makes the allowance **0.1 mm**. G-05's physical
+caliper record is the measured source: across the control and 4 mm-shift prints, the recorded mean
+wall dimensions differ from nominal by at most 0.09 mm (5.91 vs 6.0 mm and 9.91 vs 10.0 mm are the
+largest departures), and the digital caliper resolves 0.1 mm. The default therefore rounds the
+measured print-size departure outward to one instrument step instead of preserving a
+multi-millimetre unmeasured ring.
+
+This is a **measurement-eligibility boundary, not a new pass/fail tolerance**. An Observed vertex
+outside the CAD bounding box plus 0.1 mm gets `_DEVIATION_MEASURED = 0`, stays grey in the
+heatmap, and cannot contribute to Pass or Fail (D-005/D-062). That is intentionally conservative:
+real flash or an oversized outer wall beyond the registered footprint is not locally judged by
+I-06; gross size/scale mismatch is left to R-16/R-42. G-05's planted 2/4/8 mm bumps grow upward on
+the top face, inside the xy footprint, so the rule does not hide those defects.
+
+The evidence is strong enough to choose the rule but does **not** substitute for I-14's required
+close-out rerun of `g05_00`, `g05_02`, s-04 and s-05 on current `main`; that run must still
+record the outside-ring share/deviation/height/provenance/frame counts and the post-fix verdicts
+before I-14 is marked Done.
+
+*Why not the other forks:* a near-board height band adds a second measured shape threshold and
+would still treat higher flare as valid deviation evidence; fixing fusion/segmentation is the
+larger source-level change and does not fit this story's pre-freeze scope.
+*Checked against D-028:* current `main` ends at D-085. The open PR set on 2026-11-19 was #415,
+#414, #411, #371, #350 and #338; only #414 and #350 touched `docs/decisions.md`, amending D-061
+and adding D-074 respectively. No open PR held D-086, so D-086 was free.
+
+---
+
 ## Open — not yet decided
 
 **O-001 · Does the reconstruction backbone count toward the generative-AI requirement?**

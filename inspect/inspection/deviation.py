@@ -52,16 +52,15 @@ from recon.provenance import LABEL_OBSERVED, _mesh_is_watertight, colors_to_labe
 DEVIATION_MM_ATTRIBUTE = "_DEVIATION_MM"
 DEVIATION_MEASURED_ATTRIBUTE = "_DEVIATION_MEASURED"
 
-# Review on #309, second round: G-05's bumps grow upward from the top face (G-05.md: "8mm tall
-# (top 28mm up)"), not outward in xy, so they can't justify this number -- the first version of
-# this comment's reasoning didn't hold. This bounds the posed CAD's own xy footprint before a
-# vertex counts as "within the registered part." Declared, not derived from a specific defect
-# or measured source: on real golden data (s-04, s-05) the real part's own base flare reaches
-# about 10 mm beyond the CAD's hull, so this isn't obviously too tight for legitimate geometry,
-# but it also isn't validated to be the right number for anything in particular -- a plain
-# declared parameter, same as R-06's height threshold or R-07's voxel size before they were
-# measured.
-DEFAULT_FOOTPRINT_MARGIN_MM = 10.0
+# I-14 / D-086 replaces I-06's unmeasured 10 mm allowance with a measured print-dimension
+# allowance. G-05's calipered control/4 mm-shift parts differ from their nominal wall dimensions
+# by at most 0.09 mm in the recorded means; the instrument itself resolves 0.1 mm. Round that
+# evidence outward to 0.1 mm rather than preserving a multi-millimetre ring that real sessions
+# show is dominated by reconstruction flare. This is an xy registration-footprint allowance,
+# not an inspection tolerance: geometry beyond it is explicitly unmeasured and therefore cannot
+# contribute to Pass or Fail (D-005/D-062). G-05's real 8 mm defects grow upward on the top face,
+# inside the footprint, so this gate does not hide them.
+DEFAULT_FOOTPRINT_MARGIN_MM = 0.1
 
 
 def compute_deviation(
@@ -88,9 +87,12 @@ def compute_deviation(
       essentially nothing, since fusion's own cut already removed that surface before this
       function ever sees the mesh -- it defends against a degenerate input, not real skin;
     - within the posed CAD's own xy footprint, expanded by `footprint_margin_mm` on every side.
-      This is what actually excludes real stray/board surface, but only beyond the margin --
-      board skin within `footprint_margin_mm` of the CAD's hull is still measured today (#292's
-      own measured case). Not closed here; #292/I-07 decide whether and how to close that ring.
+      I-14/D-086 sets the default allowance to 0.1 mm from G-05's caliper evidence, replacing the
+      old unmeasured 10 mm ring. Observed geometry outside that registered footprint is served
+      with `_DEVIATION_MEASURED = 0`: it is not Pass evidence and cannot Fail the part (D-005).
+      This deliberately leaves genuine excess material beyond the CAD outline to the independent
+      size/scale checks rather than pretending the reconstruction smear is a trustworthy local
+      deviation measurement.
 
     Sign convention: positive where the part has extra material, negative where material is
     missing. This is Open3D's own signed-distance convention for a closed mesh (negative inside,
@@ -125,6 +127,8 @@ def compute_deviation(
         raise ValueError(
             f"cad_to_model_transform must be a 4x4 matrix, got {cad_to_model_transform.shape}"
         )
+    if not np.isfinite(footprint_margin_mm) or footprint_margin_mm < 0.0:
+        raise ValueError("footprint_margin_mm must be finite and non-negative.")
 
     posed_cad_vertices = _transform_points(cad_vertices, cad_to_model_transform)
 
