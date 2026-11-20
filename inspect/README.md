@@ -99,8 +99,10 @@ the signed point-to-mesh distance from each Observed model vertex to the CAD (D-
   (fusion's real D-063 cut for that board), but on a real served mesh this excludes essentially
   nothing — fusion's own cut already removed that surface before this function ever sees it, so
   its real job is defending against a degenerate input, not filtering real board skin. The
-  footprint gate now uses the posed CAD's own xy bounding box plus the **0.1 mm measured
-  allowance from I-14/D-086**, replacing I-06's unmeasured 10 mm ring. G-05's calipered wall
+  footprint gate now uses the registered CAD's own **CAD-local xy bounding box** plus the **0.1 mm
+  measured allowance from I-14/D-086**, replacing I-06's unmeasured 10 mm ring. Model vertices
+  are transformed back into CAD coordinates for this gate, so part yaw cannot inflate the
+  footprint with corner regions from a board-frame axis-aligned box. G-05's calipered wall
   dimensions differ from nominal by at most 0.09 mm in their recorded means, on a 0.1 mm-resolution
   instrument; the allowance rounds that measured print-size departure outward. Multi-millimetre
   Observed surface beyond the registered footprint is therefore left unmeasured
