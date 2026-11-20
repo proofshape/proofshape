@@ -182,7 +182,8 @@ def _cad_outer_outline_loops(
 def _points_in_polygon(points_xy: np.ndarray, polygon: np.ndarray) -> np.ndarray:
     """Vectorized even-odd point-in-polygon with boundary points included."""
     points_xy = np.asarray(points_xy, dtype=np.float64)
-    result = np.zeros(len(points_xy), dtype=bool)
+    inside = np.zeros(len(points_xy), dtype=bool)
+    boundary = np.zeros(len(points_xy), dtype=bool)
     x = points_xy[:, 0]
     y = points_xy[:, 1]
     tol = 1e-9
@@ -201,15 +202,15 @@ def _points_in_polygon(points_xy: np.ndarray, polygon: np.ndarray) -> np.ndarray
             & (points_xy[:, 1] >= min(a[1], b[1]) - tol)
             & (points_xy[:, 1] <= max(a[1], b[1]) + tol)
         )
-        result |= on_line & within_segment
+        boundary |= on_line & within_segment
 
         crosses = (a[1] > y) != (b[1] > y)
         denominator = b[1] - a[1]
         safe_denominator = denominator if abs(denominator) > tol else tol
         x_intersection = a[0] + (y - a[1]) * edge[0] / safe_denominator
-        result ^= crosses & (x < x_intersection)
+        inside ^= crosses & (x < x_intersection)
 
-    return result
+    return boundary | inside
 
 
 def _distance_to_outline(points_xy: np.ndarray, loops: list[np.ndarray]) -> np.ndarray:
