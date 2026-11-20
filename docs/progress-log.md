@@ -2875,3 +2875,10 @@ registered against the control CAD.
 **Result:** Coverage ratios of 1.217135, 1.046073, 1.049089 and 0.997502 respectively. At the
 proposed cutoff of 1.0225, only s-05 flagged. All 151 registration tests passed with the restored
 RMSE diagnostic assertions.
+
+## 2026-11-19 — I-13 shifted-hole capture correction (PR #414)
+
+**Result:** @TabeenRaoof found that the g05_02 photos show the part upside down. Both replays
+clear ambiguity around a wrong pose, so that capture cannot validate criterion 3.
+The valid control and golden results still match the expected outcomes. The shifted-hole
+check needs a right-side-up recapture.

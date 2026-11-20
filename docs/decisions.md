@@ -1271,9 +1271,10 @@ classes. At 1.0225, one of 100 missing-hole cases cleared and 16 of 100 shifted-
 flagged. At 1.025, zero of 100 missing-hole cases cleared and 22 of 100 shifted-hole cases
 flagged. At 1.030, the counts were zero and 34. These are outcomes for the measured seeds.
 
-Both the original #407 model replay and the fresh G-05 capture runs cleared at 1.0225. Golden
-s-04 cleared and s-05 stayed ambiguous. The tightest real clearance in the review was s-04 at
-1.0483, about 0.023 above 1.025. I-13 records the ratios and fitness values. The team must choose
+The valid real captures agree at both proposed cutoffs: g05_00 and golden s-04 clear, and
+golden s-05 stays ambiguous. The tightest real clearance in the review was s-04 at 1.0483,
+about 0.023 above 1.025. The g05_02 capture was upside down and cannot validate the rule.
+I-13 records the ratios and fitness values. The team must choose
 the cutoff given the observed trade-off and both other members must approve the amendment.
 
 **D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
