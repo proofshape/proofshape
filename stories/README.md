@@ -459,7 +459,7 @@ Full detail in each story file.
 | [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Done | @dalwalyk |
 | [C-26](C/C-26.md) | Capture viewfinder: a visible guidance arrow, an on-target frame colour, a round shutter | 2 h | C-07, C-09 | Claimed | @TabeenRaoof |
-| [C-27](C/C-27.md) | Auto-capture: take the photo when the phone is on target and steady (post-freeze; team decides in review) | 3 h | C-26, C-06 | Claimed | @TabeenRaoof |
+| [C-27](C/C-27.md) | Auto-capture: take the photo when the phone is on target and steady (post-freeze draft experiment; not claimed on main) | 3 h | C-26, C-06 | Claimed | @TabeenRaoof |
 
 ---
 
@@ -479,8 +479,33 @@ freeze, as R-41 and R-42 did. `stories/P/P-35.md` has the capacity note.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [I-13](I/I-13.md) | Orientation ambiguity weighs fitness, not inlier RMSE alone (#407) | 3 h | I-05 | Claimed | @dalwalyk |
+| [I-13](I/I-13.md) | Orientation ambiguity uses coverage, not inlier RMSE alone (#407) | 3 h | I-05 | Done | @dalwalyk |
 | [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Claimed | @mbj1994 |
+
+---
+
+## Final deliverables and the Dec 2 work (P-37)
+
+Written up on 2026-11-20, from a check of the sprint plan's S6–S8 work and the open issues
+against the stories. The final report and the final presentation are deliverables the sprint
+plan schedules for S7 and S8, and neither had a story. P-35 left both out on purpose, as later
+work. `stories/P/P-37.md` has the capacity note.
+
+Two more pieces of work have to land by Dec 2:
+
+- **A printed top-face bump for X-03** is #407's option 1, still for the team to choose. On the
+  measured pair and specs, the re-shot 4 mm hole shift reads like its control (#421). Its story is
+  a draft on #407, not a row here, so it can't be claimed before the team chooses. Decide it there
+  now, because it needs the lab before X-03 can run.
+- **A-15** serves the capture agent (#406). It's required scope, because generative-AI components
+  are never cut (`AGENTS.md`, D-017). It's a new route after M5's freeze and a D-031 round, so it
+  merges only at the Dec 2 boundary, by named exception.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
+| [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
+| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Ready | _unclaimed_ |
 
 ---
 
@@ -659,6 +684,7 @@ Full detail in each story file.
 | [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Done | @TabeenRaoof |
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
 
 ---
 
