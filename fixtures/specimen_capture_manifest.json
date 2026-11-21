@@ -71,14 +71,14 @@
       "content_sha256": "ea9d3de0c5ad88aa7e66a3852a8ad22d985012155f651f75496602c444bfd922"
     },
     {
-      "aggregate_bytes": 107178016,
-      "drive_folder_id": "11AWrKzrE9HC-PdmkPoYW4X7wlzFmamsa",
+      "aggregate_bytes": 110887585,
+      "drive_folder_id": "18gbX9wLusXEhCRpRSRbJzlIWG3W5JG7L",
       "frames": 28,
       "lighting": "condition A",
       "object": "grey L-plate 50 x 32 x 20 mm, 12 mm square through-hole moved 4 mm along +x (G-05 planted defect)",
       "reflective": false,
       "sample_id": "g05_02",
-      "content_sha256": "e0d8334dc61bc43162e0b241cefb16a225e5d90933bda41a29e69ad7bb139631"
+      "content_sha256": "09238092eb969977e1966901865c6ceb086e7a9f39c1c7b3479f890696965b7c"
     }
   ],
   "drive_root_folder_id": "1xrqH2t14ZOUbIa7Ke3XiJIBQkBc3SwwY",
