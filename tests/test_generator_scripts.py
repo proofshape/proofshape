@@ -41,6 +41,7 @@ _ENV_WITHOUT_THEME = {k: v for k, v in os.environ.items() if k != "PPTX_APPLY_TH
         ("build_review_deck.js", "review.pptx"),
         ("build_midterm_deck.js", "midterm.pptx"),
         ("build_midterm_report.js", "report.docx"),
+        ("build_expo_poster.js", "poster.pptx"),
     ],
 )
 def test_generator_script_builds_a_nonempty_file(tmp_path, script_name, out_name):

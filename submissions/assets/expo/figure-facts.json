@@ -1,0 +1,19 @@
+{
+  "session": "sess_f82401bb6852",
+  "scene": {
+    "cameras": 29,
+    "vertices": 1900,
+    "faces": 3568
+  },
+  "closeup": {
+    "observed_vertex_fraction": 0.8431578947368421,
+    "measured_vertices": 1602,
+    "dev_p5_p50_p95_mm": [
+      -3.1441722750663756,
+      -0.03892402909696102,
+      4.082418537139883
+    ],
+    "abs_dev_median_mm": 0.7854636907577515,
+    "range_mm": 4.0
+  }
+}
