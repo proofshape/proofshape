@@ -2072,7 +2072,7 @@ describe("mountAppShell", () => {
 
   // C-27: auto-capture. The clock is injected; orientation events are dispatched by hand, as a
   // phone would deliver them.
-  async function startAutoSession(): Promise<{
+  async function startAutoSession(firstPhotoBeta = 45): Promise<{
     mounted: Awaited<ReturnType<typeof startSuccessfulSession>>;
     clock: { t: number };
     canvas: ReturnType<typeof stubCanvasContext>;
@@ -2081,8 +2081,8 @@ describe("mountAppShell", () => {
     const mounted = await startSuccessfulSession({ now: () => clock.t });
     const canvas = stubCanvasContext();
     setVideoDimensions(mounted.cameraPreview, 640, 480);
-    // alpha 0, beta 45: DEFAULT_ORBIT's slot 0. The first photo is a tap.
-    dispatchOrientation(0, 45, 0);
+    // alpha 0, beta 45 by default: DEFAULT_ORBIT's slot 0. The first photo is a tap.
+    dispatchOrientation(0, firstPhotoBeta, 0);
     await vi.waitFor(() => {
       if (mounted.captureButton.disabled) throw new Error("still disabled");
     });
@@ -2093,10 +2093,16 @@ describe("mountAppShell", () => {
     return { mounted, clock, canvas };
   }
 
-  function holdAt(clock: { t: number }, alpha: number, fromMs: number, untilMs: number): void {
+  function holdAt(
+    clock: { t: number },
+    alpha: number,
+    fromMs: number,
+    untilMs: number,
+    beta = 45,
+  ): void {
     for (let t = fromMs; t <= untilMs; t += 100) {
       clock.t = t;
-      dispatchOrientation(alpha, 45, 0);
+      dispatchOrientation(alpha, beta, 0);
     }
   }
 
@@ -2121,6 +2127,29 @@ describe("mountAppShell", () => {
     });
     expect(frameUploads(fetchSpy)).toBe(1);
     expect(mounted.captureStatus.textContent).toMatch(/^Auto: .*accepted/i);
+  });
+
+  // The C-26 device-check bug (2026-11-20): after a first photo taken high, the frame went green
+  // at about 58 deg, and auto-capture took a photo every 1.5 s that coverage credited to the
+  // already-covered 70 deg slot, so the count never moved.
+  it("C-27: does not fire where the photo would count for an already-covered slot", async () => {
+    // beta 12 = elevation 78: the first photo covers the 70 deg slot, the next target is slot 0.
+    const { clock } = await startAutoSession(12);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+
+    // beta 32 = elevation 58, within 15 deg of both rings. Held for 3 s: nothing.
+    holdAt(clock, 0, 1000, 4000, 32);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(document.getElementById("shell-viewfinder")?.dataset.guidance).toBe("near");
+
+    // beta 40 = elevation 50: credited to slot 0, so it goes green and fires once.
+    holdAt(clock, 0, 4100, 4800, 40);
+    await vi.waitFor(() => {
+      if (!/^Covered: 2\//.test(coveredCountText() ?? "")) throw new Error("not yet covered");
+    });
+    expect(frameUploads(fetchSpy)).toBe(1);
   });
 
   it("C-27: never fires before the first photo, however long the phone is held", async () => {
