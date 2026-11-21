@@ -2921,7 +2921,13 @@ isn't met with this part at these specs.
 ## 2026-11-20 — R-43 claim merged and initial fusion sweep
 
 **Who:** @dalwalyk
-**Result:** Claim #424 merged as `553c189`. All six fixed-truncation fusion replays completed on
-s-04 and s-05. A 1.0 mm grid reduced Observed coverage on both. At 1.5 mm, measured wall spread
-improved on s-05 and increased on s-04. The R-43 story records coverage, spread, and timing.
-The paired caliper edge comparison across mesh stages remains open.
+**What changed:** Claim #424 merged as `553c189`. Replayed saved s-04 and s-05 inputs
+with 2.0, 1.5 and 1.0 mm fusion voxels and fixed 8 mm truncation.
+**Command:** Run the Python replay block in `stories/R/R-43.md`, which identifies the saved
+depth, alignment, board poses and CAD. The original reports are in
+`/tmp/proofshape-r43-sweep.2JvUAY` outside git.
+**Result:** All six replays completed. The 1.0 mm grid reduced Observed vertex coverage on both.
+At 1.5 mm the median spread narrowed on s-05 and widened on s-04. The story records per-wall
+spread and the independent R-32-input review result.
+**Concluded:** The screening evidence does not support changing the served grid.
+**Next:** Compare paired caliper edge error across mesh stages with the same physical walls.
