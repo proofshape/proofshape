@@ -2917,3 +2917,11 @@ defect. On this evidence, X-03's first criterion ("the planted 4 mm hole shift p
 isn't met with this part at these specs.
 **Next:** raise X-03's planted-defect choice with the team on #407. Post the `g05_02` rerun on
 #414 and #416.
+
+## 2026-11-20 — R-43 claim merged and initial fusion sweep
+
+**Who:** @dalwalyk
+**Result:** Claim #424 merged as `553c189`. All six fixed-truncation fusion replays completed on
+s-04 and s-05. A 1.0 mm grid reduced Observed coverage on both. At 1.5 mm, measured wall spread
+improved on s-05 and increased on s-04. The R-43 story records coverage, spread, and timing.
+The paired caliper edge comparison across mesh stages remains open.
