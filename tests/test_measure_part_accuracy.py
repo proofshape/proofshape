@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import sys
 
 import numpy as np
 import pytest
 
+from recon import runtime_env
 from recon.board_pose import make_board
 from recon.metric_alignment import apply_similarity_transform_to_extrinsic
 from scripts import measure_part_accuracy as m
@@ -234,6 +237,49 @@ def test_the_default_reference_point_is_the_centre_of_the_board_footprint():
     assert measured[0]["shift_at_reference_mm"] == pytest.approx(expected, abs=1e-6)
 
 
+def test_a_photo_with_no_corners_at_all_is_listed_not_lost():
+    # Review on PR #427 (@dalwalyk): a photo whose board was not found has no row in
+    # photo_of_corner, so a loop over the photos that *have* corners never sees it. Given the
+    # full list of photos, it has to come back as skipped, with a count of zero.
+    targets = _board_corner_grid()
+    measured, skipped = m.photo_corner_residuals(
+        targets,
+        targets,
+        np.zeros(len(targets), dtype=int),
+        photo_indices=[0, 1, 2],
+    )
+    assert [photo["photo_index"] for photo in measured] == [0]
+    assert skipped == [
+        {
+            "photo_index": 1,
+            "corner_count": 0,
+            "reason": "no corners lifted through this photo's depth",
+        },
+        {
+            "photo_index": 2,
+            "corner_count": 0,
+            "reason": "no corners lifted through this photo's depth",
+        },
+    ]
+
+
+def test_without_a_photo_list_only_photos_that_have_corners_are_considered():
+    targets = _board_corner_grid()
+    measured, skipped = m.photo_corner_residuals(
+        targets, targets, np.full(len(targets), 4, dtype=int)
+    )
+    assert [photo["photo_index"] for photo in measured] == [4]
+    assert skipped == []
+
+
+def test_a_corner_from_a_photo_outside_the_list_is_refused():
+    targets = _board_corner_grid()
+    with pytest.raises(ValueError, match="does not list"):
+        m.photo_corner_residuals(
+            targets, targets, np.full(len(targets), 7, dtype=int), photo_indices=[0, 1]
+        )
+
+
 # --- summarise_corner_residuals ---------------------------------------------------------------
 
 
@@ -264,6 +310,60 @@ def test_a_rejected_photo_is_counted_but_kept_out_of_every_median():
     assert summary["measured_photo_count"] == 1
     assert summary["after_global_alignment"]["rms_max_mm"] == pytest.approx(1.0)
     assert summary["after_plane_reanchoring"] is None
+
+
+def test_measured_skipped_and_rejected_photos_add_up_to_the_capture():
+    targets = _board_corner_grid()
+    # Five photos. 0 and 1 are measured. 2 has only five corners. 3 has none at all. 4 was
+    # rejected by R-38. Each has to be in exactly one count.
+    few = targets[:5]
+    points = np.concatenate([targets, targets + [0.5, 0.0, 0.0], few, targets + 90.0])
+    corners = m.LiftedCorners(
+        frame_names=[f"frame_{index:04d}.jpg" for index in range(5)],
+        photo_of_corner=np.concatenate(
+            [
+                np.zeros(len(targets), dtype=int),
+                np.ones(len(targets), dtype=int),
+                np.full(len(few), 2),
+                np.full(len(targets), 4),
+            ]
+        ),
+        targets_mm=np.concatenate([targets, targets, few, targets]),
+        after_global_alignment_mm=points,
+        after_plane_reanchoring_mm=points.copy(),
+        rejected_photo_indices=frozenset({4}),
+    )
+
+    summary = m.summarise_corner_residuals(corners)
+
+    assert summary["photo_count"] == 5
+    assert summary["measured_photo_count"] == 2
+    assert summary["skipped_photo_count"] == 2
+    assert summary["rejected_photo_count"] == 1
+    assert [
+        (photo["photo_index"], photo["corner_count"])
+        for photo in summary["skipped_photos"]
+    ] == [(2, 5), (3, 0)]
+    # The rejected photo's 90 mm error is in no figure.
+    assert summary["after_global_alignment"]["rms_max_mm"] == pytest.approx(0.5)
+    assert len(summary["per_photo_after_plane_reanchoring"]) == 2
+
+
+def test_the_height_column_reports_the_worst_photo_as_well_as_the_median():
+    targets = _board_corner_grid()
+    # Three photos sit 0.1, 0.2 and 2.5 mm high. The median hides the third; the max doesn't.
+    points = np.concatenate(
+        [
+            targets + [0.0, 0.0, 0.1],
+            targets + [0.0, 0.0, 0.2],
+            targets + [0.0, 0.0, 2.5],
+        ]
+    )
+    plane = m.summarise_corner_residuals(_lifted(points, points))[
+        "after_plane_reanchoring"
+    ]
+    assert plane["height_mean_abs_median_mm"] == pytest.approx(0.2)
+    assert plane["height_mean_abs_max_mm"] == pytest.approx(2.5)
 
 
 def test_the_plane_stage_reports_what_r30_leaves_sideways():
@@ -666,9 +766,12 @@ def test_corners_prints_one_row_per_capture(tmp_path, capsys):
 
     assert m.main(["corners", str(tmp_path / "s-04"), "--json", str(figures)]) == 0
 
-    assert "s-04" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "s-04" in printed and "skipped" in printed and "|mean z|" in printed
     row = json.loads(figures.read_text(encoding="utf-8"))[0]
     assert row["measured_photo_count"] == 2
+    assert row["skipped_photo_count"] == 0
+    assert row["rejected_photo_count"] == 0
     # Photo 1 was moved 1 mm sideways by the corrected poses; photo 0 was not.
     assert row["after_plane_reanchoring"]["shift_at_reference_max_mm"] == pytest.approx(
         1.0, abs=1e-3
@@ -686,3 +789,14 @@ def test_run_refuses_an_output_folder_that_already_has_files(tmp_path, capsys):
 
     assert code == 1
     assert "already has files" in capsys.readouterr().err
+
+
+# --- the macOS thread guard -------------------------------------------------------------------
+
+
+def test_the_script_applies_the_r31_guard_as_the_service_does():
+    # Run directly, the script loads Open3D itself. R-31's guard has to be imported first, or
+    # `run` can deadlock on macOS (#261). The module keeps a reference to it for that reason.
+    assert m._runtime_env is runtime_env
+    if sys.platform == "darwin":
+        assert os.environ["OMP_NUM_THREADS"] == runtime_env.MACOS_OPENMP_THREADS

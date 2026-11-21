@@ -37,10 +37,21 @@ What this script deliberately does not do:
 - It does not re-fuse anything. The review's "what if each photo were re-anchored" figures came
   from a scratch harness, and reproducing them in repo code is R-44's job, not this script's.
 
-A part is always compared with its *own* CAD here, so every deviation is reconstruction and
-measurement error, not a defect -- that is what makes the numbers a floor. Comparing a part with
-a different CAD (the planted-defect case) works the same way, but then the numbers mean something
-else, and the review says so wherever it does that.
+A part is always compared with its *own* CAD here, so nothing it reads is a planted defect. A
+deviation is still three things together, and this script does not separate them: how far the
+print itself departs from nominal CAD, reconstruction error, and registration error (the pose is
+fitted to the very surface being judged). Calipers give the first of those for a few dimensions
+(`fixtures/caliper_*.json`); nothing here subtracts it. So these are CAD-relative readings on
+good parts, which is what the verdict thresholds -- not a measurement of reconstruction accuracy
+on its own. Comparing a part with a different CAD (the planted-defect case) works the same way,
+but then the numbers mean something else, and the review says so wherever it does that.
+
+Two labels to read carefully in `corners`. The per-photo figure is the root-mean-square of that
+photo's corner distances. R-38's `per_frame_residual_mm`, already saved in every run's
+`metric_alignment.json`, is the per-photo *median* of the same distances after the global
+alignment: close, but a different statistic. And the height column is the magnitude of each
+photo's *mean* signed z residual at its corners, so it shows whether a photo sits high or low as
+a whole, not how flat its board is.
 """
 
 from __future__ import annotations
@@ -51,12 +62,20 @@ import math
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import open3d as o3d
+
+# R-31: the macOS thread guard has to run before Open3D is imported, exactly as recon.service
+# does it. Run directly, this script would otherwise load Open3D first with whatever
+# OMP_NUM_THREADS the shell happened to have, and `run` then deadlocks at torch's first threaded
+# operation (#261). Importing the module applies the guard; on other platforms it does nothing.
+from recon import runtime_env as _runtime_env  # noqa: F401  # isort: skip
+
+import open3d as o3d  # isort: skip
 
 from recon.cad_size_check import compute_height_above_board
 from recon.metric_alignment import (
@@ -172,6 +191,7 @@ def photo_corner_residuals(
     *,
     min_corners: int = DEFAULT_MIN_CORNERS_PER_PHOTO,
     reference_point_mm: np.ndarray | None = None,
+    photo_indices: Sequence[int] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """How far each photo's own corners sit from their known board positions.
 
@@ -186,6 +206,14 @@ def photo_corner_residuals(
       plane -- "how far off is the part in this photo").
     - `skipped`: one dict per photo with fewer corners, with the count and the reason, so a
       photo that could not be measured is visible rather than silently missing from a median.
+
+    `photo_indices` lists every photo that has to be accounted for. A photo in it with no corner
+    at all -- its board was not found, or none of its corners landed on valid depth -- never
+    appears in `photo_of_corner`, so without this list it would vanish from both results (found
+    on review, @dalwalyk, PR #427: a real s-04 run reported 30 photos, 29 measured and nothing
+    skipped). With it, such a photo is listed in `skipped` with a count of zero. Left as `None`,
+    only the photos that have corners are considered, which is all a caller with no frame list
+    can ask for.
 
     `reference_point_mm` defaults to the centre of the board's footprint on the board plane,
     which is where a part is placed.
@@ -212,11 +240,32 @@ def photo_corner_residuals(
     else:
         reference = np.asarray(reference_point_mm, dtype=np.float64)
 
+    photos_with_corners = sorted({int(photo) for photo in np.unique(photo_index)})
+    if photo_indices is None:
+        photos = photos_with_corners
+    else:
+        photos = sorted({int(photo) for photo in photo_indices})
+        unlisted = sorted(set(photos_with_corners) - set(photos))
+        if unlisted:
+            raise ValueError(
+                f"photo_of_corner names photo(s) {unlisted} that photo_indices does not list; "
+                "a corner from a photo nobody asked about would be dropped without a trace."
+            )
+
     measured: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-    for photo in np.unique(photo_index):
+    for photo in photos:
         rows = photo_index == photo
         corner_count = int(np.count_nonzero(rows))
+        if corner_count == 0:
+            skipped.append(
+                {
+                    "photo_index": int(photo),
+                    "corner_count": 0,
+                    "reason": "no corners lifted through this photo's depth",
+                }
+            )
+            continue
         if corner_count < min_corners:
             skipped.append(
                 {
@@ -372,6 +421,11 @@ def summarise_corner_residuals(
     A photo R-38 rejected is left out of every figure here and counted separately: its depth is
     already known to be wrong and it never reaches fusion, so including it would report an
     error the pipeline does not actually fuse.
+
+    Every photo of the capture is in exactly one of three counts -- measured, skipped (with its
+    reason) or rejected -- and the three add up to `photo_count`. That is checked here rather
+    than assumed, because a photo that drops out of all three is how a median quietly comes to
+    describe fewer photos than the table says.
     """
     keep = np.array(
         [
@@ -382,17 +436,31 @@ def summarise_corner_residuals(
     )
     targets = corners.targets_mm[keep]
     photo_of_corner = corners.photo_of_corner[keep]
+    photo_count = len(corners.frame_names)
+    not_rejected = [
+        photo
+        for photo in range(photo_count)
+        if photo not in corners.rejected_photo_indices
+    ]
 
     measured_global, skipped = photo_corner_residuals(
         corners.after_global_alignment_mm[keep],
         targets,
         photo_of_corner,
         min_corners=min_corners,
+        photo_indices=not_rejected,
     )
+    rejected_count = photo_count - len(not_rejected)
+    if len(measured_global) + len(skipped) + rejected_count != photo_count:
+        raise ValueError(
+            f"{len(measured_global)} measured + {len(skipped)} skipped + {rejected_count} "
+            f"rejected photos do not add up to the capture's {photo_count}."
+        )
     summary: dict[str, Any] = {
-        "photo_count": len(corners.frame_names),
-        "rejected_photo_count": len(corners.rejected_photo_indices),
+        "photo_count": photo_count,
+        "rejected_photo_count": rejected_count,
         "measured_photo_count": len(measured_global),
+        "skipped_photo_count": len(skipped),
         "skipped_photos": skipped,
         "after_global_alignment": _median_block(measured_global),
         "after_plane_reanchoring": None,
@@ -404,6 +472,7 @@ def summarise_corner_residuals(
             targets,
             photo_of_corner,
             min_corners=min_corners,
+            photo_indices=not_rejected,
         )
         summary["after_plane_reanchoring"] = _median_block(measured_plane)
         summary["per_photo_after_plane_reanchoring"] = measured_plane
@@ -423,7 +492,11 @@ def _median_block(per_photo: list[dict[str, Any]]) -> dict[str, float] | None:
         "rms_p95_mm": float(np.percentile(rms, 95)),
         "rms_max_mm": float(rms.max()),
         "in_plane_rms_median_mm": float(np.median(in_plane)),
+        # Each photo's signed mean z residual says whether that photo sits high or low as a
+        # whole. Its magnitude is summarised two ways, because the median alone hides the few
+        # photos that are still well off after R-30.
         "height_mean_abs_median_mm": float(np.median(np.abs(height))),
+        "height_mean_abs_max_mm": float(np.abs(height).max()),
         "rms_after_rigid_fit_median_mm": float(np.median(after)),
         "shift_at_reference_median_mm": float(np.median(shift)),
         "shift_at_reference_max_mm": float(shift.max()),
@@ -851,9 +924,9 @@ def report_corners(out_dirs: list[Path], *, min_corners: int) -> list[dict[str, 
     """Print the per-capture corner table and return each capture's figures."""
     rows: list[dict[str, Any]] = []
     print(
-        f"{'capture':<14} {'photos':>6} {'measured':>8} {'rejected':>8} | "
+        f"{'capture':<14} {'photos':>6} {'measured':>8} {'skipped':>7} {'rejected':>8} | "
         f"{'global: rms median':>18} {'p95':>6} {'max':>6} | "
-        f"{'after R-30: in-plane':>20} {'|height|':>8} {'shift':>6} {'max':>6} | "
+        f"{'after R-30: in-plane':>20} {'|mean z|':>8} {'max':>6} {'shift':>6} {'max':>6} | "
         f"{'rigid fit leaves':>16}"
     )
     for out_dir in out_dirs:
@@ -866,11 +939,13 @@ def report_corners(out_dirs: list[Path], *, min_corners: int) -> list[dict[str, 
         leaves = (after_plane or after_global).get("rms_after_rigid_fit_median_mm")
         print(
             f"{Path(out_dir).name:<14} {summary['photo_count']:>6d} "
-            f"{summary['measured_photo_count']:>8d} {summary['rejected_photo_count']:>8d} | "
+            f"{summary['measured_photo_count']:>8d} {summary['skipped_photo_count']:>7d} "
+            f"{summary['rejected_photo_count']:>8d} | "
             f"{_fmt(after_global.get('rms_median_mm'), 18)} "
             f"{_fmt(after_global.get('rms_p95_mm'))} {_fmt(after_global.get('rms_max_mm'))} | "
             f"{_fmt(after_plane.get('in_plane_rms_median_mm'), 20)} "
             f"{_fmt(after_plane.get('height_mean_abs_median_mm'), 8)} "
+            f"{_fmt(after_plane.get('height_mean_abs_max_mm'))} "
             f"{_fmt(after_plane.get('shift_at_reference_median_mm'))} "
             f"{_fmt(after_plane.get('shift_at_reference_max_mm'))} | "
             f"{_fmt(leaves, 16)}"
