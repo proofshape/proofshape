@@ -67,20 +67,20 @@ alignment that explains it away.
 - **Merged only when the transforms agree** (I-03's 2° and 1% of CAD extent, 0.25 mm floor).
   Poses that are equivalent only under the CAD's symmetry stay separate: for the printed part
   they are different poses, and the difference is where a defect would be.
-- **Ranked fitness first, then RMSE.** The session is ambiguous when the runner-up's inlier RMSE
-  is within 20% of the best's (D-061, which raised D-008's 10%). One surviving pose isn't
-  ambiguous.
+- **Ranked fitness first, then inlier RMSE.** I-13 compares the coverage residuals of the best
+  pose and its fitness-ranked runner-up. It measures capped nearest distances from shared CAD
+  samples to the fully Observed model surface. The comparison uses the union of CAD samples
+  within the refinement radius under any candidate pose. One surviving pose is unambiguous.
 - **The result** is an `AmbiguityCheck`: `orientation_ambiguous`, the `best` pose to measure
-  against, the `runner_up`, `rmse_ratio`, every `refined` pose, the `failed` candidates with their
-  reasons, and `reason_codes` (`registration_orientation_ambiguous` when ambiguous). I-07 turns it
-  into the verdict's `orientation_ambiguous` and reason code.
+  against, the `runner_up`, the decision's `coverage_ratio`, the diagnostic `rmse_ratio`, every
+  `refined` pose, the `failed` candidates with their reasons, and `reason_codes`
+  (`registration_orientation_ambiguous` when ambiguous). I-07 uses the flag and reason code
+  in the verdict.
 - **Failures are listed, not hidden.** A candidate that can't be refined goes into `failed`;
   if none can be, it raises. A model without provenance is refused up front.
 
-On I-01 output with its 20% hidden patch: s-05 (four-fold) is ambiguous and s-04 (scalene) isn't,
-every time; a plate whose symmetry-breaking hole is missing is caught 12/12 at 20%, against 9/12
-at D-008's 10%. D-061 has the full table and its narrow margins.
-
+D-061 records the original inlier-RMSE rule and the proposed coverage comparison. I-13 records
+the synthetic overlap and the real-capture results for the proposed cutoff.
 
 ## I-06 · deviation computation
 
@@ -99,16 +99,16 @@ the signed point-to-mesh distance from each Observed model vertex to the CAD (D-
   (fusion's real D-063 cut for that board), but on a real served mesh this excludes essentially
   nothing — fusion's own cut already removed that surface before this function ever sees it, so
   its real job is defending against a degenerate input, not filtering real board skin. The
-  footprint gate (the posed CAD's own xy bounding box plus `DEFAULT_FOOTPRINT_MARGIN_MM`, 10 mm)
-  is what does real work, but only beyond the margin — 31% of s-04's measured vertices and 15%
-  of s-05's sit outside the CAD's own hull but within the margin (mostly base flare), so the
-  margin is doing real work keeping legitimate geometry in, but board skin sitting within that
-  same margin of the hull (#292's s-02 case) would also still be measured today. A declared,
-  recorded gap (`stories/I/I-06.md`'s notes), not something either gate actually closes — #292's
-  or I-07's call. The margin itself is a declared parameter: G-05's defects grow upward on the
-  top face, not outward in xy, so they can't justify this number the way an earlier version of
-  this note claimed; real data just shows 10 mm isn't obviously too tight for s-04's own base
-  flare.
+  footprint gate now uses the registered CAD's **actual outer top-view outline in CAD-local
+  coordinates** (I-14/D-086), not a bounding box. Concave outer features such as G-05's corner
+  notch are excluded. Interior through-holes are deliberately left inside the eligibility region
+  so hole defects remain measurable. The added margin is 0 mm: the real-session review found that
+  the attempted 0.1 mm margin came from print accuracy rather than reconstruction noise, biased
+  wall readings inward, and that widening it toward the measured wall scatter simply admits the
+  flare again. Surface outside the outer outline is served with
+  `_DEVIATION_MEASURED = 0`, stays grey, and is explicitly **not checked / not Pass evidence**.
+  This means a local outward wall oversize beyond the outline cannot itself Fail today; there is
+  no current substitute local check, and D-086 records that limitation for team approval.
 - **Sign convention.** Positive means the part has extra material there, negative means material
   is missing. This is Open3D's own `RaycastingScene.compute_signed_distance` convention
   (negative inside a closed mesh, positive outside) applied directly once the CAD is posed into

@@ -76,10 +76,12 @@ block points at each part's CAD under `reference_cad/`.
   softer than the golden set's softest. One frame taken on the ultra-wide lens was dropped
   before the hashes were computed: a second lens would break the single-camera calibration.
 - **G-09 added G-05's two printed parts** to the same manifest: the control `g05_00` and the
-  4 mm hole shift `g05_02` (D-069), 28 stills each, shot 2026-11-18 under the same setup. Their
-  `reference_cad` entries point at G-05's STLs. Every frame was posed by R-02, and the softest
-  scored 210 against the golden set's softest of 40. The real downloader fetched both from
-  Drive and verified their hashes. These parts aren't prisms, so G-04's script (which lists
+  4 mm hole shift `g05_02` (D-069), 28 stills each, under the same setup. `g05_00` was shot on
+  2026-11-18. `g05_02` was re-shot on 2026-11-20, because the first set had the plate top face
+  down, a mirror image of the CAD that no rigid pose can match (#407; G-09 has the details).
+  Their `reference_cad` entries point at G-05's STLs. Every frame was posed by R-02, and the
+  softest scored 284 against the golden set's softest of 40. The real downloader fetched both
+  from Drive and verified their hashes. These parts aren't prisms, so G-04's script (which lists
   `g02_*` by name) doesn't pick them up.
 
 The same script downloads either set; point it at this manifest and give it its own output

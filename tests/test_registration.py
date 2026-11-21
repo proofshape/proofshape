@@ -964,7 +964,11 @@ def test_check_ambiguity_flags_four_fold_s05(patch_fraction: float):
         )
         >= 80.0
     )
-    assert result.rmse_ratio <= 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
+    assert result.coverage_ratio is not None
+    # D-061's original 20% boundary still checks the reported inlier RMSE ratio.
+    assert result.rmse_ratio is not None
+    assert result.rmse_ratio <= 1.20
+    assert result.coverage_ratio <= 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
 
 
 @pytest.mark.parametrize("patch_fraction", [0.0, 0.2])
@@ -981,7 +985,11 @@ def test_check_ambiguity_clears_scalene_s04(patch_fraction: float):
 
     assert not result.orientation_ambiguous
     assert result.reason_codes == ()
-    assert result.rmse_ratio > 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
+    assert result.coverage_ratio is not None
+    # D-061's original 20% boundary still checks the reported inlier RMSE ratio.
+    assert result.rmse_ratio is not None
+    assert result.rmse_ratio > 1.20
+    assert result.coverage_ratio > 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
     assert _symmetric_vertex_rmse(vertices, result.best.transformation, expected) <= 0.3
 
 
@@ -1186,6 +1194,104 @@ def test_check_ambiguity_rejects_an_invalid_threshold(threshold: float):
 def test_check_ambiguity_rejects_no_candidates():
     with pytest.raises(ValueError, match="at least one candidate"):
         registration.check_ambiguity([], None, None)
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_ambiguous"),
+    [
+        ("s05", True),
+        ("missing_hole", True),
+        ("shifted_hole", False),
+        ("hole_in_place", False),
+        ("s04", False),
+    ],
+)
+@pytest.mark.parametrize("seed", range(12))
+def test_i13_preserves_d061_twelve_seed_table(
+    case: str, expected_ambiguous: bool, seed: int
+):
+    if case == "s05":
+        loaded_cad = cad.load_mesh(S05)
+        cad_mesh = (loaded_cad[0], loaded_cad[1])
+        part_vertices, part_faces = cad_mesh
+    elif case == "missing_hole":
+        cad_mesh = _plate_with_hole(20.0)
+        part_vertices, part_faces = _solid_plate()
+    elif case == "shifted_hole":
+        cad_mesh = _plate_with_hole(20.0)
+        part_vertices, part_faces = _plate_with_hole(23.0)
+    elif case == "hole_in_place":
+        cad_mesh = _plate_with_hole(20.0)
+        part_vertices, part_faces = cad_mesh
+    else:
+        loaded_cad = cad.load_mesh(S04)
+        cad_mesh = (loaded_cad[0], loaded_cad[1])
+        part_vertices, part_faces = cad_mesh
+
+    sample = synthetic.generate_synthetic_sample(
+        part_vertices, part_faces, seed, sigma_mm=0.3, patch_fraction=0.2
+    )
+    result = _check_ambiguity(sample, cad_mesh, seed=seed)
+
+    assert result.orientation_ambiguous is expected_ambiguous
+    assert result.runner_up is not None
+    assert result.rmse_ratio is not None
+    assert result.coverage_ratio is not None
+    if expected_ambiguous:
+        assert result.coverage_ratio <= 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
+    else:
+        assert result.coverage_ratio > 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
+
+
+@pytest.mark.parametrize(
+    ("coverage_ratio", "expected_ambiguous"),
+    [
+        (1.025, True),
+        (1.025 + 1e-9, False),
+    ],
+)
+def test_i13_pins_coverage_ratio_boundary(
+    coverage_ratio: float, expected_ambiguous: bool, monkeypatch
+):
+    vertices, faces, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        vertices, faces, 0, sigma_mm=0.3, patch_fraction=0.2
+    )
+    best = registration.CandidatePose(
+        transformation=np.eye(4),
+        fitness=0.8,
+        inlier_rmse=1.0,
+        source="best",
+        correspondence_count=100,
+    )
+    mirrored = np.eye(4)
+    mirrored[:2, :2] = [[-1.0, 0.0], [0.0, -1.0]]
+    runner_up = registration.CandidatePose(
+        transformation=mirrored,
+        fitness=0.7,
+        inlier_rmse=1.1,
+        source="runner-up",
+        correspondence_count=100,
+    )
+
+    def return_candidate(candidate, model, cad_mesh, *, seed=0):
+        return candidate
+
+    def return_coverage_residuals(
+        candidates,
+        cad_surface,
+        observed_model_surface,
+        *,
+        max_correspondence_distance_mm,
+    ):
+        return [1.0, coverage_ratio]
+
+    monkeypatch.setattr(registration, "refine", return_candidate)
+    monkeypatch.setattr(registration, "_coverage_residuals", return_coverage_residuals)
+    result = registration.check_ambiguity([runner_up, best], sample, (vertices, faces))
+
+    assert result.coverage_ratio == pytest.approx(coverage_ratio)
+    assert result.orientation_ambiguous is expected_ambiguous
 
 
 def _hide_bottom_and_half(sample: synthetic.SyntheticSample, vertices_mm: np.ndarray):
