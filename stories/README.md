@@ -507,6 +507,26 @@ Two more pieces of work have to land by Dec 2:
 
 ---
 
+## Accuracy review on the ten calipered parts (P-40)
+
+On 2026-11-20, `main` (`607450a`) was run on the ten printed parts that have caliper readings,
+each against its own CAD. Top faces read within about 0.2 mm (median absolute deviation). Walls
+read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with ambiguity set
+aside. Most of the wall error is photos disagreeing sideways: R-30 corrects each photo's height
+and tilt, not where it sits in the board plane. P-40's pull request adds the write-up and the
+script that re-runs it.
+
+- **R-44** re-anchors each photo to its own board corners before fusion. It completes R-30's
+  correction rather than adding a feature, so it can land before the Dec 3–4 code freeze. Whether
+  it is on in the served path is a team decision, with a condition on the CAD alignment that
+  P-40's run doesn't meet yet.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
+
+---
+
 ## Capture app: heatmap, report, buyer side and hosting
 
 The rest of the capture app, written up on 2026-11-09 (P-30). That is four days before M5's
@@ -683,6 +703,7 @@ Full detail in each story file.
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
+| [P-40](P/P-40.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Claimed | @TabeenRaoof |
 
 ---
 
