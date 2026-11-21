@@ -2923,6 +2923,7 @@ isn't met with this part at these specs.
 **Who:** @TabeenRaoof.
 **What changed:**
 - **The dry run:** X-03's planted-shift scenario ran on `main` (`aeadbc4`), using G-09's photographs and the control's CAD as the order (#407). The G-05 control and the 4 mm hole shift both came back Rescan, on orientation ambiguity alone. With ambiguity set aside, both Fail, the control at 12.85 mm, from the base flare outside the CAD's outline.
+  The shift's photographs were later found to be upside down (#407), so its numbers here are a wrong pose. The re-shot `g05_02` reads like its control: see the 2026-11-20 G-09 entry above.
 - **New stories, all Ready:**
   - **I-13 (3 h):** I-05 ranks poses by fitness but decides ambiguity on inlier RMSE alone (D-061).
   - **I-14 (4 h):** I-06's declared 10 mm footprint margin lets the base flare be measured as part.
@@ -2951,4 +2952,22 @@ isn't met with this part at these specs.
 **Command / how to reproduce:** `python3 scripts/check_story_states.py` is clean on #417's head.
 **Result:** 0.2 h actual against an estimate of 2.5 h, measured from timestamps; the wait for the claim to merge isn't counted. No decision was recorded, so no D-number was taken.
 **Concluded:** this answers P-35's "P-36's date … is confirmed by Nov 25". S6's last week has no review to prepare.
-**Next:** a final-presentation story (S7/S8), carrying P-36's notes, and confirm the Dec 11 date in O-002 when a written source exists.
+**Next:** a final-presentation story (S7/S8), carrying P-36's notes (since written as P-39, PR #423), and confirm the Dec 11 date in O-002 when a written source exists.
+
+## 2026-11-20 — P-37 Done: P-38, P-39 and A-15 written; the printed defect stays an option on #407 (PR #422, PR #423)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- **The backlog check:** each S6–S8 bullet in `docs/sprint-plan.md` §6, and each open issue, was checked against the stories on `main` at `5a86da4`. Four pieces of work had no story: the final report, the final presentation, a printed top-face defect for X-03, and serving the capture agent (#406).
+- **New stories, all Ready:**
+  - **P-38 (10 h):** the final report, S7's gate M7 (Dec 4).
+  - **P-39 (5 h):** the final presentation and demo script, carrying P-36's content.
+  - **A-15 (6 h):** serve the capture agent: the `agent-message` route and C-22's panel. It's required scope, because generative-AI components are never cut (`AGENTS.md`, D-017).
+- **The printed defect** isn't a story. G-12 is posted on #407 as a draft, to file only if the team takes option 1. X-03 gets a dated note pointing to #407.
+- **Corrections at @dalwalyk's review:** the first version wrote A-15 as an option the team could cut, and filed G-12 as `Ready`. Both were fixed before merge, and #406's "record it as cut" option was withdrawn on the issue.
+- **How it merged:** the claim is #422, and the write-up #423 (`607450a`).
+
+**Command / how to reproduce:** `python3 scripts/check_story_states.py` is clean on `main` (`607450a`).
+**Result:** 1 h actual (no estimate made, D-052), owner-confirmed. Open estimates go from 24 h to 45 h, or 48 h if G-12 is filed. No code changed and no decision was recorded, so no D-number was taken.
+**Concluded:** A-15, and G-12 if taken, have to land by Dec 2, and A-15 merges at that boundary only by named exception (D-031). P-38 and P-39 fit S7 and S8's 20 h.
+**Next:** the team decides #407's options on the issue. A-15's exception, how a turn runs, and the agent-against-policy comparison go to the Dec 2 call. Comment on #406 naming A-15.
