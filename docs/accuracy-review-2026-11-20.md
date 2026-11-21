@@ -11,25 +11,35 @@ which is in this pull request with its tests, and can be re-run (section 8). Sec
 come from a scratch harness that re-fused saved depth outside the repo. They are screening
 results, and R-44 and I-15 have to reproduce them in repo code before anything rests on them.
 
+**What the numbers are.** Nearly every figure here is CAD-relative: how far the reconstruction
+sits from the part's nominal CAD, once the CAD has been registered to it. That mixes three
+things, and the script doesn't separate them: how far the print itself departs from nominal,
+reconstruction error, and registration error. It is what the verdict thresholds, so it is the
+right thing to measure for the verdict. It is not reconstruction accuracy on its own. The only
+caliper-based comparison in this document is the width check in section 4.
+
 ## 1. Summary
 
-- **Top faces are measured well. Walls are not.** On ten printed parts, each compared with its
-  own CAD, top-face vertices sit within about 0.2 mm of the CAD (median absolute deviation).
-  Wall vertices read 0.1 to 2.1 mm inside it (median per part), and single readings reach
+- **Top faces read close to the CAD. Walls don't.** On ten printed parts, each compared with its
+  own CAD, a part's top-face vertices scatter 0.10 to 0.35 mm about their own median (the median
+  absolute deviation, per part), and that median is within 0.12 mm of the CAD on every part.
+  Wall vertices read 0.1 to 2.1 mm inside the CAD (median per part), and single readings reach
   5.6 mm.
 - **A good part first Passes at 3.7 to 6 mm**, with orientation ambiguity set aside. Six of the
   ten are symmetric shapes and flag ambiguous, as D-061 intends, so in the service they Rescan.
-- **Most of the wall error is photos disagreeing sideways.** After R-23's alignment, a photo's
-  own board corners land a median 2.2 mm from where the board says they are. R-30 corrects each
-  photo's height and tilt, and leaves about 1.6 mm in the board plane. A sideways shift doesn't
-  move a flat top face. It moves every wall and edge.
-- **Re-anchoring each photo to its own corners removes most of it, in a scratch test.** The
-  typical worst reading on a part goes from 4.3 to 1.9 mm, and seven parts Pass at 3.7 mm
-  (three today). This is R-44.
-- **Stray board surface misleads the CAD alignment.** On six parts, 12 to 44% of the Observed
-  model is surface a few millimetres above the board and away from the part. With R-44's
-  correction on and nothing else changed, the G-05 control comes out 180° off with no ambiguity
-  flag and reads 9.8 mm. This is I-15, and R-44 can't go on in the served path without it.
+- **Photos disagree sideways, and that is a likely cause of much of the wall error.** After
+  R-23's alignment, a photo's own board corners land a median 2.2 mm from where the board says
+  they are. R-30 corrects each photo's height and tilt, and leaves about 1.6 mm in the board
+  plane. A sideways shift doesn't move a flat top face. It moves every wall and edge.
+- **Re-anchoring each photo to its own corners took much of the wall error with it, in a scratch
+  test.** The typical worst reading on a part goes from 4.3 to 1.9 mm, and seven parts Pass at
+  3.7 mm (three today). Three parts read worse (section 4). This supports the cause. It doesn't
+  measure how much of the served pipeline's wall error comes from it. This is R-44.
+- **Surface that isn't the part reaches the CAD pose search.** On six parts, 12 to 44% of the
+  Observed model is surface a few millimetres above the board and away from the part. With
+  R-44's correction on and nothing else changed, the G-05 control comes out 180° off with no
+  ambiguity flag and reads 9.8 mm. Which stage of the search loses the pose isn't established.
+  This is I-15, and R-44 can't go on in the served path without it.
 - **The 4 mm hole shift still reads like its control** in every variant. The control's own
   12 mm hole is bridged over (up to +5.6 mm). None of this changes #407.
 - **These made no difference:** dropping pixels at depth edges, letting board pixels vote
@@ -39,14 +49,16 @@ results, and R-44 and I-15 have to reproduce them in repo code before anything r
 
 **Method.** Each capture went through `run_reconstruction_pipeline`, then `global_register`,
 `check_ambiguity` and `compute_deviation` against the part's own CAD, the same calls in the same
-order as the service. A part against its own CAD has no defect, so every deviation is
-reconstruction and measurement error. The script then tries v1's verdict rule at a range of
-tolerances for one non-critical `face` feature, with orientation ambiguity left out. That is
-what the measurement supports, not a service verdict.
+order as the service. A part against its own CAD has no planted defect. Each deviation still
+mixes the print's own departure from nominal, reconstruction error and registration error: the
+pose is fitted to the very surface being judged. The script then tries v1's verdict rule at a
+range of tolerances for one non-critical `face` feature, with orientation ambiguity left out.
+That is what the measurement supports, not a service verdict.
 
-**Reference.** Caliper means are within 0.2 mm of CAD nominal on every part except `g02_03`
-(edges 0.5 to 1.0 mm short) and s-04 (0.1 to 0.4 mm over). At the error sizes below, nominal CAD
-is the reference.
+**How far the prints are from nominal.** Caliper means are within 0.2 mm of CAD nominal on
+every part except `g02_03` (edges 0.5 to 1.0 mm short) and s-04 (0.1 to 0.4 mm over). The table
+below is not corrected for that. On `g02_03`, up to about 1 mm of a wall reading can be the
+print and not the scan.
 
 | Part | Observed vertices | Unmeasured (outside the CAD outline) | Stray (over 5 mm from the part) | Top face, 95% within | Wall, median | Wall, 95% within | Worst reading | First Pass at | Flags ambiguous | Alignment fitness |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|
@@ -71,8 +83,26 @@ Distances are in millimetres. Negative means inside the CAD: the part reads smal
   except the two G-05 plates. D-086 measures a vertex only inside the CAD's outline, so the
   outer half of each wall is not in these figures. D-086 records that bias.
 - **"Unmeasured" is Observed surface the verdict never sees**: 22 to 72% of it.
-- **Run to run.** A second full run of the ten parts, through the committed script, gave the
-  same figures as the first to every digit printed here.
+- **Run to run, on one machine.** A second full run of the ten parts on the M2 Max, through the
+  committed script, gave the same figures as the first to every digit printed here.
+- **On a second member's machine.** @dalwalyk ran `run`, `report` and `corners` on s-04 and s-05
+  from an exact export of this branch at `712a014`, on a Mac GPU with Gemini disabled. Those are
+  fresh reconstructions, and they come out close, not identical:
+
+  | | s-04, first run | s-04, @dalwalyk | s-05, first run | s-05, @dalwalyk |
+  |---|---:|---:|---:|---:|
+  | Observed vertices | 1,602 | 1,591 | 2,247 | 2,234 |
+  | Top face, 95% within (mm) | 0.68 | 0.65 | 1.56 | 1.46 |
+  | Wall, 95% within (mm) | 3.55 | 3.42 | 3.92 | 4.04 |
+  | First Pass at (mm) | 4.5 | 4.5 | 5 | 5 |
+  | Flags ambiguous | no | no | yes | yes |
+  | Photos measured | 29 of 30 | 29 of 30 | 29 of 29 | 29 of 29 |
+  | Corner RMS after the global alignment, median (mm) | 1.98 | 2.00 | 1.99 | 1.99 |
+  | In-plane corner RMS after R-30, median (mm) | 1.62 | 1.62 | 1.60 | 1.68 |
+  | Corner RMS a rigid fit leaves, median (mm) | 0.48 | 0.49 | 0.56 | 0.58 |
+
+  The wall figure moves by 0.13 and 0.12 mm between the two machines. Nothing in this document
+  should be read more finely than that.
 
 **Three saved phone sessions of s-04** (the capture app's 480 × 640 frames), same method: worst
 readings 4.20, 0.83 and 0.97 mm, first Pass at 4.5, 3.7 and 3.7 mm. In the last two only 19% and
@@ -81,38 +111,49 @@ CAD alignment outright (`sess_20201ffd675a`, 13 frames, and `sess_cdf9822969a4`,
 record shows the same failure). No photograph was opened for this review, so what was on the
 board in those two is not verified.
 
-## 3. Why walls are noisy
+## 3. Where the wall error could come from
 
 ### 3.1 Photos disagree sideways
 
 Each photo's detected ChArUco corners were lifted through that photo's own depth, as R-23 does,
 and compared with their printed positions.
 
-| Capture | Photos measured | After the global alignment: median (95th percentile) | After R-30: in the board plane | After R-30: height | Shift at the board's centre: median (worst photo) | A rigid fit to the photo's own corners leaves |
+| Capture | Photos: measured, skipped, rejected | RMS after the global alignment: median (95th percentile) | In-plane RMS after R-30 | Mean height offset after R-30: median (worst photo) | Shift at the board's centre: median (worst photo) | RMS a rigid fit leaves |
 |---|---:|---:|---:|---:|---:|---:|
-| s-04 | 29 of 30 | 1.98 (2.80) | 1.62 | 0.07 | 1.54 (2.75) | 0.48 |
-| s-05 | 29 of 29 | 1.99 (3.47) | 1.60 | 0.07 | 1.53 (4.00) | 0.56 |
-| `g05_00` | 28 of 28 | 2.76 (4.57) | 2.32 | 0.09 | 2.20 (3.49) | 0.89 |
-| `g05_02` | 27 of 28 | 1.49 (2.57) | 1.06 | 0.25 | 0.90 (3.94) | 0.61 |
-| `g02_01` | 29 of 29 | 3.72 (5.47) | 3.00 | 0.06 | 2.91 (4.95) | 0.81 |
-| `g02_02` | 29 of 30 | 1.47 (2.94) | 1.06 | 0.15 | 1.01 (2.45) | 0.54 |
-| `g02_03` | 25 of 25 | 1.80 (3.56) | 1.31 | 0.11 | 1.24 (3.14) | 0.57 |
-| `g02_04` | 27 of 27 | 2.32 (4.02) | 1.87 | 0.17 | 1.84 (3.54) | 0.80 |
-| `g02_05` | 29 of 29 | 3.28 (4.27) | 2.60 | 0.18 | 2.54 (3.73) | 0.67 |
-| `g02_06` | 29 of 29 | 1.63 (7.53) | 1.24 | 0.17 | 1.14 (2.85) | 0.63 |
+| s-04 | 29, 1, 0 | 1.98 (2.80) | 1.62 | 0.07 (0.44) | 1.54 (2.75) | 0.48 |
+| s-05 | 29, 0, 0 | 1.99 (3.47) | 1.60 | 0.07 (0.32) | 1.53 (4.00) | 0.56 |
+| `g05_00` | 28, 0, 0 | 2.76 (4.57) | 2.32 | 0.09 (1.02) | 2.20 (3.49) | 0.89 |
+| `g05_02` | 27, 0, 1 | 1.49 (2.57) | 1.06 | 0.25 (1.40) | 0.90 (3.94) | 0.61 |
+| `g02_01` | 29, 0, 0 | 3.72 (5.47) | 3.00 | 0.06 (0.52) | 2.91 (4.95) | 0.81 |
+| `g02_02` | 29, 0, 1 | 1.47 (2.94) | 1.06 | 0.15 (0.29) | 1.01 (2.45) | 0.54 |
+| `g02_03` | 25, 0, 0 | 1.80 (3.56) | 1.31 | 0.11 (0.41) | 1.24 (3.14) | 0.57 |
+| `g02_04` | 27, 0, 0 | 2.32 (4.02) | 1.87 | 0.17 (0.47) | 1.84 (3.54) | 0.80 |
+| `g02_05` | 29, 0, 0 | 3.28 (4.27) | 2.60 | 0.18 (0.41) | 2.54 (3.73) | 0.67 |
+| `g02_06` | 29, 0, 0 | 1.63 (7.53) | 1.24 | 0.17 (2.91) | 1.14 (2.85) | 0.63 |
 
-Millimetres, per capture, as medians over its photos. A photo with fewer than eight corners is
-left out (one on s-04). So is a photo R-38 rejected (one each on `g05_02` and `g02_02`), because
-it never reaches fusion.
+Millimetres. How to read the columns:
+
+- **Every photo is in one of three counts.** Over the ten parts that is 284 photos: 281
+  measured, 1 skipped and 2 rejected. The skipped one, on s-04, had no corner lifted through its
+  depth. The two rejected ones, on `g05_02` and `g02_02`, are photos R-38 drops, which never
+  reach fusion.
+- **RMS** is the root-mean-square distance of one photo's corners from their printed
+  positions. The columns give the median of that over a capture's photos. R-38's
+  `per_frame_residual_mm`, saved in every `metric_alignment.json`, is the per-photo *median*
+  corner distance after the global alignment: close to the first column's inputs, but a
+  different statistic.
+- **Mean height offset** is the magnitude of one photo's mean signed z residual at its corners.
+  It says whether a photo sits high or low as a whole, not how flat its board is.
+
+What the table shows:
 
 - **After R-23's global alignment**, a photo's corners sit a median 2.23 mm from true over the
-  281 photos of the ten parts (95th percentile 4.35 mm).
-  `metric_alignment.json` already records a per-photo figure of this kind as
-  `per_frame_residual_mm`.
-- **After R-30**, the height part is gone (under 0.3 mm on every capture) and the in-plane part
-  remains: 1.1 to 3.0 mm per capture, and 1.60 mm as the median over all 281 photos. At the
-  centre of the board that is a shift of 0.9 to 2.9 mm in a capture's typical photo, and up to
-  5.0 mm in the worst.
+  281 measured photos (95th percentile 4.35 mm).
+- **R-30 brings each photo's mean height offset down, and leaves the in-plane part.** The
+  offset's median magnitude goes from 0.84 mm to 0.12 mm over the 281 photos. Four photos are
+  still more than 1 mm high or low, the worst by 2.91 mm. In the board plane 1.1 to 3.0 mm
+  remains per capture, and 1.60 mm as the median over all photos. At the centre of the board
+  that is a shift of 0.9 to 2.9 mm in a capture's typical photo, and up to 5.0 mm in the worst.
 - **A rigid fit of each photo to its own corners would leave 0.5 to 0.9 mm** per capture
   (0.65 mm over all photos).
 - **Phone sessions start closer.** The three s-04 phone sessions read 1.1 to 1.3 mm after the
@@ -134,13 +175,23 @@ the six parts where it is 12% or more, it sits a median 3 to 4 mm above the boar
 cut (2.0 to 2.75 mm). #292 describes this for s-02. It is on six of these ten parts.
 
 It is outside the CAD's outline, so I-14 keeps it out of the verdict. It still reaches the pose
-search, which seeds every candidate from the mean of all Observed model points
-(`_board_pose_from_yaw`):
+search (`inspect/inspection/registration.py`). `global_register` works on a sample of the whole
+model surface, Observed or not. Its yaw seeds move the CAD's centroid onto that sample's
+centroid. Its projected RANSAC seed keeps RANSAC's own xy translation. Both are scored against
+the same sample, at a distance that scales with the extent of the model and the CAD together.
+Only `refine` and `check_ambiguity` restrict themselves to Observed support.
+
+What was observed:
 
 - alignment fitness is 0.37 to 0.77 on five parts;
 - on `main`'s meshes, s-05 and the hexagon sit about 10° and 16° from the pose found on the
-  re-anchored mesh, beyond what their symmetry allows;
+  re-anchored mesh, beyond what their symmetry allows. There is no independent pose to say
+  which of the two is right;
 - section 4's G-05 control.
+
+Which stage loses the right pose isn't established. The scratch trial in section 4 changed
+Observed labels only, so it touched refinement and the ambiguity check and not the seeds. It
+still helped. Naming the stage is I-15's first criterion.
 
 ### 3.3 Limits nothing moved
 
@@ -171,10 +222,14 @@ reproduces section 2 exactly.
 `g02_02` 1.70 → 1.08. `g02_03` 2.01 → 1.69. `g02_04` 3.74 → 1.46. `g02_05` 5.33 → 1.49. `g02_06`
 3.19 → 1.16. `g05_02` 5.01 → 5.26. **`g05_00` 5.58 → 9.80. `g02_01` 4.14 → 5.42.**
 
-- **The two that get worse are CAD alignment, not reconstruction.** `g05_00` lands 180° off,
-  fitness 0.61, not flagged. `g02_01` lands at fitness 0.29. Started from `main`'s pose, the
-  same two meshes read 5.22 and 2.51 mm. In six other variants the control came out 90° off,
-  unflagged.
+- **Three parts read worse.** `g05_00` lands 180° off, fitness 0.61, not flagged. `g02_01` lands
+  at fitness 0.29. Those two are CAD alignment, not reconstruction: started from `main`'s pose,
+  the same two meshes read 5.22 and 2.51 mm. In six other variants the control came out 90°
+  off, unflagged. The third is `g05_02`, up 0.25 mm, with its worst reading at its bridged hole
+  in both runs.
+- **What this section supports.** That sideways misalignment between photos contributes to the
+  wall error, and that correcting it helps on seven of ten parts. It does not isolate how much
+  of the served pipeline's wall error comes from that cause.
 - **A check that doesn't use the per-vertex rule.** Wall-to-wall width at mid-height on the three
   clean boxes, against the caliper mean: s-05 reads 26.7 and 25.8 mm on `main` and 28.7 and
   28.6 mm re-anchored (caliper 29.97). Over six widths (s-05, `g02_02`, `g02_06`) the mean
@@ -229,8 +284,9 @@ change that.
 **Filed with this review:**
 
 - **R-44** (claimed, @TabeenRaoof): rigid per-photo corner re-anchoring in `fuse_run`.
-- **I-15** (claimed, @TabeenRaoof): the CAD alignment starts from the part, not from stray
-  surface. R-44's default waits on it, so it is worked first.
+- **I-15** (claimed, @TabeenRaoof): the CAD pose holds when the model contains surface that
+  isn't the part. Its first criterion is to name the stage of the search that loses the pose.
+  R-44's default waits on it, so it is worked first.
 - **G-13** (Blocked on R-44 and I-15, filed on 2026-11-21): measure the floors and the outline
   margin on the verdict's own quantity, over the ten calipered parts on the pipeline as served.
   It proposes amendments to D-073, D-078 and D-086, and the constants change only if both other
@@ -253,29 +309,39 @@ From the repo root, with the weights in place (`scripts/bootstrap_dev_env.sh`) a
 `PYTHONPATH=.:inspect` so the checkout's own code is what runs. The captures come from the
 download script: the golden set by default, and the G-02 and G-05 parts with
 `GOLDEN_CAPTURE_MANIFEST=fixtures/specimen_capture_manifest.json` (`fixtures/README.md`).
+Outputs go under `proofshape-data/`, which git ignores. `run` refuses a folder that already has
+files in it.
 
 ```
-export PYTHONPATH=.:inspect OMP_NUM_THREADS=1 PROOFSHAPE_RECON_DEVICE=mps   # or cuda
+export PYTHONPATH=.:inspect PROOFSHAPE_RECON_DEVICE=mps   # or cuda
+OUT=proofshape-data/p41
 python scripts/measure_part_accuracy.py run fixtures/data/golden_capture/s-04 \
-    --cad fixtures/reference_cad/s04_triangular_prism_60-26-65x30mm.stl --out runs/s-04
-python scripts/measure_part_accuracy.py report  runs/s-04 runs/s-05     # section 2
-python scripts/measure_part_accuracy.py corners runs/s-04 runs/s-05     # section 3.1
+    --cad fixtures/reference_cad/s04_triangular_prism_60-26-65x30mm.stl --out $OUT/s-04
+python scripts/measure_part_accuracy.py run fixtures/data/golden_capture/s-05 \
+    --cad fixtures/reference_cad/s05_rect_prism_30x30x60mm.stl --out $OUT/s-05
+python scripts/measure_part_accuracy.py report  $OUT/s-04 $OUT/s-05     # section 2
+python scripts/measure_part_accuracy.py corners $OUT/s-04 $OUT/s-05     # section 3.1
 ```
 
-`run` takes about a minute per part on the M2 Max. Each capture is run against its own CAD in
-`fixtures/reference_cad/`:
+`run` takes about a minute per part on the M2 Max. The script applies R-31's macOS thread guard
+itself, as the service does, so `OMP_NUM_THREADS` needs no setting. Each capture is run against
+its own CAD in `fixtures/reference_cad/`:
 
 - s-04: `s04_triangular_prism_60-26-65x30mm.stl`; s-05: `s05_rect_prism_30x30x60mm.stl`;
 - `g05_00`: `g05_00_control_50x32x20mm.stl`; `g05_02`: `g05_02_hole_shift_4mm.stl`;
 - `g02_01` to `g02_06`: the file that starts with the same name.
 
-**A cheaper first check needs no run at all:** any finished session's
-`reconstruction/metric_alignment.json` already lists `per_frame_residual_mm`, the per-photo
-corner residual after the global alignment.
+**A quick look that needs no run:** any finished session's
+`reconstruction/metric_alignment.json` already lists `per_frame_residual_mm`. That is R-38's
+per-photo *median* corner distance after the global alignment, not the RMS in section 3.1, so
+expect it to be a little lower: 1.2 to 3.1 mm per photo on s-04, with a median of 1.84 mm.
 
 ## 9. Limits
 
-- One capture per part: ten printed prisms and plates, one filament, one phone, one host.
+- One capture per part: ten printed prisms and plates, one filament, one phone. One host for
+  the ten parts, and a second member's host for s-04 and s-05.
+- The figures are CAD-relative. They are not corrected for how far each print is from nominal,
+  and they include registration error.
 - Sections 4 and 5 are from a scratch harness, with no tests. R-44 and I-15 reproduce them.
 - The "stray" distance (5 mm) and the top / wall bins are this review's reporting choices.
 - "Parts that Pass at 3.7 mm" is one non-critical `face` feature with ambiguity set aside.
