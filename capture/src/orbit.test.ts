@@ -4,6 +4,7 @@ import {
   anchorHeadingDeg,
   computeArrowGuidance,
   computeCoverage,
+  computeTargetGuidance,
   DEFAULT_COVERAGE_TOLERANCE_DEG,
   DEFAULT_ORBIT,
   elevationFromBeta,
@@ -257,5 +258,91 @@ describe("guidanceLevel", () => {
     // shortest -40 -> far
     const farther = gyro(30, elevationFromBetaInverse(45));
     expect(guidanceLevel(computeArrowGuidance(farther, 0, target))).toBe("far");
+  });
+});
+
+// C-26 device check, 2026-11-20: on @TabeenRaoof's iPhone the frame went green at about 58 deg,
+// but each photo there was credited to the 70 deg slot the first photo had already covered.
+describe("computeTargetGuidance", () => {
+  // Recorded readings from that run (session sess_d4dfa462dddb, frames 0 and 1).
+  const firstPhoto: Gyro = { alpha: 294, beta: 12, gamma: 3 };
+  const heldAt58: Gyro = { alpha: 297, beta: 32, gamma: 1 };
+
+  it("is not on target where coverage would credit an already-covered slot", () => {
+    const accepted = [firstPhoto];
+    const coverage = computeCoverage(accepted);
+    const anchor = anchorHeadingDeg(accepted) ?? Number.NaN;
+    const targetIndex = coverage.nextTargetIndex ?? -1;
+    expect(targetIndex).toBe(0);
+    const target = DEFAULT_ORBIT[targetIndex] as OrbitSlot;
+
+    // The old check said green here, and the photo would not have counted.
+    expect(computeArrowGuidance(heldAt58, anchor, target).onTarget).toBe(true);
+    expect(computeCoverage([...accepted, heldAt58]).covered[targetIndex]).toBe(false);
+
+    const guidance = computeTargetGuidance(heldAt58, anchor, DEFAULT_ORBIT, targetIndex);
+    expect(guidance.onTarget).toBe(false);
+    expect(guidanceLevel(guidance)).toBe("near");
+    // The target ring is lower (45 deg), so the arrow asks for less tilt.
+    expect(guidance.onTarget ? 0 : guidance.elevationDeltaDeg).toBeLessThan(0);
+  });
+
+  it("is on target once the reading would be credited to the target", () => {
+    const accepted = [firstPhoto];
+    const anchor = anchorHeadingDeg(accepted) ?? Number.NaN;
+    const at50: Gyro = { alpha: 297, beta: 40, gamma: 1 };
+    expect(computeTargetGuidance(at50, anchor, DEFAULT_ORBIT, 0).onTarget).toBe(true);
+    expect(computeCoverage([...accepted, at50]).covered[0]).toBe(true);
+  });
+
+  it("is on target exactly when the photo would cover the target, across orientations", () => {
+    // gyro() takes beta; these histories are written as (azimuth, elevation).
+    const at = (azimuthDeg: number, elevationDeg: number): Gyro =>
+      gyro(azimuthDeg, elevationFromBetaInverse(elevationDeg));
+    const histories: Gyro[][] = [
+      [firstPhoto],
+      [at(0, 45)],
+      // Part of the 45 deg ring done, from an anchor taken high up.
+      [at(0, 80), at(0, 45), at(45, 45), at(90, 45)],
+      // The whole 45 deg ring and two of the 70 deg slots done: the next target is a 70 deg slot.
+      [...[0, 45, 90, 135, 180, 225, 270, 315].map((az) => at(az, 45)), at(0, 70), at(90, 70)],
+    ];
+    let checked = 0;
+    let onTargetCount = 0;
+    for (const accepted of histories) {
+      const coverage = computeCoverage(accepted);
+      const anchor = anchorHeadingDeg(accepted) ?? Number.NaN;
+      const targetIndex = coverage.nextTargetIndex ?? -1;
+      expect(targetIndex).toBeGreaterThanOrEqual(0);
+      for (let alpha = 0; alpha < 360; alpha += 5) {
+        for (let beta = 0; beta <= 90; beta += 1) {
+          for (const gamma of [0, 7]) {
+            const live: Gyro = { alpha, beta, gamma };
+            const onTarget = computeTargetGuidance(
+              live,
+              anchor,
+              DEFAULT_ORBIT,
+              targetIndex,
+            ).onTarget;
+            const counts = computeCoverage([...accepted, live]).covered[targetIndex] === true;
+            if (onTarget !== counts) {
+              throw new Error(
+                `mismatch at ${JSON.stringify(live)} for target ${String(targetIndex)}: ` +
+                  `onTarget=${String(onTarget)}, counts=${String(counts)}`,
+              );
+            }
+            checked += 1;
+            if (onTarget) onTargetCount += 1;
+          }
+        }
+      }
+    }
+    expect(checked).toBe(4 * 72 * 91 * 2);
+    // The sweep must actually hit the on-target region, not pass by never being green.
+    expect(onTargetCount).toBeGreaterThan(100);
+  });
+
+  it("rejects a target index outside the orbit", () => {
+    expect(() => computeTargetGuidance(firstPhoto, 0, DEFAULT_ORBIT, 13)).toThrow(RangeError);
   });
 });

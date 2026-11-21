@@ -6,7 +6,7 @@
 
 import {
   anchorHeadingDeg,
-  computeArrowGuidance,
+  computeTargetGuidance,
   computeCoverage,
   DEFAULT_ORBIT,
   guidanceLevel,
@@ -126,11 +126,9 @@ export function mountGyroOverlay(
       emit("idle", liveGyro);
       return;
     }
-    const target = orbit[coverage.nextTargetIndex];
-    if (!target) {
-      return;
-    }
-    const guidance = computeArrowGuidance(liveGyro, anchorDeg, target);
+    // computeTargetGuidance, not computeArrowGuidance: green only when coverage would credit
+    // this reading to the target (C-26 device check, 2026-11-20).
+    const guidance = computeTargetGuidance(liveGyro, anchorDeg, orbit, coverage.nextTargetIndex);
     if (guidance.onTarget) {
       status.textContent = options.onTargetText?.() ?? "On target — take the photo.";
       arrow.style.visibility = "hidden";
