@@ -674,7 +674,8 @@ def create_app(
     # A-15: the phone-facing agent uses A-07's existing loop. The model caller is injectable so
     # service tests never need a live provider. With no key, deliberately enter A-07's
     # deterministic fallback path rather than silently disabling the assistant.
-    from recon.agent_loop import DEFAULT_TIMEOUT_S as AGENT_DEFAULT_TIMEOUT_S, run_agent_turn
+    from recon.agent_loop import DEFAULT_TIMEOUT_S as AGENT_DEFAULT_TIMEOUT_S
+    from recon.agent_loop import run_agent_turn
     from recon.agent_model import GeminiAgentCaller
 
     configured_agent_timeout_s = (
