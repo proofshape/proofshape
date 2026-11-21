@@ -513,17 +513,25 @@ On 2026-11-20, `main` (`607450a`) was run on the ten printed parts that have cal
 each against its own CAD. Top faces read within about 0.2 mm (median absolute deviation). Walls
 read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with ambiguity set
 aside. Most of the wall error is photos disagreeing sideways: R-30 corrects each photo's height
-and tilt, not where it sits in the board plane. P-40's pull request adds the write-up and the
-script that re-runs it.
+and tilt, not where it sits in the board plane. `docs/accuracy-review-2026-11-20.md` has the
+measurements, and `scripts/measure_part_accuracy.py` re-runs them.
 
 - **R-44** re-anchors each photo to its own board corners before fusion. It completes R-30's
   correction rather than adding a feature, so it can land before the Dec 3–4 code freeze. Whether
   it is on in the served path is a team decision, with a condition on the CAD alignment that
   P-40's run doesn't meet yet.
+- **I-15** is that condition. The alignment search starts from the centre of everything in the
+  model, and on six of the ten parts 12 to 44% of the Observed model is stray surface near the
+  board. With R-44's correction on and nothing else changed, the G-05 control comes out 180° off
+  with no ambiguity flag.
+
+The review also lists work that needs a choice from the team first, and files none of it: the
+floors measured on the verdict's own quantity, and the outline margin (D-078, D-086).
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
+| [I-15](I/I-15.md) | CAD alignment starts from the part, not from the centre of everything in the model | 4 h | I-05, I-13 | Ready | _unclaimed_ |
 
 ---
 
