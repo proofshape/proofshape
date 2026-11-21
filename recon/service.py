@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -150,6 +151,14 @@ class UploadFrameResult(BaseModel):
     vlm_feedback: VlmFeedback | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
+
+
+class AgentMessageResult(BaseModel):
+    """A-15 / contract v1.9: the latest persisted capture-agent turn for this session."""
+
+    finished: bool
+    fallback_reason: Literal["model_error", "timeout", "loop_detected"] | None
+    message: str | None
 
 
 class ScaleAgreement(BaseModel):
@@ -636,6 +645,8 @@ def create_app(
     orders_dir: Path | None = None,
     buyer_key: str | None = None,
     spec_parser: Callable[[str], Any] | None = None,
+    agent_model_caller: Callable[[Any], Any] | None = None,
+    agent_timeout_s: float | None = None,
 ) -> FastAPI:
     # R-31: keep agent_tools lazy so the runtime guard above has already run before its
     # provenance dependency can import Open3D.
@@ -659,6 +670,24 @@ def create_app(
     configured_spec_parser = spec_parser
     if configured_spec_parser is None and gemini_key:
         configured_spec_parser = GeminiSpecParser(gemini_key)
+
+    # A-15: the phone-facing agent uses A-07's existing loop. The model caller is injectable so
+    # service tests never need a live provider. With no key, deliberately enter A-07's
+    # deterministic fallback path rather than silently disabling the assistant.
+    from recon.agent_loop import DEFAULT_TIMEOUT_S as AGENT_DEFAULT_TIMEOUT_S, run_agent_turn
+    from recon.agent_model import GeminiAgentCaller
+
+    configured_agent_timeout_s = (
+        AGENT_DEFAULT_TIMEOUT_S if agent_timeout_s is None else float(agent_timeout_s)
+    )
+    if configured_agent_timeout_s <= 0:
+        raise ValueError("agent_timeout_s must be positive")
+    configured_agent_model_caller = agent_model_caller
+    if configured_agent_model_caller is None and gemini_key:
+        configured_agent_model_caller = GeminiAgentCaller(gemini_key)
+
+    def missing_agent_model(_state: Any) -> Any:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -999,6 +1028,7 @@ def create_app(
     )
     async def upload_frame(
         session_id: str,
+        background_tasks: BackgroundTasks,
         frame: Annotated[UploadFile, File()],
         gyro: Annotated[UploadFile, File()],
     ):
@@ -1059,9 +1089,66 @@ def create_app(
             feedback = VlmFeedback(
                 frame_index=checked.frame_index, **checked.observation.model_dump()
             )
+
+        # A-15 option (a): run one agent turn after each accepted upload, persist only its latest
+        # phone-facing result, and keep GET /agent-message read-only. The model call is moved off
+        # the async request loop; A-07 still bounds each call by its remaining timeout budget.
+        # If A-07 decides coverage is complete, finish_session marks the session finished here and
+        # records which reconstruction job must be scheduled after this request returns.
+        scheduled_reconstructions: list[str] = []
+        agent_record = store.load(session_id)
+        if agent_record is not None:
+            caller = configured_agent_model_caller or missing_agent_model
+            agent_result = await asyncio.to_thread(
+                run_agent_turn,
+                agent_record,
+                store,
+                session_id,
+                scheduled_reconstructions.append,
+                caller,
+                min_frames=MIN_FINISH_FRAMES,
+                timeout_s=configured_agent_timeout_s,
+            )
+            latest_record = store.load(session_id)
+            if latest_record is not None:
+                latest_record["agent_message"] = {
+                    "finished": agent_result.finished,
+                    "fallback_reason": agent_result.fallback_reason,
+                    "message": agent_result.message,
+                }
+                store.save(latest_record)
+            for scheduled_session_id in scheduled_reconstructions:
+                background_tasks.add_task(run_session, scheduled_session_id)
+
         return UploadFrameResult(
             accepted=True, frame_index=frame_index, vlm_feedback=feedback
         )
+
+    @app.get(
+        "/v1/sessions/{session_id}/agent-message",
+        response_model=AgentMessageResult,
+        responses={404: {"model": ErrorDetail}},
+        operation_id="getAgentMessage",
+    )
+    def get_agent_message(session_id: str):
+        record = store.load(session_id)
+        if record is None:
+            return error(
+                404,
+                ErrorDetail(
+                    code="session_not_found", message="No session with that id."
+                ),
+            )
+        message = record.get("agent_message")
+        if message is None:
+            # Normally the phone asks only after an accepted upload, but a direct caller may ask
+            # earlier. This is a valid empty state, not a fake "session not found".
+            return AgentMessageResult(
+                finished=record.get("status") == "finished",
+                fallback_reason=None,
+                message=None,
+            )
+        return AgentMessageResult(**message)
 
     def run_session(session_id: str) -> None:
         record = store.load(session_id)
