@@ -503,7 +503,7 @@ Two more pieces of work have to land by Dec 2:
 |---|---|---|---|---|---|
 | [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
 | [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
-| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Ready | _unclaimed_ |
+| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Claimed | @mbj1994 |
 
 ---
 
