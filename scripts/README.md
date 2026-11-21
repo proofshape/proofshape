@@ -16,6 +16,7 @@ One-command helpers. Each is runnable on its own; none is part of the shipped sy
 | `measure_wall_share.py` | R-33: classifies a served `mesh_provenance.glb`'s faces into part / board skin / volume boundary / wall by centroid, the same diagnostic #231 and #258 ran by hand, so it can be rerun after a pipeline change instead of redone by hand. The part's own x/y footprint and height cap default to being derived from `completion.isolate_part`; `--part-x-mm`/`--part-y-mm`/`--part-height-mm` override any of them. |
 | `measure_frame_vote_consensus.py` | R-33 criterion 2: samples wall and part points via `measure_wall_share`, then reruns `fuse_run` with those points as `vote_sample_points_mm` to compare how many frames vote each group "on the surface" versus merely in front of or behind one. |
 | `make_g05_defect_ladder.py` | G-05: writes the defect ladder's ten CAD files into `fixtures/reference_cad/`, or with `--check` exits 1 if a committed file differs. Standard library only; the design and why are in `stories/G/G-05.md`. |
+| `measure_part_accuracy.py` | P-40: `run` puts one capture through the service's own pipeline and measures it against a CAD, as the service does; `report` prints what each part reads (measured share, top-face and wall deviation, worst reading, stray surface, the tolerance at which v1's rule Passes); `corners` prints how far each photo's own board corners sit from their known positions. `run` needs the weights and a GPU; the other two read saved files. |
 
 ## Node helpers
 
