@@ -507,7 +507,7 @@ Two more pieces of work have to land by Dec 2:
 
 ---
 
-## Accuracy review on the ten calipered parts (P-40)
+## Accuracy review on the ten calipered parts (P-41)
 
 On 2026-11-20, `main` (`607450a`) was run on the ten printed parts that have caliper readings,
 each against its own CAD. Top faces read within about 0.2 mm (median absolute deviation). Walls
@@ -519,7 +519,7 @@ measurements, and `scripts/measure_part_accuracy.py` re-runs them.
 - **R-44** re-anchors each photo to its own board corners before fusion. It completes R-30's
   correction rather than adding a feature, so it can land before the Dec 3–4 code freeze. Whether
   it is on in the served path is a team decision, with a condition on the CAD alignment that
-  P-40's run doesn't meet yet.
+  P-41's run doesn't meet yet.
 - **I-15** is that condition. The alignment search starts from the centre of everything in the
   model, and on six of the ten parts 12 to 44% of the Observed model is stray surface near the
   board. With R-44's correction on and nothing else changed, the G-05 control comes out 180° off
@@ -712,7 +712,7 @@ Full detail in each story file.
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
-| [P-40](P/P-40.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Done | @TabeenRaoof |
+| [P-41](P/P-41.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Done | @TabeenRaoof |
 
 ---
 
