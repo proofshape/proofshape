@@ -245,7 +245,17 @@ reproduces section 2 exactly.
 - **A finer grid on its own does not move the walls.** At 1 mm, without re-anchoring: 3.55 →
   3.31, 3.92 → 3.85 and 4.32 → 4.29 mm on s-04, s-05 and `g02_05`. With re-anchoring, 1 mm
   against 2 mm is mixed (1.89 → 2.12, 1.74 → 1.47, 0.98 → 0.86). Fusion goes from 0.3 s to 2.4 s.
-  R-43 measures this properly, against caliper edges.
+- **R-43's caliper comparison agrees: its mean edge error is lowest at the served 2.0 mm grid.**
+  These are @dalwalyk's figures, posted on #427 on 2026-11-21 and not re-run here. They compare
+  fitted edge lengths on the fully Observed faces of the final mesh with G-06's calipers, on
+  the shared R-32 runs of s-04 and s-05, with the truncation held at 8 mm. The mean absolute
+  edge error at 2.0, 1.5 and 1.0 mm is 4.92, 6.11 and 6.80 mm on s-04, and 3.50, 3.52 and
+  3.57 mm on s-05. On s-05 the 1.5 mm grid lowered the worst edge from 7.83 to 5.80 mm, with
+  the mean unchanged. @dalwalyk reads the result as support for keeping the served grid, and
+  not as a recalibration of D-078. It is a different quantity from the wall figure above, on
+  different runs of the same two parts. Neither shows a gain in its main figure from a finer
+  grid alone. On s-04 the two differ: the wall figure drops 0.24 mm at 1 mm, and R-43's edge
+  error rises by 1.88 mm. R-43's own record is the source for its figures once it closes.
 - **Weighting each pixel by how head-on it sees the surface** was tried only on top of the
   re-anchoring, the edge filter and the empty-space votes together: 1.50 mm against 1.44 without
   it.
