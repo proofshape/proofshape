@@ -320,6 +320,29 @@ describe("mountGyroOverlay onGuidance", () => {
     });
   }
 
+  // C-26 device check, 2026-11-20: a first photo taken high (78 deg) covers the 70 deg slot, and a
+  // reading at 58 deg is within 15 deg of both rings, so coverage credits it to that covered slot.
+  // The frame must not go green there.
+  it("is near, not on target, where the photo would count for an already-covered slot", () => {
+    const { container } = mount();
+    const levels: GuidanceUpdate[] = [];
+    const handle = mountGyroOverlay(container, DEFAULT_ORBIT, {
+      onGuidance: (update) => levels.push(update),
+    });
+    handles.push(handle);
+    handle.reportAcceptedFrame({ alpha: 0, beta: elevationToBeta(78), gamma: 0 });
+    expect(text(container, ".gyro-overlay-count")).toBe("Covered: 1/13");
+
+    dispatchOrientation(0, elevationToBeta(58), 0);
+    expect(levels.at(-1)?.level).toBe("near");
+    expect(container.querySelector<HTMLElement>(".gyro-overlay-arrow")?.style.visibility).toBe(
+      "visible",
+    );
+
+    dispatchOrientation(0, elevationToBeta(50), 0);
+    expect(levels.at(-1)?.level).toBe("on-target");
+  });
+
   it("is idle on mount and stays idle on live readings before the first frame", () => {
     const { levels } = mountWithLevels();
     expect(levels.at(-1)).toEqual({ level: "idle", gyro: null });
