@@ -510,10 +510,11 @@ Two more pieces of work have to land by Dec 2:
 ## Accuracy review on the ten calipered parts (P-41)
 
 On 2026-11-20, `main` (`607450a`) was run on the ten printed parts that have caliper readings,
-each against its own CAD. Top faces read within about 0.2 mm (median absolute deviation). Walls
-read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with ambiguity set
-aside. Most of the wall error is photos disagreeing sideways: R-30 corrects each photo's height
-and tilt, not where it sits in the board plane. P-41's pull request adds the write-up and the
+each against its own CAD. Each part's top-face vertices scatter 0.10 to 0.35 mm about their own
+median. Walls read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with
+ambiguity set aside. Photos disagree sideways by a median 1.6 mm after R-30, which corrects each
+photo's height and tilt but not where it sits in the board plane. A scratch test that corrected
+it took much of the wall error with it, on seven of the ten parts. P-41's pull request adds the write-up and the
 script that re-runs it.
 
 - **R-44** re-anchors each photo to its own board corners before fusion. It completes R-30's
