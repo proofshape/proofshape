@@ -2971,3 +2971,17 @@ isn't met with this part at these specs.
 **Result:** 1 h actual (no estimate made, D-052), owner-confirmed. Open estimates go from 24 h to 45 h, or 48 h if G-12 is filed. No code changed and no decision was recorded, so no D-number was taken.
 **Concluded:** A-15, and G-12 if taken, have to land by Dec 2, and A-15 merges at that boundary only by named exception (D-031). P-38 and P-39 fit S7 and S8's 20 h.
 **Next:** the team decides #407's options on the issue. A-15's exception, how a turn runs, and the agent-against-policy comparison go to the Dec 2 call. Comment on #406 naming A-15.
+
+## 2026-11-20 — R-43 claim merged and initial fusion sweep
+
+**Who:** @dalwalyk
+**What changed:** Claim #424 merged as `553c189`. Replayed saved s-04 and s-05 inputs
+with 2.0, 1.5 and 1.0 mm fusion voxels and fixed 8 mm truncation.
+**Command:** Run the block in `stories/R/R-43.md` with the shared R-32 sessions under
+`R32_ROOT`. It writes to `proofshape-data/r43/shared-sweep.*`. The original local results
+are retained under `proofshape-data/r43/local-sweep/`.
+**Result:** Review reproduced the main trends on the shared R-32 sessions. A separate rerun on
+older local inputs reversed the 1.5 mm coverage trend. The story reports the shared sessions
+as primary and gives the confidence, alignment RMS, and per-wall spread for context.
+**Concluded:** The screening evidence does not support changing the served grid.
+**Next:** Compare paired caliper edge error across mesh stages with the same physical walls.
