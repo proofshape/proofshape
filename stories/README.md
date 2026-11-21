@@ -478,7 +478,7 @@ freeze, as R-41 and R-42 did. `stories/P/P-35.md` has the capacity note.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [I-13](I/I-13.md) | Orientation ambiguity uses coverage, not inlier RMSE alone (#407) | 3 h | I-05 | Done | @dalwalyk |
-| [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Claimed | @mbj1994 |
+| [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Done | @mbj1994 |
 
 ---
 
@@ -503,7 +503,7 @@ Two more pieces of work have to land by Dec 2:
 |---|---|---|---|---|---|
 | [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
 | [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
-| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Ready | _unclaimed_ |
+| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Claimed | @mbj1994 |
 
 ---
 
