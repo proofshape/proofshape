@@ -531,7 +531,7 @@ floors measured on the verdict's own quantity, and the outline margin (D-078, D-
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
-| [I-15](I/I-15.md) | CAD alignment starts from the part, not from the centre of everything in the model | 4 h | I-05, I-13 | Ready | _unclaimed_ |
+| [I-15](I/I-15.md) | CAD alignment starts from the part, not from the centre of everything in the model | 4 h | I-05, I-13 | Claimed | @TabeenRaoof |
 
 ---
 
