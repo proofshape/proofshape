@@ -520,10 +520,15 @@ script that re-runs it.
   correction rather than adding a feature, so it can land before the Dec 3–4 code freeze. Whether
   it is on in the served path is a team decision, with a condition on the CAD alignment that
   P-41's run doesn't meet yet.
+- **I-15** is that condition. The alignment search starts from the centre of everything in the
+  model, and on six of the ten parts 12 to 44% of the Observed model is stray surface near the
+  board. With R-44's correction on and nothing else changed, the G-05 control comes out 180° off
+  with no ambiguity flag.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
+| [I-15](I/I-15.md) | CAD alignment starts from the part, not from the centre of everything in the model | 4 h | I-05, I-13 | Claimed | @TabeenRaoof |
 
 ---
 
