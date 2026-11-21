@@ -1,6 +1,6 @@
 # Accuracy review: ten calipered parts on `main`, 2026-11-20
 
-P-40. Measured by @TabeenRaoof on the M2 Max (`mps`), on `main` at `607450a`, with
+P-41. Measured by @TabeenRaoof on the M2 Max (`mps`), on `main` at `607450a`, with
 `GEMINI_API_KEY` unset. The tables in sections 2 and 3 were then produced again from this
 story's branch at `89d0de4`, which differs from `607450a` in story files only. Everything here
 is one capture per part. Nothing in this document is a decision, and no threshold changes

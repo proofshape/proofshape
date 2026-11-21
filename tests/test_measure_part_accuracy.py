@@ -1,4 +1,4 @@
-"""Unit tests for P-40's measurement script. All synthetic: no GPU, no captures, no fixtures.
+"""Unit tests for P-41's measurement script. All synthetic: no GPU, no captures, no fixtures.
 
 `run` itself (one capture through the real pipeline) is a written check, recorded in
 docs/accuracy-review-2026-11-20.md: it needs the model weights and the photographs, the same

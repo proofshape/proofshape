@@ -1,7 +1,7 @@
-"""P-40: measure what a printed part reads against its own CAD, the way the verdict sees it, and
+"""P-41: measure what a printed part reads against its own CAD, the way the verdict sees it, and
 how far each photo sits from where the board says it is.
 
-P-40's accuracy review (docs/accuracy-review-2026-11-20.md) needed two measurements nothing in
+P-41's accuracy review (docs/accuracy-review-2026-11-20.md) needed two measurements nothing in
 the repo produced, and both were first made in a scratch session. This script is those two
 measurements as committed, tested code, so a second member can re-run the review's tables instead
 of taking them on trust (the same reason R-33's hand classification became
@@ -129,7 +129,7 @@ def fit_rigid(
 
     Kabsch's method, with the usual determinant guard so a reflection is never returned. No
     scale: R-44 corrects where a photo sits, not how big its depth is, and the review found a
-    scaled fit bought nothing a rigid one didn't (P-40's notes).
+    scaled fit bought nothing a rigid one didn't (P-41's notes).
 
     Coplanar points are fine -- ChArUco corners always are -- as long as they are not all on one
     line, which is refused rather than answered with an arbitrary rotation about that line.
@@ -756,7 +756,7 @@ def run_part(capture_dir: Path, cad_path: Path, out_dir: Path) -> dict[str, Any]
         ),
     )
     record = {
-        "story": "P-40",
+        "story": "P-41",
         "commit": _current_commit(),
         "capture_dir": str(capture_dir),
         "frame_count": json.loads(
@@ -881,7 +881,7 @@ def report_corners(out_dirs: list[Path], *, min_corners: int) -> list[dict[str, 
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="P-40: measure a part against its own CAD, and each photo against the board."
+        description="P-41: measure a part against its own CAD, and each photo against the board."
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
 
