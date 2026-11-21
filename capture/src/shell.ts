@@ -646,10 +646,24 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         agentConversation.transportUnavailable();
         return;
       }
-      // C-22 mirrors A-07's finished field for the future D-031 wire, but does not make that
-      // mock-only field drive session lifecycle yet. The real phone contract must define whether
-      // the service has already finished the session and how reconstruction should be resumed.
       agentConversation.show(result.body);
+      // A-15 / v1.9: A-07 may finish only after its coverage tool reports the orbit complete.
+      // When it does, the server has already marked the session finished and queued
+      // reconstruction. Move the phone into the same lifecycle state as a successful manual
+      // Finish instead of allowing one more upload to hit session_already_finished.
+      if (result.body.finished && !sessionFinishing) {
+        sessionFinishing = true;
+        updateCaptureAvailability();
+        updateFinishAvailability();
+        if (activeSession !== null && activeSession.sessionId === sessionId) {
+          activeSession.phase = "finished";
+          persistActiveSession();
+        }
+        setStatus(finishStatus, "Capture assistant finished the session.", "info");
+        releaseCamera();
+        gyroOverlayHandle.dispose();
+        void runReconstructionPolling();
+      }
     } catch {
       if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
         return;
