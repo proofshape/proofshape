@@ -93,13 +93,19 @@ def test_model_reply_is_persisted_and_get_is_read_only(tmp_path):
 @pytest.mark.parametrize(
     ("caller_factory", "timeout_s", "reason"),
     [
-        (lambda: (lambda _state: (_ for _ in ()).throw(RuntimeError("boom"))), 1.0, "model_error"),
         (
-            lambda: (lambda _state: (time.sleep(0.05), _reply(done=True, message="late"))[1]),
+            lambda: lambda _state: (_ for _ in ()).throw(RuntimeError("boom")),
+            1.0,
+            "model_error",
+        ),
+        (
+            lambda: (
+                lambda _state: (time.sleep(0.05), _reply(done=True, message="late"))[1]
+            ),
             0.01,
             "timeout",
         ),
-        (lambda: (lambda _state: _reply(tool="coverage_report")), 1.0, "loop_detected"),
+        (lambda: lambda _state: _reply(tool="coverage_report"), 1.0, "loop_detected"),
     ],
 )
 def test_each_a07_fallback_reason_is_served(
