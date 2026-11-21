@@ -510,21 +510,22 @@ Two more pieces of work have to land by Dec 2:
 ## Accuracy review on the ten calipered parts (P-41)
 
 On 2026-11-20, `main` (`607450a`) was run on the ten printed parts that have caliper readings,
-each against its own CAD. Top faces read within about 0.2 mm (median absolute deviation). Walls
-read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with ambiguity set
-aside. Most of the wall error is photos disagreeing sideways: R-30 corrects each photo's height
-and tilt, not where it sits in the board plane. `docs/accuracy-review-2026-11-20.md` has the
-measurements, and `scripts/measure_part_accuracy.py` re-runs them.
+each against its own CAD. Each part's top-face vertices scatter 0.10 to 0.35 mm about their own
+median. Walls read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with
+ambiguity set aside. Photos disagree sideways by a median 1.6 mm after R-30, which corrects each
+photo's height and tilt but not where it sits in the board plane. A scratch test that corrected
+it took much of the wall error with it, on seven of the ten parts.
+`docs/accuracy-review-2026-11-20.md` has the measurements, and
+`scripts/measure_part_accuracy.py` re-runs them.
 
 - **R-44** re-anchors each photo to its own board corners before fusion. It completes R-30's
   correction rather than adding a feature, so it can land before the Dec 3–4 code freeze. Whether
   it is on in the served path is a team decision, with a condition on the CAD alignment that
   P-41's run doesn't meet yet.
-- **I-15** is that condition. The alignment search starts from the centre of everything in the
-  model, and on six of the ten parts 12 to 44% of the Observed model is stray surface near the
-  board. With R-44's correction on and nothing else changed, the G-05 control comes out 180° off
-  with no ambiguity flag.
-
+- **I-15** is that condition. The pose search samples the whole model surface, and on six of
+  the ten parts 12 to 44% of the Observed model is stray surface near the board. With R-44's
+  correction on and nothing else changed, the G-05 control comes out 180° off with no ambiguity
+  flag. The story names the stage that loses the pose before it fixes anything.
 - **G-13** measures the verdict's floors and outline margin on the fused mesh, once R-44 and I-15
   have landed. The floors in use (D-073, D-078) were measured on the raw cloud, and the 0 mm
   margin (D-086) on `main`'s meshes. The choice of numbers is inside the story, and the constants
@@ -533,7 +534,7 @@ measurements, and `scripts/measure_part_accuracy.py` re-runs them.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
-| [I-15](I/I-15.md) | CAD alignment starts from the part, not from the centre of everything in the model | 4 h | I-05, I-13 | Claimed | @TabeenRaoof |
+| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 5 h | I-05, I-13 | Claimed | @TabeenRaoof |
 | [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---
