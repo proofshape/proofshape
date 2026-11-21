@@ -199,26 +199,99 @@ export function computeArrowGuidance(
   target: OrbitSlot,
   toleranceDeg: number = DEFAULT_COVERAGE_TOLERANCE_DEG,
 ): ArrowGuidance {
-  const { headingDeg: liveHeadingDeg, elevationDeg: liveElevationDeg } =
-    viewAnglesFromGyro(liveGyro);
-  const elevationDiff = target.elevationDeg - liveElevationDeg;
-  const elevationOnTarget = Math.abs(elevationDiff) <= toleranceDeg;
-
-  if (target.elevationDeg >= AZIMUTH_EXEMPT_ELEVATION_DEG) {
-    if (elevationOnTarget) {
-      return { onTarget: true };
-    }
-    return { onTarget: false, azimuthDeltaDeg: 0, elevationDeltaDeg: elevationDiff };
-  }
-
-  const liveAzimuthDeg = relativeAzimuthDeg(liveHeadingDeg, anchorHeadingDegValue);
-  const rawAzimuthDiff = target.azimuthDeg - liveAzimuthDeg;
-  // Signed shortest path around the circle, in (-180, 180].
-  const azimuthDiff = ((((rawAzimuthDiff + 180) % 360) + 360) % 360) - 180;
-  const azimuthOnTarget = Math.abs(azimuthDiff) <= toleranceDeg;
-
+  const deltas = signedDeltasToTarget(liveGyro, anchorHeadingDegValue, target);
+  const elevationOnTarget = Math.abs(deltas.elevationDeltaDeg) <= toleranceDeg;
+  // At the pole azimuthDeltaDeg is 0, so this reduces to the elevation check alone.
+  const azimuthOnTarget = Math.abs(deltas.azimuthDeltaDeg) <= toleranceDeg;
   if (azimuthOnTarget && elevationOnTarget) {
     return { onTarget: true };
   }
-  return { onTarget: false, azimuthDeltaDeg: azimuthDiff, elevationDeltaDeg: elevationDiff };
+  return { onTarget: false, ...deltas };
+}
+
+interface SignedDeltas {
+  readonly azimuthDeltaDeg: number;
+  readonly elevationDeltaDeg: number;
+}
+
+// The signed deltas computeArrowGuidance reports, computed whether or not the reading is within
+// tolerance (computeTargetGuidance needs them for a reading that is).
+function signedDeltasToTarget(
+  liveGyro: Gyro,
+  anchorHeadingDegValue: number,
+  target: OrbitSlot,
+): SignedDeltas {
+  const { headingDeg: liveHeadingDeg, elevationDeg: liveElevationDeg } =
+    viewAnglesFromGyro(liveGyro);
+  const elevationDeltaDeg = target.elevationDeg - liveElevationDeg;
+  if (target.elevationDeg >= AZIMUTH_EXEMPT_ELEVATION_DEG) {
+    return { azimuthDeltaDeg: 0, elevationDeltaDeg };
+  }
+  const liveAzimuthDeg = relativeAzimuthDeg(liveHeadingDeg, anchorHeadingDegValue);
+  const rawAzimuthDiff = target.azimuthDeg - liveAzimuthDeg;
+  // Signed shortest path around the circle, in (-180, 180].
+  const azimuthDeltaDeg = ((((rawAzimuthDiff + 180) % 360) + 360) % 360) - 180;
+  return { azimuthDeltaDeg, elevationDeltaDeg };
+}
+
+// C-26 device check (2026-11-20): computeArrowGuidance alone can say "on target" for a photo that
+// coverage won't count. The 45 deg and 70 deg rings are 25 deg apart with a 15 deg tolerance, so
+// a reading at about 58 deg is within tolerance of both, and computeCoverage credits it to the
+// nearer ring by elevation (nearestEligibleSlotIndex), which can be an already-covered slot. On
+// @TabeenRaoof's iPhone the first photo (about 78 deg) covered the 70 deg ring, each photo held at
+// 58 deg was credited to it again, and with C-27 the app captured every 1.5 s without the count
+// moving. Green has to mean "this photo counts", so a reading is only on target when coverage
+// would credit it to the target itself. Otherwise it is reported with its deltas (which are
+// within tolerance, so "near"), and the arrow points toward the target.
+export function computeTargetGuidance(
+  liveGyro: Gyro,
+  anchorHeadingDegValue: number,
+  orbit: readonly OrbitSlot[],
+  targetIndex: number,
+  toleranceDeg: number = DEFAULT_COVERAGE_TOLERANCE_DEG,
+): ArrowGuidance {
+  const target = orbit[targetIndex];
+  if (!target) {
+    throw new RangeError(`No orbit slot at index ${String(targetIndex)}.`);
+  }
+  const guidance = computeArrowGuidance(liveGyro, anchorHeadingDegValue, target, toleranceDeg);
+  if (!guidance.onTarget) {
+    return guidance;
+  }
+  const creditedIndex = nearestEligibleSlotIndex(
+    liveGyro,
+    anchorHeadingDegValue,
+    orbit,
+    toleranceDeg,
+  );
+  if (creditedIndex === targetIndex) {
+    return guidance;
+  }
+  return {
+    onTarget: false,
+    ...signedDeltasToTarget(liveGyro, anchorHeadingDegValue, target),
+  };
+}
+
+// C-26: how close the live reading is to the next target, for the viewfinder's frame colour.
+// "on-target" is computeTargetGuidance's onTarget, so green means exactly "a photo here counts
+// toward coverage". "near" is within NEAR_TOLERANCE_MULTIPLIER times the same tolerance on both
+// axes; anything further is "far". The overlay adds "idle" (no anchor yet) and "complete".
+export type TargetLevel = "on-target" | "near" | "far";
+export type GuidanceLevel = TargetLevel | "idle" | "complete";
+
+export const NEAR_TOLERANCE_MULTIPLIER = 2;
+
+export function guidanceLevel(
+  guidance: ArrowGuidance,
+  toleranceDeg: number = DEFAULT_COVERAGE_TOLERANCE_DEG,
+): TargetLevel {
+  if (guidance.onTarget) {
+    return "on-target";
+  }
+  const worstDeltaDeg = Math.max(
+    Math.abs(guidance.azimuthDeltaDeg),
+    Math.abs(guidance.elevationDeltaDeg),
+  );
+  return worstDeltaDeg <= toleranceDeg * NEAR_TOLERANCE_MULTIPLIER ? "near" : "far";
 }

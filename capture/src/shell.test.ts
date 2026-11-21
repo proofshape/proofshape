@@ -2033,4 +2033,47 @@ describe("mountAppShell", () => {
     expect(mounted.state.sessionId).not.toBeNull();
     expect(window.sessionStorage.getItem(CAPTURE_SESSION_STORAGE_KEY)).toBeNull();
   });
+
+  // C-26: the viewfinder's frame colour and the round shutter.
+  function viewfinderGuidance(): string | undefined {
+    return document.getElementById("shell-viewfinder")?.dataset.guidance;
+  }
+
+  it("C-26: the viewfinder frame is idle before the first photo, then follows far, near and on-target", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    // alpha 0, beta 45 -> heading 0, elevation 45: DEFAULT_ORBIT's slot 0.
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    expect(viewfinderGuidance()).toBe("idle");
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    // Next target is slot 1 (azimuth 45); the live reading is still at 0, 45 degrees away.
+    expect(viewfinderGuidance()).toBe("far");
+
+    dispatchOrientation(20, 45, 0);
+    expect(viewfinderGuidance()).toBe("near");
+
+    dispatchOrientation(45, 45, 0);
+    expect(viewfinderGuidance()).toBe("on-target");
+  });
+
+  it("C-26: the shutter is inside the viewfinder and keeps its id and accessible name", () => {
+    const mounted = mount();
+    expect(mounted.captureButton.closest("#shell-viewfinder")).not.toBeNull();
+    expect(mounted.captureButton.getAttribute("aria-label")).toBe("Capture frame");
+    expect(mounted.captureButton.textContent.trim()).toBe("Capture frame");
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(document.querySelector("#shell-viewfinder #shell-gyro-overlay")).not.toBeNull();
+  });
+
+  it("C-26: Finish session is the large primary button and keeps its id and name", () => {
+    const mounted = mount();
+    expect(mounted.finishButton.classList.contains("primary-action")).toBe(true);
+    expect(mounted.finishButton.textContent.trim()).toBe("Finish session");
+    expect(mounted.finishButton.disabled).toBe(true);
+  });
 });
