@@ -238,6 +238,7 @@ Full detail in each story file.
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Done | @TabeenRaoof |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Cut | _unclaimed_ |
 | [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Done | @TabeenRaoof |
+| [G-12](G/G-12.md) | Print, caliper and photograph a top-face bump for X-03's planted defect | 3 h | G-05, G-09 | Claimed | @TabeenRaoof |
 
 ---
 
@@ -491,10 +492,10 @@ work. `stories/P/P-37.md` has the capacity note.
 
 Two more pieces of work have to land by Dec 2:
 
-- **A printed top-face bump for X-03** is #407's option 1, still for the team to choose. On the
-  measured pair and specs, the re-shot 4 mm hole shift reads like its control (#421). Its story is
-  a draft on #407, not a row here, so it can't be claimed before the team chooses. Decide it there
-  now, because it needs the lab before X-03 can run.
+- **A printed top-face bump for X-03** is #407's option 1. On the measured pair and specs, the
+  re-shot 4 mm hole shift reads like its control (#421). *2026-11-21:* the team took the option.
+  It is G-12, in the ground-truth table, claimed by @TabeenRaoof. Its claim amended D-069 and
+  re-worded X-03's first criterion, so it merged only with both other members' approval.
 - **A-15** serves the capture agent (#406). It's required scope, because generative-AI components
   are never cut (`AGENTS.md`, D-017). It's a new route after M5's freeze and a D-031 round, so it
   merges only at the Dec 2 boundary, by named exception.
@@ -620,7 +621,7 @@ Full detail in each story file.
 | [R-41](R/R-41.md) | Scale agreement compares the CAD ratio the right way round (#181, D-039) | 2 h | nothing | Done | @TabeenRaoof |
 | [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Claimed | @mbj1994 |
 | [R-43](R/R-43.md) | Measure edge loss and test a finer fusion grid | 4 h | R-32, R-33, R-37, R-38 | Claimed | @dalwalyk |
-| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42, I-13, I-14 | Blocked | _unclaimed_ |
+| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42, I-13, I-14, G-12 | Blocked | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
