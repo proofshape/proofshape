@@ -2977,11 +2977,11 @@ isn't met with this part at these specs.
 **Who:** @dalwalyk
 **What changed:** Claim #424 merged as `553c189`. Replayed saved s-04 and s-05 inputs
 with 2.0, 1.5 and 1.0 mm fusion voxels and fixed 8 mm truncation.
-**Command:** Run the Python replay block in `stories/R/R-43.md`, which identifies the saved
-depth, alignment, board poses and CAD. The original reports are in
-`/tmp/proofshape-r43-sweep.2JvUAY` outside git.
-**Result:** All six replays completed. The 1.0 mm grid reduced Observed vertex coverage on both.
-At 1.5 mm the median spread narrowed on s-05 and widened on s-04. The story records per-wall
-spread and the independent R-32-input review result.
+**Command:** Run the block in `stories/R/R-43.md` with the shared R-32 sessions under
+`R32_ROOT`. It writes to `proofshape-data/r43/shared-sweep.*`. The original local results
+are retained under `proofshape-data/r43/local-sweep/`.
+**Result:** Review reproduced the main trends on the shared R-32 sessions. A separate rerun on
+older local inputs reversed the 1.5 mm coverage trend. The story reports the shared sessions
+as primary and gives the confidence, alignment RMS, and per-wall spread for context.
 **Concluded:** The screening evidence does not support changing the served grid.
 **Next:** Compare paired caliper edge error across mesh stages with the same physical walls.
