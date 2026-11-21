@@ -229,8 +229,8 @@ change that.
 **Filed with this review:**
 
 - **R-44** (claimed, @TabeenRaoof): rigid per-photo corner re-anchoring in `fuse_run`.
-- **I-15** (Ready): the CAD alignment starts from the part, not from stray surface. R-44's
-  default waits on it.
+- **I-15** (claimed, @TabeenRaoof): the CAD alignment starts from the part, not from stray
+  surface. R-44's default waits on it, so it is worked first.
 
 **Proposals for the team, not filed:**
 
