@@ -231,14 +231,15 @@ change that.
 - **R-44** (claimed, @TabeenRaoof): rigid per-photo corner re-anchoring in `fuse_run`.
 - **I-15** (claimed, @TabeenRaoof): the CAD alignment starts from the part, not from stray
   surface. R-44's default waits on it, so it is worked first.
+- **G-13** (Blocked on R-44 and I-15, filed on 2026-11-21): measure the floors and the outline
+  margin on the verdict's own quantity, over the ten calipered parts on the pipeline as served.
+  It proposes amendments to D-073, D-078 and D-086, and the constants change only if both other
+  members approve. What prompted it: on the re-anchored meshes a 2 mm margin gives two-sided
+  wall readings (medians −0.5 to +0.3 mm), roughly doubles the measured surface on several
+  parts, and keeps worst readings at or under 2.7 mm on seven of the eight prisms.
 
 **Proposals for the team, not filed:**
 
-- **Measure the floors on the verdict's own quantity**, after R-44 and I-15: per-vertex wall and
-  top-face deviation over the ten calipered parts. It would propose amendments to D-078.
-- **Revisit D-086's margin after R-44.** On the re-anchored meshes a 2 mm margin gives two-sided
-  wall readings (medians −0.5 to +0.3 mm), roughly doubles the measured surface on several
-  parts, and keeps worst readings at or under 2.7 mm on seven of the eight prisms.
 - **Bin by CAD face, not by height.** It needs no contract change, unlike a height / in-plane
   field on spec features.
 - **Symmetric CADs**: whether a pose that maps the CAD onto itself should count as ambiguous.

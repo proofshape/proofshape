@@ -525,13 +525,16 @@ measurements, and `scripts/measure_part_accuracy.py` re-runs them.
   board. With R-44's correction on and nothing else changed, the G-05 control comes out 180° off
   with no ambiguity flag.
 
-The review also lists work that needs a choice from the team first, and files none of it: the
-floors measured on the verdict's own quantity, and the outline margin (D-078, D-086).
+- **G-13** measures the verdict's floors and outline margin on the fused mesh, once R-44 and I-15
+  have landed. The floors in use (D-073, D-078) were measured on the raw cloud, and the 0 mm
+  margin (D-086) on `main`'s meshes. The choice of numbers is inside the story, and the constants
+  change only if both other members approve.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
 | [I-15](I/I-15.md) | CAD alignment starts from the part, not from the centre of everything in the model | 4 h | I-05, I-13 | Claimed | @TabeenRaoof |
+| [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---
 
