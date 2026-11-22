@@ -3009,3 +3009,25 @@ as primary and gives the confidence, alignment RMS, and per-wall spread for cont
 **Result:** 1.8 h actual (no estimate made, D-052), measured from session timestamps. @dalwalyk's fresh run of s-04 and s-05 read the wall figure 0.13 and 0.12 mm away from the first run's.
 **Concluded:** The wall error has a contributor that the board's corners can correct, and so far only a scratch test says so. R-44 has to reproduce it in the repository, and its default waits on I-15. No code on the served path, no threshold and no decision changed.
 **Next:** I-15 first, then R-44. I-15's first commit restates how a pose is judged, with the two findings above. G-13 stays Blocked until both are Done.
+
+## 2026-11-22 — C-26 Done: the capture viewfinder's arrow, guidance-coloured frame, round shutter and Finish button (PR #418, PR #419)
+
+**Who:** @TabeenRaoof. @mbj1994 and @dalwalyk reviewed, and @dalwalyk ran a phone check.
+**What changed:**
+- **The viewfinder:**
+  - a large teal arrow drawn over the camera preview, which is never cropped;
+  - a frame around the preview coloured by guidance: green when aligned with the next target, amber within twice the 15° tolerance, red beyond, grey before the first frame;
+  - a round shutter at least 72 px across;
+  - a centred "Orbit complete" banner, and a full-width Finish button.
+
+  Every existing id and accessible name is kept.
+- **A bug found from recorded sessions, and fixed:** the 45° and 70° rings overlap. A reading at about 58° showed green for the 45° target, while coverage credited the photo to an already-covered 70° slot. `computeTargetGuidance` now shows on target only when coverage's own nearest-slot rule would credit the target. Tests: the recorded readings, plus a sweep of 52,416 orientations.
+- **Green re-worded at @dalwalyk's review of #418:** green means the phone is aligned with the target now. A photo counts toward coverage only once it is captured and accepted, using its own gyro reading.
+- **Work in progress (D-064):** C-26 was recorded as waiting on review only from 2026-11-20, after its implementation was finished, so it wasn't a third active story beside R-44 and I-15.
+- **C-27 (auto-capture) is not in this.** It is a draft on #420, after the Nov 13 feature freeze, unless the team makes an exception.
+- **How it merged:** the claim is #418 (`3070a93`), and the implementation and close-out #419 (`6c38032`). #419 was stacked on the claim's branch and retargeted to `main` after the claim merged.
+
+**Command / how to reproduce:** `npm test` in `capture/` (vitest). The device checks are written checks in `stories/C/C-26.md`.
+**Result:** 4 h actual against an estimate of 2 h, measured by @TabeenRaoof. The extra 2 h went to the banner and Finish button, added after the first phone run, and to the ring-overlap fix. Final device check: iPhone 16, iOS 26.6, held in landscape for the whole session. 13 frames reached 13/13, including 7 inside the overlap band, and Finish built the model.
+**Concluded:** the guidance the capture screen shows now agrees with what coverage counts. The one failing sequence that wasn't repeated on the phone (a steep first photo, then a hold at about 58°) is covered by tests built from the recorded readings.
+**Next:** nothing for C-26. C-27 stays a draft until the team decides.
