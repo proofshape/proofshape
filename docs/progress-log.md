@@ -2985,3 +2985,27 @@ older local inputs reversed the 1.5 mm coverage trend. The story reports the sha
 as primary and gives the confidence, alignment RMS, and per-wall spread for context.
 **Concluded:** The screening evidence does not support changing the served grid.
 **Next:** Compare paired caliper edge error across mesh stages with the same physical walls.
+
+## 2026-11-21 — P-41 Done: what ten calipered parts read on `main`, a likely cause of the wall error, and the stories it calls for (PR #426, PR #427)
+
+**Who:** @TabeenRaoof. @dalwalyk ran the script a second time, and @dalwalyk and @mbj1994 reviewed.
+**What changed:**
+- **The measurement:** `main` at `607450a` on the ten printed parts with caliper readings, each against its own CAD, one capture per part. The write-up is `docs/accuracy-review-2026-11-20.md`.
+- **What a good part reads:** top-face vertices scatter 0.10 to 0.35 mm about their own median. Wall vertices read 0.1 to 2.1 mm inside the CAD, and single readings reach 5.6 mm. A good part first Passes at 3.7 to 6 mm with ambiguity set aside. Six of the ten are symmetric and flag ambiguous, as D-061 intends.
+- **A likely contributor to the wall error:** after R-23, a photo's own board corners land a median 2.2 mm from where the board says they are. R-30 corrects each photo's height and tilt, and leaves about 1.6 mm in the board plane.
+- **A scratch test, not repo code:** re-anchoring each photo to its own corners took the typical worst reading on a part from 4.3 to 1.9 mm, and seven parts Pass at 3.7 mm against three today. Three parts read worse. The test doesn't measure how much of the served pipeline's wall error comes from this cause.
+- **Surface that isn't the part reaches the CAD pose search:** on six parts, 12 to 44% of the Observed model is surface a few millimetres above the board. With the correction on, the G-05 control came out 180° off with no ambiguity flag.
+- **The script:** `scripts/measure_part_accuracy.py`, with 38 unit tests, reproduces the per-part table and the per-photo corner residuals.
+- **Stories:** R-44 (6 h) and I-15 (5 h) are claimed by @TabeenRaoof (#426). G-13 (5 h) is filed Blocked on both, and unclaimed.
+- **Corrections at review:**
+  - A deviation from a part's own CAD is not reconstruction accuracy. It also holds the print's own departure from nominal and the registration error.
+  - Every photo is accounted for: 284 photos are 281 measured, 1 skipped and 2 rejected.
+  - "Most of the wall error" became "a likely contributor".
+  - I-15's diagnosis was rewritten to follow `registration.py`.
+- **Found after the write-up, and not in it (2026-11-21):** the golden s-04 model is the mirror image of its CAD, and on `main` the CAD sits about 10° off s-05's own walls and about 15° off the hexagon's. Both are scratch results, posted as comments on #426 and #427. I-15 takes them up.
+- **How it merged:** the claim is #426 (`1b48c68`), and the write-up #427 (`7d28c8d`). #427's branch held #426's commits, so updating it from `main` after #426 merged dismissed both approvals. It merged on a fresh approval of an unchanged tree.
+
+**Command / how to reproduce:** section 8 of the write-up: `python scripts/measure_part_accuracy.py run`, then `report` and `corners`, on the captures in the committed manifests.
+**Result:** 1.8 h actual (no estimate made, D-052), measured from session timestamps. @dalwalyk's fresh run of s-04 and s-05 read the wall figure 0.13 and 0.12 mm away from the first run's.
+**Concluded:** The wall error has a contributor that the board's corners can correct, and so far only a scratch test says so. R-44 has to reproduce it in the repository, and its default waits on I-15. No code on the served path, no threshold and no decision changed.
+**Next:** I-15 first, then R-44. I-15's first commit restates how a pose is judged, with the two findings above. G-13 stays Blocked until both are Done.
