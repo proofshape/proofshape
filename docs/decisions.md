@@ -1578,8 +1578,9 @@ stay cut.
 its control at #407's specs (#421). P-41's review found the same under every fusion and
 alignment variant it tried, because the control's own 12 mm hole is bridged over in the
 reconstruction, at +5.1 to +5.6 mm. A top-face bump is judged against the height floor (D-073).
-#407's what-if, which planted the bump into the control's real session, found a tolerance window
-where the control Passes and the 8 mm bump Fails. This decision allowed more prints only "unless
+#407's what-if, which planted the bump into the control's real session, suggested a tolerance
+window where the control Passes and the 8 mm bump Fails. That motivates testing the print. It
+establishes neither a physical result nor a bound. This decision allowed more prints only "unless
 time is left after M6". This one is taken before M6, because X-03 has to run before it.
 *What doesn't change:* the report still states that the hole-shift test has one rung, and what
 that rung measured. Nothing is claimed for the bump until the print is measured (G-12's last
