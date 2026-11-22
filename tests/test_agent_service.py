@@ -254,4 +254,3 @@ def test_agent_message_finished_reflects_session_status_after_manual_finish(tmp_
         after = client.get(f"/v1/sessions/{sid}/agent-message")
         assert after.status_code == 200
         assert after.json()["finished"] is True
-
