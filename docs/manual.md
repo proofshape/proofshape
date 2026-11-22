@@ -278,9 +278,12 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    each a few frames late; the last frame's check finishes after you've stopped uploading, so
    it is never shown. A tip stays until a newer one replaces it. It is advice only: it never
    rejects a frame or blocks capture. With no Gemini key on the server, no tips appear.
-5. **Tap Finish.** The camera turns off (the phone's green camera indicator goes away), and
-   reconstruction runs once, on the whole set. The page waits for the result and shows it (§8.1).
-   The real service needs at least 3 accepted frames; the full orbit is what the guidance is for.
+5. **Finish capture.** A-15 is still in review: on today's `main`, tap **Finish**. Once
+   A-15's D-031 round lands, the service finishes the session automatically when the full guided
+   orbit is covered, whether Gemini or A-08's deterministic fallback supplied the guidance. The
+   phone then turns the camera off and starts reconstruction polling. Manual **Finish** remains a
+   recovery path before automatic finish. The real service needs at least 3 accepted frames; the
+   full orbit is what the guidance is for.
 
 **Known limits of capture today:**
 - **Frames are captured at the preview's size, 480 × 640 on the iPhones tried so far**, because
