@@ -712,7 +712,8 @@ def create_app(
                     min_frames=MIN_FINISH_FRAMES,
                     timeout_s=configured_agent_timeout_s,
                 )
-            except Exception:  # optional guidance must never turn an accepted upload into a 500
+            # Optional guidance must never turn an accepted upload into a 500.
+            except Exception:
                 logger.exception("Capture agent turn failed for session %s", session_id)
                 return
 
