@@ -514,8 +514,9 @@ each against its own CAD. Each part's top-face vertices scatter 0.10 to 0.35 mm 
 median. Walls read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with
 ambiguity set aside. Photos disagree sideways by a median 1.6 mm after R-30, which corrects each
 photo's height and tilt but not where it sits in the board plane. A scratch test that corrected
-it took much of the wall error with it, on seven of the ten parts. P-41's pull request adds the write-up and the
-script that re-runs it.
+it took much of the wall error with it, on seven of the ten parts.
+`docs/accuracy-review-2026-11-20.md` has the measurements, and
+`scripts/measure_part_accuracy.py` re-runs them.
 
 - **R-44** re-anchors each photo to its own board corners before fusion. It completes R-30's
   correction rather than adding a feature, so it can land before the Dec 3–4 code freeze. Whether
@@ -525,11 +526,16 @@ script that re-runs it.
   the ten parts 12 to 44% of the Observed model is stray surface near the board. With R-44's
   correction on and nothing else changed, the G-05 control comes out 180° off with no ambiguity
   flag. The story names the stage that loses the pose before it fixes anything.
+- **G-13** measures the verdict's floors and outline margin on the fused mesh, once R-44 and I-15
+  have landed. The floors in use (D-073, D-078) were measured on the raw cloud, and the 0 mm
+  margin (D-086) on `main`'s meshes. The choice of numbers is inside the story, and the constants
+  change only if both other members approve.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
 | [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 5 h | I-05, I-13 | Claimed | @TabeenRaoof |
+| [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---
 
@@ -710,7 +716,7 @@ Full detail in each story file.
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
-| [P-41](P/P-41.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Claimed | @TabeenRaoof |
+| [P-41](P/P-41.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Done | @TabeenRaoof |
 
 ---
 
