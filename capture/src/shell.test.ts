@@ -1651,6 +1651,158 @@ describe("mountAppShell", () => {
     });
   });
 
+  it("moves into reconstruction polling when the agent reports the session finished", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/agent-message")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished: true,
+                fallback_reason: null,
+                message: "Coverage complete.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("finish transition not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
+  it("recovers an upload session_already_finished response instead of forgetting the session", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                code: "session_already_finished",
+                message: "The session is already finished.",
+              }),
+              { status: 422, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("already finished")) {
+        throw new Error("recovery transition not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.state.sessionId).not.toBeNull();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
+  it("recovers a manual Finish race when the agent already finished the session", async () => {
+    const mounted = await startSuccessfulSession();
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.endsWith("/finish")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                code: "session_already_finished",
+                message: "The session is already finished.",
+              }),
+              { status: 409, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("already finished")) {
+        throw new Error("finish race recovery not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
   it("keeps the assistant panel hidden when today's real-style service has no agent route", async () => {
     const mounted = await startSuccessfulSession();
     stubCanvasContext();
