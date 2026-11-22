@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from recon import mesh_cleanup, provenance
-from scripts.measure_r43_edges import fit_wall_edges, observed_mesh, signed_edge_errors
+from recon.cad_size_check import PrismMeasurement
+from scripts.measure_r43_edges import (
+    WallEdgeFit,
+    fit_wall_edges,
+    measure_stage,
+    observed_mesh,
+    signed_edge_errors,
+)
 
 
 def _edges(footprint: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
@@ -139,3 +147,76 @@ def test_observed_mesh_counts_area_only_for_fully_observed_faces(
     np.testing.assert_array_equal(points, vertices[:3])
     assert observed_area_mm2 == pytest.approx(2.0)
     assert total_area_mm2 == pytest.approx(8.0)
+
+
+@pytest.mark.parametrize(("residual_mm", "expected_gate_mm"), [(1.0, 5.0), (3.0, 9.0)])
+def test_measure_stage_uses_board_relative_band_and_only_measured_edges(
+    monkeypatch: pytest.MonkeyPatch, residual_mm: float, expected_gate_mm: float
+) -> None:
+    posed_edges = _edges(
+        np.array(
+            [
+                [0.0, 0.0],
+                [0.0, 10.0],
+                [5.0, 15.0],
+                [15.0, 15.0],
+                [20.0, 10.0],
+                [20.0, 0.0],
+            ]
+        )
+    )
+    seed = PrismMeasurement(20.0, 20.0, 1.0, residual_mm, 0.0, [], [], posed_edges)
+    plane = (1.0, 0.0, 10.0)
+    heights = np.array([4.0, 6.0, 7.0, 13.0, 14.0, 16.0])
+    xy = np.column_stack((np.arange(len(heights)), np.ones(len(heights))))
+    points = np.column_stack((xy, xy[:, 0] + plane[2] - heights))
+    lines = []
+    for index, (start, end) in enumerate(posed_edges):
+        direction = end - start
+        lines.append(
+            None if index == 1 else (start, direction / np.linalg.norm(direction))
+        )
+
+    def fit_fixture(band, edges, gate_mm) -> WallEdgeFit:
+        # On this sloped board only the two interior-height rows are strictly within the band.
+        np.testing.assert_array_equal(band, xy[[2, 3]])
+        assert edges is posed_edges
+        assert gate_mm == expected_gate_mm
+        return WallEdgeFit(
+            lengths_mm=(None, None, None, 8.0, 10.0, 20.0),
+            angle_offsets_deg=(0.0, None, 0.0, 0.0, 0.0, 0.0),
+            first_fit_angle_offsets_deg=(0.0, None, 0.0, 0.0, 0.0, 0.0),
+            wall_point_counts=(10, 0, 10, 10, 10, 10),
+            lines=tuple(lines),
+            rounds=2,
+            unstable_point_count=0,
+        )
+
+    def size_profiles(cloud, supported, board_plane, height_mm, alignment_residual_mm):
+        # Spread uses the full cloud and skips the unsupported wall in its local indices.
+        np.testing.assert_array_equal(cloud, points)
+        assert (board_plane, height_mm, alignment_residual_mm) == (
+            plane,
+            20.0,
+            residual_mm,
+        )
+        np.testing.assert_array_equal(
+            [start for start, _ in supported],
+            [lines[index][0] for index in (0, 2, 3, 4, 5)],
+        )
+        return [SimpleNamespace(edge_index=1, thickness_median_mm=1.25)]
+
+    monkeypatch.setattr("scripts.measure_r43_edges.fit_wall_edges", fit_fixture)
+    monkeypatch.setattr(
+        "scripts.measure_r43_edges.size.measure_wall_profiles", size_profiles
+    )
+
+    # Edge 4 has a line fit but no caliper measurement. Only edges 3 and 5 contribute.
+    result = measure_stage(
+        points, plane, seed, (10.0, 7.0, 10.0, 10.0, None, 16.0), wall_profiles=True
+    )
+
+    assert result["signed_errors_mm"] == (None, None, None, -2.0, None, 4.0)
+    assert result["measured_edges"] == 2
+    assert result["mean_abs_error_mm"] == pytest.approx(3.0)
+    assert result["wall_spread_mm"] == {2: 1.25}

@@ -38,7 +38,6 @@ class WallEdgeFit:
     lines: tuple[Line | None, ...]
     rounds: int
     unstable_point_count: int
-    converged: bool = True
 
 
 def _direction_degrees(direction: np.ndarray) -> float:
