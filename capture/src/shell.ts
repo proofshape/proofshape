@@ -20,20 +20,38 @@ import {
 } from "./api.js";
 import { mountAgentConversation } from "./agent-conversation.js";
 import { requireElement, requireTyped } from "./dom.js";
-import { checkBlur, checkDuplicate, checkExposure, type FramePixels } from "./frame_gate.js";
+import {
+  checkBlur,
+  checkDuplicate,
+  checkExposure,
+  measureBlurVariance,
+  type FramePixels,
+} from "./frame_gate.js";
 import { requestGyroPermission } from "./gyro.js";
 import {
   describeCreateSession,
   describeFinishSession,
+  describeContinuedSession,
   describeNetworkError,
+  describeSavedSession,
+  describeUploadError,
   describeUploadFrame,
   describeVlmFeedback,
 } from "./messages.js";
+import {
+  browserSessionStorage,
+  clearCaptureSession,
+  loadCaptureSession,
+  saveCaptureSession,
+  type KeyValueStorage,
+  type StoredCaptureSession,
+} from "./session-persistence.js";
 import {
   mountModelViewer,
   type ModelViewerOptions,
   type ModelViewerState,
 } from "./model-viewer.js";
+import { DEFAULT_ORBIT } from "./orbit.js";
 import { mountGyroOverlay, type GyroOverlayHandle } from "./overlay.js";
 import type { Gyro, ReconstructionResult } from "./types.js";
 
@@ -67,6 +85,52 @@ export interface AppShellOptions {
   reconstructionPollIntervalMs?: number;
   reconstructionMaxAttempts?: number;
   modelViewerOptions?: ModelViewerOptions;
+  // C-24: where an in-progress session is kept across a reload. Defaults to the tab's
+  // sessionStorage; tests pass their own, and null turns resume off.
+  captureSessionStorage?: KeyValueStorage | null;
+  // C-25 review calibration aid. When true, store the exact pre-JPEG Laplacian variance for each
+  // server-accepted frame in sessionStorage, keyed by the server frame index. No pixels/photos are
+  // retained. main.ts enables this only with ?blur-debug=1.
+  blurDebug?: boolean;
+  // Test/debug injection only. When omitted, blur-debug uses the browser's sessionStorage.
+  // A null value deliberately represents unavailable storage so the warning path is testable.
+  blurDebugStorage?: KeyValueStorage | null;
+}
+
+export const C25_BLUR_DEBUG_STORAGE_KEY = "proofshape.c25BlurDebug.v1";
+
+export interface C25BlurDebugMeasurement {
+  session_id: string;
+  frame_index: number;
+  pre_jpeg_variance: number;
+  width: number;
+  height: number;
+}
+
+function appendC25BlurDebugMeasurement(
+  storage: KeyValueStorage | null,
+  measurement: C25BlurDebugMeasurement,
+): number | null {
+  if (storage === null) {
+    return null;
+  }
+  let measurements: C25BlurDebugMeasurement[] = [];
+  try {
+    const raw = storage.getItem(C25_BLUR_DEBUG_STORAGE_KEY);
+    if (raw !== null) {
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        measurements = parsed as C25BlurDebugMeasurement[];
+      }
+    }
+    measurements.push(measurement);
+    storage.setItem(C25_BLUR_DEBUG_STORAGE_KEY, JSON.stringify(measurements));
+    return measurements.filter((item) => item.session_id === measurement.session_id).length;
+  } catch {
+    // Debug evidence must never interrupt a supplier capture. The caller surfaces the failure in
+    // the debug-only status line so an operator cannot mistake a partial table for complete data.
+    return null;
+  }
 }
 
 const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
@@ -77,21 +141,38 @@ export const APP_SHELL_HTML = `
     <h2>Start capture session (C-04)</h2>
     <label>Order code <input id="shell-order-code" type="text" /></label>
     <button id="shell-start-button" type="button">Start</button>
+    <div id="shell-resume" hidden>
+      <p id="shell-resume-text"></p>
+      <button id="shell-continue-button" type="button" hidden>Continue session</button>
+      <button id="shell-show-result-button" type="button" hidden>Show result</button>
+      <button id="shell-discard-button" type="button">Start new</button>
+    </div>
     <p id="shell-session-status"></p>
     <p id="shell-camera-status"></p>
     <p id="shell-gyro-status"></p>
-    <video id="shell-camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
-    <button id="shell-capture-button" type="button" disabled>Capture frame</button>
+    <div id="shell-viewfinder" class="viewfinder" data-guidance="idle">
+      <video id="shell-camera-preview" muted playsinline autoplay></video>
+      <div id="shell-gyro-overlay"></div>
+      <button
+        id="shell-capture-button"
+        class="shutter"
+        type="button"
+        aria-label="Capture frame"
+        disabled
+      ><span class="visually-hidden">Capture frame</span></button>
+    </div>
     <p id="shell-capture-status"></p>
+    <p id="shell-blur-debug-status" hidden></p>
     <p id="shell-vlm-hint"></p>
-    <div id="shell-gyro-overlay"></div>
   </section>
   <section>
     <div id="shell-agent-conversation"></div>
   </section>
   <section>
     <h2>Finish and reconstruct (C-10)</h2>
-    <button id="shell-finish-button" type="button" disabled>Finish session</button>
+    <button id="shell-finish-button" class="primary-action" type="button" disabled>
+      Finish session
+    </button>
     <button id="shell-retry-reconstruction-button" type="button" hidden>
       Retry reconstruction
     </button>
@@ -116,12 +197,29 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const orderCodeInput = requireTyped(root, "#shell-order-code", HTMLInputElement, "<input>");
   orderCodeInput.value = options.initialOrderCode ?? "";
   const startButton = requireTyped(root, "#shell-start-button", HTMLButtonElement, "<button>");
+  const resumePanel = requireElement(root, "#shell-resume");
+  const resumeText = requireElement(root, "#shell-resume-text");
+  const continueButton = requireTyped(
+    root,
+    "#shell-continue-button",
+    HTMLButtonElement,
+    "<button>",
+  );
+  const showResultButton = requireTyped(
+    root,
+    "#shell-show-result-button",
+    HTMLButtonElement,
+    "<button>",
+  );
+  const discardButton = requireTyped(root, "#shell-discard-button", HTMLButtonElement, "<button>");
   const sessionStatus = requireElement(root, "#shell-session-status");
   const cameraStatus = requireElement(root, "#shell-camera-status");
   const gyroStatus = requireElement(root, "#shell-gyro-status");
   const cameraPreview = requireTyped(root, "#shell-camera-preview", HTMLVideoElement, "<video>");
   const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
+  const viewfinder = requireElement(root, "#shell-viewfinder");
   const captureStatus = requireElement(root, "#shell-capture-status");
+  const blurDebugStatus = requireElement(root, "#shell-blur-debug-status");
   const vlmHint = requireElement(root, "#shell-vlm-hint");
   const gyroOverlayContainer = requireElement(root, "#shell-gyro-overlay");
   const agentConversationContainer = requireElement(root, "#shell-agent-conversation");
@@ -139,6 +237,29 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
   const agentConversation = mountAgentConversation(agentConversationContainer);
 
+  const blurDebugStorage =
+    options.blurDebug === true
+      ? options.blurDebugStorage === undefined
+        ? browserSessionStorage()
+        : options.blurDebugStorage
+      : null;
+  if (options.blurDebug === true) {
+    blurDebugStatus.hidden = false;
+    if (blurDebugStorage === null) {
+      setStatus(
+        blurDebugStatus,
+        "Blur debug warning: measurement storage is unavailable; paired evidence will be incomplete.",
+        "error",
+      );
+    } else {
+      setStatus(
+        blurDebugStatus,
+        "Blur debug active: measurement storage is available; stored count will update after accepted frames.",
+        "info",
+      );
+    }
+  }
+
   const state: AppState = {
     sessionId: null,
     cameraGranted: false,
@@ -151,12 +272,21 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
   // Scoped to this mount, same reasoning as gyro.ts's own `listening` flag.
   let listeningForGyro = false;
-  // C-09: mounted once here (so the shell shows "Capture the first frame to start." immediately),
+  // C-26: every overlay mount colours the viewfinder's frame by the overlay's guidance level
+  // (capture.css reads data-guidance: idle, far, near, on-target, complete).
+  function mountOverlay(): GyroOverlayHandle {
+    return mountGyroOverlay(gyroOverlayContainer, DEFAULT_ORBIT, {
+      onGuidance: (update) => {
+        viewfinder.dataset.guidance = update.level;
+      },
+    });
+  }
+  // C-09: mounted once here (so the shell shows the first-photo prompt immediately),
   // and remounted at the top of every Start click (below) -- overlay.ts's own comment already
   // anticipates this ("a second mount on the same container... can't leak the first mount's
   // listener"), so a retry after an abandoned session starts coverage tracking fresh rather than
   // carrying over slots covered under a session that never actually happened.
-  let gyroOverlayHandle: GyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
+  let gyroOverlayHandle: GyroOverlayHandle = mountOverlay();
   // C-09: the last frame that passed the *local* gate (frame_gate.ts's own "lastAccepted" naming
   // means "accepted by the gate," not "accepted by the server") -- separate from
   // state.lastCapturedFrame, which is just the most recent capture attempt, accepted or not.
@@ -167,6 +297,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // Capture a few milliseconds after a tap disabled it -- a second tap started a second, concurrent
   // upload. Also gates Finish, which could otherwise run while an upload was still in flight.
   let uploadInFlight = false;
+  // C-25: once any blur-debug measurement fails to store, that run is unusable for calibration.
+  // Keep the warning sticky across later successful writes so the operator cannot miss it.
+  let blurDebugStorageFailures = 0;
   // The reverse race of uploadInFlight, caught on a second pass of the same review: clicking
   // Finish only ever disabled Finish, not Capture, so a capture started right after could still
   // be mid-upload when finishSession resolved -- and that upload's own `finally` called
@@ -178,6 +311,41 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // C-22: only the newest assistant request may update the panel. Accepted frames can trigger
   // overlapping optional guidance calls, so an older reply must never land after a newer one.
   let latestAgentRequestId = 0;
+  // C-24 (#352): the tab's saved copy of the current session, so a reload (iOS does one when the
+  // supplier comes back from another app) can carry on instead of starting over. `savedSession`
+  // is what was found at mount and is offered in the resume panel; `activeSession` is the
+  // session this page is working on now, rewritten after every accepted frame.
+  const captureStorage =
+    options.captureSessionStorage === undefined
+      ? browserSessionStorage()
+      : options.captureSessionStorage;
+  let savedSession: StoredCaptureSession | null = loadCaptureSession(captureStorage);
+  let activeSession: StoredCaptureSession | null = null;
+
+  function persistActiveSession(): void {
+    if (activeSession !== null) {
+      saveCaptureSession(captureStorage, activeSession);
+    }
+  }
+
+  function forgetSession(): void {
+    clearCaptureSession(captureStorage);
+    activeSession = null;
+    savedSession = null;
+  }
+
+  function hideResumePanel(): void {
+    resumePanel.hidden = true;
+    continueButton.hidden = true;
+    showResultButton.hidden = true;
+  }
+
+  function showResumePanel(saved: StoredCaptureSession): void {
+    resumeText.textContent = describeSavedSession(saved);
+    continueButton.hidden = saved.phase !== "capturing";
+    showResultButton.hidden = saved.phase !== "finished";
+    resumePanel.hidden = false;
+  }
   // C-13: the deployed service's glb_url is behind the same bearer-token gate as every other
   // route (D-042/D-048) -- the model viewer needs authToken too, not just the session calls.
   const modelViewerOptions: ModelViewerOptions = {
@@ -238,9 +406,16 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // (TabeenRaoof's PR #137 review). Also gated on uploadInFlight (TabeenRaoof's PR #139 review) --
   // without it, a deviceorientation reading arriving a few milliseconds after a tap disabled this
   // button would immediately re-enable it, mid-upload.
+  // C-24 review (@dalwalyk, PR #375): Capture also needs a live session, as Finish does. Dropping
+  // a dead session nulls `state.sessionId` while the camera and gyro stay live, and Capture
+  // stayed clickable with nothing to upload to. The click handler's "Start a session first."
+  // guard remains as the backstop.
   function updateCaptureAvailability(): void {
     captureButton.disabled =
-      uploadInFlight || sessionFinishing || !(state.cameraPlaying && state.latestGyro !== null);
+      uploadInFlight ||
+      sessionFinishing ||
+      state.sessionId === null ||
+      !(state.cameraPlaying && state.latestGyro !== null);
   }
 
   // Finish must not run while an upload is still in flight (TabeenRaoof's PR #139 review): a tap
@@ -253,7 +428,13 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     finishButton.disabled = uploadInFlight || sessionFinishing || state.sessionId === null;
   }
 
-  startButton.addEventListener("click", () => {
+  type CaptureStart = { kind: "new" } | { kind: "continue"; saved: StoredCaptureSession };
+
+  // C-24: Start and Continue share this, so both keep the iOS gesture rule below (the camera and
+  // motion prompts fire synchronously from the tap) and the same camera/gyro handling. Continue
+  // skips createSession -- the session already exists on the server, which numbers the next
+  // frame from its own count -- and rebuilds coverage from the saved readings instead.
+  function beginCapture(start: CaptureStart): void {
     setStatus(sessionStatus, "", "info");
     setStatus(cameraStatus, "", "info");
     setStatus(gyroStatus, "", "info");
@@ -267,9 +448,17 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // locally accepted under an abandoned session (e.g. a bad order code, then retried) would
     // still anchor duplicate-detection and orbit coverage for the next, real session
     // (overlay.ts's own comment anticipates this exact remount).
-    gyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
+    gyroOverlayHandle = mountOverlay();
     agentConversation.clear();
     lastAcceptedForGate = null;
+    // C-24: replaying the accepted readings in order rebuilds coverage exactly, since the overlay
+    // anchors on the first one. The duplicate gate's anchor (the last frame's pixels) isn't
+    // saved, so the first frame after continuing is checked for blur and exposure only.
+    if (start.kind === "continue") {
+      for (const reading of start.saved.acceptedGyro) {
+        gyroOverlayHandle.reportAcceptedFrame(reading);
+      }
+    }
     // A previous session's finish (success or in-flight-then-abandoned) must not carry over and
     // leave Capture/Finish permanently disabled for this new attempt.
     sessionFinishing = false;
@@ -279,7 +468,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // leading `await` to preserve the iOS gesture that triggered this click; createSession has
     // no such constraint, but starting it here too keeps this one real flow from one click,
     // rather than literally serializing session-creation ahead of the gesture-critical calls.
-    const sessionPromise = createSession(options.baseUrl, orderCodeInput.value, options.authToken);
+    const sessionPromise =
+      start.kind === "new"
+        ? createSession(options.baseUrl, orderCodeInput.value, options.authToken)
+        : null;
     const cameraPromise = requestCameraPermission();
     const gyroPromise = requestGyroPermission();
 
@@ -290,24 +482,43 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       // button disabled forever with camera/gyro never reflected, even though their prompts had
       // already fired) is what keeps that from silently stopping the user with no explanation.
       let sessionOk = false;
-      try {
-        const sessionResult = await sessionPromise;
-        setStatus(
-          sessionStatus,
-          describeCreateSession(sessionResult),
-          sessionResult.ok ? "info" : "error",
-        );
-        if (sessionResult.ok) {
-          state.sessionId = sessionResult.body.session_id;
-          updateFinishAvailability();
-          sessionOk = true;
+      if (start.kind === "continue") {
+        state.sessionId = start.saved.sessionId;
+        activeSession = { ...start.saved, acceptedGyro: [...start.saved.acceptedGyro] };
+        orderCodeInput.value = start.saved.orderCode;
+        setStatus(sessionStatus, describeContinuedSession(start.saved), "info");
+        updateCaptureAvailability();
+        updateFinishAvailability();
+        sessionOk = true;
+      } else if (sessionPromise !== null) {
+        try {
+          const sessionResult = await sessionPromise;
+          setStatus(
+            sessionStatus,
+            describeCreateSession(sessionResult),
+            sessionResult.ok ? "info" : "error",
+          );
+          if (sessionResult.ok) {
+            state.sessionId = sessionResult.body.session_id;
+            activeSession = {
+              sessionId: sessionResult.body.session_id,
+              orderCode: sessionResult.body.order_code,
+              phase: "capturing",
+              acceptedFrameCount: 0,
+              acceptedGyro: [],
+            };
+            persistActiveSession();
+            updateCaptureAvailability();
+            updateFinishAvailability();
+            sessionOk = true;
+          }
+        } catch (error) {
+          setStatus(
+            sessionStatus,
+            `Could not start session — ${describeNetworkError(error)}`,
+            "error",
+          );
         }
-      } catch (error) {
-        setStatus(
-          sessionStatus,
-          `Could not start session — ${describeNetworkError(error)}`,
-          "error",
-        );
       }
 
       const cameraResult = await cameraPromise;
@@ -353,6 +564,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
               state.cameraPlaying = true;
               setStatus(cameraStatus, "Camera started.", "info");
               updateCaptureAvailability();
+              // C-26: bring the whole viewfinder (arrow and shutter included) into view, since
+              // the session controls above it can push it below the fold on a phone.
+              viewfinder.scrollIntoView({ block: "start", behavior: "smooth" });
             },
             (playError: unknown) => {
               if (state.cameraStream !== thisStream) {
@@ -392,7 +606,56 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       // can be fixed and retried.
       startButton.disabled = sessionOk;
     })();
+  }
+
+  startButton.addEventListener("click", () => {
+    // Start always means a new session: a saved one from earlier in this tab is dropped. Its
+    // server-side session stays "capturing" (expiring those is out of C-24's scope).
+    forgetSession();
+    hideResumePanel();
+    beginCapture({ kind: "new" });
   });
+
+  continueButton.addEventListener("click", () => {
+    if (savedSession === null || savedSession.phase !== "capturing") {
+      return;
+    }
+    const saved = savedSession;
+    savedSession = null;
+    hideResumePanel();
+    beginCapture({ kind: "continue", saved });
+  });
+
+  discardButton.addEventListener("click", () => {
+    forgetSession();
+    hideResumePanel();
+  });
+
+  // C-24: a reload during reconstruction (Finish succeeded, the page was polling) comes back
+  // here. The server is still reconstructing or already done, so this only resumes polling; the
+  // camera and motion sensors aren't needed and aren't asked for.
+  showResultButton.addEventListener("click", () => {
+    if (savedSession === null || savedSession.phase !== "finished") {
+      return;
+    }
+    const saved = savedSession;
+    savedSession = null;
+    hideResumePanel();
+    state.sessionId = saved.sessionId;
+    activeSession = { ...saved, acceptedGyro: [...saved.acceptedGyro] };
+    orderCodeInput.value = saved.orderCode;
+    sessionFinishing = true;
+    startButton.disabled = true;
+    updateCaptureAvailability();
+    updateFinishAvailability();
+    gyroOverlayHandle.dispose();
+    setStatus(finishStatus, `Session finished: ${saved.sessionId}`, "info");
+    void runReconstructionPolling();
+  });
+
+  if (savedSession !== null) {
+    showResumePanel(savedSession);
+  }
 
   async function refreshAgentConversation(sessionId: string): Promise<void> {
     const requestId = ++latestAgentRequestId;
@@ -446,6 +709,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       return;
     }
     state.lastCapturedFrame = captured;
+    const c25PreJpegVariance =
+      options.blurDebug === true ? measureBlurVariance(captured.pixels) : null;
 
     // C-20: exposure runs before blur so a uniformly black/white frame reports the lighting
     // problem instead of being mislabelled as blur. Duplicate stays last; first failure wins and
@@ -525,9 +790,45 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
         setStatus(captureStatus, describeUploadFrame(result), result.ok ? "info" : "error");
         if (result.ok) {
+          if (c25PreJpegVariance !== null) {
+            const storedCount = appendC25BlurDebugMeasurement(blurDebugStorage, {
+              session_id: sessionId,
+              frame_index: result.body.frame_index,
+              pre_jpeg_variance: c25PreJpegVariance,
+              width: captured.pixels.width,
+              height: captured.pixels.height,
+            });
+            if (storedCount === null) {
+              blurDebugStorageFailures += 1;
+              setStatus(
+                blurDebugStatus,
+                `Blur debug warning: frame ${String(result.body.frame_index)} was accepted, but its pre-JPEG measurement could not be stored; ${String(blurDebugStorageFailures)} failure(s), paired evidence is incomplete.`,
+                "error",
+              );
+            } else if (blurDebugStorageFailures > 0) {
+              setStatus(
+                blurDebugStatus,
+                `Blur debug: ${String(storedCount)} measurement(s) stored for this session, ${String(blurDebugStorageFailures)} failed; paired evidence is incomplete.`,
+                "error",
+              );
+            } else {
+              setStatus(
+                blurDebugStatus,
+                `Blur debug: ${String(storedCount)} measurement(s) stored for this session; latest frame index ${String(result.body.frame_index)}.`,
+                "info",
+              );
+            }
+          }
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
           gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
+          // C-24: saved after every accepted frame, so a reload at any point loses nothing the
+          // server has. The count comes from the server's own frame_index.
+          if (activeSession !== null && activeSession.sessionId === sessionId) {
+            activeSession.acceptedFrameCount = result.body.frame_index + 1;
+            activeSession.acceptedGyro.push(captured.gyro);
+            persistActiveSession();
+          }
           // A-11: the newest VLM tip, if a check has finished. It stays until a newer one
           // arrives (a later 202 without feedback leaves it alone) and never blocks capture.
           // setStatus writes textContent: the hint is model output, never HTML.
@@ -540,14 +841,24 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           void refreshAgentConversation(sessionId);
         } else {
           lastAcceptedForGate = previousAcceptedForGate;
+          // C-24: a continued session can turn out to be over -- finished from this tab before
+          // the reload, or gone because the service lost its data. Retrying can't help, so drop
+          // the saved copy and let Start make a new session.
+          const code = result.error.code;
+          if (code === "session_not_found" || code === "session_already_finished") {
+            forgetSession();
+            state.sessionId = null;
+            startButton.disabled = false;
+            setStatus(
+              captureStatus,
+              `${describeUploadFrame(result)} This session can't take more frames — start a new session.`,
+              "error",
+            );
+          }
         }
       } catch (error) {
         lastAcceptedForGate = previousAcceptedForGate;
-        setStatus(
-          captureStatus,
-          `Could not upload frame — ${describeNetworkError(error)}`,
-          "error",
-        );
+        setStatus(captureStatus, `Could not upload frame — ${describeUploadError(error)}`, "error");
       } finally {
         uploadInFlight = false;
         updateCaptureAvailability();
@@ -577,6 +888,15 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       options.authToken,
     );
     retryReconstructionButton.hidden = outcome !== "timeout" && outcome !== "error";
+    // C-24: once a terminal result is on screen, there's nothing left to come back to. A timeout
+    // or fetch error keeps the saved copy, since Retry (or a reload) still needs it.
+    if (
+      (outcome === "complete" || outcome === "failed") &&
+      activeSession !== null &&
+      activeSession.sessionId === sessionId
+    ) {
+      forgetSession();
+    }
     if (outcome === "complete") {
       reportLink.href = `report.html?session=${encodeURIComponent(sessionId)}`;
       reportLink.hidden = false;
@@ -639,6 +959,12 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         updateFinishAvailability();
         updateCaptureAvailability();
         return;
+      }
+      // C-24: kept until a result has been shown, so a reload while reconstructing offers
+      // "Show result" instead of losing the session.
+      if (activeSession !== null) {
+        activeSession.phase = "finished";
+        persistActiveSession();
       }
       // Everything from here on runs only once finishSession has genuinely resolved ok:true, and
       // outside the try above -- a failure past this point (e.g. the reconstruction poll, or the

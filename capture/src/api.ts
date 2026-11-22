@@ -2,23 +2,49 @@ import type {
   AgentMessageResult,
   ErrorDetail,
   Gyro,
+  InspectionSpec,
+  Order,
   ReconstructionResult,
   Session,
   UploadFrameResult,
   VerdictResult,
+  SpecParseResult,
 } from "./types.js";
 
 export type ApiResult<TBody> =
   { ok: true; status: number; body: TBody } | { ok: false; status: number; error: ErrorDetail };
 
+// C-24 (#351): a 5xx whose body isn't JSON never came from recon.service. The service answers
+// every error with a JSON ErrorDetail, so a body like this is something in front of it saying
+// the service isn't there. On the Mac demo path (D-049), Vite's dev proxy answers an unreachable
+// backend with an empty 500; a hosting proxy gives an HTML 502/503/504 instead. R-36 measured that
+// the session survives the outage (it continued after 91 s and 138 s restarts), so this is a
+// "wait and retry" condition, not a broken contract, and it gets its own type so the message
+// layer can say that instead of echoing parser text.
+export class ServiceUnreachableError extends Error {
+  readonly operation: string;
+  readonly status: number;
+
+  constructor(operation: string, status: number) {
+    super(`${operation}: the service is unreachable (status ${String(status)}, no JSON body)`);
+    this.name = "ServiceUnreachableError";
+    this.operation = operation;
+    this.status = status;
+  }
+}
+
 // A response the contract does not define for this operation is not a "rejection" — it means
 // the request or the stub/server is broken, and that must fail loudly rather than be displayed
-// as if it were a normal 4xx from the contract.
+// as if it were a normal 4xx from the contract. The one exception is a non-JSON 5xx (above):
+// that is an outage in front of the service, not a broken service.
 async function readJsonBody(response: Response, operation: string): Promise<unknown> {
   const text = await response.text();
   try {
     return JSON.parse(text) as unknown;
   } catch {
+    if (response.status >= 500) {
+      throw new ServiceUnreachableError(operation, response.status);
+    }
     throw new Error(
       `${operation}: response body was not valid JSON (status ${String(response.status)}): ${text}`,
     );
@@ -36,6 +62,81 @@ function unexpectedStatus(operation: string, response: Response, body: unknown):
 // stub, which expects no auth header.
 function authHeaders(authToken: string | undefined): Record<string, string> {
   return authToken === undefined ? {} : { Authorization: `Bearer ${authToken}` };
+}
+
+function buyerHeaders(buyerKey: string, authToken?: string): Record<string, string> {
+  return {
+    ...authHeaders(authToken),
+    "X-ProofShape-Buyer-Key": buyerKey,
+  };
+}
+
+export interface CreateOrderInput {
+  spec: InspectionSpec;
+  cad?: File;
+  placementNote?: string;
+  buyerReference?: string;
+}
+
+export async function createOrder(
+  baseUrl: string,
+  input: CreateOrderInput,
+  buyerKey: string,
+  authToken?: string,
+): Promise<ApiResult<Order>> {
+  const form = new FormData();
+  form.set(
+    "spec",
+    new Blob([JSON.stringify(input.spec)], { type: "application/json" }),
+    "spec.json",
+  );
+  if (input.cad !== undefined) {
+    form.set("cad", input.cad, input.cad.name);
+  }
+  if (input.placementNote?.trim()) {
+    form.set("placement_note", input.placementNote.trim());
+  }
+  if (input.buyerReference?.trim()) {
+    form.set("buyer_reference", input.buyerReference.trim());
+  }
+
+  const response = await fetch(`${baseUrl}/v1/orders`, {
+    method: "POST",
+    headers: buyerHeaders(buyerKey, authToken),
+    body: form,
+  });
+  const body = await readJsonBody(response, "createOrder");
+  if (response.status === 201) {
+    return { ok: true, status: response.status, body: body as Order };
+  }
+  if (response.status === 401 || response.status === 422) {
+    return { ok: false, status: response.status, error: body as ErrorDetail };
+  }
+  unexpectedStatus("createOrder", response, body);
+}
+
+export async function parseInspectionSpec(
+  baseUrl: string,
+  prose: string,
+  buyerKey: string,
+  authToken?: string,
+): Promise<ApiResult<SpecParseResult>> {
+  const response = await fetch(`${baseUrl}/v1/spec/parse`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...buyerHeaders(buyerKey, authToken),
+    },
+    body: JSON.stringify({ prose }),
+  });
+  const body = await readJsonBody(response, "parseInspectionSpec");
+  if (response.status === 200) {
+    return { ok: true, status: response.status, body: body as SpecParseResult };
+  }
+  if (response.status === 401 || response.status === 422) {
+    return { ok: false, status: response.status, error: body as ErrorDetail };
+  }
+  unexpectedStatus("parseInspectionSpec", response, body);
 }
 
 export async function createSession(
@@ -134,7 +235,7 @@ export async function getVerdict(
   if (response.status === 200) {
     return { ok: true, status: response.status, body: body as VerdictResult };
   }
-  if (response.status === 404) {
+  if (response.status === 404 || response.status === 422) {
     return { ok: false, status: response.status, error: body as ErrorDetail };
   }
   unexpectedStatus("getVerdict", response, body);

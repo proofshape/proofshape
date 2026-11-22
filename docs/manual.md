@@ -82,7 +82,7 @@ heatmap, so gross defects are caught before the part ships.
 |---|---|
 | **Printed ChArUco reference sheet** | One sheet of A4 or US Letter. See §3 — printing it correctly matters more than it sounds. |
 | **The part** | Rigid and opaque. Roughly hand-sized — comparable to, or a little larger than, the printed pattern. See §3.4 on parts larger than the board, and §10 on transparent parts. |
-| **A smartphone** | With a working camera and gyroscope. No app install — capture runs in the browser over HTTPS. So far it has been checked on iPhones in Safari only; Android is untested (**Planned**, C-23). |
+| **A smartphone** | With a working camera and gyroscope. No app install — capture runs in the browser over HTTPS. So far it has been checked on iPhones in Safari only. Android is untested and parked until C-23 runs (D-065), so use an iPhone in Safari. |
 | **Digital calipers** *(recommended)* | For verifying the printed square size, and for the optional typed scale check (§7). Roughly $25. |
 | **The CAD file** *(buyer, optional)* | STL/OBJ/GLB. Required only if you want a verdict rather than just a model. |
 | **A flat, evenly lit surface** | Enough room to walk around the part, or to turn the sheet. |
@@ -159,7 +159,9 @@ is deliberate, and the margins are doing three jobs:
 
 1. Keeping the paper's outline clearly separated from the pattern, so the outline scale check
    works.
-2. Reserving space for the per-order QR code and orientation arrow (**Planned**, C-17 — see §4).
+2. Keeping the per-order marks clear of the calibration pattern. C-17 now embeds this exact
+   200 × 150 mm board page at 1:1 on a landscape A4 sheet and puts the order code, QR and +X arrow
+   in a separate right-side panel (§4, D-074).
 3. Giving a part that is larger than the pattern somewhere to sit without hanging off the sheet.
 
 **If the part is larger than the pattern but still roughly sheet-sized, that is fine for pose.**
@@ -189,33 +191,58 @@ decision the team has made. **Undecided.**
 
 ## 4 · Setting up an order — the buyer
 
-**Status: Planned.** Built by C-16 (the buyer page), R-34 (the order store it saves to, and the
-service checking order codes against it), C-17 (the printable sheet with the order code) and the
-inspection stories (I-01 through I-10).
+**Status: Works now for order setup and the printable per-order sheet.** R-34 provides the
+file-backed order store, C-16 provides the browser buyer page, and C-17 generates the printable
+sheet in the browser. The remaining inspection workflow is still planned.
 
-The intended flow:
+Open **`buyer.html`** in the capture app. On GitHub Pages the address is
+**`https://proofshape.github.io/proofshape/buyer.html`**; that hosted page can create real orders
+only when C-21 has configured a reachable reconstruction service. The buyer key is entered at
+runtime, kept only in that browser tab's `sessionStorage`, and is never built into the public
+bundle (D-070).
 
-1. **Upload the CAD** (STL/OBJ/GLB).
-2. **Enter what matters** — the tolerance, and the critical features by name ("the four mounting
-   holes", "the sealing face"). **Planned:** you will also be able to write this in plain English
-   and have it converted into the structured specification (A-03, prose-to-spec parser).
-3. **Intake pre-check runs** (I-09). Any feature whose tolerance is tighter than the method's own
-   noise floor for the required reference tier is flagged **Unverifiable before any photograph is
-   taken** (I-10) — so it can be routed to a CMM knowingly, rather than discovered through endless
-   Rescans in the field.
-4. **Generate the capture link and the printable sheet** for that purchase order. The sheet
-   carries a per-order QR code and an orientation arrow in the margin, binding the capture to the
-   order.
+The buyer flow is:
 
-**What exists today instead.** There is no buyer side and no order storage. The supplier types an
-order code by hand (§5). The mock service accepts only `PO-48213-A`; the real reconstruction
-service accepts **any** non-empty code, because there is no buyer database to check it against
-(`recon/README.md`, R-14; R-34 is the planned store). A capture link can pre-fill the order code with `?order=<code>` (C-13).
+1. **Choose the CAD, if this order has one.** STL, OBJ and GLB are accepted. No CAD is valid but
+   means model-only: no inspection verdict (D-004).
+2. **Describe what matters or fill the table manually.** The optional A-03 assistant can turn prose
+   into the editable feature table. Its output is a proposal, never a hidden decision.
+3. **Review the table and assumptions.** Every feature has a name, kind, positive tolerance in mm
+   and critical flag. If the assistant could not find a numeric tolerance it leaves that cell
+   blank; the buyer must fill it before the order can be created. After filling a blank, review
+   the assumptions and remove any statement that is no longer true.
+4. **Add the placement note and buyer reference, then create the order.** R-34 stores the CAD/spec
+   and returns a server-generated `PO-` code.
+5. **Use the result.** The page shows the order code, the CAD dimensions read by the service (or
+   model-only when there is no CAD), a supplier capture link with `?order=<code>` already filled
+   in, and **Print the sheet**. The button creates a landscape A4 PDF in the browser; it does not
+   call the reconstruction service.
 
-**Planned** (C-17): the order code, a QR code and an orientation arrow in the sheet's margin, with
-the board itself unchanged. Where they sit is recorded as a decision when C-17 is built (D-034 left
-it open). The golden-capture set does not need them, since there is no real purchase order to bind
-to yet.
+The page explicitly does **not** claim that any entered tolerance is achievable: I-09 has not yet
+checked tolerances against the measured noise floor (D-003). Parser/network failures keep the
+buyer's form intact and give a next step instead of exposing browser error text.
+
+The real service checks every supplier code against the R-34 order store. The mock keeps its
+existing `PO-48213-A` fixture and also supports the buyer order routes for local C-16 testing.
+
+**C-17 printable sheet (D-074).** The output is landscape A4 (297 × 210 mm). The exact
+`charuco_board.pdf` page is embedded unchanged at 1:1 at x=5 mm, y=30 mm; its browser copy is
+refused if its SHA-256 differs from
+`1b64d0328a7551da20fee6ccf5c6edacd5f48858be4004dffb093a60c9c9a354`. The right-side panel
+starts at x=212 mm and carries the printed order code, a QR encoding **only the order code**, a
+**Board +X** arrow pointing left-to-right along the board's square columns, and
+**Print at Scale: 100%**. The capture app does not read that QR yet; it is printed binding/context,
+not session-integrity enforcement.
+
+Print this generated PDF exactly like the base board: **100% scale, never Fit to Page / Scale to
+Fit**, then caliper two or three squares and confirm they are close to 20 mm before capturing
+(manual §3.3).
+
+**Paper-size note from C-17's physical check (2026-11-19):** the generated page is A4. A US Letter
+printer can clip the right-side panel if the A4 page is sent straight to Letter at 100%. Do not
+solve that with Fit to Page because that rescales the calibration board. If only Letter is
+available, keep the PDF content at 1:1 and rotate/centre it on the Letter page so the full content
+fits, or use A4 paper.
 
 ---
 
@@ -290,10 +317,13 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    are not appended, and stale replies are ignored. The mock `finished` field is display-only
    until the real D-031 phone contract defines lifecycle behavior, including the end-of-session
    summary. The service does not yet invoke the agent loop for supplier sessions.
-- **A vision-language model checks sampled frames** (A-01, A-02) — roughly seven calls a session,
-  not one per frame. It catches things geometry cannot: the wrong part, hands in shot, a
-  photograph of a screen. **It can veto a Pass**, downgrading the session to Rescan, and the
-  report names the reason.
+- **A vision-language model checks sampled frames** (A-01/A-11; A-02 will own the verdict veto):
+  frame 0, indices divisible by 5, and the final accepted frame. It is **not an all-frame check**.
+  R-36 demonstrated the limit directly: in a 15-frame session, a screen photograph on frame 6
+  was not checked because the sampled set was 0, 5, 10 and 14. A-14 keeps that rule because no
+  measured 25-30-frame free-tier rate/latency run exists in the repository to justify multiplying
+  the API work. So an unsampled bad frame can still enter reconstruction today; A-02's future veto
+  will cover only the sampled frames unless a later measured change widens the rule.
 
 ---
 
@@ -397,13 +427,25 @@ boundary is still expected and is the hard rule working, not a defect.
 
 ### 8.2 The four verdicts
 
-**Status: Planned in the real service** (I-07 verdict logic, I-08 unobserved-geometry rule,
-I-10 Unverifiable path). The C-15 report page is built against the frozen contract examples, but
-today a real verdict request still answers `no_cad_uploaded`, because there is no way to upload a
-CAD yet (R-34).
+**Status: Works now for CAD-backed orders** (I-07 verdict logic, I-09 intake pre-check, I-10
+Unverifiable path). R-34 stores the buyer's CAD and spec, and the service can return a real
+post-reconstruction verdict for a finished session.
 
-There are exactly four. No fifth value can be added without a recorded decision, because the hard
-rule's guarantees are stated in terms of this closed set.
+I-10 also makes **Unverifiable available before any capture begins**. When an order has CAD and
+I-09 finds that any **critical** feature's tolerance is below the measured method floor,
+`createOrder` and `getOrder` include an order-level `verdict: "Unverifiable"` with
+`declared_at: "intake"`. Its reason codes name the blocked critical feature(s), and its
+`regions` list is empty because no geometry has been captured yet. If a session is created for
+that order anyway, `getVerdict` returns the same intake verdict immediately, before
+reconstruction; reconstruction cannot turn that method-capability result into Pass or Fail.
+
+D-079 settles mixed specs conservatively: **one Unverifiable critical feature makes the whole
+order Unverifiable**. A feature explicitly marked non-critical can still be flagged in
+`intake_check`, but it does not block the overall order. D-004 still applies: an order without
+CAD has no verdict, even if its spec's intake check contains an Unverifiable flag.
+
+There are exactly four verdict values. No fifth value can be added without a recorded decision,
+because the hard rule's guarantees are stated in terms of this closed set.
 
 | Verdict | What it means | What to do |
 |---|---|---|
@@ -418,9 +460,11 @@ unobserved region into either a Pass or a Fail — if it could not see it, it sa
 
 ### 8.3 The report
 
-**Status: Works now against the contract mock** (C-14 heatmap rendering, C-15 report page).
-The real deviation/verdict backend is still Planned (I-06/I-07), so today's real service normally
-shows the model-only path described in §8.2.
+**Status: Works now** (C-14 heatmap rendering, C-15 report page, I-06/I-07 real
+deviation/verdict backend). For CAD-backed orders, the report can render the real verdict returned
+by the service. For an I-10 intake-time Unverifiable result, the report explains the named feature
+whose tolerance is below the measured method floor and directs the buyer to a CMM. Orders without
+CAD still use the model-only path described in §8.2.
 
 After a reconstruction completes, choose **Open condition report**. You can also open
 `report.html?session=<id>` directly for a known session. The page shows the contract verdict and
@@ -431,15 +475,27 @@ treating that as a report error.
 
 The C-14 deviation heatmap opens by default. Only surface that is both Observed and measured is
 coloured by deviation; everything else stays grey (D-005). A region that is not Observed shows
-"—" for deviation, never zero.
+"—" for deviation, never zero. **I-14/D-086 also leaves Observed surface outside the CAD's actual
+outer top-view outline unmeasured.** Concave outer notches are outside that boundary; interior
+holes remain eligible so hole defects can still be measured. There is no added xy margin because
+the real-session review found no positive margin that separated reconstruction flare from wall
+scatter without biasing the retained wall measurements. The grey outside-outline surface is
+explicitly **not checked** and cannot contribute to Pass or Fail. In particular, a local outward
+wall oversize beyond the outline is not currently a Fail-capable measurement; do not read that
+grey surface as conforming geometry.
 
 Choose **Print / Save as PDF** to use the browser's print dialog. Before printing, the page
 snapshots the WebGL heatmap and copies its active legend so the exported page keeps both the image
 and the signed-mm scale. The one-page mobile print layout still needs the whole-system mobile
 check at X-04.
 
-The narrative section is a marked placeholder only. **Planned:** A-09 supplies the LLM narrative;
-C-15 does not generate one.
+The narrative section shows a short, plain-language summary of the verdict: which regions
+counted toward it, their measured deviation, the reason codes, and whether orientation is
+ambiguous. It is built deterministically from the verdict's own fields, in code — **not** by a
+model. A-09 originally planned an LLM-written narrative, but D-082 found no way to make one safe
+against the hard rule (a model's prose could end up stating an outcome the deterministic verdict
+disagreed with) across five rounds of review, so v1 serves the templated half only; the LLM path
+is kept as tested groundwork for a future story.
 
 ---
 
@@ -460,17 +516,33 @@ C-15 does not generate one.
 
 | Code | What happened | What to do |
 |---|---|---|
-| `order_code_unknown` | The order code was not recognised. Today the mock service accepts only `PO-48213-A`, and the real service rejects only an empty or blank code, because there is no buyer database to check against yet (§4). Until v1.1 a malformed request body also came back with this code (R-29); it now gets `malformed_request` (D-056). | Check the code. |
+| `order_code_unknown` | The order code was not recognised. The mock service accepts only `PO-48213-A`; the real service now requires the code to exist in the R-34 order store (§4). Until v1.1 a malformed request body also came back with this code (R-29); it now gets `malformed_request` (D-056). | Check the code or have the buyer create the order first. |
+| `buyer_auth_required` | `createOrder` was called without the configured buyer key, with the wrong key, or while the server has no buyer key configured (D-070). | Use the buyer-side key; never put it in the public capture bundle. |
+| `cad_unreadable` | The uploaded CAD was empty, unsupported, or rejected by the existing CAD loader. | Export a valid STL, OBJ or GLB and try again. |
 | `too_few_frames` | Not enough accepted frames to reconstruct. The real service needs at least 3. | Keep going around the part. |
 | `session_not_found` | The service has no session with that id, for example because it was restarted without its saved sessions. | Start a new session. |
 | `session_already_finished` | The session has already been finished, so it takes no more frames and can't be finished again. | The first Finish still stands, and its reconstruction runs. To add frames, start a new session. |
 | `malformed_request` | The request itself was broken: a session request whose body can't be read, or an upload with an empty photo, a missing part or an unreadable gyro reading (D-056). It is not about the order code or what the photo shows. | Retry; if it repeats, tell the team, since it points at an app bug. |
 
-**Not a contract code — the phone never reached the service at all (works now, C-18):**
+**Not a contract code — the phone couldn't reach the service (works now, C-18 and C-24):**
 
 | What you see | What happened | What to do |
 |---|---|---|
 | "No connection to the service — check your network and try again." | Starting, uploading, finishing or polling a session all go over the network; this covers any of them failing before a response came back at all (Wi-Fi dropped, the dev server stopped). The browser's own wording for this ("Load failed" on Safari, "Failed to fetch" on Chrome) is deliberately replaced, since it names no next step. | Check the connection and try again. |
+| "The service isn't reachable right now — wait a moment and try again." | The phone reached the server in front of the service, but not the service itself: for example, the reconstruction service on the demo Mac was stopped or restarting, and the capture dev server answered for it with an empty error (C-24, #351). It used to show raw text ending "response body was not valid JSON (status 500)". | Wait, then capture again. The session carries on where it stopped. |
+| Either message after an upload ends with "Frames already accepted are kept." | The upload failed for one of the two reasons above, not because of the photo. The frames the service already accepted are saved on its side. | Retry from the same spot once the connection or the service is back. |
+
+**After the page reloads mid-session (works now, C-24):** iOS can reload Safari's page when you
+come back from another app. The capture page keeps the session in that tab and offers it back:
+
+| What you see | What to do |
+|---|---|
+| "An unfinished session is saved in this tab: … Continue it, or start a new one." | Tap **Continue session**. The camera and motion prompts may appear again. The coverage count comes back, and the next frame goes into the same session. **Start new** drops it instead. |
+| "Session … was finished. Its reconstruction may still be running." | Tap **Show result**: it picks up the reconstruction where the page left off. |
+| After continuing, "This session can't take more frames — start a new session." | The service no longer has that session, or it was already finished. Start a new session with the same order code. |
+
+Opening the capture link in a new tab starts fresh: the saved session belongs to the tab it was
+started in. Keep to one tab during a capture.
 
 **From the reconstruction, after you finish (works now):**
 
@@ -481,7 +553,8 @@ C-15 does not generate one.
 | `insufficient_baseline` | Fewer than 3 frames could be posed from the board. | Move further between shots and follow the orbit. |
 | `metric_alignment_failed` | The model could not be locked to the board's metric frame. **If the message starts "Fusion failed:"**, the board surface around the part could not be measured: too few board points near it, or the fitted board tilted more than 2° (R-21). It caused 4 of the 5 failed phone sessions in C-13's test, and why phone frames hit it more than the golden photos is not yet known. **If it says the frames carry no EXIF focal length and calibrating from the board failed**, the camera could not be calibrated from the board (D-050), most often because too few frames showed enough of it. The rest of the message gives the exact reason. | Lay the sheet flat, keep as much board visible around the part as possible (§3.4), and shoot the full orbit. |
 | `internal_error` | The service itself crashed while reconstructing, or was restarted while your session was still reconstructing (D-056). It is not a problem with your photos. The page shows it as "Reconstruction failed." followed by `internal_error:` and a short message; the details are in the service's log, not on the phone. | Start a new session and reshoot; tell the team, since the log says what went wrong. |
-| `no_cad_uploaded` | A verdict was requested for an order with no CAD. Today that is every order (§8.2). | Expected — no CAD, no verdict (D-004). The model is still valid. |
+| `no_cad_uploaded` | A verdict was requested for a stored order that has no CAD. | Expected — no CAD, no verdict (D-004). The reconstruction can still exist. |
+| `verdict_not_available` | The order has a CAD, but the I-07 verdict logic is not available yet. R-34 deliberately does not invent a result. | Keep the reconstruction; wait for the inspection/verdict stage rather than treating this as Pass or Fail. |
 
 **Not produced yet** (frozen in the contract, nothing raises them):
 

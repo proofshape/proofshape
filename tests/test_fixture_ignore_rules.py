@@ -38,6 +38,15 @@ def test_reference_cad_stl_is_not_ignored() -> None:
     assert not _is_ignored("fixtures/reference_cad/example.stl")
 
 
+def test_capture_manifest_checksum_locks_are_not_ignored() -> None:
+    # G-08: each capture manifest's .sha256 lock is committed beside it without a force-add;
+    # a checksum file inside a download (fixtures/data/) stays ignored.
+    assert not _is_ignored("fixtures/golden_capture_manifest.sha256")
+    assert not _is_ignored("fixtures/specimen_capture_manifest.sha256")
+    assert not _is_ignored("fixtures/robustness_capture_manifest.sha256")
+    assert _is_ignored("fixtures/data/specimen_capture/g02_01.sha256")
+
+
 def test_capture_jpeg_remains_ignored() -> None:
     assert _is_ignored("fixtures/data/golden_capture/s-01/example.jpeg")
 

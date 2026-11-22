@@ -115,7 +115,11 @@ describe("C-15 report page", () => {
     expect(target.textContent).toContain("checked — no disagreement flagged");
     expect(target.textContent).toContain(sessionId);
     expect(target.textContent).toContain("2026-11-11T08:00:00.000Z");
-    expect(target.textContent).toContain("AI narrative slot (A-09)");
+    // A-09/D-082: the real, deterministic narrative -- never a model's -- now lands in C-15's
+    // reserved slot.
+    expect(target.textContent).toContain(
+      "Verdict: Pass. Every measured region was within its checked tolerance.",
+    );
     expect(mountViewer).toHaveBeenCalledOnce();
     expect(mountViewer.mock.calls[0]?.[2]).toMatchObject({ initialColourMode: "deviation" });
   });
@@ -213,7 +217,13 @@ describe("C-15 report page", () => {
     expect(mountViewer).toHaveBeenCalledOnce();
   });
 
-  it("shows an unknown reason code verbatim and has an action for Unverifiable", () => {
+  it("formats I-10 intake reasons, keeps unknown codes verbatim and has an Unverifiable action", () => {
+    expect(describeReasonCode("intake_tolerance_below_k_sigma_floor:hole_A")).toContain(
+      "hole_A: the requested tolerance is below ProofShape's measured method floor",
+    );
+    expect(describeReasonCode("intake_tolerance_below_method_floor_any_axis:face_A")).toContain(
+      "face_A: the requested tolerance is below a measured method floor",
+    );
     expect(describeReasonCode("future_reason_code")).toBe("future_reason_code");
     expect(VERDICT_ACTIONS.Unverifiable).toContain("CMM");
   });

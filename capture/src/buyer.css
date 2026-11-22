@@ -1,0 +1,109 @@
+:root {
+  font-family: system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+body {
+  margin: 0;
+  background: #f3f4f6;
+}
+
+.buyer-shell {
+  box-sizing: border-box;
+  max-width: 980px;
+  margin: 24px auto;
+  padding: 28px;
+  background: white;
+}
+
+.buyer-grid,
+.buyer-field {
+  display: grid;
+  gap: 8px;
+}
+
+.buyer-grid {
+  gap: 18px;
+}
+
+.buyer-field input,
+.buyer-field textarea,
+.buyer-field select,
+.feature-row input,
+.feature-row select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+}
+
+.feature-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.feature-table th,
+.feature-table td {
+  border-bottom: 1px solid #d1d5db;
+  padding: 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.feature-table input[type="checkbox"] {
+  width: auto;
+}
+
+.buyer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.buyer-status {
+  padding: 10px 12px;
+  background: #f9fafb;
+  border-left: 4px solid #6b7280;
+}
+
+.buyer-result {
+  padding: 16px;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+}
+
+.buyer-result code {
+  font-size: 1.05rem;
+}
+
+.buyer-warning {
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .buyer-shell {
+    margin: 0;
+    padding: 18px;
+  }
+
+  .feature-table,
+  .feature-table tbody,
+  .feature-table tr,
+  .feature-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .feature-table thead {
+    display: none;
+  }
+
+  .feature-table td {
+    border-bottom: 0;
+    padding: 4px 0;
+  }
+
+  .feature-table tr {
+    padding: 12px 0;
+    border-bottom: 1px solid #d1d5db;
+  }
+}

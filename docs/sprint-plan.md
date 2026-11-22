@@ -78,8 +78,8 @@ The course requires a progress presentation every two weeks: what we did, and wh
 | R3 | Fri Oct 16 | **S3 boundary = M3** | Guidance arrow driving capture; latency table; the live-vs-batch decision. |
 | R4 | Fri Oct 30 | **S4 boundary = M4 · I3** | Measured accuracy and σ_floor per reference tier. Registration on printed parts. *(2026-10-19: the board reference comes first, G-04; the sheet and card references are G-10. Neither exists yet, so R4 reports the plan, not a number.)* |
 | R5 | Fri Nov 13 | **S5 boundary = M5** | Live: a planted defect comes back as Fail with the region highlighted. |
-| R6 | Fri Nov 27 | inside S6 | Feature-complete walkthrough, including the pre-check and the Unverifiable path. |
-| R7 | Fri Dec 11 | inside S8 | Test results, the recorded demo, and what we would do next. |
+| R6 | Fri Nov 27 | inside S6 | **Not held:** the course has no presentation that day (@TabeenRaoof, 2026-11-20; P-36). Its planned content, a feature-complete walkthrough including the pre-check and the Unverifiable path, moves to the final presentation. |
+| R7 | Fri Dec 11 | inside S8 | The final presentation, most likely this day (unconfirmed, O-002). Test results, the recorded demo, and what we would do next. |
 
 **Why this cadence works.** Re-anchoring to the real class calendar moves reviews onto or just after recent sprint gates instead of preserving the obsolete 11/25 September assumption. The content rule is unchanged: each review shows the most recently completed, tested work rather than forcing a demo to match an outdated planning date.
 
@@ -252,7 +252,7 @@ Calendar events, not intentions. All other work stops.
 ### S3 · Ground truth — Oct 12–16 — 24 h
 - **Capture (7 h):** observed/unobserved coloring; report page skeleton.
 - **Reconstruction (7 h):** fusion fixes from I2; frame-count tuning; **integrate the generative completion model and run the first K samples**.
-- **Inspection (13 h):** caliper 5–8 printed parts; error and σ_floor per reference tier; print the defect ladder (2 / 4 / 8 mm). *(2026-10-19: now G-01..G-09. σ_floor for the board reference is G-04; the sheet and card references are G-10, after the S5 sheet and card tiers exist.)*
+- **Inspection (13 h):** caliper 5–8 printed parts; error and σ_floor per reference tier; print the defect ladder (2 / 4 / 8 mm). *(2026-10-19: now G-01..G-09. σ_floor for the board reference is G-04. 2026-11-18: the sheet and card reference tiers are cut, G-10 with them — D-083.)*
 - **Gate M3:** σ_floor is a measured number. Every demo tolerance is set from it; anything below it is declared Unverifiable rather than attempted.
 
 ### S4 · Inspection — Oct 19–30 — 48 h
@@ -268,7 +268,7 @@ Calendar events, not intentions. All other work stops.
 - **Gate M5 — FEATURE FREEZE.** Nothing new is started after this date. The 6 h stretch pool is the only route to Tier 3 work.
 
 ### S6 · Harden — Nov 16 – Dec 2 — 46 h
-- **Capture (11 h):** test on one iPhone and one Android; UI bugs; keyboard access; error messages.
+- **Capture (11 h):** test on one iPhone and one Android (the Android check, C-23, is parked until before the expo if time allows: D-065); UI bugs; keyboard access; error messages.
 - **Reconstruction (11 h):** reliability and error handling; K tuning against the timing budget; rehearse losing the pod and bringing it back.
 - **Inspection (20 h):** accuracy and planted-defect runs; **does the agent actually beat the deterministic policy?**;; robustness set (glossy, dark, thin, screen photo, wrong part). The informal usability run is cut to fund the completion model.
 - **Gate M6 · I4:** Thanksgiving week is bug-fixing only. The recorded backup demo is produced here, not in December.

@@ -18,5 +18,6 @@
   "reason_codes": [
     "sealing_face_not_seen",
     "registration_orientation_ambiguous"
-  ]
+  ],
+  "narrative": "Verdict: Rescan. This session needs another capture round before a verdict can be trusted. 1 region counted toward this verdict: mounting_hole_A (0.11 mm). Reason codes: sealing_face_not_seen, registration_orientation_ambiguous. More than one CAD orientation is plausible for this reconstruction. Declared at: post reconstruction."
 }

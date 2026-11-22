@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSession, finishSession, getReconstruction, getVerdict, uploadFrame } from "./api.js";
+import {
+  createOrder,
+  createSession,
+  finishSession,
+  getReconstruction,
+  getVerdict,
+  parseInspectionSpec,
+  ServiceUnreachableError,
+  uploadFrame,
+} from "./api.js";
 import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 
 const FAKE_JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
@@ -27,6 +36,72 @@ describe("api against the contract stub", () => {
 
   afterEach(async () => {
     await close();
+  });
+
+  it("creates an order through the R-34 mock route", async () => {
+    const result = await createOrder(
+      baseUrl,
+      {
+        spec: {
+          features: [{ name: "mounting hole", kind: "hole", tolerance_mm: 2, critical: true }],
+          assumptions: [],
+        },
+        placementNote: "Arrow up",
+        buyerReference: "BUYER-42",
+      },
+      "buyer-key",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.order_code).toMatch(/^PO-/);
+      expect(result.body.spec).toEqual({
+        features: [{ name: "mounting hole", kind: "hole", tolerance_mm: 2, critical: true }],
+        assumptions: [],
+      });
+    }
+  });
+
+  it("parses buyer prose through the A-03 mock route", async () => {
+    const result = await parseInspectionSpec(
+      baseUrl,
+      "The mounting holes need 2 mm; the sealing face must be flat.",
+      "buyer-key",
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.body.status).toBe("parsed");
+      if (result.body.status === "parsed") {
+        expect(result.body.spec.features.some((feature) => feature.tolerance_mm === null)).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  it("sends the spec as a JSON multipart file when creating an order", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    await createOrder(
+      baseUrl,
+      {
+        spec: {
+          features: [{ name: "overall", kind: "overall", tolerance_mm: 1, critical: false }],
+          assumptions: ["manual"],
+        },
+      },
+      "buyer-key",
+    );
+
+    const init = fetchSpy.mock.calls[0]?.[1];
+    const form = init?.body;
+    expect(form).toBeInstanceOf(FormData);
+    const specPart = (form as FormData).get("spec");
+    expect(specPart).toBeInstanceOf(Blob);
+    expect(JSON.parse(await (specPart as Blob).text())).toEqual({
+      features: [{ name: "overall", kind: "overall", tolerance_mm: 1, critical: false }],
+      assumptions: ["manual"],
+    });
+    expect(new Headers(init?.headers).get("X-ProofShape-Buyer-Key")).toBe("buyer-key");
+    vi.restoreAllMocks();
   });
 
   it("returns a session id for the known order code", async () => {
@@ -212,6 +287,21 @@ describe("api against the contract stub", () => {
     }
   });
 
+  // I-07 (PR #379 review, @TabeenRaoof): getVerdict previously threw unexpectedStatus on a 422,
+  // which report.ts's own generic error branch never gets a chance to show.
+  it("returns tolerance_missing as the contract 422 from getVerdict, not an unexpected status", async () => {
+    const session = await createSession(baseUrl, "PO-48213-A");
+    if (!session.ok) throw new Error("setup: createSession failed");
+    stub.setVerdictScenario("tolerance_missing");
+
+    const result = await getVerdict(baseUrl, session.body.session_id);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(422);
+      expect(result.error.code).toBe("tolerance_missing");
+    }
+  });
+
   it("fails loudly, not as a contract status, when the frame isn't a JPEG", async () => {
     const session = await createSession(baseUrl, "PO-48213-A");
     if (!session.ok) throw new Error("setup: createSession failed");
@@ -266,5 +356,73 @@ describe("api against the contract stub", () => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(authorizationHeaderOf(fetchSpy.mock.calls[0]?.[1])).toBeNull();
     });
+  });
+});
+
+// C-24 (#351): what a proxy in front of an unreachable recon.service answers. Vite's dev proxy
+// (the D-049 Mac path R-36 measured) gives an empty 500; a hosting proxy gives an HTML 5xx. Only
+// a non-JSON 5xx is "unreachable": a non-JSON 2xx/4xx still means a broken contract, and a 5xx
+// with a JSON body came from the service itself.
+describe("a non-JSON 5xx means the service is unreachable (C-24, #351)", () => {
+  const frame = new Blob([FAKE_JPEG_BYTES], { type: "image/jpeg" });
+  const gyro = { alpha: 1, beta: 2, gamma: 3 };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function answerEveryFetchWith(body: string, status: number, contentType = "text/plain"): void {
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(new Response(body, { status, headers: { "Content-Type": contentType } })),
+    );
+  }
+
+  it("throws ServiceUnreachableError for Vite's empty 500 on every session call", async () => {
+    answerEveryFetchWith("", 500);
+    await expect(createSession("http://svc", "PO-1")).rejects.toBeInstanceOf(
+      ServiceUnreachableError,
+    );
+    await expect(uploadFrame("http://svc", "sess_1", frame, gyro)).rejects.toBeInstanceOf(
+      ServiceUnreachableError,
+    );
+    await expect(finishSession("http://svc", "sess_1")).rejects.toBeInstanceOf(
+      ServiceUnreachableError,
+    );
+    await expect(getReconstruction("http://svc", "sess_1")).rejects.toBeInstanceOf(
+      ServiceUnreachableError,
+    );
+  });
+
+  it("throws ServiceUnreachableError for a proxy's HTML 502, and keeps the status", async () => {
+    answerEveryFetchWith("<html><body>Bad Gateway</body></html>", 502, "text/html");
+    const error: unknown = await uploadFrame("http://svc", "sess_1", frame, gyro).catch(
+      (thrown: unknown) => thrown,
+    );
+    expect(error).toBeInstanceOf(ServiceUnreachableError);
+    expect((error as ServiceUnreachableError).status).toBe(502);
+    expect((error as ServiceUnreachableError).operation).toBe("uploadFrame");
+  });
+
+  it("still fails loudly as a broken contract for a non-JSON 2xx", async () => {
+    answerEveryFetchWith("not json", 202);
+    const error: unknown = await uploadFrame("http://svc", "sess_1", frame, gyro).catch(
+      (thrown: unknown) => thrown,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ServiceUnreachableError);
+    expect((error as Error).message).toMatch(/response body was not valid JSON \(status 202\)/);
+  });
+
+  it("does not call a 5xx with a JSON body unreachable: that answer came from the service", async () => {
+    answerEveryFetchWith(
+      JSON.stringify({ code: "internal_error", message: "boom" }),
+      500,
+      "application/json",
+    );
+    const error: unknown = await uploadFrame("http://svc", "sess_1", frame, gyro).catch(
+      (thrown: unknown) => thrown,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ServiceUnreachableError);
   });
 });

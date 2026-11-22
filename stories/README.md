@@ -91,6 +91,7 @@ they do.
 | **Claimed** | Someone has put their `@github-handle` on it, in the story file and in this index, before starting. |
 | **In review** | Pull request open, waiting on one approval. |
 | **Done** | Merged, and the completion record below is filled in. P stories have one exception here, stated in `AGENTS.md`'s definition of done (D-052). |
+| **Cut** | Decided, not left silently open (working agreement 4, §10's boundary call): never started, and won't be. The story file records why and points to the decision. Owner is `_unclaimed_`. A story that depends on a Cut one does not become Ready by waiting — the checker's cascade only treats `Done` as satisfied, so re-scope or re-point its own dependency instead of leaving it Blocked forever. |
 
 ### Completion record
 
@@ -153,7 +154,7 @@ Full detail in each story file.
 | [R-13](R/R-13.md) | Per-stage latency instrumentation | 3 h | R-07 | Done | @TabeenRaoof |
 | [R-14](R/R-14.md) | Reconstruction endpoint | 5 h | F-03, R-08 | Done | @mbj1994 |
 | [R-15](R/R-15.md) | Container image and deploy | 4 h | R-14, F-05 | Done | @TabeenRaoof |
-| [R-16](R/R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Blocked | _unclaimed_ |
+| [R-16](R/R-16.md) | Known-size tolerance validation | 2 h | R-04, G-03, G-04 | Done | @dalwalyk |
 | [R-17](R/R-17.md) | Visually verify part segmentation on the golden set | 1 h | R-06 | Done | @TabeenRaoof |
 | [R-18](R/R-18.md) | Produce and check TSDF-fused meshes on the golden set | 1 h | R-07 | Done | @dalwalyk |
 | [R-19](R/R-19.md) | Report per-vertex sigma distribution on the golden set | 1 h | R-10 | Done | @mbj1994 |
@@ -228,15 +229,16 @@ Full detail in each story file.
 |---|---|---|---|---|---|
 | [G-01](G/G-01.md) | Book SFBU lab printer time and characterise the printer with a calibration cube | 3 h | nothing | Done | @TabeenRaoof |
 | [G-02](G/G-02.md) | Specimen batch: 5–8 prisms the size check can measure | 4 h | nothing | Done | @dalwalyk |
-| [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Ready | _unclaimed_ |
-| [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Blocked | _unclaimed_ |
-| [G-05](G/G-05.md) | Planted-defect parts: the control and the 4 mm hole shift | 4 h | nothing | Claimed | @TabeenRaoof |
+| [G-03](G/G-03.md) | Caliper every specimen | 3 h | G-02 | Done | @dalwalyk |
+| [G-04](G/G-04.md) | Error and σ_floor for the board reference, measured against caliper truth | 6 h | G-03, G-06, G-08, R-23 | Done | @dalwalyk |
+| [G-05](G/G-05.md) | Planted-defect parts: the control and the 4 mm hole shift | 4 h | nothing | Done | @TabeenRaoof |
 | [G-06](G/G-06.md) | Caliper the golden-set parts and the printed board | 1.5 h | nothing | Done | @TabeenRaoof |
-| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Blocked | _unclaimed_ |
-| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Ready | _unclaimed_ |
-| [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Blocked | _unclaimed_ |
-| [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Blocked | _unclaimed_ |
-| [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Ready | _unclaimed_ |
+| [G-07](G/G-07.md) | Reliability curve: does per-vertex σ predict measured error | 6 h | G-04 | Done | @dalwalyk |
+| [G-08](G/G-08.md) | Photograph the specimen batch as a fixture set | 4 h | G-02, G-06 | Done | @TabeenRaoof |
+| [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Done | @TabeenRaoof |
+| [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Cut | _unclaimed_ |
+| [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Done | @TabeenRaoof |
+| [G-12](G/G-12.md) | Print, caliper and photograph a top-face bump for X-03's planted defect | 3 h | G-05, G-09 | Claimed | @TabeenRaoof |
 
 ---
 
@@ -279,10 +281,10 @@ Full detail in each story file.
 | [I-05](I/I-05.md) | Orientation ambiguity: refine every candidate, flag a runner-up within 20% (D-061) | 3 h | I-04 | Done | @TabeenRaoof |
 | [I-11](I/I-11.md) | CAD loading: OBJ, extending I-02's loader | 2 h | I-02 | Done | @dalwalyk |
 | [I-06](I/I-06.md) | Deviation computation (writes `_DEVIATION_MM` into the served GLB, D-062) | 4 h | I-05, R-08 | Done | @dalwalyk |
-| [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Blocked | _unclaimed_ |
-| [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Blocked | _unclaimed_ |
-| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34 | Blocked | _unclaimed_ |
-| [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Blocked | _unclaimed_ |
+| [I-07](I/I-07.md) | Verdict logic (#157: `max(σ, σ_floor)`) | 6 h | I-06, R-10, G-04, G-07 | Done | @dalwalyk |
+| [I-08](I/I-08.md) | Unobserved-geometry rule | 3 h | I-06, I-07, A-04 | Done | @dalwalyk |
+| [I-09](I/I-09.md) | Intake pre-check | 3 h | G-04, G-07, R-34, R-37 | Done | @dalwalyk |
+| [I-10](I/I-10.md) | Unverifiable path | 3 h | I-09, I-07, R-34 | Done | @mbj1994 |
 
 ---
 
@@ -329,12 +331,12 @@ Full detail in each story file.
 | [A-11](A/A-11.md) | Show the VLM hint to the supplier: contract field and capture message (D-031) | 4 h | nothing | Done | @TabeenRaoof |
 | [A-06](A/A-06.md) | Agent tool definitions: the five capture tools as typed, deterministic server functions | 5 h | nothing | Done | @dalwalyk |
 | [A-08](A/A-08.md) | Deterministic capture policy: the agent's fallback, so every session completes | 5 h | A-06 | Done | @dalwalyk |
-| [A-02](A/A-02.md) | VLM verdict veto | 3 h | A-01, A-11, I-07 | Blocked | _unclaimed_ |
+| [A-02](A/A-02.md) | VLM verdict veto | 4 h | A-01, A-11, A-14, I-07 | Done | @dalwalyk |
 | [A-03](A/A-03.md) | Prose-to-spec parser | 8 h | nothing | Done | @dalwalyk |
 | [A-05](A/A-05.md) | Disagreement map | 8 h | A-04, A-12 | Done | @TabeenRaoof |
 | [A-07](A/A-07.md) | Agent loop: the tool-calling loop and fallback, against a recorded or mock model | 16 h | A-06, A-08 | Done | @dalwalyk |
 | [A-13](A/A-13.md) | Agent model pin and a live check | 4 h | A-07 | Done | @dalwalyk |
-| [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Blocked | _unclaimed_ |
+| [A-09](A/A-09.md) | Report narrative | 5 h | C-15, I-07 | Done | @dalwalyk |
 
 **Waiting on a decision, no story yet:**
 - **Completion on a host that serves suppliers.** A-12's runner works on a CUDA host, but two
@@ -411,6 +413,134 @@ Full detail in each story file.
 
 ---
 
+## Open issues reconciled (P-34)
+
+On 2026-11-16, GitHub had 16 open issues, and only #157 (I-07) had an open story committed to it.
+Six came from R-36's home pre-check of the demo host (#351–#356, D-072); the rest are follow-ups
+from earlier stories. P-34 gives each one a story, a home in an existing story, or a recorded
+reason to wait. The new stories add 17 h, and A-02 grows by 1 h. `stories/P/P-34.md` has the full
+mapping and the capacity note.
+
+**Suggested order before the Dec 2 boundary:**
+1. **R-40** (the live path can hang or crash);
+2. **C-24** (an interruption ends a live demo);
+3. **A-14** (the VLM tips a supplier sees, and the screen-photo gate);
+4. **C-25**.
+
+R-39 is now Ready after R-37 completed; A-02 is now Ready because A-01, A-11, A-14 and I-07 are Done.
+
+Issues per story:
+- C-24 #351, #352
+- C-25 #355
+- A-14 #353, the sampling half of #354
+- A-02 the veto half of #354 (a criterion added by P-34)
+- R-39 #356
+- R-40 #263, #300; it also re-checks #247
+- I-07 #157 (unchanged)
+
+**No story, and why:**
+- **#181 and #200 wait on a team decision**, as before (D-039 and D-047). #181's fix is a
+  prerequisite of X-03. *2026-11-18 (#397): #181 now has a story, R-41, whose first criterion is
+  that decision.*
+- **#107 (a Lightning cost guard)** is one of D-072's four conditions for a public service. It
+  gets a story only if the team takes that path.
+- **#246 and #247 (the Poisson fallback)** are known limitations of a fallback the service never
+  runs (`fuse_run` defaults to marching cubes). R-40 re-checks #247.
+- **#292 (s-02's board skin)** is a known limitation. R-35 measured a partial fix and attributed
+  the rest to s-02's reflective padlock.
+- **#231** is fully owned (R-30, R-33, then #292) and closes by hand with a pointer to #292.
+
+Full detail in each story file.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [C-24](C/C-24.md) | Capture survives interruptions: a plain outage message, and a session that survives a reload | 5 h | C-13, C-18 | Done | @TabeenRaoof |
+| [C-25](C/C-25.md) | Frame gate: check the blur threshold against a real motion-blurred frame | 2 h | C-06 | Done | @mbj1994 |
+| [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Done | @mbj1994 |
+| [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
+| [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Done | @dalwalyk |
+| [C-26](C/C-26.md) | Capture viewfinder: a visible guidance arrow, an on-target frame colour, a round shutter | 2 h | C-07, C-09 | Done | @TabeenRaoof |
+
+---
+
+## X-03's prerequisites from the dry run (P-35)
+
+On 2026-11-19, X-03's planted-shift scenario was dry-run on `main` (`aeadbc4`) with G-09's real
+photographs (#407). The G-05 control and the 4 mm hole shift both came back Rescan, on
+orientation ambiguity alone. With ambiguity set aside, both Fail, the control included, from
+base flare outside the CAD's outline. Neither cause had a story, so X-03 now depends on both.
+They fix shipped behaviour rather than add features, so they can land before the Dec 3–4 code
+freeze, as R-41 and R-42 did. `stories/P/P-35.md` has the capacity note.
+
+- **I-13:** I-05 ranks poses by fitness but decides ambiguity on inlier RMSE alone (D-061).
+  Its fix amends D-061.
+- **I-14:** I-06's declared 10 mm footprint margin lets the base flare be measured as part.
+  Its fix is a new decision. #292 (`s-02`'s board skin) stays open: it's a different place.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [I-13](I/I-13.md) | Orientation ambiguity uses coverage, not inlier RMSE alone (#407) | 3 h | I-05 | Done | @dalwalyk |
+| [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Done | @mbj1994 |
+
+---
+
+## Final deliverables and the Dec 2 work (P-37)
+
+Written up on 2026-11-20, from a check of the sprint plan's S6–S8 work and the open issues
+against the stories. The final report and the final presentation are deliverables the sprint
+plan schedules for S7 and S8, and neither had a story. P-35 left both out on purpose, as later
+work. `stories/P/P-37.md` has the capacity note.
+
+Two more pieces of work have to land by Dec 2:
+
+- **A printed top-face bump for X-03** is #407's option 1. On the measured pair and specs, the
+  re-shot 4 mm hole shift reads like its control (#421). *2026-11-21:* the team took the option.
+  It is G-12, in the ground-truth table, claimed by @TabeenRaoof. Its claim amended D-069 and
+  re-worded X-03's first criterion, so it merged only with both other members' approval.
+- **A-15** serves the capture agent (#406). It's required scope, because generative-AI components
+  are never cut (`AGENTS.md`, D-017). It's a new route after M5's freeze and a D-031 round, so it
+  merges only at the Dec 2 boundary, by named exception.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
+| [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
+| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Claimed | @mbj1994 |
+
+---
+
+## Accuracy review on the ten calipered parts (P-41)
+
+On 2026-11-20, `main` (`607450a`) was run on the ten printed parts that have caliper readings,
+each against its own CAD. Each part's top-face vertices scatter 0.10 to 0.35 mm about their own
+median. Walls read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with
+ambiguity set aside. Photos disagree sideways by a median 1.6 mm after R-30, which corrects each
+photo's height and tilt but not where it sits in the board plane. A scratch test that corrected
+it took much of the wall error with it, on seven of the ten parts.
+`docs/accuracy-review-2026-11-20.md` has the measurements, and
+`scripts/measure_part_accuracy.py` re-runs them.
+
+- **R-44** re-anchors each photo to its own board corners before fusion. It completes R-30's
+  correction rather than adding a feature, so it can land before the Dec 3–4 code freeze. Whether
+  it is on in the served path is a team decision, with a condition on the CAD alignment that
+  P-41's run doesn't meet yet.
+- **I-15** is that condition. The pose search samples the whole model surface, and on six of
+  the ten parts 12 to 44% of the Observed model is stray surface near the board. With R-44's
+  correction on and nothing else changed, the G-05 control comes out 180° off with no ambiguity
+  flag. The story names the stage that loses the pose before it fixes anything.
+- **G-13** measures the verdict's floors and outline margin on the fused mesh, once R-44 and I-15
+  have landed. The floors in use (D-073, D-078) were measured on the raw cloud, and the 0 mm
+  margin (D-086) on `main`'s meshes. The choice of numbers is inside the story, and the constants
+  change only if both other members approve.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
+| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 5 h | I-05, I-13 | Claimed | @TabeenRaoof |
+| [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
+
+---
+
 ## Capture app: heatmap, report, buyer side and hosting
 
 The rest of the capture app, written up on 2026-11-09 (P-30). That is four days before M5's
@@ -440,7 +570,8 @@ COLOR_0's provenance, and the viewer colours only measured, Observed vertices.
   - the disagreement-map arrow (A-05).
 - The agent conversation view, split out of A-07 on review (P-31/#302), is its own story in this
   section: C-22.
-- The Android half of device testing, split out of C-18 on claiming (2026-11-12): C-23.
+- The Android half of device testing, split out of C-18 on claiming (2026-11-12): C-23, parked
+  until before the expo if time allows (D-065).
 - The whole system on both phones, and the backup demo, are X-04 and X-05.
 
 These nine total 39 h, planning estimates. That is 33 h of capture stories against S6's 11
@@ -452,10 +583,13 @@ Full detail in each story file.
 |---|---|---|---|---|---|
 | [C-14](C/C-14.md) | Heatmap rendering in the viewer (D-062) | 4 h | C-12 | Done | @mbj1994 |
 | [C-15](C/C-15.md) | Report page: verdict, reasons, heatmap, print to PDF | 5 h | C-10, C-14, C-19 | Done | @mbj1994 |
-| [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Claimed | @mbj1994 |
+| [R-34](R/R-34.md) | Order store: an order with its CAD and spec; sessions check the order code (D-031) | 6 h | R-14, I-02, I-11, A-11 | Done | @mbj1994 |
 | [R-35](R/R-35.md) | Sigma-relative floor for the board height clearance (#292) | 3 h | R-21, R-30 | Done | @dalwalyk |
-| [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Blocked | _unclaimed_ |
-| [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Blocked | _unclaimed_ |
+| [R-36](R/R-36.md) | Demo host: the reconstruction service on the M2 Max, rehearsed in the room (D-072) | 3 h | C-13, C-18, R-31 | Claimed | @TabeenRaoof |
+| [R-37](R/R-37.md) | cad_size_check: corner-to-corner edge measurement and a pose search that can't land wrong | 5 h | R-22 | Done | @mbj1994 |
+| [R-38](R/R-38.md) | R-23's alignment solve needs per-frame outlier rejection and a real residual gate | 4 h | R-23 | Done | @dalwalyk |
+| [C-16](C/C-16.md) | Buyer setup page: CAD, tolerance table, placement note, capture link | 5 h | C-13, R-34 | Done | @mbj1994 |
+| [C-17](C/C-17.md) | Board PDF with the order code: printed code, QR code, orientation arrow | 4 h | C-16 | Done | @mbj1994 |
 | [C-18](C/C-18.md) | Device testing: the capture path on one iPhone | 3 h | C-13, C-20 | Done | @dalwalyk |
 | [C-21](C/C-21.md) | Host the capture app: CI build, GitHub Pages from main, O-005 answered | 4 h | C-13 | Claimed | @mbj1994 |
 | [C-22](C/C-22.md) | Agent conversation view | 6 h | A-07 | Done | @mbj1994 |
@@ -507,14 +641,21 @@ still genuinely in the future, correctly Blocked on the verdict chain and on the
 feature-complete, respectively. X-05 is the kept-current backup recording itself, distinct from
 X-04's one-time act of running and recording I4.
 
+R-41 and R-42 are recon stories, listed here because they exist as X-03's prerequisites. They
+were added by G-09's review (#397, 2026-11-18): #181's reversed scale ratio, and the service
+never calling the scale-agreement check. Both were named in X-03's notes but had no story.
+
 Full detail in each story file.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Done | @dalwalyk |
-| [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Claimed | @dalwalyk |
-| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05 | Blocked | _unclaimed_ |
-| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, C-23, X-03 | Blocked | _unclaimed_ |
+| [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Done | @dalwalyk |
+| [R-41](R/R-41.md) | Scale agreement compares the CAD ratio the right way round (#181, D-039) | 2 h | nothing | Done | @TabeenRaoof |
+| [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Claimed | @mbj1994 |
+| [R-43](R/R-43.md) | Measure edge loss and test a finer fusion grid | 4 h | R-32, R-33, R-37, R-38 | Done | @dalwalyk |
+| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42, I-13, I-14, G-12 | Blocked | _unclaimed_ |
+| [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
 ---
@@ -572,7 +713,12 @@ Full detail in each story file.
 | [P-30](P/P-30.md) | Write up the capture-app stories | — | nothing | Done | @TabeenRaoof |
 | [P-31](P/P-31.md) | Write up the remaining inspection, ground-truth, generative-AI and cross-cutting stories | — | nothing | Done | @dalwalyk |
 | [P-32](P/P-32.md) | The WIP cap counts active stories only (D-064) | — | nothing | Done | @TabeenRaoof |
-| [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Claimed | @TabeenRaoof |
+| [P-33](P/P-33.md) | Record parking Android device testing until the expo (D-065) | — | nothing | Done | @TabeenRaoof |
+| [P-34](P/P-34.md) | Reconcile the 16 open issues with stories (2026-11-16) | — | nothing | Done | @TabeenRaoof |
+| [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
+| [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
+| [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
+| [P-41](P/P-41.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Done | @TabeenRaoof |
 
 ---
 

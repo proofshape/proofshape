@@ -7,8 +7,10 @@ import { fileURLToPath } from "node:url";
 import type {
   AgentMessageResult,
   ErrorDetail,
+  Order,
   ReconstructionResult,
   Session,
+  SpecParseResult,
   UploadFrameResult,
   VerdictResult,
   VlmFeedback,
@@ -41,6 +43,11 @@ function loadExample(name: string): unknown {
 const KNOWN_ORDER_CODE = (loadExample("createSession.request") as { order_code: string })
   .order_code;
 const CREATE_SESSION_400 = loadExample("createSession.response-400") as ErrorDetail;
+const CREATE_ORDER_RESPONSE = loadExample("createOrder.response-201") as Order;
+const CAD_ORDER_RESPONSE = loadExample("getOrder.response-200") as Order;
+const BUYER_AUTH_REQUIRED = loadExample("createOrder.response-401") as ErrorDetail;
+const ORDER_UNKNOWN = loadExample("getOrder.response-404") as ErrorDetail;
+const PARSE_SPEC_RESPONSE = loadExample("parseSpec.response-200") as SpecParseResult;
 const UPLOAD_FRAME_422 = loadExample("uploadFrame.response-422") as ErrorDetail;
 const VLM_FEEDBACK = (loadExample("uploadFrame.response-202-vlm-feedback") as UploadFrameResult)
   .vlm_feedback as VlmFeedback;
@@ -60,6 +67,7 @@ const RECONSTRUCTION_404 = loadExample("getReconstruction.response-404") as Erro
 const VERDICT_PASS = loadExample("getVerdict.response-200") as VerdictResult;
 const VERDICT_RESCAN = loadExample("getVerdict.response-200-rescan-unobserved") as VerdictResult;
 const VERDICT_404 = loadExample("getVerdict.response-404") as ErrorDetail;
+const VERDICT_422 = loadExample("getVerdict.response-422") as ErrorDetail;
 const VERDICT_FAIL = JSON.parse(
   readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "fixtures", "verdict-fail.json"),
@@ -110,7 +118,7 @@ function sessionNotFound(): ErrorDetail {
   return { code: "session_not_found", message: "No session with that id." };
 }
 
-export type VerdictScenario = "no_cad" | "pass" | "rescan" | "fail";
+export type VerdictScenario = "no_cad" | "pass" | "rescan" | "fail" | "tolerance_missing";
 
 export interface ContractStub {
   // A Connect-style listener: usable both as a bare `http.createServer` handler (tests) and as
@@ -136,6 +144,7 @@ export interface ContractStub {
 
 export function createContractStub(): ContractStub {
   const sessions = new Map<string, StubSession>();
+  const orders = new Map<string, Order>();
   let rejectNext = false;
   let vlmFeedbackOn = false;
   let sessionCounter = 0;
@@ -188,6 +197,110 @@ export function createContractStub(): ContractStub {
     });
   }
 
+  async function handleCreateOrder(req: Request, res: ServerResponse): Promise<void> {
+    const buyerKey = req.headers.get("x-proofshape-buyer-key")?.trim();
+    if (!buyerKey) {
+      sendJson(res, 401, BUYER_AUTH_REQUIRED);
+      return;
+    }
+
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      violation(res, "createOrder body was not valid multipart/form-data");
+      return;
+    }
+
+    const specPart = form.get("spec");
+    if (!(specPart instanceof Blob)) {
+      violation(res, 'createOrder is missing a "spec" JSON file part');
+      return;
+    }
+
+    let spec: unknown;
+    try {
+      spec = JSON.parse(await specPart.text());
+    } catch {
+      sendJson(res, 422, {
+        code: "malformed_request",
+        message: "The spec part must contain a JSON object.",
+      } satisfies ErrorDetail);
+      return;
+    }
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+      sendJson(res, 422, {
+        code: "malformed_request",
+        message: "The spec part must contain a JSON object.",
+      } satisfies ErrorDetail);
+      return;
+    }
+
+    const cadPart = form.get("cad");
+    if (cadPart !== null && !(cadPart instanceof Blob)) {
+      violation(res, '"cad" must be a file part when supplied');
+      return;
+    }
+
+    const placement = form.get("placement_note");
+    const buyerReference = form.get("buyer_reference");
+    const base = cadPart instanceof Blob ? CAD_ORDER_RESPONSE : CREATE_ORDER_RESPONSE;
+    const order: Order = {
+      ...base,
+      spec: spec as Record<string, unknown>,
+      ...(typeof placement === "string" && placement.trim()
+        ? { placement_note: placement.trim() }
+        : {}),
+      ...(typeof buyerReference === "string" && buyerReference.trim()
+        ? { buyer_reference: buyerReference.trim() }
+        : {}),
+    };
+    if (!(cadPart instanceof Blob)) {
+      delete order.cad_units;
+      delete order.cad_bounding_box_mm;
+      order.has_cad = false;
+    }
+    orders.set(order.order_code, order);
+    sendJson(res, 201, order);
+  }
+
+  function handleGetOrder(res: ServerResponse, orderCode: string): void {
+    const order = orders.get(orderCode);
+    if (!order) {
+      sendJson(res, 404, ORDER_UNKNOWN);
+      return;
+    }
+    sendJson(res, 200, order);
+  }
+
+  async function handleParseSpec(req: Request, res: ServerResponse): Promise<void> {
+    const buyerKey = req.headers.get("x-proofshape-buyer-key")?.trim();
+    if (!buyerKey) {
+      sendJson(res, 401, BUYER_AUTH_REQUIRED);
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = await req.json();
+    } catch {
+      violation(res, "parseSpec body was not valid JSON");
+      return;
+    }
+    const prose =
+      typeof parsed === "object" && parsed !== null
+        ? (parsed as { prose?: unknown }).prose
+        : undefined;
+    if (typeof prose !== "string" || !prose.trim()) {
+      sendJson(res, 422, {
+        code: "malformed_request",
+        message: "The buyer prose must not be blank.",
+      } satisfies ErrorDetail);
+      return;
+    }
+    sendJson(res, 200, PARSE_SPEC_RESPONSE);
+  }
+
   async function handleCreateSession(req: Request, res: ServerResponse): Promise<void> {
     let parsed: unknown;
     try {
@@ -206,7 +319,7 @@ export function createContractStub(): ContractStub {
     }
     const orderCode = (parsed as { order_code: string }).order_code;
 
-    if (orderCode !== KNOWN_ORDER_CODE) {
+    if (orderCode !== KNOWN_ORDER_CODE && !orders.has(orderCode)) {
       sendJson(res, 400, CREATE_SESSION_400);
       return;
     }
@@ -424,6 +537,10 @@ export function createContractStub(): ContractStub {
       sendJson(res, 404, VERDICT_404);
       return;
     }
+    if (scenario === "tolerance_missing") {
+      sendJson(res, 422, VERDICT_422);
+      return;
+    }
     const verdict =
       scenario === "pass" ? VERDICT_PASS : scenario === "rescan" ? VERDICT_RESCAN : VERDICT_FAIL;
     sendJson(res, 200, verdict);
@@ -471,7 +588,28 @@ export function createContractStub(): ContractStub {
     const modelMatch = /^\/v1\/sessions\/([^/]+)\/model\.glb$/.exec(path);
     const verdictMatch = /^\/v1\/sessions\/([^/]+)\/verdict$/.exec(path);
     const agentMessageMatch = /^\/v1\/sessions\/([^/]+)\/agent-message$/.exec(path);
+    const orderMatch = /^\/v1\/orders\/([^/]+)$/.exec(path);
 
+    if (req.method === "POST" && path === "/v1/orders") {
+      toWebRequest(req)
+        .then((webReq) => handleCreateOrder(webReq, res))
+        .catch((error: unknown) => {
+          violation(res, `unhandled error in createOrder: ${String(error)}`);
+        });
+      return;
+    }
+    if (req.method === "GET" && orderMatch) {
+      handleGetOrder(res, decodeURIComponent(orderMatch[1] as string));
+      return;
+    }
+    if (req.method === "POST" && path === "/v1/spec/parse") {
+      toWebRequest(req)
+        .then((webReq) => handleParseSpec(webReq, res))
+        .catch((error: unknown) => {
+          violation(res, `unhandled error in parseSpec: ${String(error)}`);
+        });
+      return;
+    }
     if (req.method === "POST" && path === "/v1/sessions") {
       toWebRequest(req)
         .then((webReq) => handleCreateSession(webReq, res))

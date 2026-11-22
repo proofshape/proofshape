@@ -75,19 +75,34 @@ jobs:
       - name: Smoke-test the running container
         run: |
           docker run --detach --name recon-smoke --publish 8000:8000 \
-            --env PROOFSHAPE_PREFETCH_MODEL=0 proofshape-recon:ci
+            --env PROOFSHAPE_PREFETCH_MODEL=0 \
+            --env PROOFSHAPE_BUYER_KEY=ci-buyer-key \
+            proofshape-recon:ci
           for attempt in $(seq 1 30); do
             if curl --silent --fail http://localhost:8000/openapi.json > /dev/null; then
               break
             fi
             sleep 2
           done
+          # R-34: create the order first; arbitrary made-up codes are deliberately refused.
+          printf '{}' > /tmp/spec.json
+          order_status=$(curl --silent --output /tmp/order.json --write-out '%{http_code}' \
+            --header 'X-ProofShape-Buyer-Key: ci-buyer-key' \
+            --form 'spec=@/tmp/spec.json;type=application/json' \
+            http://localhost:8000/v1/orders) || order_status="curl-failed"
+          cat /tmp/order.json 2>/dev/null; echo
+          if [ "$order_status" != "201" ]; then
+            docker logs recon-smoke
+            echo "createOrder returned '$order_status', expected 201" >&2
+            exit 1
+          fi
+          order_code=$(python -c 'import json; print(json.load(open("/tmp/order.json"))["order_code"])')
+
           # The `|| status=curl-failed` guard matters: Actions runs this under `set -eo pipefail`,
-          # so without it a connection failure (e.g. the container never came up) would abort the
-          # script here, before the diagnostic `docker logs` below ever runs.
+          # so without it a connection failure would abort before the diagnostic logs below.
           status=$(curl --silent --output /tmp/session.json --write-out '%{http_code}' \
             --header 'Content-Type: application/json' \
-            --data '{"order_code": "R15-CI"}' \
+            --data "{\"order_code\": \"$order_code\"}" \
             http://localhost:8000/v1/sessions) || status="curl-failed"
           cat /tmp/session.json 2>/dev/null; echo
           if [ "$status" != "201" ]; then

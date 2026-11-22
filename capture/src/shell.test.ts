@@ -1,7 +1,21 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { uploadFrame } from "./api.js";
-import { mountAppShell, type AppShellOptions, type AppState } from "./shell.js";
+import { createSession, finishSession, uploadFrame } from "./api.js";
+import { measureBlurVariance } from "./frame_gate.js";
+import {
+  browserSessionStorage,
+  CAPTURE_SESSION_STORAGE_KEY,
+  loadCaptureSession,
+  saveCaptureSession,
+  type StoredCaptureSession,
+} from "./session-persistence.js";
+import {
+  C25_BLUR_DEBUG_STORAGE_KEY,
+  mountAppShell,
+  type AppShellOptions,
+  type AppState,
+  type C25BlurDebugMeasurement,
+} from "./shell.js";
 import { MIN_FINISH_FRAMES, startContractStub, type ContractStub } from "../stub/contract-stub.js";
 import { PAGE_TEST_STUB_PORT } from "../stub/page-test-port.js";
 
@@ -14,6 +28,9 @@ describe("mountAppShell", () => {
   let stub: ContractStub;
 
   beforeEach(async () => {
+    // C-24: the shell saves sessions in the tab's sessionStorage by default, and happy-dom's is
+    // shared by every test in this file, so each test starts from an empty one.
+    window.sessionStorage.clear();
     const started = await startContractStub(PAGE_TEST_STUB_PORT);
     baseUrl = started.baseUrl;
     close = started.close;
@@ -42,6 +59,7 @@ describe("mountAppShell", () => {
     cameraPreview: HTMLVideoElement;
     captureButton: HTMLButtonElement;
     captureStatus: HTMLElement;
+    blurDebugStatus: HTMLElement;
     finishButton: HTMLButtonElement;
     finishStatus: HTMLElement;
     reconstructionStatus: HTMLElement;
@@ -65,6 +83,7 @@ describe("mountAppShell", () => {
     const cameraPreview = document.getElementById("shell-camera-preview");
     const captureButton = document.getElementById("shell-capture-button");
     const captureStatus = document.getElementById("shell-capture-status");
+    const blurDebugStatus = document.getElementById("shell-blur-debug-status");
     const finishButton = document.getElementById("shell-finish-button");
     const finishStatus = document.getElementById("shell-finish-status");
     const reconstructionStatus = document.getElementById("shell-reconstruction-status");
@@ -80,6 +99,7 @@ describe("mountAppShell", () => {
       !cameraStatus ||
       !gyroStatus ||
       !captureStatus ||
+      !blurDebugStatus ||
       !finishStatus ||
       !reconstructionStatus
     ) {
@@ -95,6 +115,7 @@ describe("mountAppShell", () => {
       cameraPreview,
       captureButton,
       captureStatus,
+      blurDebugStatus,
       finishButton,
       finishStatus,
       reconstructionStatus,
@@ -667,6 +688,181 @@ describe("mountAppShell", () => {
       if (mounted.captureStatus.textContent === "Uploading…") throw new Error("still uploading");
     });
     expect(mounted.captureStatus.textContent).toMatch(/accepted/i);
+    expect(window.sessionStorage.getItem(C25_BLUR_DEBUG_STORAGE_KEY)).toBeNull();
+  });
+
+  it("blur-debug records the exact pre-JPEG gate metric beside the accepted server frame index", async () => {
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    const { imageData } = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    const raw = window.sessionStorage.getItem(C25_BLUR_DEBUG_STORAGE_KEY);
+    expect(raw).not.toBeNull();
+    const measurements = JSON.parse(raw ?? "[]") as C25BlurDebugMeasurement[];
+    expect(measurements).toHaveLength(1);
+    expect(measurements[0]).toMatchObject({
+      session_id: mounted.state.sessionId,
+      frame_index: 0,
+      width: imageData.width,
+      height: imageData.height,
+    });
+    expect(measurements[0]?.pre_jpeg_variance).toBe(measureBlurVariance(imageData));
+    expect(mounted.blurDebugStatus.textContent).toMatch(
+      /1 measurement\(s\) stored for this session/i,
+    );
+  });
+
+  it("blur-debug reports a per-session count when the storage key already has another session", async () => {
+    window.sessionStorage.setItem(
+      C25_BLUR_DEBUG_STORAGE_KEY,
+      JSON.stringify([
+        {
+          session_id: "sess_previous",
+          frame_index: 0,
+          pre_jpeg_variance: 123,
+          width: 640,
+          height: 480,
+        },
+      ]),
+    );
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(
+      /1 measurement\(s\) stored for this session/i,
+    );
+  });
+
+  it("blur-debug warns immediately when measurement storage is unavailable", () => {
+    const mounted = mount({ blurDebug: true, blurDebugStorage: null });
+
+    expect(mounted.blurDebugStatus.hidden).toBe(false);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/storage is unavailable/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
+  });
+
+  it("blur-debug warns after an accepted frame when measurement storage throws", async () => {
+    const throwingStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("storage blocked");
+      },
+      removeItem: () => undefined,
+    };
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true, blurDebugStorage: throwingStorage });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(/could not be stored/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/evidence is incomplete/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
+  });
+
+  it("blur-debug keeps an earlier storage failure visible after a later successful write", async () => {
+    let writes = 0;
+    let saved = "[]";
+    const flakyStorage = {
+      getItem: () => saved,
+      setItem: (_key: string, value: string) => {
+        writes += 1;
+        if (writes === 1) {
+          throw new Error("first write blocked");
+        }
+        saved = value;
+      },
+      removeItem: () => undefined,
+    };
+    const { trackStopSpy } = stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ blurDebug: true, blurDebugStorage: flakyStorage });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(trackStopSpy).not.toHaveBeenCalled();
+
+    const canvas = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(12.3, -45.6, 78.9);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 failure\(s\)/i);
+
+    canvas.setImageData(sharpWellExposedImageData(4, 6));
+    setVideoDimensions(mounted.cameraPreview, 480, 640);
+    dispatchOrientation(30, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/accepted/i.test(mounted.captureStatus.textContent)) throw new Error("still uploading");
+    });
+
+    expect(mounted.blurDebugStatus.textContent).toMatch(/1 failed/i);
+    expect(mounted.blurDebugStatus.textContent).toMatch(/evidence is incomplete/i);
+    expect(mounted.blurDebugStatus.style.fontWeight).toBe("bold");
   });
 
   it("captures stay available but never enable without a real gyro reading, even with the camera playing", async () => {
@@ -1560,5 +1756,324 @@ describe("mountAppShell", () => {
 
     expect(document.body.textContent).toContain("Newer guidance.");
     expect(document.body.textContent).not.toContain("Older guidance.");
+  });
+
+  // C-24 (#352): a reload is simulated by mounting the shell again in the same document, which
+  // is what a real reload leaves behind: a fresh page with the tab's sessionStorage intact.
+  function savedSessionInTab(): StoredCaptureSession | null {
+    return loadCaptureSession(browserSessionStorage());
+  }
+
+  function resumeElements(): {
+    panel: HTMLElement;
+    text: HTMLElement;
+    continueButton: HTMLButtonElement;
+    showResultButton: HTMLButtonElement;
+    discardButton: HTMLButtonElement;
+  } {
+    const panel = document.getElementById("shell-resume");
+    const text = document.getElementById("shell-resume-text");
+    const continueButton = document.getElementById("shell-continue-button");
+    const showResultButton = document.getElementById("shell-show-result-button");
+    const discardButton = document.getElementById("shell-discard-button");
+    if (
+      !panel ||
+      !text ||
+      !(continueButton instanceof HTMLButtonElement) ||
+      !(showResultButton instanceof HTMLButtonElement) ||
+      !(discardButton instanceof HTMLButtonElement)
+    ) {
+      throw new Error("test setup: resume panel elements missing");
+    }
+    return { panel, text, continueButton, showResultButton, discardButton };
+  }
+
+  async function captureOneAcceptedFrame(
+    mounted: Awaited<ReturnType<typeof startSuccessfulSession>>,
+    gyro: [number, number, number] = [1, 45, 0],
+  ): Promise<void> {
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(...gyro);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+  }
+
+  it("C-24: saves the session at Start and after every accepted frame", async () => {
+    const mounted = await startSuccessfulSession();
+    const sessionId = mounted.state.sessionId;
+    expect(savedSessionInTab()).toEqual({
+      sessionId,
+      orderCode: "PO-48213-A",
+      phase: "capturing",
+      acceptedFrameCount: 0,
+      acceptedGyro: [],
+    });
+
+    await captureOneAcceptedFrame(mounted);
+
+    const saved = savedSessionInTab();
+    expect(saved?.acceptedFrameCount).toBe(1);
+    expect(saved?.acceptedGyro).toEqual([{ alpha: 1, beta: 45, gamma: 0 }]);
+  });
+
+  it("C-24: does not save a frame the server rejected", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    stub.rejectNextFrame();
+    await captureAndWaitForStatus(mounted, /rejected/i);
+
+    expect(savedSessionInTab()?.acceptedFrameCount).toBe(0);
+    expect(savedSessionInTab()?.acceptedGyro).toEqual([]);
+  });
+
+  it("C-24: after a reload, offers Continue for an unfinished session, naming it and its frames", async () => {
+    const first = await startSuccessfulSession();
+    await captureOneAcceptedFrame(first);
+
+    mount();
+    const resume = resumeElements();
+
+    expect(resume.panel.hidden).toBe(false);
+    expect(resume.text.textContent).toContain(first.state.sessionId ?? "missing");
+    expect(resume.text.textContent).toContain("1 frame accepted");
+    expect(resume.continueButton.hidden).toBe(false);
+    expect(resume.showResultButton.hidden).toBe(true);
+  });
+
+  it("C-24: Continue sends the next frame to the same session, without creating one, and rebuilds coverage", async () => {
+    const first = await startSuccessfulSession();
+    await captureOneAcceptedFrame(first);
+    const originalSessionId = first.state.sessionId;
+
+    const reloaded = mount();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    resumeElements().continueButton.click();
+    await vi.waitFor(() => {
+      if (reloaded.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(reloaded.state.sessionId).toBe(originalSessionId);
+    expect(reloaded.sessionStatus.textContent).toBe(
+      `Continuing session ${originalSessionId ?? ""} (1 frame accepted so far).`,
+    );
+    expect(reloaded.button.disabled).toBe(true);
+    expect(resumeElements().panel.hidden).toBe(true);
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+    expect(
+      fetchSpy.mock.calls.some(
+        ([url, init]) =>
+          typeof url === "string" && url.endsWith("/v1/sessions") && init?.method === "POST",
+      ),
+    ).toBe(false);
+
+    await captureOneAcceptedFrame({ ...reloaded, trackStopSpy: vi.fn() }, [90, 45, 0]);
+    expect(reloaded.captureStatus.textContent).toBe("Frame accepted (frame 1)");
+    expect(savedSessionInTab()?.acceptedFrameCount).toBe(2);
+    expect(savedSessionInTab()?.sessionId).toBe(originalSessionId);
+  });
+
+  it("C-24: Start new drops the saved session", async () => {
+    await startSuccessfulSession();
+    mount();
+
+    resumeElements().discardButton.click();
+
+    expect(resumeElements().panel.hidden).toBe(true);
+    expect(window.sessionStorage.getItem(CAPTURE_SESSION_STORAGE_KEY)).toBeNull();
+  });
+
+  it("C-24: Start replaces a saved session with the new one", async () => {
+    const first = await startSuccessfulSession();
+    const reloaded = mount();
+    reloaded.orderCode.value = "PO-48213-A";
+
+    reloaded.button.click();
+    await vi.waitFor(() => {
+      if (reloaded.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(resumeElements().panel.hidden).toBe(true);
+    expect(reloaded.state.sessionId).not.toBe(first.state.sessionId);
+    expect(savedSessionInTab()?.sessionId).toBe(reloaded.state.sessionId);
+  });
+
+  it("C-24: a continued session the server no longer has is dropped, and Start comes back", async () => {
+    saveCaptureSession(browserSessionStorage(), {
+      sessionId: "sess_gone",
+      orderCode: "PO-48213-A",
+      phase: "capturing",
+      acceptedFrameCount: 4,
+      acceptedGyro: [],
+    });
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    const reloaded = mount();
+    resumeElements().continueButton.click();
+    await vi.waitFor(() => {
+      if (reloaded.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+
+    stubCanvasContext();
+    setVideoDimensions(reloaded.cameraPreview, 640, 480);
+    dispatchOrientation(1, 45, 0);
+    await vi.waitFor(() => {
+      if (reloaded.captureButton.disabled) throw new Error("still disabled");
+    });
+    reloaded.captureButton.click();
+    await vi.waitFor(() => {
+      if (!/start a new session/.test(reloaded.captureStatus.textContent)) {
+        throw new Error("dead-session message not shown yet");
+      }
+    });
+
+    expect(reloaded.captureStatus.textContent).toContain("No session with that id.");
+    expect(window.sessionStorage.getItem(CAPTURE_SESSION_STORAGE_KEY)).toBeNull();
+    expect(reloaded.state.sessionId).toBeNull();
+    expect(reloaded.button.disabled).toBe(false);
+    expect(reloaded.finishButton.disabled).toBe(true);
+    // Review (@dalwalyk, PR #375): the camera and gyro are still live here, so only the missing
+    // session keeps Capture disabled.
+    expect(reloaded.state.cameraPlaying).toBe(true);
+    expect(reloaded.state.latestGyro).not.toBeNull();
+    expect(reloaded.captureButton.disabled).toBe(true);
+  });
+
+  it("C-24: keeps a finished session saved while reconstruction is still pending", async () => {
+    const mounted = await startSuccessfulSession();
+    if (mounted.state.sessionId === null) throw new Error("session id missing");
+    await uploadAcceptedFrame(mounted.state.sessionId);
+    stub.setReconstructionPendingPolls(99);
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.reconstructionStatus.textContent.includes("timed out")) {
+        throw new Error("still polling");
+      }
+    });
+
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
+  it("C-24: after a reload during reconstruction, Show result resumes polling and then forgets the session", async () => {
+    const created = await createSession(baseUrl, "PO-48213-A");
+    if (!created.ok) throw new Error("test setup: createSession failed");
+    const sessionId = created.body.session_id;
+    await uploadAcceptedFrame(sessionId);
+    const finished = await finishSession(baseUrl, sessionId);
+    if (!finished.ok) throw new Error("test setup: finishSession failed");
+    stub.setReconstructionPendingPolls(1);
+    saveCaptureSession(browserSessionStorage(), {
+      sessionId,
+      orderCode: "PO-48213-A",
+      phase: "finished",
+      acceptedFrameCount: MIN_FINISH_FRAMES,
+      acceptedGyro: [],
+    });
+
+    const reloaded = mount();
+    const resume = resumeElements();
+    expect(resume.text.textContent).toContain("was finished");
+    expect(resume.continueButton.hidden).toBe(true);
+    expect(resume.showResultButton.hidden).toBe(false);
+
+    resume.showResultButton.click();
+    await vi.waitFor(() => {
+      if (!reloaded.reconstructionStatus.textContent.includes("Reconstruction complete")) {
+        throw new Error("reconstruction not shown yet");
+      }
+    });
+
+    expect(reloaded.finishStatus.textContent).toBe(`Session finished: ${sessionId}`);
+    expect(reloaded.captureButton.disabled).toBe(true);
+    expect(reloaded.finishButton.disabled).toBe(true);
+    expect(document.getElementById("shell-report-link")?.getAttribute("href")).toBe(
+      `report.html?session=${sessionId}`,
+    );
+    expect(window.sessionStorage.getItem(CAPTURE_SESSION_STORAGE_KEY)).toBeNull();
+  });
+
+  it("C-24: a corrupt saved value is ignored and removed, and Start still works", async () => {
+    window.sessionStorage.setItem(CAPTURE_SESSION_STORAGE_KEY, "{not json");
+
+    const mounted = mount();
+
+    expect(resumeElements().panel.hidden).toBe(true);
+    expect(window.sessionStorage.getItem(CAPTURE_SESSION_STORAGE_KEY)).toBeNull();
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+    expect(mounted.state.sessionId).not.toBeNull();
+  });
+
+  it("C-24: with storage turned off, a session still runs and nothing is saved", async () => {
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    const mounted = mount({ captureSessionStorage: null });
+    mounted.orderCode.value = "PO-48213-A";
+    mounted.button.click();
+    await vi.waitFor(() => {
+      if (mounted.gyroStatus.textContent === "") throw new Error("still pending");
+    });
+
+    expect(mounted.state.sessionId).not.toBeNull();
+    expect(window.sessionStorage.getItem(CAPTURE_SESSION_STORAGE_KEY)).toBeNull();
+  });
+
+  // C-26: the viewfinder's frame colour and the round shutter.
+  function viewfinderGuidance(): string | undefined {
+    return document.getElementById("shell-viewfinder")?.dataset.guidance;
+  }
+
+  it("C-26: the viewfinder frame is idle before the first photo, then follows far, near and on-target", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    // alpha 0, beta 45 -> heading 0, elevation 45: DEFAULT_ORBIT's slot 0.
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    expect(viewfinderGuidance()).toBe("idle");
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    // Next target is slot 1 (azimuth 45); the live reading is still at 0, 45 degrees away.
+    expect(viewfinderGuidance()).toBe("far");
+
+    dispatchOrientation(20, 45, 0);
+    expect(viewfinderGuidance()).toBe("near");
+
+    dispatchOrientation(45, 45, 0);
+    expect(viewfinderGuidance()).toBe("on-target");
+  });
+
+  it("C-26: the shutter is inside the viewfinder and keeps its id and accessible name", () => {
+    const mounted = mount();
+    expect(mounted.captureButton.closest("#shell-viewfinder")).not.toBeNull();
+    expect(mounted.captureButton.getAttribute("aria-label")).toBe("Capture frame");
+    expect(mounted.captureButton.textContent.trim()).toBe("Capture frame");
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(document.querySelector("#shell-viewfinder #shell-gyro-overlay")).not.toBeNull();
+  });
+
+  it("C-26: Finish session is the large primary button and keeps its id and name", () => {
+    const mounted = mount();
+    expect(mounted.finishButton.classList.contains("primary-action")).toBe(true);
+    expect(mounted.finishButton.textContent.trim()).toBe("Finish session");
+    expect(mounted.finishButton.disabled).toBe(true);
   });
 });
