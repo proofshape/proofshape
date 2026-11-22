@@ -210,10 +210,10 @@ def test_keyless_fallback_finishes_only_after_full_thirteen_slot_orbit(tmp_path)
             for index in range(8)
         ],
         *[
-            {"alpha": float(index * 90), "beta": 70.0, "gamma": 0.0}
+            {"alpha": float(index * 90), "beta": 20.0, "gamma": 0.0}
             for index in range(4)
         ],
-        {"alpha": 0.0, "beta": 90.0, "gamma": 0.0},
+        {"alpha": 0.0, "beta": 0.0, "gamma": 0.0},
     ]
 
     with TestClient(app) as client:
