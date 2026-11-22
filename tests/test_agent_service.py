@@ -177,6 +177,7 @@ def test_agent_can_finish_and_schedule_reconstruction_after_minimum_frames(tmp_p
         assert record["status"] == "finished"
         assert record["reconstruction"]["status"] in {"pending", "complete"}
 
+
 def test_agent_tool_error_does_not_fail_an_already_accepted_upload(
     tmp_path, monkeypatch
 ):
