@@ -633,6 +633,32 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     showResumePanel(savedSession);
   }
 
+  function transitionToFinishedSession(sessionId: string, message: string): void {
+    if (state.sessionId !== sessionId) {
+      return;
+    }
+    const alreadyFinished =
+      activeSession !== null &&
+      activeSession.sessionId === sessionId &&
+      activeSession.phase === "finished";
+
+    sessionFinishing = true;
+    updateCaptureAvailability();
+    updateFinishAvailability();
+    if (activeSession !== null && activeSession.sessionId === sessionId) {
+      activeSession.phase = "finished";
+      persistActiveSession();
+    }
+    setStatus(finishStatus, message, "info");
+
+    if (alreadyFinished) {
+      return;
+    }
+    releaseCamera();
+    gyroOverlayHandle.dispose();
+    void runReconstructionPolling();
+  }
+
   async function refreshAgentConversation(sessionId: string): Promise<void> {
     const requestId = ++latestAgentRequestId;
     try {
@@ -647,22 +673,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         return;
       }
       agentConversation.show(result.body);
-      // A-15 / v1.9: A-07 may finish only after its coverage tool reports the orbit complete.
-      // When it does, the server has already marked the session finished and queued
-      // reconstruction. Move the phone into the same lifecycle state as a successful manual
-      // Finish instead of allowing one more upload to hit session_already_finished.
-      if (result.body.finished && !sessionFinishing) {
-        sessionFinishing = true;
-        updateCaptureAvailability();
-        updateFinishAvailability();
-        if (activeSession !== null && activeSession.sessionId === sessionId) {
-          activeSession.phase = "finished";
-          persistActiveSession();
-        }
-        setStatus(finishStatus, "Capture assistant finished the session.", "info");
-        releaseCamera();
-        gyroOverlayHandle.dispose();
-        void runReconstructionPolling();
+      // A-15 / v1.9: A-07 may finish only after coverage is complete. If this GET observes
+      // that state, move into the same lifecycle as a successful manual Finish.
+      if (result.body.finished) {
+        transitionToFinishedSession(sessionId, "Capture assistant finished the session.");
       }
     } catch {
       if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
@@ -831,11 +845,17 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           void refreshAgentConversation(sessionId);
         } else {
           lastAcceptedForGate = previousAcceptedForGate;
-          // C-24: a continued session can turn out to be over -- finished from this tab before
-          // the reload, or gone because the service lost its data. Retrying can't help, so drop
-          // the saved copy and let Start make a new session.
           const code = result.error.code;
-          if (code === "session_not_found" || code === "session_already_finished") {
+          if (code === "session_already_finished") {
+            // A-15 backstop: the background agent may have finished after the previous upload
+            // while its GET was delayed or lost. Do not discard a reconstruction that is already
+            // running; recover by moving straight to reconstruction polling.
+            transitionToFinishedSession(
+              sessionId,
+              "The service already finished this session. Loading reconstruction.",
+            );
+          } else if (code === "session_not_found") {
+            // C-24: the service genuinely no longer knows this session, so retrying cannot help.
             forgetSession();
             state.sessionId = null;
             startButton.disabled = false;
@@ -932,7 +952,18 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       setStatus(reconstructionStatus, "", "info");
       let finished = false;
       try {
-        const result = await finishSession(options.baseUrl, state.sessionId, options.authToken);
+        const sessionId = state.sessionId;
+        const result = await finishSession(options.baseUrl, sessionId, options.authToken);
+        if (!result.ok && result.error.code === "session_already_finished") {
+          // A-15 backstop for the tap-in-the-gap race: the agent finished between the last
+          // accepted upload and this manual Finish. That is success from the phone's point of
+          // view, so recover into reconstruction polling instead of re-enabling Finish forever.
+          transitionToFinishedSession(
+            sessionId,
+            "The service already finished this session. Loading reconstruction.",
+          );
+          return;
+        }
         setStatus(finishStatus, describeFinishSession(result), result.ok ? "info" : "error");
         finished = result.ok;
       } catch (error) {
