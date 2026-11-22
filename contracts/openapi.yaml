@@ -651,13 +651,13 @@ components:
       required: [finished, fallback_reason, message]
       description: >
         A-15 / A-07 phone-facing result for the latest accepted-frame turn. fallback_reason is
-        null on the normal model path and names the deterministic A-08 fallback when the model
-        errors, times out, or loops. message is plain text and may be null before any useful
-        supplier-facing line exists.
+        null on the normal model path and names the deterministic A-08 fallback when no Gemini key
+        is configured, or when the model errors, times out, or loops. message is plain text and
+        may be null before any useful supplier-facing line exists.
       properties:
         finished:
           type: boolean
-          description: True when A-07 finished the session after coverage allowed it.
+          description: True whenever the session is finished, whether by A-07/A-08 after coverage or by manual Finish.
         fallback_reason:
           type: [string, "null"]
           enum: [model_error, timeout, loop_detected, null]
