@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -690,6 +689,48 @@ def create_app(
     def missing_agent_model(_state: Any) -> Any:
         raise RuntimeError("GEMINI_API_KEY is not configured")
 
+    # A-15 review: accepted frame uploads must return promptly and stay accepted even if the
+    # optional capture agent fails. One background turn per accepted upload is serialized per
+    # session so model/tool calls cannot overlap each other or race the session finish.
+    agent_turn_locks: dict[str, threading.Lock] = {}
+
+    def run_agent_after_upload(session_id: str) -> None:
+        lock = agent_turn_locks.setdefault(session_id, threading.Lock())
+        with lock:
+            record = store.load(session_id)
+            if record is None or record.get("status") != "capturing":
+                return
+            scheduled_reconstructions: list[str] = []
+            caller = configured_agent_model_caller or missing_agent_model
+            try:
+                agent_result = run_agent_turn(
+                    record,
+                    store,
+                    session_id,
+                    scheduled_reconstructions.append,
+                    caller,
+                    min_frames=MIN_FINISH_FRAMES,
+                    timeout_s=configured_agent_timeout_s,
+                )
+            except Exception:  # optional guidance must never turn an accepted upload into a 500
+                logger.exception("Capture agent turn failed for session %s", session_id)
+                return
+
+            latest_record = store.load(session_id)
+            if latest_record is None:
+                return
+            latest_record["agent_message"] = {
+                "finished": latest_record.get("status") == "finished",
+                "fallback_reason": agent_result.fallback_reason,
+                "message": agent_result.message,
+            }
+            store.save(latest_record)
+
+            # run_session is defined below in create_app; background tasks execute only after
+            # create_app has returned and all route-local functions exist.
+            for scheduled_session_id in scheduled_reconstructions:
+                run_session(scheduled_session_id)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
@@ -1091,35 +1132,10 @@ def create_app(
                 frame_index=checked.frame_index, **checked.observation.model_dump()
             )
 
-        # A-15 option (a): run one agent turn after each accepted upload, persist only its latest
-        # phone-facing result, and keep GET /agent-message read-only. The model call is moved off
-        # the async request loop; A-07 still bounds each call by its remaining timeout budget.
-        # If A-07 decides coverage is complete, finish_session marks the session finished here and
-        # records which reconstruction job must be scheduled after this request returns.
-        scheduled_reconstructions: list[str] = []
-        agent_record = store.load(session_id)
-        if agent_record is not None:
-            caller = configured_agent_model_caller or missing_agent_model
-            agent_result = await asyncio.to_thread(
-                run_agent_turn,
-                agent_record,
-                store,
-                session_id,
-                scheduled_reconstructions.append,
-                caller,
-                min_frames=MIN_FINISH_FRAMES,
-                timeout_s=configured_agent_timeout_s,
-            )
-            latest_record = store.load(session_id)
-            if latest_record is not None:
-                latest_record["agent_message"] = {
-                    "finished": agent_result.finished,
-                    "fallback_reason": agent_result.fallback_reason,
-                    "message": agent_result.message,
-                }
-                store.save(latest_record)
-            for scheduled_session_id in scheduled_reconstructions:
-                background_tasks.add_task(run_session, scheduled_session_id)
+        # A-15 option (a): the accepted upload returns immediately. The agent turn starts after
+        # the response is sent, is serialized per session, and persists only its latest
+        # phone-facing result. GET /agent-message remains read-only.
+        background_tasks.add_task(run_agent_after_upload, session_id)
 
         return UploadFrameResult(
             accepted=True, frame_index=frame_index, vlm_feedback=feedback
@@ -1149,7 +1165,11 @@ def create_app(
                 fallback_reason=None,
                 message=None,
             )
-        return AgentMessageResult(**message)
+        return AgentMessageResult(
+            finished=record.get("status") == "finished",
+            fallback_reason=message.get("fallback_reason"),
+            message=message.get("message"),
+        )
 
     def run_session(session_id: str) -> None:
         record = store.load(session_id)
