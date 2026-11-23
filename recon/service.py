@@ -9,6 +9,7 @@ import secrets
 import threading
 import time
 import uuid
+import weakref
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -269,6 +270,31 @@ class SessionStore:
     def save(self, record: dict[str, Any]) -> None:
         with self._lock:
             self._write_record(record)
+
+    def update_agent_message(
+        self,
+        session_id: str,
+        *,
+        fallback_reason: str | None,
+        message: str | None,
+    ) -> dict[str, Any] | None:
+        """Merge only the phone-facing agent result into the latest session record.
+
+        A-15 runs the model turn outside the store lock so uploads stay fast. Reloading under the
+        lock here prevents a turn that started from an older snapshot from overwriting a concurrent
+        frame_count update or a Finish transition.
+        """
+        with self._lock:
+            record = self.load(session_id)
+            if record is None:
+                return None
+            record["agent_message"] = {
+                "finished": record.get("status") == "finished",
+                "fallback_reason": fallback_reason,
+                "message": message,
+            }
+            self._write_record(record)
+            return record
 
     def add_frame(
         self, session_id: str, frame_bytes: bytes, gyro: dict[str, float]
@@ -691,11 +717,24 @@ def create_app(
 
     # A-15 review: accepted frame uploads must return promptly and stay accepted even if the
     # optional capture agent fails. One background turn per accepted upload is serialized per
-    # session so model/tool calls cannot overlap each other or race the session finish.
-    agent_turn_locks: dict[str, threading.Lock] = {}
+    # session. The map holds locks weakly: active/waiting turns keep their lock alive, and once no
+    # turn references a finished/abandoned session its entry disappears instead of growing for the
+    # life of a long-running deployment.
+    agent_turn_locks_guard = threading.Lock()
+    agent_turn_locks: weakref.WeakValueDictionary[str, threading.Lock] = (
+        weakref.WeakValueDictionary()
+    )
+
+    def agent_turn_lock(session_id: str) -> threading.Lock:
+        with agent_turn_locks_guard:
+            lock = agent_turn_locks.get(session_id)
+            if lock is None:
+                lock = threading.Lock()
+                agent_turn_locks[session_id] = lock
+            return lock
 
     def run_agent_after_upload(session_id: str) -> None:
-        lock = agent_turn_locks.setdefault(session_id, threading.Lock())
+        lock = agent_turn_lock(session_id)
         with lock:
             record = store.load(session_id)
             if record is None or record.get("status") != "capturing":
@@ -717,15 +756,13 @@ def create_app(
                 logger.exception("Capture agent turn failed for session %s", session_id)
                 return
 
-            latest_record = store.load(session_id)
+            latest_record = store.update_agent_message(
+                session_id,
+                fallback_reason=agent_result.fallback_reason,
+                message=agent_result.message,
+            )
             if latest_record is None:
                 return
-            latest_record["agent_message"] = {
-                "finished": latest_record.get("status") == "finished",
-                "fallback_reason": agent_result.fallback_reason,
-                "message": agent_result.message,
-            }
-            store.save(latest_record)
 
             # run_session is defined below in create_app; background tasks execute only after
             # create_app has returned and all route-local functions exist.
