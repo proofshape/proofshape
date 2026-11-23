@@ -171,7 +171,7 @@ export const APP_SHELL_HTML = `
       ><span class="visually-hidden">Capture frame</span></button>
     </div>
     <label class="auto-capture-toggle">
-      <input id="shell-auto-capture" type="checkbox" checked />
+      <input id="shell-auto-capture" type="checkbox" />
       Take the photo automatically when on target
     </label>
     <p id="shell-capture-status"></p>
@@ -294,6 +294,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // enabled state (session, camera, gyro, no upload in flight, not finishing), checked here so
   // the two paths can never disagree. Before the first photo the level is "idle", so the first
   // frame is always a tap: it anchors the orbit's heading.
+  //
+  // The switch is off by default (the freeze exception on #436): until the person capturing turns
+  // it on, every photo is a tap, as before C-27.
   const now = options.now ?? (() => performance.now());
   let autoCaptureState: AutoCaptureState = INITIAL_AUTO_CAPTURE_STATE;
   function mountOverlay(): GyroOverlayHandle {

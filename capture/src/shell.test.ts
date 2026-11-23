@@ -2071,14 +2071,26 @@ describe("mountAppShell", () => {
   });
 
   // C-27: auto-capture. The clock is injected; orientation events are dispatched by hand, as a
-  // phone would deliver them.
-  async function startAutoSession(firstPhotoBeta = 45): Promise<{
+  // phone would deliver them. The switch is off by default (#436), so these sessions turn it on,
+  // as the person capturing would, unless a test says otherwise.
+  function autoCaptureToggle(): HTMLInputElement {
+    const toggle = document.getElementById("shell-auto-capture");
+    if (!(toggle instanceof HTMLInputElement)) throw new Error("test: toggle missing");
+    return toggle;
+  }
+
+  async function startAutoSession(
+    firstPhotoBeta = 45,
+    { autoOn = true }: { autoOn?: boolean } = {},
+  ): Promise<{
     mounted: Awaited<ReturnType<typeof startSuccessfulSession>>;
     clock: { t: number };
     canvas: ReturnType<typeof stubCanvasContext>;
   }> {
     const clock = { t: 0 };
     const mounted = await startSuccessfulSession({ now: () => clock.t });
+    // Left alone when autoOn is false, so a test can see the default.
+    if (autoOn) autoCaptureToggle().checked = true;
     const canvas = stubCanvasContext();
     setVideoDimensions(mounted.cameraPreview, 640, 480);
     // alpha 0, beta 45 by default: DEFAULT_ORBIT's slot 0. The first photo is a tap.
@@ -2155,6 +2167,7 @@ describe("mountAppShell", () => {
   it("C-27: never fires before the first photo, however long the phone is held", async () => {
     const clock = { t: 0 };
     const mounted = await startSuccessfulSession({ now: () => clock.t });
+    autoCaptureToggle().checked = true;
     stubCanvasContext();
     setVideoDimensions(mounted.cameraPreview, 640, 480);
     const fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -2164,12 +2177,26 @@ describe("mountAppShell", () => {
     expect(document.getElementById("shell-viewfinder")?.dataset.guidance).toBe("idle");
   });
 
-  it("C-27: with the switch off, holding on target takes nothing and the status says to tap", async () => {
+  it("C-27: the switch starts off, and a held on-target reading takes nothing until it is turned on", async () => {
+    const { clock } = await startAutoSession(45, { autoOn: false });
+    expect(autoCaptureToggle().checked).toBe(false);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 5000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+
+    autoCaptureToggle().checked = true;
+    holdAt(clock, 45, 5100, 5800);
+    await vi.waitFor(() => {
+      if (!/^Covered: 2\//.test(coveredCountText() ?? "")) throw new Error("not yet covered");
+    });
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  it("C-27: switched off again, holding on target takes nothing and the status says to tap", async () => {
     const { clock } = await startAutoSession();
-    const toggle = document.getElementById("shell-auto-capture");
-    if (!(toggle instanceof HTMLInputElement)) throw new Error("test: toggle missing");
-    expect(toggle.checked).toBe(true);
-    toggle.checked = false;
+    autoCaptureToggle().checked = false;
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     holdAt(clock, 45, 1000, 5000);
     await new Promise((resolve) => setTimeout(resolve, 20));
