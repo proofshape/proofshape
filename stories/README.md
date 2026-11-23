@@ -238,6 +238,7 @@ Full detail in each story file.
 | [G-09](G/G-09.md) | Photograph the defect ladder | 1.5 h | G-05, G-08 | Done | @TabeenRaoof |
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Cut | _unclaimed_ |
 | [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Done | @TabeenRaoof |
+| [G-12](G/G-12.md) | Print, caliper and photograph a top-face bump for X-03's planted defect | 3 h | G-05, G-09 | Claimed | @TabeenRaoof |
 
 ---
 
@@ -458,6 +459,7 @@ Full detail in each story file.
 | [A-14](A/A-14.md) | VLM capture checks: frame 0 is the reference, an orbit isn't a change, and the sampling gap is decided | 3 h | A-01, A-11 | Done | @mbj1994 |
 | [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Done | @dalwalyk |
+| [C-26](C/C-26.md) | Capture viewfinder: a visible guidance arrow, an on-target frame colour, a round shutter | 2 h | C-07, C-09 | Done | @TabeenRaoof |
 
 ---
 
@@ -478,7 +480,7 @@ freeze, as R-41 and R-42 did. `stories/P/P-35.md` has the capacity note.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [I-13](I/I-13.md) | Orientation ambiguity uses coverage, not inlier RMSE alone (#407) | 3 h | I-05 | Done | @dalwalyk |
-| [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Claimed | @mbj1994 |
+| [I-14](I/I-14.md) | Base flare outside the CAD's outline is measured as part, and fails good parts (#407) | 4 h | I-06, I-07 | Done | @mbj1994 |
 
 ---
 
@@ -491,10 +493,10 @@ work. `stories/P/P-37.md` has the capacity note.
 
 Two more pieces of work have to land by Dec 2:
 
-- **A printed top-face bump for X-03** is #407's option 1, still for the team to choose. On the
-  measured pair and specs, the re-shot 4 mm hole shift reads like its control (#421). Its story is
-  a draft on #407, not a row here, so it can't be claimed before the team chooses. Decide it there
-  now, because it needs the lab before X-03 can run.
+- **A printed top-face bump for X-03** is #407's option 1. On the measured pair and specs, the
+  re-shot 4 mm hole shift reads like its control (#421). *2026-11-21:* the team took the option.
+  It is G-12, in the ground-truth table, claimed by @TabeenRaoof. Its claim amended D-069 and
+  re-worded X-03's first criterion, so it merged only with both other members' approval.
 - **A-15** serves the capture agent (#406). It's required scope, because generative-AI components
   are never cut (`AGENTS.md`, D-017). It's a new route after M5's freeze and a D-031 round, so it
   merges only at the Dec 2 boundary, by named exception.
@@ -508,7 +510,39 @@ file lists the information still to collect before printing.
 | [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
 | [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
 | [P-40](P/P-40.md) | Expo poster | 1 h | nothing | Claimed | @TabeenRaoof |
-| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Ready | _unclaimed_ |
+| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Claimed | @mbj1994 |
+
+---
+
+## Accuracy review on the ten calipered parts (P-41)
+
+On 2026-11-20, `main` (`607450a`) was run on the ten printed parts that have caliper readings,
+each against its own CAD. Each part's top-face vertices scatter 0.10 to 0.35 mm about their own
+median. Walls read 0.1 to 2.1 mm inside the CAD, and a good part first Passes at 3.7 to 6 mm with
+ambiguity set aside. Photos disagree sideways by a median 1.6 mm after R-30, which corrects each
+photo's height and tilt but not where it sits in the board plane. A scratch test that corrected
+it took much of the wall error with it, on seven of the ten parts.
+`docs/accuracy-review-2026-11-20.md` has the measurements, and
+`scripts/measure_part_accuracy.py` re-runs them.
+
+- **R-44** re-anchors each photo to its own board corners before fusion. It completes R-30's
+  correction rather than adding a feature, so it can land before the Dec 3–4 code freeze. Whether
+  it is on in the served path is a team decision, with a condition on the CAD alignment that
+  P-41's run doesn't meet yet.
+- **I-15** is that condition. The pose search samples the whole model surface, and on six of
+  the ten parts 12 to 44% of the Observed model is stray surface near the board. With R-44's
+  correction on and nothing else changed, the G-05 control comes out 180° off with no ambiguity
+  flag. The story names the stage that loses the pose before it fixes anything.
+- **G-13** measures the verdict's floors and outline margin on the fused mesh, once R-44 and I-15
+  have landed. The floors in use (D-073, D-078) were measured on the raw cloud, and the 0 mm
+  margin (D-086) on `main`'s meshes. The choice of numbers is inside the story, and the constants
+  change only if both other members approve.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
+| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 5 h | I-05, I-13 | Claimed | @TabeenRaoof |
+| [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---
 
@@ -624,7 +658,8 @@ Full detail in each story file.
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Done | @dalwalyk |
 | [R-41](R/R-41.md) | Scale agreement compares the CAD ratio the right way round (#181, D-039) | 2 h | nothing | Done | @TabeenRaoof |
 | [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Claimed | @mbj1994 |
-| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42, I-13, I-14 | Blocked | _unclaimed_ |
+| [R-43](R/R-43.md) | Measure edge loss and test a finer fusion grid | 4 h | R-32, R-33, R-37, R-38 | Done | @dalwalyk |
+| [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42, I-13, I-14, G-12 | Blocked | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
 | [X-05](X/X-05.md) | Recorded backup demo | 2 h | X-04 | Blocked | _unclaimed_ |
 
@@ -688,6 +723,7 @@ Full detail in each story file.
 | [P-35](P/P-35.md) | Write up X-03's prerequisites from the 2026-11-19 dry run, and the Nov 27 review | — | nothing | Done | @TabeenRaoof |
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
+| [P-41](P/P-41.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Done | @TabeenRaoof |
 
 ---
 
