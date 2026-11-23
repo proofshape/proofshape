@@ -256,7 +256,9 @@ def run_agent_turn(
         finished = False
         if isinstance(action, Finish):
             if not _automatic_finish_allowed(record, session_dir):
-                message = "Keep going -- more of the part still needs to be photographed."
+                message = (
+                    "Keep going -- more of the part still needs to be photographed."
+                )
             else:
                 result = finish_session(
                     store, session_id, schedule_reconstruction, min_frames=min_frames
