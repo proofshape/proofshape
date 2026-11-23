@@ -1793,8 +1793,10 @@ describe("mountAppShell", () => {
     expect(mounted.trackStopSpy).toHaveBeenCalled();
     expect(mounted.captureButton.disabled).toBe(true);
     expect(mounted.finishButton.disabled).toBe(true);
-    expect(savedSessionInTab()?.phase).toBe("finished");
     expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
+    // A terminal reconstruction clears C-24's saved-session recovery record. Reaching this state
+    // without a Finish tap proves the delayed agent poll drove the full lifecycle.
+    expect(savedSessionInTab()).toBeNull();
   });
 
   it("recovers an upload session_already_finished response instead of forgetting the session", async () => {
