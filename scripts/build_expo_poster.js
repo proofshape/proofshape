@@ -377,12 +377,14 @@ async function build(out, ids) {
   x = X[2] + PAD;
   y = sectionHeader(s, "Analysis & Results", x, lowTop + PAD, IW);
   // RESULTS — sources: progress log 2026-11-16 (R-36's three phone sessions); D-073 (n = 5) and
-  // R-16 (s-04, s-05 heights); D-078 (n = 11); #407 and G-09 (the 4 mm hole shift, re-shot in #421).
+  // R-16 (s-04, s-05 heights); D-078 (n = 11); #421 for the 4 mm hole shift: the re-shot g05_02
+  // gets the same verdicts as its control g05_00 at #407's specs, Rescan at a critical 3.7 mm and
+  // Fail at a non-critical 0.5 mm (the control too).
   const RESULTS = [
     ["31–51 s", 54, "from Finish to a measured 3D model, on 3 iPhone sessions served from a laptop"],
-    ["0.86 mm", 54, "p95 height error against calipers, from 5 comparisons; two test parts read −0.52 and −0.21 mm"],
-    ["5.28 mm", 54, "p95 error in measured edge lengths, against calipers, from 11 comparisons"],
-    ["4 mm shift", 40, "a printed hole moved 4 mm, and its control, both came back Rescan: not separable yet, and the system says so"],
+    ["0.86 mm", 54, "p95 absolute height error against calipers (board reference), from 5 comparisons; two test parts read −0.52 and −0.21 mm"],
+    ["5.28 mm", 54, "p95 absolute error in measured edge lengths against calipers (board reference), from 11 comparisons"],
+    ["4 mm shift", 40, "a hole moved 4 mm read the same as its unmoved control at both tolerances tried (3.7 and 0.5 mm): not separable yet"],
   ];
   y += 0.25;
   const rH = 1.82;
