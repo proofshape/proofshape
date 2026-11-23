@@ -13,9 +13,10 @@ It writes `figure-facts.json` beside the images: the session's counts and covera
 pixel size, and where the board, a camera and the part land in the hero image, so the poster
 can draw its labels as text instead of baking them into the picture.
 
-matplotlib draws the figures but isn't in requirements.txt (D-036), so it is imported only by the
-functions that draw. What the tests check (which vertices are Observed and measured, the face
-colours and the coverage figure) imports without it, so CI runs them.
+matplotlib draws the figures but isn't a declared requirement: it reaches requirements.txt's
+environment (D-036) only as a dependency of open3d. So only the functions that draw import it,
+and what the tests check (which vertices are Observed and measured, the face colours and the
+coverage figure) doesn't depend on it.
 """
 
 from __future__ import annotations
