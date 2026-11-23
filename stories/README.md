@@ -460,6 +460,7 @@ Full detail in each story file.
 | [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Done | @dalwalyk |
 | [C-26](C/C-26.md) | Capture viewfinder: a visible guidance arrow, an on-target frame colour, a round shutter | 2 h | C-07, C-09 | Done | @TabeenRaoof |
+| [C-27](C/C-27.md) | Auto-capture: take the photo when the phone is on target and steady (asks for a freeze exception) | 3 h | C-26, C-06 | Claimed | @TabeenRaoof |
 
 ---
 
