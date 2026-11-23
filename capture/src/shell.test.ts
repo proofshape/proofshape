@@ -1704,10 +1704,12 @@ describe("mountAppShell", () => {
     expect(savedSessionInTab()?.phase).toBe("finished");
   });
 
-  it("polls a delayed final agent turn after orbit completion and starts reconstruction without a Finish tap", async () => {
+  it("keeps a recovery tail after the fast final-turn window expires for queued agent work", async () => {
     const mounted = await startSuccessfulSession({
       agentTurnPollIntervalMs: 0,
-      agentTurnPollMaxAttempts: 3,
+      agentTurnPollMaxAttempts: 2,
+      agentRecoveryPollIntervalMs: 0,
+      agentRecoveryPollMaxAttempts: 3,
     });
     stubCanvasContext();
     setVideoDimensions(mounted.cameraPreview, 640, 480);
@@ -1732,7 +1734,9 @@ describe("mountAppShell", () => {
           if (onFinalTurn) {
             finalTurnPolls += 1;
           }
-          const finished = onFinalTurn && finalTurnPolls >= 2;
+          // The first two final-turn reads exhaust the fast window. The answer arrives only on
+          // the second recovery-tail read, representing earlier per-session work ahead in queue.
+          const finished = onFinalTurn && finalTurnPolls >= 4;
           return Promise.resolve(
             new Response(
               JSON.stringify({
@@ -1782,7 +1786,7 @@ describe("mountAppShell", () => {
     }
 
     await vi.waitFor(() => {
-      if (finalTurnPolls < 2) throw new Error("bounded final-turn retry not observed");
+      if (finalTurnPolls < 4) throw new Error("recovery-tail polling not observed");
       if (!mounted.finishStatus.textContent.includes("finished the session")) {
         throw new Error("automatic finish transition not observed");
       }
@@ -1796,6 +1800,103 @@ describe("mountAppShell", () => {
     expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
     // A terminal reconstruction clears C-24's saved-session recovery record. Reaching this state
     // without a Finish tap proves the delayed agent poll drove the full lifecycle.
+    expect(savedSessionInTab()).toBeNull();
+  });
+
+  it("retries a transient final-turn GET failure and still enters reconstruction automatically", async () => {
+    const mounted = await startSuccessfulSession({
+      agentTurnPollIntervalMs: 0,
+      agentTurnPollMaxAttempts: 2,
+      agentRecoveryPollIntervalMs: 0,
+      agentRecoveryPollMaxAttempts: 2,
+    });
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    let acceptedUploads = 0;
+    let finalTurnPolls = 0;
+    let reconstructionCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          acceptedUploads += 1;
+          return realFetch(input, init);
+        }
+        if (url.includes("/agent-message")) {
+          const onFinalTurn = acceptedUploads >= DEFAULT_ORBIT.length;
+          if (!onFinalTurn) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  finished: false,
+                  fallback_reason: null,
+                  message: "Continue to the next guided view.",
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+              ),
+            );
+          }
+          finalTurnPolls += 1;
+          if (finalTurnPolls === 1) {
+            return Promise.reject(new TypeError("synthetic transient network failure"));
+          }
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished: true,
+                fallback_reason: null,
+                message: "All coverage slots are complete. Finishing the session.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          reconstructionCalls += 1;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    for (let index = 0; index < DEFAULT_ORBIT.length; index += 1) {
+      const slot = DEFAULT_ORBIT[index];
+      if (slot === undefined) throw new Error("test setup: orbit slot missing");
+      dispatchOrientation(slot.azimuthDeg, 90 - slot.elevationDeg, 0);
+      await vi.waitFor(() => {
+        if (mounted.captureButton.disabled) throw new Error("still disabled");
+      });
+      await captureAndWaitForStatus(mounted, new RegExp(`frame ${String(index)}`, "i"));
+    }
+
+    await vi.waitFor(() => {
+      if (finalTurnPolls < 2) throw new Error("transient retry not observed");
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("automatic finish transition not observed");
+      }
+      if (reconstructionCalls === 0) throw new Error("reconstruction polling not started");
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
     expect(savedSessionInTab()).toBeNull();
   });
 
