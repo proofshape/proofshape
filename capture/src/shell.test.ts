@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
 import { measureBlurVariance } from "./frame_gate.js";
+import { DEFAULT_ORBIT } from "./orbit.js";
 import {
   browserSessionStorage,
   CAPTURE_SESSION_STORAGE_KEY,
@@ -161,12 +162,12 @@ describe("mountAppShell", () => {
     window.dispatchEvent(event);
   }
 
-  async function startSuccessfulSession(): Promise<
-    ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }
-  > {
+  async function startSuccessfulSession(
+    overrides: Partial<AppShellOptions> = {},
+  ): Promise<ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }> {
     const { trackStopSpy } = stubGrantedCamera();
     stubGyroPermission("granted");
-    const mounted = mount();
+    const mounted = mount(overrides);
     mounted.orderCode.value = "PO-48213-A";
     mounted.button.click();
     await vi.waitFor(() => {
@@ -1701,6 +1702,99 @@ describe("mountAppShell", () => {
     expect(mounted.captureButton.disabled).toBe(true);
     expect(mounted.finishButton.disabled).toBe(true);
     expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
+  it("polls a delayed final agent turn after orbit completion and starts reconstruction without a Finish tap", async () => {
+    const mounted = await startSuccessfulSession({
+      agentTurnPollIntervalMs: 0,
+      agentTurnPollMaxAttempts: 3,
+    });
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    let acceptedUploads = 0;
+    let agentCalls = 0;
+    let finalTurnPolls = 0;
+    let reconstructionCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          acceptedUploads += 1;
+          return realFetch(input, init);
+        }
+        if (url.includes("/agent-message")) {
+          agentCalls += 1;
+          const onFinalTurn = acceptedUploads >= DEFAULT_ORBIT.length;
+          if (onFinalTurn) {
+            finalTurnPolls += 1;
+          }
+          const finished = onFinalTurn && finalTurnPolls >= 2;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished,
+                fallback_reason: null,
+                message: finished
+                  ? "All coverage slots are complete. Finishing the session."
+                  : "Continue to the next guided view.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          reconstructionCalls += 1;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    for (let index = 0; index < DEFAULT_ORBIT.length; index += 1) {
+      const slot = DEFAULT_ORBIT[index];
+      if (slot === undefined) throw new Error("test setup: orbit slot missing");
+      dispatchOrientation(slot.azimuthDeg, 90 - slot.elevationDeg, 0);
+      await vi.waitFor(() => {
+        if (mounted.captureButton.disabled) throw new Error("still disabled");
+      });
+      await captureAndWaitForStatus(mounted, new RegExp(`frame ${String(index)}`, "i"));
+      if (index < DEFAULT_ORBIT.length - 1) {
+        await vi.waitFor(() => {
+          if (agentCalls < index + 1) throw new Error("agent GET not observed yet");
+        });
+      }
+    }
+
+    await vi.waitFor(() => {
+      if (finalTurnPolls < 2) throw new Error("bounded final-turn retry not observed");
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("automatic finish transition not observed");
+      }
+      if (reconstructionCalls === 0) throw new Error("reconstruction polling not started");
+    });
+
+    expect(agentCalls).toBeGreaterThan(DEFAULT_ORBIT.length);
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+    expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
   });
 
   it("recovers an upload session_already_finished response instead of forgetting the session", async () => {
