@@ -15,7 +15,7 @@ import { requireElement } from "./dom.js";
 import type { Gyro } from "./types.js";
 
 export interface GyroOverlayHandle {
-  reportAcceptedFrame(gyro: Gyro): void;
+  reportAcceptedFrame(gyro: Gyro): boolean;
   dispose(): void;
 }
 
@@ -116,7 +116,7 @@ export function mountGyroOverlay(
   activeDisposalsByContainer.set(container, dispose);
 
   return {
-    reportAcceptedFrame(gyro: Gyro): void {
+    reportAcceptedFrame(gyro: Gyro): boolean {
       acceptedReadings.push(gyro);
       render();
       status.textContent =
@@ -128,6 +128,10 @@ export function mountGyroOverlay(
       if (latestLiveGyro) {
         updateArrow(latestLiveGyro);
       }
+      // A-15: the shell only needs repeated agent polling after the accepted frame completes the
+      // deterministic orbit. Returning that fact keeps the agent lifecycle tied to the same
+      // coverage calculation that renders "Orbit complete" instead of duplicating it in shell.ts.
+      return computeCoverage(acceptedReadings, orbit).nextTargetIndex === null;
     },
     dispose,
   };
