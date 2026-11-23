@@ -202,6 +202,81 @@ def test_agent_tool_error_does_not_fail_an_already_accepted_upload(
         assert record["status"] == "capturing"
 
 
+def test_agent_message_merge_preserves_a_concurrent_finish(tmp_path, monkeypatch):
+    app = _create(
+        tmp_path,
+        caller=lambda _state: _reply(done=True, message="Keep capturing."),
+    )
+    original_update = app.state.store.update_agent_message
+    interleaved = False
+
+    def finish_then_update(session_id, *, fallback_reason, message):
+        nonlocal interleaved
+        if not interleaved:
+            interleaved = True
+            app.state.store.mark_finished(session_id)
+        return original_update(
+            session_id,
+            fallback_reason=fallback_reason,
+            message=message,
+        )
+
+    monkeypatch.setattr(app.state.store, "update_agent_message", finish_then_update)
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        response = _upload(client, sid)
+
+        assert response.status_code == 202
+        record = app.state.store.load(sid)
+        assert interleaved is True
+        assert record["status"] == "finished"
+        assert record["reconstruction"]["status"] == "pending"
+        assert record["frame_count"] == 1
+        assert record["agent_message"]["finished"] is True
+        assert record["agent_message"]["message"] == "Keep capturing."
+
+
+def test_agent_message_merge_preserves_a_concurrent_frame_count_update(
+    tmp_path, monkeypatch
+):
+    app = _create(
+        tmp_path,
+        caller=lambda _state: _reply(done=True, message="Keep capturing."),
+    )
+    original_update = app.state.store.update_agent_message
+    interleaved = False
+
+    def add_frame_then_update(session_id, *, fallback_reason, message):
+        nonlocal interleaved
+        if not interleaved:
+            interleaved = True
+            app.state.store.add_frame(
+                session_id,
+                b"second-frame",
+                {"alpha": 90.0, "beta": 45.0, "gamma": 0.0},
+            )
+        return original_update(
+            session_id,
+            fallback_reason=fallback_reason,
+            message=message,
+        )
+
+    monkeypatch.setattr(app.state.store, "update_agent_message", add_frame_then_update)
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        response = _upload(client, sid)
+
+        assert response.status_code == 202
+        record = app.state.store.load(sid)
+        assert interleaved is True
+        assert record["status"] == "capturing"
+        assert record["frame_count"] == 2
+        assert record["agent_message"]["finished"] is False
+        assert record["agent_message"]["message"] == "Keep capturing."
+
+
 def test_keyless_fallback_finishes_only_after_full_thirteen_slot_orbit(tmp_path):
     app = _create(tmp_path)
     orbit = [
