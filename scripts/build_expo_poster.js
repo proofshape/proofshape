@@ -176,11 +176,10 @@ async function build(out, ids) {
   s.addShape("rect", { x: 0, y: 0, w: W, h: HH, fill: { color: C.header }, line: { color: C.header } });
   // SFBU's own site logo (sfbu.edu/themes/custom/sfbu/logo.svg wraps this 4096 × 751 PNG; fetched
   // 2026-11-22). It is the horizontal lockup, so it gets a wider slot than the template's stacked
-  // one, on white: its gold lettering is too faint on the beige header.
-  const logoW = 9.1;
+  // one. It sits straight on the beige header, as @TabeenRaoof asked (2026-11-23).
+  const logoW = 9.4;
   const logoH = logoW * (751 / 4096);
-  s.addShape("roundRect", { x: 0.5, y: (4.35 - logoH) / 2 - 0.3, w: logoW + 0.5, h: logoH + 0.6, fill: { color: C.white }, line: { color: C.goldDeep, width: 1.5 }, rectRadius: 0.2 });
-  s.addImage({ path: path.join(FIG, "sfbu-logo-web.png"), x: 0.75, y: (4.35 - logoH) / 2, w: logoW, h: logoH });
+  s.addImage({ path: path.join(FIG, "sfbu-logo-web.png"), x: 0.7, y: (4.35 - logoH) / 2, w: logoW, h: logoH });
   // The mascot: an 800 × 800 copy from @TabeenRaoof (2026-11-23), with the white background outside
   // its outline made transparent. 754 × 648 px of artwork, about 180 dpi here.
   const mascotH = 3.65;
