@@ -699,8 +699,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
     for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
       if (attempt > 0) {
-        const intervalMs =
-          attempt < fastAttempts ? fastIntervalMs : recoveryIntervalMs;
+        const intervalMs = attempt < fastAttempts ? fastIntervalMs : recoveryIntervalMs;
         await new Promise<void>((resolve) => {
           setTimeout(resolve, intervalMs);
         });
