@@ -12,6 +12,10 @@ unless all three of its vertices are Observed *and* have a measured deviation.
 It writes `figure-facts.json` beside the images: the session's counts and coverage, each image's
 pixel size, and where the board, a camera and the part land in the hero image, so the poster
 can draw its labels as text instead of baking them into the picture.
+
+matplotlib draws the figures but isn't in requirements.txt (D-036), so it is imported only by the
+functions that draw. What the tests check (which vertices are Observed and measured, the face
+colours and the coverage figure) imports without it, so CI runs them.
 """
 
 from __future__ import annotations
@@ -20,13 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
-from mpl_toolkits.mplot3d import proj3d
-from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 from PIL import Image
 
 from recon.board_pose import (
@@ -146,8 +144,20 @@ def frustum(Rw, c, scale=24.0, aspect=4 / 3):
     return corners_cam @ Rw + c  # x_w = R^T x_c + c
 
 
+def _pyplot():
+    """matplotlib's pyplot on the file-only Agg backend, imported on first use."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    return plt
+
+
 def _image_xy(fig, ax, point) -> np.ndarray:
     """Where a 3D point lands in the saved image, in pixels from the top-left corner."""
+    from mpl_toolkits.mplot3d import proj3d
+
     x, y, _ = proj3d.proj_transform(point[0], point[1], point[2], ax.get_proj())
     dx, dy = ax.transData.transform((x, y))
     return np.array([dx, fig.bbox.height - dy])
@@ -157,7 +167,7 @@ def _save_trimmed(fig, out: Path, anchors: dict[str, np.ndarray]) -> dict:
     """Save the whole canvas, trim the transparent margin, and express the anchors as fractions
     of the trimmed image."""
     fig.savefig(out, transparent=True, dpi=fig.dpi)
-    plt.close(fig)
+    _pyplot().close(fig)
     im = Image.open(out)
     left, top, right, bottom = im.getbbox()
     im.crop((left, top, right, bottom)).save(out)
@@ -188,11 +198,13 @@ def render_scene(
     """The board, the part and the cameras that photographed it. The defaults were picked by
     eye on sess_f82401bb6852: the board fills the frame, the part shows its top and a side, and
     the cameras above it are cut off at the top edge."""
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
+
     v, f, _observed, measured, dev, R, C = load_session(session)
     tris = v[f]
     rgb = shade(face_colours(f, measured, dev, rng), up(tris))
 
-    fig = plt.figure(figsize=figsize, dpi=200)
+    fig = _pyplot().figure(figsize=figsize, dpi=200)
     fig.patch.set_alpha(0)
     ax = fig.add_axes([0, 0, 1, 1], projection="3d", computed_zorder=False)
     ax.set_facecolor((0, 0, 0, 0))
@@ -297,10 +309,12 @@ def render_scene(
 
 
 def render_closeup(session: Path, out: Path, rng: float, azim=-60, elev=30) -> dict:
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
     v, f, observed, measured, dev, _, _ = load_session(session)
     tris = v[f]
     rgb = shade(face_colours(f, measured, dev, rng), up(tris))
-    fig = plt.figure(figsize=(10, 8), dpi=260)
+    fig = _pyplot().figure(figsize=(10, 8), dpi=260)
     fig.patch.set_alpha(0)
     ax = fig.add_axes([0, 0, 1, 1], projection="3d", computed_zorder=False)
     ax.set_facecolor((0, 0, 0, 0))
