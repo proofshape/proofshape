@@ -156,7 +156,7 @@ def test_unknown_session_is_contract_404(tmp_path):
         }
 
 
-def test_agent_can_finish_and_schedule_reconstruction_after_minimum_frames(tmp_path):
+def test_model_finish_is_refused_when_orbit_is_still_incomplete(tmp_path):
     def caller(_state):
         return _reply(tool="finish_session", message="Coverage is complete. Finishing.")
 
@@ -165,8 +165,43 @@ def test_agent_can_finish_and_schedule_reconstruction_after_minimum_frames(tmp_p
         sid = _start(client)
         assert _upload(client, sid, 0).status_code == 202
         assert _upload(client, sid, 1).status_code == 202
-        third = _upload(client, sid, 2)
-        assert third.status_code == 202
+        assert _upload(client, sid, 2).status_code == 202
+
+        agent = client.get(f"/v1/sessions/{sid}/agent-message")
+        assert agent.status_code == 200
+        assert agent.json()["finished"] is False
+        assert agent.json()["fallback_reason"] is None
+        assert "more coverage" in agent.json()["message"].lower()
+
+        record = app.state.store.load(sid)
+        assert record["status"] == "capturing"
+        assert record["reconstruction"]["status"] == "not_started"
+
+
+def test_model_finish_succeeds_after_full_thirteen_slot_orbit(tmp_path):
+    def caller(_state):
+        return _reply(tool="finish_session", message="Coverage is complete. Finishing.")
+
+    app = _create(tmp_path, caller=caller)
+    orbit = [
+        *[
+            {"alpha": float(index * 45), "beta": 45.0, "gamma": 0.0}
+            for index in range(8)
+        ],
+        *[
+            {"alpha": float(index * 90), "beta": 20.0, "gamma": 0.0}
+            for index in range(4)
+        ],
+        {"alpha": 0.0, "beta": 0.0, "gamma": 0.0},
+    ]
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        for index, gyro in enumerate(orbit):
+            assert _upload_gyro(client, sid, index, gyro).status_code == 202
+            record = app.state.store.load(sid)
+            if index < len(orbit) - 1:
+                assert record["status"] == "capturing"
 
         agent = client.get(f"/v1/sessions/{sid}/agent-message")
         assert agent.status_code == 200
