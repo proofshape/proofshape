@@ -174,14 +174,20 @@ async function build(out, ids) {
   // header
   const HH = 4.35;
   s.addShape("rect", { x: 0, y: 0, w: W, h: HH, fill: { color: C.header }, line: { color: C.header } });
-  s.addImage({ path: path.join(FIG, "sfbu-logo-crop.png"), x: 0.7, y: 0.35, w: 4.2, h: 3.66 });
+  // SFBU's own site logo (sfbu.edu/themes/custom/sfbu/logo.svg wraps this 4096 × 751 PNG; fetched
+  // 2026-11-22). It is the horizontal lockup, so it gets a wider slot than the template's stacked
+  // one, on white: its gold lettering is too faint on the beige header.
+  const logoW = 9.1;
+  const logoH = logoW * (751 / 4096);
+  s.addShape("roundRect", { x: 0.5, y: (4.35 - logoH) / 2 - 0.3, w: logoW + 0.5, h: logoH + 0.6, fill: { color: C.white }, line: { color: C.goldDeep, width: 1.5 }, rectRadius: 0.2 });
+  s.addImage({ path: path.join(FIG, "sfbu-logo-web.png"), x: 0.75, y: (4.35 - logoH) / 2, w: logoW, h: logoH });
   s.addImage({ path: path.join(FIG, "sfbu-mascot-crop.png"), x: W - 0.6 - 4.15, y: 0.35, w: 4.15, h: 3.6 });
   text(s, [
     { text: "ProofShape: Smartphone 3D Inspection", options: { breakLine: true } },
     { text: "Before Parts Ship", options: { breakLine: true } },
     { text: "Guided capture → metric 3D model → CAD comparison → evidence-aware verdict", options: { fontSize: 30, bold: false, breakLine: true } },
     { text: "Project Advisor: Prof. Ahmed Banafa", options: { fontSize: 36 } },
-  ], { x: 5.3, y: 0.2, w: 25.9, h: 4.0, fontSize: 58, bold: true, color: C.title, align: "center", valign: "middle", lineSpacingMultiple: 1.06 });
+  ], { x: 10.4, y: 0.2, w: 20.8, h: 4.0, fontSize: 58, bold: true, color: C.title, align: "center", valign: "middle", lineSpacingMultiple: 1.06 });
   const members = TEAM.map((name, i) => ({
     text: ids ? `${name} · ${ids[name]}` : name,
     options: { fontSize: 32, breakLine: i < TEAM.length - 1 },
@@ -400,7 +406,7 @@ async function build(out, ids) {
   s.addShape("rect", { x: X[3], y: top, w: CW, h: bottom - top, fill: { color: C.grey }, line: { color: "8E99A8", width: 1.5 } });
   x = X[3] + PAD;
   y = sectionHeader(s, "Generative AI in the Loop", x, top + PAD, IW);
-  // Status on main at 2026-11-22, rechecked at the code freeze: A-01/A-02/A-14 (D-084), A-07/A-13
+  // Status on main at 2026-11-22, rechecked at print (2026-11-23): A-01/A-02/A-14 (D-084), A-07/A-13
   // with A-15 in draft #431, A-04/A-05/A-12 (unavailable without a CUDA runner), A-03 with C-16,
   // A-09 (D-082).
   const GENAI = [
