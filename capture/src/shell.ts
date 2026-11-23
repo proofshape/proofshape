@@ -83,6 +83,11 @@ export interface AppShellOptions {
   initialOrderCode?: string;
   reconstructionPollIntervalMs?: number;
   reconstructionMaxAttempts?: number;
+  // A-15: after the accepted frame that completes the deterministic orbit, the agent turn still
+  // runs in the background. Poll its read-only result for a bounded window so the phone cannot
+  // miss an automatic finish that lands just after the upload response.
+  agentTurnPollIntervalMs?: number;
+  agentTurnPollMaxAttempts?: number;
   modelViewerOptions?: ModelViewerOptions;
   // C-24: where an in-progress session is kept across a reload. Defaults to the tab's
   // sessionStorage; tests pass their own, and null turns resume off.
@@ -134,6 +139,8 @@ function appendC25BlurDebugMeasurement(
 
 const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
 const DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS = 300;
+const DEFAULT_AGENT_TURN_POLL_INTERVAL_MS = 500;
+const DEFAULT_AGENT_TURN_POLL_MAX_ATTEMPTS = 25;
 
 export const APP_SHELL_HTML = `
   <section>
@@ -659,32 +666,56 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     void runReconstructionPolling();
   }
 
-  async function refreshAgentConversation(sessionId: string): Promise<void> {
+  async function refreshAgentConversation(
+    sessionId: string,
+    waitForCurrentTurn = false,
+  ): Promise<void> {
     const requestId = ++latestAgentRequestId;
-    try {
-      const result = await getAgentMessage(options.baseUrl, sessionId, options.authToken);
-      if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
-        return;
+    const maxAttempts = waitForCurrentTurn
+      ? Math.max(1, options.agentTurnPollMaxAttempts ?? DEFAULT_AGENT_TURN_POLL_MAX_ATTEMPTS)
+      : 1;
+    const pollIntervalMs = Math.max(
+      0,
+      options.agentTurnPollIntervalMs ?? DEFAULT_AGENT_TURN_POLL_INTERVAL_MS,
+    );
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      if (attempt > 0) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, pollIntervalMs);
+        });
+        if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
+          return;
+        }
       }
-      if (!result.ok) {
-        // Today's real service has no agent route yet. Keep the panel hidden until a real 200 has
-        // existed; after one has existed, transportUnavailable changes only the status line.
+
+      try {
+        const result = await getAgentMessage(options.baseUrl, sessionId, options.authToken);
+        if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
+          return;
+        }
+        if (!result.ok) {
+          // Today's real service has no agent route yet. Keep the panel hidden until a real 200 has
+          // existed; after one has existed, transportUnavailable changes only the status line.
+          agentConversation.transportUnavailable();
+          return;
+        }
+        agentConversation.show(result.body);
+        // A-15 / v1.9: A-07 may finish only after coverage is complete. If this GET observes
+        // that state, move into the same lifecycle as a successful manual Finish.
+        if (result.body.finished) {
+          transitionToFinishedSession(sessionId, "Capture assistant finished the session.");
+          return;
+        }
+      } catch {
+        if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
+          return;
+        }
+        // Transport failure is not an A-07 fallback reason. The view keeps that client-side state
+        // separate and leaves deterministic capture guidance usable.
         agentConversation.transportUnavailable();
         return;
       }
-      agentConversation.show(result.body);
-      // A-15 / v1.9: A-07 may finish only after coverage is complete. If this GET observes
-      // that state, move into the same lifecycle as a successful manual Finish.
-      if (result.body.finished) {
-        transitionToFinishedSession(sessionId, "Capture assistant finished the session.");
-      }
-    } catch {
-      if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
-        return;
-      }
-      // Transport failure is not an A-07 fallback reason. The view keeps that client-side state
-      // separate and leaves deterministic capture guidance usable.
-      agentConversation.transportUnavailable();
     }
   }
 
@@ -825,7 +856,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           }
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
-          gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
+          const orbitComplete = gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
           // C-24: saved after every accepted frame, so a reload at any point loses nothing the
           // server has. The count comes from the server's own frame_index.
           if (activeSession !== null && activeSession.sessionId === sessionId) {
@@ -841,8 +872,11 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
             setStatus(vlmHint, describeVlmFeedback(feedback), "info");
           }
           // Guidance is optional and must never hold the capture/finish lock. Run it separately;
-          // getAgentMessage also bounds the request so a stalled route cannot linger forever.
-          void refreshAgentConversation(sessionId);
+          // getAgentMessage also bounds each request so a stalled route cannot linger forever.
+          // Once this accepted frame completes the orbit, keep checking for the bounded duration
+          // of the background A-07 turn; this closes the real-phone race where the one immediate
+          // GET arrived before the agent persisted finished=true and the phone then waited forever.
+          void refreshAgentConversation(sessionId, orbitComplete);
         } else {
           lastAcceptedForGate = previousAcceptedForGate;
           const code = result.error.code;
