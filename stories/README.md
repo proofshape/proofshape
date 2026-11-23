@@ -501,10 +501,15 @@ Two more pieces of work have to land by Dec 2:
   are never cut (`AGENTS.md`, D-017). It's a new route after M5's freeze and a D-031 round, so it
   merges only at the Dec 2 boundary, by named exception.
 
+**P-40, the expo poster,** was written on 2026-11-20, after the team was given SFBU's poster
+template, and claimed on 2026-11-22. It answers P-39's open question about expo material with a
+story of its own. Its file lists the information still to collect before printing.
+
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
 | [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
+| [P-40](P/P-40.md) | Expo poster | 1 h | nothing | Claimed | @TabeenRaoof |
 | [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Claimed | @mbj1994 |
 
 ---
