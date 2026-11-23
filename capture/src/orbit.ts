@@ -240,8 +240,9 @@ function signedDeltasToTarget(
 // nearer ring by elevation (nearestEligibleSlotIndex), which can be an already-covered slot. On
 // @TabeenRaoof's iPhone the first photo (about 78 deg) covered the 70 deg ring, each photo held at
 // 58 deg was credited to it again, and with C-27 the app captured every 1.5 s without the count
-// moving. Green has to mean "this photo counts", so a reading is only on target when coverage
-// would credit it to the target itself. Otherwise it is reported with its deltas (which are
+// moving. Green has to mean "a photo taken here would go to the target" (it is credited only once
+// the frame is captured and accepted), so a reading is only on target when coverage would credit
+// it to the target itself. Otherwise it is reported with its deltas (which are
 // within tolerance, so "near"), and the arrow points toward the target.
 export function computeTargetGuidance(
   liveGyro: Gyro,

@@ -1571,6 +1571,22 @@ part.
 *Checked against D-028:* fetched all origin branches on 2026-11-12; D-068 was highest anywhere,
 so D-069 was free.
 
+*Amendment 2026-11-21 (G-12, #407's option 1):* one more ladder part is printed,
+`g05_09_bump_8mm.stl`. `g05_08_bump_4mm.stl` may be printed in the same lab session. The rest
+stay cut.
+*Why:* X-03 names the 4 mm hole shift as its planted defect, and the re-shot capture reads like
+its control at #407's specs (#421). P-41's review found the same under every fusion and
+alignment variant it tried, because the control's own 12 mm hole is bridged over in the
+reconstruction, at +5.1 to +5.6 mm. A top-face bump is judged against the height floor (D-073).
+#407's what-if, which planted the bump into the control's real session, suggested a tolerance
+window where the control Passes and the 8 mm bump Fails. That motivates testing the print. It
+establishes neither a physical result nor a bound. This decision allowed more prints only "unless
+time is left after M6". This one is taken before M6, because X-03 has to run before it.
+*What doesn't change:* the report still states that the hole-shift test has one rung, and what
+that rung measured. Nothing is claimed for the bump until the print is measured (G-12's last
+criterion).
+*Agreement:* the amendment merges with G-12's claim, which needs both other members' approval.
+
 **D-070 · Orders are file-backed, use server-generated Crockford codes, and createOrder is guarded by a server-held buyer key.** (2026-11-15)
 R-34 stores each order under `PROOFSHAPE_ORDERS_DIR` (default
 `proofshape-data/orders`) as `<order_code>/order.json`, with an uploaded CAD beside it as

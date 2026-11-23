@@ -2917,3 +2917,95 @@ defect. On this evidence, X-03's first criterion ("the planted 4 mm hole shift p
 isn't met with this part at these specs.
 **Next:** raise X-03's planted-defect choice with the team on #407. Post the `g05_02` rerun on
 #414 and #416.
+
+## 2026-11-19 — P-35 Done: X-03's prerequisites from the dry run, and the Nov 27 review (PR #408, PR #409, PR #410)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- **The dry run:** X-03's planted-shift scenario ran on `main` (`aeadbc4`), using G-09's photographs and the control's CAD as the order (#407). The G-05 control and the 4 mm hole shift both came back Rescan, on orientation ambiguity alone. With ambiguity set aside, both Fail, the control at 12.85 mm, from the base flare outside the CAD's outline.
+  The shift's photographs were later found to be upside down (#407), so its numbers here are a wrong pose. The re-shot `g05_02` reads like its control: see the 2026-11-20 G-09 entry above.
+- **New stories, all Ready:**
+  - **I-13 (3 h):** I-05 ranks poses by fitness but decides ambiguity on inlier RMSE alone (D-061).
+  - **I-14 (4 h):** I-06's declared 10 mm footprint margin lets the base flare be measured as part.
+  - **P-36 (2.5 h):** the Nov 27 progress review, R6.
+- **X-03** now depends on I-13 and I-14, and its notes record #407's result.
+- **How it merged:** the claim is #408. #409 merged into the claim branch by mistake, seconds after #408 and before GitHub retargeted it, so #410 re-landed the same reviewed head (`e4b060b`) on `main`.
+
+**Command / how to reproduce:** `python3 scripts/check_story_states.py` is clean on `main` (`25ceb54`). The dry run's commands and numbers are in #407.
+**Result:** open estimates go from 30 h to 39.5 h, with 13 days to the Dec 2 boundary. No code changed and no decision was recorded. I-13 and I-14 each take a D-number when they're built.
+**Concluded:** the next step on X-03's first criterion is a decision in I-13 and I-14, not running X-03 again. The base flare is a separate effect from #292 (`s-02`'s board skin), so #292 stays open.
+**Next:** the Dec 2 boundary call takes the suggested order: I-13, I-14, then X-03 once R-42 (#404) merges. P-36's date (Nov 27 is the day after Thanksgiving) is confirmed by Nov 25.
+
+## 2026-11-19 — P-36 closed small: R6 (Nov 27) is not held; the final presentation is most likely Dec 11 (PR #415, PR #417)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- **The date check:** this was P-36's first criterion. @TabeenRaoof reported on 2026-11-20 that the course has no presentation on Fri Nov 27. The only presentation left is the final presentation, most likely on Fri Dec 11, which is still unconfirmed. Nothing in the repository names either date, so the source is recorded as that report, as O-006 was.
+- **P-36 Done:** it closes on criterion 1. The deck criteria are not applicable, so no deck was built. What the deck was to show is listed in P-36's notes for the final-presentation story, which isn't written yet:
+  - the pre-check (I-09) and Unverifiable (I-10) walkthrough on the real service;
+  - what still doesn't work: #407 / I-13 / I-14, #406, #405.
+- **Other records:**
+  - `docs/sprint-plan.md` and its HTML mirror mark R6 as not held, and R7 / Dec 11 as the likely final presentation.
+  - O-002 gets a dated update and stays open; O-003 gets a one-line note.
+- **How it merged:** the claim is #415, and the close-out #417 (`122fead`).
+
+**Command / how to reproduce:** `python3 scripts/check_story_states.py` is clean on #417's head.
+**Result:** 0.2 h actual against an estimate of 2.5 h, measured from timestamps; the wait for the claim to merge isn't counted. No decision was recorded, so no D-number was taken.
+**Concluded:** this answers P-35's "P-36's date … is confirmed by Nov 25". S6's last week has no review to prepare.
+**Next:** a final-presentation story (S7/S8), carrying P-36's notes (since written as P-39, PR #423), and confirm the Dec 11 date in O-002 when a written source exists.
+
+## 2026-11-20 — P-37 Done: P-38, P-39 and A-15 written; the printed defect stays an option on #407 (PR #422, PR #423)
+
+**Who:** @TabeenRaoof.
+**What changed:**
+- **The backlog check:** each S6–S8 bullet in `docs/sprint-plan.md` §6, and each open issue, was checked against the stories on `main` at `5a86da4`. Four pieces of work had no story: the final report, the final presentation, a printed top-face defect for X-03, and serving the capture agent (#406).
+- **New stories, all Ready:**
+  - **P-38 (10 h):** the final report, S7's gate M7 (Dec 4).
+  - **P-39 (5 h):** the final presentation and demo script, carrying P-36's content.
+  - **A-15 (6 h):** serve the capture agent: the `agent-message` route and C-22's panel. It's required scope, because generative-AI components are never cut (`AGENTS.md`, D-017).
+- **The printed defect** isn't a story. G-12 is posted on #407 as a draft, to file only if the team takes option 1. X-03 gets a dated note pointing to #407.
+- **Corrections at @dalwalyk's review:** the first version wrote A-15 as an option the team could cut, and filed G-12 as `Ready`. Both were fixed before merge, and #406's "record it as cut" option was withdrawn on the issue.
+- **How it merged:** the claim is #422, and the write-up #423 (`607450a`).
+
+**Command / how to reproduce:** `python3 scripts/check_story_states.py` is clean on `main` (`607450a`).
+**Result:** 1 h actual (no estimate made, D-052), owner-confirmed. Open estimates go from 24 h to 45 h, or 48 h if G-12 is filed. No code changed and no decision was recorded, so no D-number was taken.
+**Concluded:** A-15, and G-12 if taken, have to land by Dec 2, and A-15 merges at that boundary only by named exception (D-031). P-38 and P-39 fit S7 and S8's 20 h.
+**Next:** the team decides #407's options on the issue. A-15's exception, how a turn runs, and the agent-against-policy comparison go to the Dec 2 call. Comment on #406 naming A-15.
+
+## 2026-11-20 — R-43 claim merged and initial fusion sweep
+
+**Who:** @dalwalyk
+**What changed:** Claim #424 merged as `553c189`. Replayed saved s-04 and s-05 inputs
+with 2.0, 1.5 and 1.0 mm fusion voxels and fixed 8 mm truncation.
+**Command:** Run the block in `stories/R/R-43.md` with the shared R-32 sessions under
+`R32_ROOT`. It writes to `proofshape-data/r43/shared-sweep.*`. The original local results
+are retained under `proofshape-data/r43/local-sweep/`.
+**Result:** Review reproduced the main trends on the shared R-32 sessions. A separate rerun on
+older local inputs reversed the 1.5 mm coverage trend. The story reports the shared sessions
+as primary and gives the confidence, alignment RMS, and per-wall spread for context.
+**Concluded:** The screening evidence does not support changing the served grid.
+**Next:** Compare paired caliper edge error across mesh stages with the same physical walls.
+
+## 2026-11-21 — P-41 Done: what ten calipered parts read on `main`, a likely cause of the wall error, and the stories it calls for (PR #426, PR #427)
+
+**Who:** @TabeenRaoof. @dalwalyk ran the script a second time, and @dalwalyk and @mbj1994 reviewed.
+**What changed:**
+- **The measurement:** `main` at `607450a` on the ten printed parts with caliper readings, each against its own CAD, one capture per part. The write-up is `docs/accuracy-review-2026-11-20.md`.
+- **What a good part reads:** top-face vertices scatter 0.10 to 0.35 mm about their own median. Wall vertices read 0.1 to 2.1 mm inside the CAD, and single readings reach 5.6 mm. A good part first Passes at 3.7 to 6 mm with ambiguity set aside. Six of the ten are symmetric and flag ambiguous, as D-061 intends.
+- **A likely contributor to the wall error:** after R-23, a photo's own board corners land a median 2.2 mm from where the board says they are. R-30 corrects each photo's height and tilt, and leaves about 1.6 mm in the board plane.
+- **A scratch test, not repo code:** re-anchoring each photo to its own corners took the typical worst reading on a part from 4.3 to 1.9 mm, and seven parts Pass at 3.7 mm against three today. Three parts read worse. The test doesn't measure how much of the served pipeline's wall error comes from this cause.
+- **Surface that isn't the part reaches the CAD pose search:** on six parts, 12 to 44% of the Observed model is surface a few millimetres above the board. With the correction on, the G-05 control came out 180° off with no ambiguity flag.
+- **The script:** `scripts/measure_part_accuracy.py`, with 38 unit tests, reproduces the per-part table and the per-photo corner residuals.
+- **Stories:** R-44 (6 h) and I-15 (5 h) are claimed by @TabeenRaoof (#426). G-13 (5 h) is filed Blocked on both, and unclaimed.
+- **Corrections at review:**
+  - A deviation from a part's own CAD is not reconstruction accuracy. It also holds the print's own departure from nominal and the registration error.
+  - Every photo is accounted for: 284 photos are 281 measured, 1 skipped and 2 rejected.
+  - "Most of the wall error" became "a likely contributor".
+  - I-15's diagnosis was rewritten to follow `registration.py`.
+- **Found after the write-up, and not in it (2026-11-21):** the golden s-04 model is the mirror image of its CAD, and on `main` the CAD sits about 10° off s-05's own walls and about 15° off the hexagon's. Both are scratch results, posted as comments on #426 and #427. I-15 takes them up.
+- **How it merged:** the claim is #426 (`1b48c68`), and the write-up #427 (`7d28c8d`). #427's branch held #426's commits, so updating it from `main` after #426 merged dismissed both approvals. It merged on a fresh approval of an unchanged tree.
+
+**Command / how to reproduce:** section 8 of the write-up: `python scripts/measure_part_accuracy.py run`, then `report` and `corners`, on the captures in the committed manifests.
+**Result:** 1.8 h actual (no estimate made, D-052), measured from session timestamps. @dalwalyk's fresh run of s-04 and s-05 read the wall figure 0.13 and 0.12 mm away from the first run's.
+**Concluded:** The wall error has a contributor that the board's corners can correct, and so far only a scratch test says so. R-44 has to reproduce it in the repository, and its default waits on I-15. No code on the served path, no threshold and no decision changed.
+**Next:** I-15 first, then R-44. I-15's first commit restates how a pose is judged, with the two findings above. G-13 stays Blocked until both are Done.
