@@ -181,7 +181,11 @@ async function build(out, ids) {
   const logoH = logoW * (751 / 4096);
   s.addShape("roundRect", { x: 0.5, y: (4.35 - logoH) / 2 - 0.3, w: logoW + 0.5, h: logoH + 0.6, fill: { color: C.white }, line: { color: C.goldDeep, width: 1.5 }, rectRadius: 0.2 });
   s.addImage({ path: path.join(FIG, "sfbu-logo-web.png"), x: 0.75, y: (4.35 - logoH) / 2, w: logoW, h: logoH });
-  s.addImage({ path: path.join(FIG, "sfbu-mascot-crop.png"), x: W - 0.6 - 4.15, y: 0.35, w: 4.15, h: 3.6 });
+  // The mascot: an 800 × 800 copy from @TabeenRaoof (2026-11-23), with the white background outside
+  // its outline made transparent. 754 × 648 px of artwork, about 180 dpi here.
+  const mascotH = 3.65;
+  const mascotW = mascotH * (766 / 660);
+  s.addImage({ path: path.join(FIG, "sfbu-mascot.png"), x: W - 0.55 - mascotW, y: (4.35 - mascotH) / 2, w: mascotW, h: mascotH });
   text(s, [
     { text: "ProofShape: Smartphone 3D Inspection", options: { breakLine: true } },
     { text: "Before Parts Ship", options: { breakLine: true } },
