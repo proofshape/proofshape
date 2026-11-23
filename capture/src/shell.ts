@@ -88,6 +88,11 @@ export interface AppShellOptions {
   // miss an automatic finish that lands just after the upload response.
   agentTurnPollIntervalMs?: number;
   agentTurnPollMaxAttempts?: number;
+  // If the fast final-turn window expires (for example because earlier accepted uploads queued
+  // agent turns on the per-session lock), keep a slower bounded recovery tail alive. Tests can
+  // shorten both windows; production defaults cover the worst-case queued A-07 budgets.
+  agentRecoveryPollIntervalMs?: number;
+  agentRecoveryPollMaxAttempts?: number;
   modelViewerOptions?: ModelViewerOptions;
   // C-24: where an in-progress session is kept across a reload. Defaults to the tab's
   // sessionStorage; tests pass their own, and null turns resume off.
@@ -141,6 +146,8 @@ const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
 const DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS = 300;
 const DEFAULT_AGENT_TURN_POLL_INTERVAL_MS = 500;
 const DEFAULT_AGENT_TURN_POLL_MAX_ATTEMPTS = 25;
+const DEFAULT_AGENT_RECOVERY_POLL_INTERVAL_MS = 2000;
+const DEFAULT_AGENT_RECOVERY_POLL_MAX_ATTEMPTS = 75;
 
 export const APP_SHELL_HTML = `
   <section>
@@ -671,18 +678,31 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     waitForCurrentTurn = false,
   ): Promise<void> {
     const requestId = ++latestAgentRequestId;
-    const maxAttempts = waitForCurrentTurn
+    const fastAttempts = waitForCurrentTurn
       ? Math.max(1, options.agentTurnPollMaxAttempts ?? DEFAULT_AGENT_TURN_POLL_MAX_ATTEMPTS)
       : 1;
-    const pollIntervalMs = Math.max(
+    const recoveryAttempts = waitForCurrentTurn
+      ? Math.max(
+          0,
+          options.agentRecoveryPollMaxAttempts ?? DEFAULT_AGENT_RECOVERY_POLL_MAX_ATTEMPTS,
+        )
+      : 0;
+    const fastIntervalMs = Math.max(
       0,
       options.agentTurnPollIntervalMs ?? DEFAULT_AGENT_TURN_POLL_INTERVAL_MS,
     );
+    const recoveryIntervalMs = Math.max(
+      0,
+      options.agentRecoveryPollIntervalMs ?? DEFAULT_AGENT_RECOVERY_POLL_INTERVAL_MS,
+    );
+    const totalAttempts = fastAttempts + recoveryAttempts;
 
-    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
       if (attempt > 0) {
+        const intervalMs =
+          attempt < fastAttempts ? fastIntervalMs : recoveryIntervalMs;
         await new Promise<void>((resolve) => {
-          setTimeout(resolve, pollIntervalMs);
+          setTimeout(resolve, intervalMs);
         });
         if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
           return;
@@ -695,8 +715,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           return;
         }
         if (!result.ok) {
-          // Today's real service has no agent route yet. Keep the panel hidden until a real 200 has
-          // existed; after one has existed, transportUnavailable changes only the status line.
+          // A real 404 means this session is gone, not "the current background turn is late."
           agentConversation.transportUnavailable();
           return;
         }
@@ -711,10 +730,13 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
           return;
         }
-        // Transport failure is not an A-07 fallback reason. The view keeps that client-side state
-        // separate and leaves deterministic capture guidance usable.
+        // A timeout/503/proxy blip after the final upload is retryable inside the bounded
+        // fast+recovery policy. For ordinary per-frame guidance (one attempt), preserve the old
+        // behavior and return immediately.
         agentConversation.transportUnavailable();
-        return;
+        if (!waitForCurrentTurn) {
+          return;
+        }
       }
     }
   }
