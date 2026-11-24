@@ -279,24 +279,107 @@ def test_a_photo_whose_corners_are_all_on_one_row_is_skipped_not_guessed():
     )
 
     assert reports[0].status == cr.STATUS_SKIPPED
-    assert reports[0].skip_reason.startswith("no unique rigid fit")
+    assert reports[0].skip_reason.startswith("no usable rigid fit")
     assert corrected == pytest.approx(points)
 
 
-def test_one_bad_corner_is_reported_as_the_worst_corner_not_hidden():
-    # A plain fit, as agreed: one corner 8 mm off isn't trimmed, but the report shows it.
+def test_one_corner_40mm_off_does_not_drag_the_photo():
+    # @TabeenRaoof's review on #442: on g02_06 a plain fit let one corner 41.7 mm off pull its
+    # photo's correction up to 2.2 mm at the board centre. Trimmed, the photo must come back to
+    # within 0.3 mm of its planted correction, and the bad corner must still be reported.
+    drift = (_rotation_about_z(1.2), np.array([2.0, -1.5, 0.0]))
+    points, extrinsic, corners, targets, frame_of_corner, true_points = _scene([drift])
+    corners = corners.copy()
+    corners[17] += np.array([40.0, 0.0, 0.0])
+
+    corrected, _extrinsic, reports = cr.reanchor_frames_to_corners(
+        points, extrinsic, corners, targets, frame_of_corner, BOARD_CENTRE_MM
+    )
+
+    report = reports[0]
+    assert report.status == cr.STATUS_CORRECTED
+    assert report.corner_count == 35
+    assert report.corners_used == 34
+    assert report.rms_after_mm == pytest.approx(0.0, abs=1e-9)
+    assert report.worst_corner_after_mm == pytest.approx(40.0, abs=0.5)
+    # Every point of the photo, the part above the board included, is back where it truly is.
+    distances = np.linalg.norm(corrected[0, 0] - true_points, axis=1)
+    assert distances.max() < 0.3
+
+
+def test_a_plain_fit_would_have_been_dragged_by_that_corner():
+    # The same scene through fit_rigid alone, to show the test above is testing something:
+    # the bad corner moves an untrimmed fit well past 0.3 mm at the board centre.
+    drift = (_rotation_about_z(1.2), np.array([2.0, -1.5, 0.0]))
+    _points, _extrinsic, corners, targets, _frame_of_corner, _true = _scene([drift])
+    corners = corners.copy()
+    corners[17] += np.array([40.0, 0.0, 0.0])
+
+    rotation, translation = cr.fit_rigid(corners, targets)
+    planted_rotation, planted_translation = drift
+    true_centre_seen = planted_rotation @ BOARD_CENTRE_MM + planted_translation
+    centre_error = rotation @ true_centre_seen + translation - BOARD_CENTRE_MM
+    assert np.linalg.norm(centre_error) > 0.3
+
+
+def test_trimming_stops_at_the_floor_when_every_corner_agrees_closely():
+    # Corners that all agree to well under the 0.5 mm floor are noise, not outliers: none dropped.
+    rng = np.random.default_rng(7)
     points, extrinsic, corners, targets, frame_of_corner, _true = _scene(
         [(np.eye(3), np.zeros(3))]
     )
+    noisy = corners + rng.normal(scale=0.05, size=corners.shape)
+
+    _corrected, _extrinsic, reports = cr.reanchor_frames_to_corners(
+        points, extrinsic, noisy, targets, frame_of_corner, BOARD_CENTRE_MM
+    )
+
+    assert reports[0].corners_used == reports[0].corner_count == 35
+
+
+def test_a_photo_trimming_leaves_with_too_few_corners_is_left_alone():
+    # Nine corners, two of them far off: trimming keeps seven, under the minimum of eight, so the
+    # photo is not corrected from what's left.
+    drift = (_rotation_about_z(1.0), np.array([2.0, 1.0, 0.0]))
+    nine = np.array([0, 1, 2, 7, 8, 9, 14, 15, 16])
+    points, extrinsic, corners, targets, frame_of_corner, _true = _scene(
+        [drift], corner_ids_per_frame=[nine]
+    )
     corners = corners.copy()
-    corners[10] += np.array([8.0, 0.0, 0.0])
+    corners[[0, 8]] += np.array([[25.0, 0.0, 0.0], [0.0, -30.0, 0.0]])
+
+    corrected, corrected_extrinsic, reports = cr.reanchor_frames_to_corners(
+        points, extrinsic, corners, targets, frame_of_corner, BOARD_CENTRE_MM
+    )
+
+    assert reports[0].status == cr.STATUS_SKIPPED
+    assert "leaves 7 of 9, fewer than 8" in reports[0].skip_reason
+    assert corrected == pytest.approx(points)
+    assert corrected_extrinsic == pytest.approx(extrinsic)
+
+
+def test_the_rule_cannot_trim_when_bad_corners_are_a_large_share_and_the_report_shows_it():
+    # A known limit of P-41's median-based rule, recorded rather than hidden: with four of ten
+    # corners far off, the first fit is dragged so far that 3x the median residual exceeds every
+    # residual, nothing is dropped, and the photo is corrected badly. The report's rms_after_mm
+    # is what makes such a photo visible in the measurement.
+    drift = (_rotation_about_z(1.0), np.array([2.0, 1.0, 0.0]))
+    ten = np.array([0, 1, 2, 3, 7, 8, 9, 10, 14, 15])
+    points, extrinsic, corners, targets, frame_of_corner, _true = _scene(
+        [drift], corner_ids_per_frame=[ten]
+    )
+    corners = corners.copy()
+    corners[[0, 3, 6, 9]] += np.array(
+        [[25.0, 0.0, 0.0], [0.0, -30.0, 0.0], [-20.0, 10.0, 0.0], [0.0, 0.0, 35.0]]
+    )
 
     _corrected, _extrinsic, reports = cr.reanchor_frames_to_corners(
         points, extrinsic, corners, targets, frame_of_corner, BOARD_CENTRE_MM
     )
 
-    assert reports[0].worst_corner_after_mm > 7.0
-    assert reports[0].rms_after_mm < reports[0].worst_corner_after_mm
+    assert reports[0].status == cr.STATUS_CORRECTED
+    assert reports[0].corners_used == 10
+    assert reports[0].rms_after_mm > 10.0
 
 
 def test_reports_serialise_to_plain_json_types():

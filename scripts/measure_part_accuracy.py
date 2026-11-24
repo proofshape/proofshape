@@ -131,8 +131,10 @@ DEFAULT_TOLERANCES_MM = (
 )
 
 # A photo needs this many of its own corners before a rigid fit to them means anything. This was
-# the review's own choice of eight; R-44 adopted the same figure for the pipeline, and this reads
-# it from there so the review's numbers and the pipeline's correction can't quietly diverge.
+# the review's own choice of eight, and R-44 adopted it for the pipeline. Only the minimum is
+# shared: `rms_after_rigid_fit_mm` below is a plain fit, as P-41 measured it, while R-44's
+# correction trims far-off corners first (`recon.corner_reanchoring.fit_rigid_trimmed`), as P-41's
+# screening fusions did. So the two after-fit figures can differ on a photo with a bad corner.
 DEFAULT_MIN_CORNERS_PER_PHOTO = DEFAULT_MIN_CORNERS_PER_FRAME
 
 MEASURE_NPZ = "measure.npz"

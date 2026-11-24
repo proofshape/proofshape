@@ -18,12 +18,16 @@ gain, added stray board surface on `g05_00`, and would need a per-photo depth fa
 provenance. A rigid correction changes camera poses only, which `corrected_extrinsic.npz` already
 carries to provenance and uncertainty.
 
-Why no outlier trimming: P-41's screening run used a plain fit, and matching it keeps the results
-comparable. A photo whose corners are wrong as a whole is already dropped by R-38. A single bad
-corner inside an otherwise good photo does happen -- s-04 has one 8.8 mm off -- but on the saved
-s-04, s-05 and pentagon runs, refitting without each photo's worst corner moved the correction at
-the board centre by a median 0.06 mm and at most 0.36 mm. Each photo's worst corner after the fit
-is reported, so a bad one is visible rather than averaged away.
+Why the fit drops far-off corners (`fit_rigid_trimmed`): a single corner can lift badly wrong
+inside an otherwise good photo, most likely one next to the part's silhouette, where depth is
+interpolated between the board and the part (this module's box test found up to ~11 mm that way).
+R-38 judges a photo by its median corner, so it doesn't catch one. A plain fit lets that corner
+drag the whole photo: on `g02_06`, frames 7 and 8 have a corner 41.7 and 27.5 mm off after a plain
+fit, which left their corners 11.8 and 8.5 mm RMS off and moved the correction at the board centre
+by up to 2.2 mm -- the size of the correction itself (@TabeenRaoof's review on #442, reproduced on
+the saved run). P-41's screening fusions (`experiment.py`) also trimmed, by the rule this follows;
+an earlier version of this module said otherwise, wrongly, from P-41's measurement script.
+Every photo still reports its worst corner, dropped or not, so a bad corner stays visible.
 """
 
 from __future__ import annotations
@@ -45,6 +49,16 @@ from recon.metric_alignment import lift_board_corner_observations
 # 25 corners, and every minimum from 4 to 8 leaves the same single photo (one with no corners at
 # all) uncorrected.
 DEFAULT_MIN_CORNERS_PER_FRAME = 8
+
+# The trimming rule, as @TabeenRaoof described P-41's `experiment.py` on #442: after a fit, drop
+# every corner more than max(3 x the median residual, 0.5 mm) from its printed position, refit, and
+# repeat at most three times. The 3x and 0.5 mm are P-41's choices, kept for comparability, not
+# measured thresholds. On `g02_06` this keeps 12 of frame 7's 15 corners (0.39 mm RMS after) and 12
+# of frame 8's (0.24 mm); P-41's saved runs kept 13 (0.42 mm) and 12 (0.26 mm). The small gap is in
+# details of P-41's loop not visible here, so the measurement checks the two against each other.
+TRIM_MEDIAN_MULTIPLE = 3.0
+TRIM_FLOOR_MM = 0.5
+TRIM_MAX_REFITS = 3
 
 STATUS_CORRECTED = "corrected"
 STATUS_SKIPPED = "skipped"
@@ -115,6 +129,50 @@ def correct_extrinsic_for_moved_points(
     return corrected
 
 
+def fit_rigid_trimmed(
+    source_mm: np.ndarray,
+    target_mm: np.ndarray,
+    min_corners: int,
+    median_multiple: float = TRIM_MEDIAN_MULTIPLE,
+    floor_mm: float = TRIM_FLOOR_MM,
+    max_refits: int = TRIM_MAX_REFITS,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`fit_rigid`, then drop far-off corners and refit, at most `max_refits` times.
+
+    After each fit, a corner is kept only if it is still kept and lies within
+    max(`median_multiple` x the median residual of the kept corners, `floor_mm`) of its target.
+    A dropped corner is never re-admitted, and the loop stops early once nothing more is dropped.
+    The floor stops a photo whose corners all agree to a fraction of a millimetre from being
+    trimmed down to its tightest few.
+
+    Returns `(rotation, translation, kept)`, `kept` a boolean mask over the input corners.
+
+    Raises:
+        ValueError: trimming would leave fewer than `min_corners`, or the corners are collinear
+            (`fit_rigid`). The caller then leaves the photo uncorrected and reports why, rather
+            than trusting a fit to the few corners that survived.
+    """
+    source = np.asarray(source_mm, dtype=np.float64)
+    target = np.asarray(target_mm, dtype=np.float64)
+    kept = np.ones(len(source), dtype=bool)
+    rotation, translation = fit_rigid(source, target)
+    for _refit in range(max_refits):
+        residuals = np.linalg.norm(source @ rotation.T + translation - target, axis=1)
+        cutoff_mm = max(median_multiple * float(np.median(residuals[kept])), floor_mm)
+        still_kept = kept & (residuals <= cutoff_mm)
+        if np.array_equal(still_kept, kept):
+            break
+        kept_count = int(np.count_nonzero(still_kept))
+        if kept_count < min_corners:
+            raise ValueError(
+                f"trimming far-off corners leaves {kept_count} of {len(source)}, fewer than "
+                f"{min_corners}"
+            )
+        kept = still_kept
+        rotation, translation = fit_rigid(source[kept], target[kept])
+    return rotation, translation, kept
+
+
 @dataclass(frozen=True)
 class FrameCornerReport:
     """What R-44 measured and did for one photo, for `tsdf_fusion.json`.
@@ -122,8 +180,10 @@ class FrameCornerReport:
     Every photo of the capture gets one: `status` is "corrected" or "skipped", and a skipped photo
     says why in `skip_reason` and keeps today's behaviour. Distances are in board-frame mm.
     `rms_before_mm` is the root-mean-square 3-D distance of the photo's corners from their printed
-    positions after R-23's global alignment; `rms_after_mm` and `worst_corner_after_mm` are the
-    same after this photo's own rigid fit. `shift_at_reference_mm` is how far the correction moves
+    positions after R-23's global alignment. `corners_used` is how many survived
+    `fit_rigid_trimmed`, and `rms_after_mm` is their RMS distance after the fit.
+    `worst_corner_after_mm` is the largest distance after the fit over *every* lifted corner,
+    dropped ones included, so a corner the fit set aside is still visible. `shift_at_reference_mm` is how far the correction moves
     the reference point (the board footprint's centre, where a part sits) within the board plane,
     `height_shift_at_reference_mm` how far it moves it along the board's normal, and
     `rotation_deg` the total angle of the correction's rotation. The fields that describe a fit
@@ -133,6 +193,7 @@ class FrameCornerReport:
     frame_index: int
     status: str
     corner_count: int
+    corners_used: int | None
     skip_reason: str | None
     rms_before_mm: float | None
     rms_after_mm: float | None
@@ -148,6 +209,7 @@ class FrameCornerReport:
             "frame_index": self.frame_index,
             "status": self.status,
             "corner_count": self.corner_count,
+            "corners_used": self.corners_used,
             "skip_reason": self.skip_reason,
             "rms_before_mm": self.rms_before_mm,
             "rms_after_mm": self.rms_after_mm,
@@ -241,11 +303,12 @@ def reanchor_frames_to_corners(
     same global alignment.
 
     For each photo with at least `min_corners_per_frame` corners, fits the rigid transform taking
-    its corners onto their targets (`fit_rigid`) and applies it to that photo's points and pose
-    (`correct_extrinsic_for_moved_points`). Nothing is raised for a photo that can't be
-    corrected: it keeps its global-alignment points and pose exactly, and its report says why.
-    That covers a photo in `skip_frame_indices` (R-38 rejected it), one with no corners, one with
-    too few, and one whose corners are all on one line, which `fit_rigid` refuses.
+    its corners onto their targets, dropping far-off corners (`fit_rigid_trimmed`), and applies
+    it to that photo's points and pose (`correct_extrinsic_for_moved_points`). Nothing is raised
+    for a photo that can't be corrected: it keeps its global-alignment points and pose exactly,
+    and its report says why. That covers a photo in `skip_frame_indices` (R-38 rejected it), one
+    with no corners, one with too few, one whose trimming leaves too few, and one whose corners
+    are all on one line, which `fit_rigid` refuses.
 
     Returns `(corrected_points, corrected_extrinsic, reports)`, with one report per photo in
     index order.
@@ -317,14 +380,17 @@ def reanchor_frames_to_corners(
         elif corner_count < min_corners_per_frame:
             skip_reason = f"fewer than {min_corners_per_frame} corners ({corner_count})"
 
-        rotation = translation = None
+        rotation = translation = kept = None
         if skip_reason is None:
             try:
-                rotation, translation = fit_rigid(frame_corners, frame_targets)
+                rotation, translation, kept = fit_rigid_trimmed(
+                    frame_corners, frame_targets, min_corners_per_frame
+                )
             except ValueError as exc:
-                # Only collinear corners reach here (counts and shapes are checked above). A
-                # photo that sees one row of the board has no rotation to fit about that row.
-                skip_reason = f"no unique rigid fit: {exc}"
+                # Counts and shapes are checked above, so only two things reach here: trimming
+                # left too few corners to trust, or the corners are collinear (a photo that sees
+                # one row of the board has no rotation to fit about that row).
+                skip_reason = f"no usable rigid fit: {exc}"
 
         if skip_reason is not None:
             reports.append(
@@ -332,6 +398,7 @@ def reanchor_frames_to_corners(
                     frame_index=frame_index,
                     status=STATUS_SKIPPED,
                     corner_count=corner_count,
+                    corners_used=None,
                     skip_reason=skip_reason,
                     rms_before_mm=rms_before,
                     rms_after_mm=None,
@@ -362,9 +429,10 @@ def reanchor_frames_to_corners(
                 frame_index=frame_index,
                 status=STATUS_CORRECTED,
                 corner_count=corner_count,
+                corners_used=int(np.count_nonzero(kept)),
                 skip_reason=None,
                 rms_before_mm=rms_before,
-                rms_after_mm=float(np.sqrt(np.mean(corner_distances_after**2))),
+                rms_after_mm=float(np.sqrt(np.mean(corner_distances_after[kept] ** 2))),
                 worst_corner_after_mm=float(np.max(corner_distances_after)),
                 shift_at_reference_mm=float(np.linalg.norm(reference_shift[:2])),
                 height_shift_at_reference_mm=float(reference_shift[2]),
