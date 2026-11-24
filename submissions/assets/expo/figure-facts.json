@@ -1,0 +1,42 @@
+{
+  "session": "sess_f82401bb6852",
+  "observed_area_fraction": 0.7604965738738247,
+  "scene": {
+    "cameras": 29,
+    "vertices": 1900,
+    "faces": 3568,
+    "px": [
+      1989,
+      1843
+    ],
+    "anchors": {
+      "part": [
+        0.512,
+        0.6666
+      ],
+      "board": [
+        0.3653,
+        0.9156
+      ],
+      "camera": [
+        0.3325,
+        0.0578
+      ]
+    }
+  },
+  "closeup": {
+    "px": [
+      1999,
+      1110
+    ],
+    "observed_vertex_fraction": 0.8431578947368421,
+    "measured_vertices": 1602,
+    "dev_p5_p50_p95_mm": [
+      -3.1441722750663756,
+      -0.03892402909696102,
+      4.082418537139883
+    ],
+    "abs_dev_median_mm": 0.7854636907577515,
+    "range_mm": 4.0
+  }
+}
