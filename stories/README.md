@@ -542,7 +542,7 @@ it took much of the wall error with it, on seven of the ten parts.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @dalwalyk |
-| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 6 h | I-05, I-13 | Claimed | @dalwalyk |
+| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 6 h | I-05, I-13 | Done | @dalwalyk |
 | [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---
