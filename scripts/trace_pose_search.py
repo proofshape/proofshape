@@ -24,7 +24,7 @@ script is a comparison.
 
 Usage (from the repository root):
 
-    PYTHONPATH=inspect OMP_NUM_THREADS=1 .venv/bin/python -I scripts/trace_pose_search.py \\
+    PYTHONPATH=.:inspect OMP_NUM_THREADS=1 .venv/bin/python scripts/trace_pose_search.py \\
         --model <variant>/uncertainty/mesh_uncertainty.glb \\
         --cad fixtures/reference_cad/<part>.stl \\
         --faces caption --turned 5 --clockwise \\

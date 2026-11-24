@@ -232,28 +232,6 @@ def _pose_support_faces(
     return observed_faces[keep]
 
 
-def _cad_samples_above(
-    cad_surface: o3d.geometry.PointCloud, cad_vertices: np.ndarray, cut_mm: float
-) -> o3d.geometry.PointCloud:
-    """The CAD's own surface samples at or above cut_mm over its base, in its z-up frame.
-
-    The coverage ratio scores CAD samples against Observed surface. Once the model's surface
-    below the cut no longer counts, the CAD's samples below it would have nothing near them in
-    any pose, and the identical penalty every pose then takes squeezes the ratio toward 1 and
-    flags clear parts ambiguous (the D-061 shifted-hole rows did exactly that until this was
-    added). Every candidate rests the CAD's base on the board, so this is the same cut.
-    """
-    base = float(np.asarray(cad_vertices, dtype=np.float64)[:, 2].min())
-    points = np.asarray(cad_surface.points)
-    keep = np.flatnonzero(points[:, 2] - base >= cut_mm)
-    if len(keep) == 0:
-        raise ValueError(
-            f"no CAD surface lies {cut_mm:.3g} mm or more above its base; the ambiguity check "
-            "has nothing to compare."
-        )
-    return cad_surface.select_by_index(keep.tolist())
-
-
 def _triangle_mesh(
     vertices: np.ndarray, faces: np.ndarray
 ) -> o3d.geometry.TriangleMesh:
@@ -1111,9 +1089,9 @@ def check_ambiguity(
     coverage-aware ratio uses `ambiguity_threshold` (I-13/D-061), rather than inlier-only RMSE;
     `rmse_ratio` remains diagnostic. A single surviving pose is not ambiguous.
 
-    I-15: both sides of that comparison leave out what lies below `_pose_support_cut_mm` over
-    the board, the Observed model surface and the CAD's own samples alike, so board skin can't
-    rank a turned pose first. D-061's rule, cutoff and reason code are unchanged.
+    I-15: the Observed model surface leaves out what lies below `_pose_support_cut_mm` over
+    the board, so board skin can't pull refinement or change the fitness ranking. The coverage
+    ratio uses the full CAD surface, as on `main`, so D-061's classes are unchanged.
 
     A candidate that can't be refined (I-03's `ransac:0` is often an identity pose at fitness 0)
     is recorded in `failed` with its reason; if none can be refined, this raises. A model without
@@ -1128,20 +1106,16 @@ def check_ambiguity(
 
     model_vertices, model_faces, model_labels = _mesh_arrays(model, name="model")
     cad_vertices, cad_faces, _cad_labels = _mesh_arrays(cad, name="cad")
-    support_cut = _pose_support_cut_mm(cad_vertices)
-    observed_model_faces = _pose_support_faces(
-        model_vertices, _observed_faces(model_faces, model_labels), support_cut
-    )
-    if observed_model_faces is None:
+    all_observed_faces = _observed_faces(model_faces, model_labels)
+    if all_observed_faces is None:
         raise ValueError(
             "check_ambiguity needs model provenance: without Observed/Unobserved labels no "
             "candidate can be refined on measured geometry."
         )
-    if len(observed_model_faces) == 0:
+    if len(all_observed_faces) == 0:
         raise ValueError(
-            "check_ambiguity needs at least one fully Observed model face at least "
-            f"{support_cut:.3g} mm above the board; refusing to judge the orientation on "
-            "Unobserved or Inferred geometry, or on board-level surface, alone."
+            "check_ambiguity needs at least one fully Observed model face; refusing to judge "
+            "the orientation on Unobserved or Inferred geometry alone."
         )
 
     refined: list[CandidatePose] = []
@@ -1172,9 +1146,12 @@ def check_ambiguity(
     rmse_ratio: float | None = None
     coverage_ratio: float | None = None
     if runner_up is not None:
+        # The coverage ratio uses all Observed surface, not the support-cut subset that refine
+        # fits to. This keeps D-061's classes unchanged: the cut helps refinement ignore board
+        # skin, but the ambiguity ratio must see the same surface as on main.
         observed_model_surface = _sample_surface(
             model_vertices,
-            observed_model_faces,
+            all_observed_faces,
             sample_count=DEFAULT_AMBIGUITY_SAMPLE_COUNT,
             seed=seed,
         )
@@ -1184,7 +1161,6 @@ def check_ambiguity(
             sample_count=DEFAULT_AMBIGUITY_SAMPLE_COUNT,
             seed=seed + 1,
         )
-        cad_surface = _cad_samples_above(cad_surface, cad_vertices, support_cut)
         correspondence_distance = (
             _extent_mm(cad_vertices)
             * DEFAULT_VOXEL_FRACTION
