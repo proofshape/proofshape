@@ -38,9 +38,9 @@ SAME_POSE_MARGIN_MM = 2.0
 NO_SYMMETRY_DEG = 360.0
 
 # Below this aligned fraction, the wall offset is too noisy to use as a fine-yaw reference, and
-# judge_pose falls back to the photo reading's 20 degrees. g02_01 base reads 31.9 degrees with
-# aligned fraction 0.58-0.61 on a 90-degree-symmetric square: the model's reconstruction is too
-# rough for straight walls to be readable, and the wall check would mark it wrong on noise.
+# judge_pose falls back to the photo reading's 20 degrees. 0.65 is a cut in the gap between
+# g02_01 base (0.58-0.61, the only part below) and g02_01 R (0.75, the next lowest): an
+# empirical gap in the current ten-part sample, not a calibrated noise boundary.
 WALL_ALIGNED_FLOOR = 0.65
 
 # How far either side of zero the wall comparison looks. It is a fine-yaw check: gross turns are

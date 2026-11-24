@@ -1294,9 +1294,10 @@ surface, so the class counts shift:
 
 Seed 99 is 0.001 above the 1.025 cutoff, the only missing-hole miss. The shifted-hole rise
 (six more false Rescans, the safe direction) is a consequence of the same refinement change.
-The rule, the cutoff and the reason code are unchanged. Seed 99 is pinned in
-`test_registration.py` so a future change that clears more fails CI. Both reviewers
-(@TabeenRaoof and @mbj1994) accept this trade for I-15 on PR #440.
+The rule, the cutoff and the reason code are unchanged. Seed 99 is pinned as the known clear,
+so a change that moves it is noticed. Seeds 46, 77 and 87, the nearest flagged, are pinned so
+that a change that clears more fails CI. Accepted by @TabeenRaoof on PR #440 (2026-11-24);
+@mbj1994 conditionally accepts, final on approval of the last head.
 
 **D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
 provenance, and the viewer does the colouring.** (2026-11-09)

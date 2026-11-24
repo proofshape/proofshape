@@ -1240,7 +1240,7 @@ def test_i13_preserves_d061_twelve_seed_table(
     # On shifted_hole seed 3, that changes the refined pose enough that the coverage ratio flips
     # from 1.029 to 0.977. The cut is correct (it keeps board skin out of refinement on real
     # captures), and the seed still picks the right best pose. D-061's missing-hole class (the
-    # costlier direction) stays at 0/100 cleared.
+    # costlier direction) stays at 1/100 cleared (seed 99 only).
     if case == "shifted_hole" and seed in _D061_SHIFTED_HOLE_AMBIGUOUS_SEEDS:
         expected_ambiguous = True
     assert result.orientation_ambiguous is expected_ambiguous
@@ -1481,7 +1481,8 @@ def test_missing_hole_still_flags_ambiguous_with_the_support_cut(seed: int):
 
 def test_missing_hole_seed_99_is_the_known_clear_after_the_support_cut():
     # Seed 99 is the sole missing-hole case that clears after I-15 (ratio 1.026, cutoff 1.025).
-    # Pinned so a future change that clears more fails CI.
+    # Pinned as the known clear so a change that moves it is noticed. Seeds 46, 77 and 87 (the
+    # nearest flagged) are the ones that catch a change clearing more.
     cad_mesh = _plate_with_hole(20.0)
     part_vertices, part_faces = _solid_plate()
     sample = synthetic.generate_synthetic_sample(
