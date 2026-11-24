@@ -1326,3 +1326,222 @@ def test_free_scale_residual_is_never_absurd_under_heavy_occlusion(seed: int):
     bound = registration.DEFAULT_SCALE_RESIDUAL_SANITY_BOUND
     for residual in (best.free_scale_residual, refined.free_scale_residual):
         assert residual is None or abs(residual) <= bound
+
+
+# --- I-15: surface near the board doesn't support the pose ----------------------------------
+
+G05 = ROOT / "fixtures" / "reference_cad" / "g05_00_control_50x32x20mm.stl"
+# The control's notch, in its own CAD frame (50 x 32 mm plate, notch cut from the far corner).
+G05_NOTCH_X = (34.0, 50.0)
+G05_NOTCH_Y = (21.0, 32.0)
+
+
+def _true_pose(sample: synthetic.SyntheticSample) -> np.ndarray:
+    return _expected_transform(sample)
+
+
+def _with_surface(sample, extra_vertices, extra_faces):
+    """The sample plus extra surface, all of it labelled Observed, as a model tuple."""
+    vertices = np.vstack([sample.vertices_mm, extra_vertices])
+    faces = np.vstack([sample.faces, np.asarray(extra_faces) + len(sample.vertices_mm)])
+    labels = np.concatenate(
+        [
+            np.asarray(sample.labels, dtype=object),
+            np.full(len(extra_vertices), provenance.LABEL_OBSERVED, dtype=object),
+        ]
+    )
+    return (vertices, faces, labels)
+
+
+def _board_skin_sheet(cad_vertices, cad_faces, pose, *, height_mm=3.5, margin_mm=15.0):
+    """A flat sheet of board skin height_mm above the board, around the posed part and into
+    its notch, but not under the part itself: what P-41 found on six of ten real models."""
+    from inspection import pose_judgement
+
+    posed = _transform_points(cad_vertices, pose)
+    outline = pose_judgement.outline_at(
+        posed, cad_faces, (posed[:, 2].min() + posed[:, 2].max()) / 2.0
+    )
+    lower = posed[:, :2].min(axis=0) - margin_mm
+    upper = posed[:, :2].max(axis=0) + margin_mm
+    xs = np.arange(lower[0], upper[0], 1.0)
+    ys = np.arange(lower[1], upper[1], 1.0)
+    grid_x, grid_y = np.meshgrid(xs, ys)
+    # Board z points into the table, so height_mm above the board is z = -height_mm.
+    vertices = np.column_stack(
+        [grid_x.ravel(), grid_y.ravel(), np.full(grid_x.size, -height_mm)]
+    )
+    columns = len(xs)
+    faces = []
+    for row in range(len(ys) - 1):
+        for column in range(columns - 1):
+            a = row * columns + column
+            for triangle in (
+                (a, a + 1, a + columns + 1),
+                (a, a + columns + 1, a + columns),
+            ):
+                centre = vertices[list(triangle), :2].mean(axis=0)
+                if not _inside_polygon(outline, centre):
+                    faces.append(triangle)
+    return vertices, np.asarray(faces)
+
+
+def _inside_polygon(polygon: np.ndarray, point: np.ndarray) -> bool:
+    inside = False
+    for index in range(len(polygon)):
+        x1, y1 = polygon[index]
+        x2, y2 = polygon[(index + 1) % len(polygon)]
+        if (y1 > point[1]) != (y2 > point[1]):
+            crossing_x = x1 + (point[1] - y1) * (x2 - x1) / (y2 - y1)
+            if point[0] < crossing_x:
+                inside = not inside
+    return inside
+
+
+def _notch_filler(pose, rng, count=150, low_mm=3.0, high_mm=4.8):
+    """Small Observed triangles scattered over the G-05 notch at board-skin heights.
+
+    On the real G-05 control (R-44's mesh), 48 stray points sat inside the notch, mostly 3-5 mm
+    up. A CAD turned 180 degrees puts its solid corner over them, which is how the turned pose
+    came to outscore the right one.
+    """
+    vertices = []
+    faces = []
+    for index in range(count):
+        x = rng.uniform(G05_NOTCH_X[0] + 0.5, G05_NOTCH_X[1] - 1.5)
+        y = rng.uniform(G05_NOTCH_Y[0] + 0.5, G05_NOTCH_Y[1] - 1.5)
+        height = rng.uniform(low_mm, high_mm)
+        triangle = np.array(
+            [[x, y, height], [x + 1.0, y, height], [x, y + 1.0, height]], dtype=float
+        )
+        vertices.append(_transform_points(triangle, pose))
+        faces.append([3 * index, 3 * index + 1, 3 * index + 2])
+    return np.vstack(vertices), np.asarray(faces)
+
+
+def _final_pose(model, cad_mesh, *, seed: int):
+    candidates = _register(model, cad_mesh, seed=seed)
+    return registration.check_ambiguity(candidates, model, cad_mesh, seed=seed)
+
+
+@pytest.mark.parametrize(
+    ("cad_height", "expected"),
+    [(8.0, 2.0), (15.0, 3.75), (20.0, 5.0), (60.0, 5.0)],
+)
+def test_pose_support_cut_is_the_smaller_of_5_mm_and_a_quarter_of_the_height(
+    cad_height: float, expected: float
+):
+    # D-061's 8 mm test plate, g02_01 (15 mm), the G-05 plates (20 mm), s-05 (60 mm).
+    vertices = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, cad_height]])
+    assert registration._pose_support_cut_mm(vertices) == pytest.approx(expected)
+
+
+def test_pose_support_faces_drop_board_level_and_straddling_faces():
+    # Heights above the board are -z. Face 0 is wholly above a 5 mm cut, face 1 straddles it,
+    # face 2 is board skin at 3.5 mm.
+    vertices = np.array(
+        [
+            [0.0, 0.0, -6.0],
+            [1.0, 0.0, -7.0],
+            [0.0, 1.0, -8.0],
+            [0.0, 0.0, -4.0],
+            [1.0, 0.0, -3.5],
+            [0.0, 1.0, -3.5],
+        ]
+    )
+    faces = np.array([[0, 1, 2], [0, 1, 3], [3, 4, 5]])
+    kept = registration._pose_support_faces(vertices, faces, 5.0)
+    np.testing.assert_array_equal(kept, faces[:1])
+    assert registration._pose_support_faces(vertices, None, 5.0) is None
+
+
+def test_cad_samples_below_the_cut_are_left_out_of_the_coverage_score():
+    vertices, faces, _units = cad.load_mesh(G05)
+    surface = registration._sample_surface(vertices, faces, sample_count=4000, seed=0)
+    kept = registration._cad_samples_above(surface, vertices, 5.0)
+    heights = np.asarray(kept.points)[:, 2] - vertices[:, 2].min()
+    assert heights.min() >= 5.0
+    assert 0 < len(kept.points) < len(surface.points)
+    with pytest.raises(ValueError, match="above its base"):
+        registration._cad_samples_above(surface, vertices, 25.0)
+
+
+@pytest.mark.parametrize("seed", [0, 3])
+def test_planted_board_skin_leaves_the_pose_where_it_was(seed: int):
+    # I-15's first test: stray surface a few millimetres above the board, away from the part,
+    # must not move the pose from where the same model without it lands.
+    from inspection import pose_judgement
+
+    cad_vertices, cad_faces, units = cad.load_mesh(G05)
+    cad_mesh = (cad_vertices, cad_faces, units)
+    sample = synthetic.generate_synthetic_sample(cad_vertices, cad_faces, seed)
+    clean = _final_pose(
+        (sample.vertices_mm, sample.faces, sample.labels), cad_mesh, seed=seed
+    )
+    skin_vertices, skin_faces = _board_skin_sheet(
+        cad_vertices, cad_faces, _true_pose(sample)
+    )
+    skinned_model = _with_surface(sample, skin_vertices, skin_faces)
+    observed = np.asarray(skinned_model[2]) == provenance.LABEL_OBSERVED
+    assert (
+        1.0
+        - np.count_nonzero(np.asarray(sample.labels) == provenance.LABEL_OBSERVED)
+        / np.count_nonzero(observed)
+        > 0.4
+    )  # the skin is a large share, as on real models
+    skinned = _final_pose(skinned_model, cad_mesh, seed=seed)
+
+    assert pose_judgement.poses_are_same(
+        cad_vertices, cad_faces, clean.best.transformation, skinned.best.transformation
+    )
+    assert not skinned.orientation_ambiguous
+
+
+@pytest.mark.parametrize("seed", [0, 4])
+def test_a_notched_plate_with_filler_in_its_notch_does_not_come_back_turned(
+    seed: int, monkeypatch
+):
+    # I-15's second test, on the G-05 shape. The synthetic plate is degraded (more noise, more
+    # Unobserved surface) toward the real reconstruction, and its notch is partly filled at
+    # board-skin height, as the real one was.
+    from inspection import pose_judgement
+
+    cad_vertices, cad_faces, units = cad.load_mesh(G05)
+    cad_mesh = (cad_vertices, cad_faces, units)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed, sigma_mm=0.8, patch_fraction=0.4
+    )
+    true_pose = _true_pose(sample)
+    filler_vertices, filler_faces = _notch_filler(
+        true_pose, np.random.default_rng(seed)
+    )
+    model = _with_surface(sample, filler_vertices, filler_faces)
+
+    with_cut = _final_pose(model, cad_mesh, seed=seed)
+    turned = (
+        pose_judgement.surface_gap_mm(
+            cad_vertices, cad_faces, true_pose, with_cut.best.transformation
+        )
+        > pose_judgement.SAME_POSE_MARGIN_MM
+    )
+    assert not (turned and not with_cut.orientation_ambiguous)
+
+    # And the cut is doing work: without it, the right pose wins by less. (A clean synthetic
+    # plate keeps enough margin that filler alone doesn't flip it, as it flipped the real
+    # one, so the margin is what this pins.)
+    monkeypatch.setattr(registration, "POSE_SUPPORT_MIN_HEIGHT_CAP_MM", 0.0)
+    without_cut = _final_pose(model, cad_mesh, seed=seed)
+    assert with_cut.coverage_ratio > without_cut.coverage_ratio
+
+
+def test_refine_refuses_a_model_whose_observed_surface_is_all_at_board_level():
+    cad_vertices, cad_faces, units = cad.load_mesh(G05)
+    sample = synthetic.generate_synthetic_sample(cad_vertices, cad_faces, 0)
+    candidates = _register(sample, (cad_vertices, cad_faces, units), seed=0)
+    height = -np.asarray(sample.vertices_mm)[:, 2]
+    labels = np.where(
+        height < 4.0, provenance.LABEL_OBSERVED, provenance.LABEL_UNOBSERVED
+    ).astype(object)
+    low_only = (sample.vertices_mm, sample.faces, labels)
+    with pytest.raises(ValueError, match="mm above the board"):
+        registration.refine(candidates[0], low_only, (cad_vertices, cad_faces, units))
