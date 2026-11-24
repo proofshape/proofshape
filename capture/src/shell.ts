@@ -304,8 +304,13 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     return mountGyroOverlay(gyroOverlayContainer, DEFAULT_ORBIT, {
       onGuidance: (update) => {
         viewfinder.dataset.guidance = update.level;
-        if (update.gyro !== null) {
+        // #420 review (@dalwalyk): the overlay listens from page load, before the motion prompt,
+        // so its readings count only once the shell's own gyro listener runs (after the grant).
+        // Its listener also runs before the shell's for the same event, so the shutter's state is
+        // refreshed here; otherwise auto-capture would read the previous event's.
+        if (listeningForGyro && update.gyro !== null) {
           state.latestGyro = update.gyro;
+          updateCaptureAvailability();
         }
         const step = stepAutoCapture(autoCaptureState, {
           nowMs: now(),
@@ -741,6 +746,15 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     const say = (message: string, kind: StatusKind): void => {
       setStatus(captureStatus, trigger === "auto" ? `Auto: ${message}` : message, kind);
     };
+    // #420 review (@dalwalyk): an automatic photo that fails to upload (network, or the server
+    // rejects it) turns auto-capture off. Holding on target would otherwise send a new photo every
+    // retry gap for as long as the phone stays there. Local gate rejections still retry: the
+    // retry gap is for those.
+    const switchAutoOffAfterUploadFailure = (): void => {
+      if (trigger !== "auto" || !autoCaptureToggle.checked) return;
+      autoCaptureToggle.checked = false;
+      captureStatus.textContent = `${captureStatus.textContent} Auto-capture is off now — tap to retry, or turn it back on.`;
+    };
     // Layers of defense beyond the disabled attribute itself (fails loudly rather than silently
     // misbehaving if this handler is ever reached in a state the button shouldn't allow):
     if (sessionFinishing) {
@@ -901,10 +915,12 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
               "error",
             );
           }
+          switchAutoOffAfterUploadFailure();
         }
       } catch (error) {
         lastAcceptedForGate = previousAcceptedForGate;
         say(`Could not upload frame — ${describeUploadError(error)}`, "error");
+        switchAutoOffAfterUploadFailure();
       } finally {
         uploadInFlight = false;
         updateCaptureAvailability();
@@ -914,6 +930,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   }
 
   captureButton.addEventListener("click", () => {
+    // #420 review (@dalwalyk): a tap restarts auto-capture's hold and its retry gap. Otherwise a
+    // tap the gate rejects could be followed by an automatic photo on the very next reading,
+    // overwriting the person's own rejection message.
+    autoCaptureState = { holdStartMs: null, holdStartGyro: null, lastAttemptMs: now() };
     attemptCapture("manual");
   });
 

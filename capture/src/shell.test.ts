@@ -2225,6 +2225,85 @@ describe("mountAppShell", () => {
     expect(frameUploads(fetchSpy)).toBe(1);
   });
 
+  // #420 review (@dalwalyk): a failed automatic upload used to be retried every retry gap for as
+  // long as the phone stayed on target.
+  it("C-27: an automatic photo the server rejects turns auto-capture off instead of retrying", async () => {
+    const { mounted, clock } = await startAutoSession();
+    stub.rejectNextFrame();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(/^Auto: .*Auto-capture is off now/);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    holdAt(clock, 45, 1700, 9000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+  });
+
+  it("C-27: an automatic photo that can't reach the server turns auto-capture off instead of retrying", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(
+      /^Auto: Could not upload frame.*Auto-capture is off now/,
+    );
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    holdAt(clock, 45, 1700, 9000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  // #420 review (@dalwalyk): a tap the gate rejected could be followed ~16 ms later by an
+  // automatic photo, overwriting the person's own rejection message.
+  it("C-27: a tap restarts auto-capture's hold and retry gap", async () => {
+    const { mounted, clock, canvas } = await startAutoSession();
+    const flat = sharpWellExposedImageData();
+    flat.data.fill(128);
+    canvas.setImageData(flat);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 1500);
+    mounted.captureButton.click();
+    expect(mounted.captureStatus.textContent).toMatch(/^Frame rejected/);
+    // Past the 0.6 s hold that started at 1000 ms, but within 1.5 s of the tap.
+    holdAt(clock, 45, 1600, 2900);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mounted.captureStatus.textContent).toMatch(/^Frame rejected/);
+    expect(frameUploads(fetchSpy)).toBe(0);
+  });
+
+  // #420 review (@dalwalyk): the overlay listens from page load, so a reading before the motion
+  // permission was granted used to count as the shell's gyro reading.
+  it("C-27: a reading before the gyro is granted doesn't enable capture", async () => {
+    stubGrantedCamera();
+    stubGyroPermission("denied");
+    const { state, orderCode, button, cameraStatus, captureButton } = mount();
+    dispatchOrientation(0, 45, 0);
+    orderCode.value = "PO-48213-A";
+    button.click();
+    await vi.waitFor(() => {
+      if (cameraStatus.textContent !== "Camera started.") throw new Error("still pending");
+    });
+    dispatchOrientation(10, 45, 0);
+    expect(state.latestGyro).toBeNull();
+    expect(captureButton.disabled).toBe(true);
+  });
+
   it("C-27: an automatic frame the gate rejects says so, uploads nothing and leaves coverage alone", async () => {
     const { mounted, clock, canvas } = await startAutoSession();
     const flat = sharpWellExposedImageData();
