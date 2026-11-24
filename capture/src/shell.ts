@@ -306,8 +306,10 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         viewfinder.dataset.guidance = update.level;
         // #420 review (@dalwalyk): the overlay listens from page load, before the motion prompt,
         // so its readings count only once the shell's own gyro listener runs (after the grant).
-        // Its listener also runs before the shell's for the same event, so the shutter's state is
-        // refreshed here; otherwise auto-capture would read the previous event's.
+        // On a first Start its listener runs before the shell's for the same event (the overlay
+        // mounts at the tap, the shell listens only after the grant), so the shutter's state is
+        // refreshed here; otherwise auto-capture would read the previous event's. After a retried
+        // Start the remounted overlay runs second, and this refresh is merely redundant.
         if (listeningForGyro && update.gyro !== null) {
           state.latestGyro = update.gyro;
           updateCaptureAvailability();

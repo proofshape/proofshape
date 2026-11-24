@@ -160,7 +160,12 @@ export function mountGyroOverlay(
   }
   window.addEventListener("deviceorientation", handleOrientation);
 
+  // C-27 (#420): once disposed (Finish, or a remount that reused this container), refresh() must
+  // not redraw -- the guidance is stale with the camera off, and after a remount the DOM belongs to
+  // the new mount.
+  let disposed = false;
   function dispose(): void {
+    disposed = true;
     window.removeEventListener("deviceorientation", handleOrientation);
     activeDisposalsByContainer.delete(container);
   }
@@ -184,7 +189,7 @@ export function mountGyroOverlay(
       }
     },
     refresh(): void {
-      if (latestLiveGyro) {
+      if (!disposed && latestLiveGyro) {
         updateArrow(latestLiveGyro);
       }
     },

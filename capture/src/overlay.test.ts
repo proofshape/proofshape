@@ -155,6 +155,31 @@ describe("mountGyroOverlay", () => {
     expect(text(container, ".gyro-overlay-status")).toBe("On target — take the photo.");
   });
 
+  it("refresh does nothing once the overlay is disposed (C-27)", () => {
+    const { container } = mount();
+    const updates: string[] = [];
+    const handle = mountGyroOverlay(container, DEFAULT_ORBIT, {
+      onTargetText: () => "On target — hold steady…",
+      onGuidance: (update) => updates.push(update.level),
+    });
+    mountedHandles.push(handle);
+    handle.reportAcceptedFrame({
+      alpha: 0,
+      beta: elevationToBeta(requireSlot(0).elevationDeg),
+      gamma: 0,
+    });
+    const target = requireSlot(1);
+    dispatchOrientation(target.azimuthDeg, elevationToBeta(target.elevationDeg), 0);
+    handle.dispose();
+    const status = container.querySelector(".gyro-overlay-status");
+    if (!status) throw new Error("status chip missing");
+    status.textContent = "Camera stopped.";
+    const before = updates.length;
+    handle.refresh();
+    expect(text(container, ".gyro-overlay-status")).toBe("Camera stopped.");
+    expect(updates.length).toBe(before);
+  });
+
   it("shows an orbit-complete status once every slot is covered", () => {
     const { container } = mount();
     const handle = mountOverlay(container);
