@@ -1089,9 +1089,11 @@ def check_ambiguity(
     coverage-aware ratio uses `ambiguity_threshold` (I-13/D-061), rather than inlier-only RMSE;
     `rmse_ratio` remains diagnostic. A single surviving pose is not ambiguous.
 
-    I-15: the Observed model surface leaves out what lies below `_pose_support_cut_mm` over
-    the board, so board skin can't pull refinement or change the fitness ranking. The coverage
-    ratio uses the full CAD surface, as on `main`, so D-061's classes are unchanged.
+    I-15: the Observed model surface that `refine` fits to leaves out what lies below
+    `_pose_support_cut_mm` over the board, so board skin can't pull refinement or change the
+    fitness ranking. The coverage ratio uses the full observed surface and full CAD surface,
+    as on `main`, but the refined poses it compares come from the cut surface, so the D-061
+    class counts move slightly (see the I-15 amendment under D-061 in `docs/decisions.md`).
 
     A candidate that can't be refined (I-03's `ransac:0` is often an identity pose at fitness 0)
     is recorded in `failed` with its reason; if none can be refined, this raises. A model without
@@ -1147,8 +1149,9 @@ def check_ambiguity(
     coverage_ratio: float | None = None
     if runner_up is not None:
         # The coverage ratio uses all Observed surface, not the support-cut subset that refine
-        # fits to. This keeps D-061's classes unchanged: the cut helps refinement ignore board
-        # skin, but the ambiguity ratio must see the same surface as on main.
+        # fits to. The cut helps refinement ignore board skin; the ratio sees the same surface
+        # as on main, though the refined poses it scores come from the cut, so the D-061 class
+        # counts shift slightly (I-15 amendment under D-061).
         observed_model_surface = _sample_surface(
             model_vertices,
             all_observed_faces,

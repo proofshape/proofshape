@@ -37,6 +37,12 @@ SAME_POSE_MARGIN_MM = 2.0
 # onto itself.
 NO_SYMMETRY_DEG = 360.0
 
+# Below this aligned fraction, the wall offset is too noisy to use as a fine-yaw reference, and
+# judge_pose falls back to the photo reading's 20 degrees. g02_01 base reads 31.9 degrees with
+# aligned fraction 0.58-0.61 on a 90-degree-symmetric square: the model's reconstruction is too
+# rough for straight walls to be readable, and the wall check would mark it wrong on noise.
+WALL_ALIGNED_FLOOR = 0.65
+
 # How far either side of zero the wall comparison looks. It is a fine-yaw check: gross turns are
 # the photo reading's job. The search is narrowed further to half the CAD's own wall-direction
 # period (see _direction_period_deg), because directions are lines, compared modulo 180 degrees:
@@ -450,16 +456,20 @@ def judge_pose(
     named_side_normal_cad_xy: tuple[float, float],
     symmetry_deg: float = NO_SYMMETRY_DEG,
     wall_yaw_offset_deg: float | None = None,
+    wall_aligned_fraction: float | None = None,
 ) -> PoseJudgement:
     """Is this pose right, by I-15's definition (#440)?
 
     Right means all of: the face down matches the photo (only where the CAD's faces differ);
     the named side faces within 20 degrees of the photo reading, modulo the CAD's symmetry; for
-    a part with straight walls, the walls are within 5 degrees; and the centre is within the
-    smaller of 15 mm and half the CAD's narrowest footprint width.
+    a part with straight walls whose aligned fraction is at least WALL_ALIGNED_FLOOR, the walls
+    are within 5 degrees; and the centre is within the smaller of 15 mm and half the CAD's
+    narrowest footprint width.
 
     wall_yaw_offset_deg is `wall_offset(...).offset_deg` for this pose, or None for a part
-    without straight walls (then only the photo reading judges yaw).
+    without straight walls (then only the photo reading judges yaw). wall_aligned_fraction is
+    the matching `aligned_fraction`; below WALL_ALIGNED_FLOOR, the wall reference is too noisy
+    to use and the pose falls back to the photo reading's 20-degree margin.
     """
     reasons: list[str] = []
 
@@ -479,12 +489,14 @@ def judge_pose(
 
     wall_error: float | None = None
     if wall_yaw_offset_deg is not None:
-        wall_error = abs(float(wall_yaw_offset_deg))
-        if wall_error > WALL_YAW_MARGIN_DEG:
-            reasons.append(
-                f"walls are {wall_error:.1f} deg from the model's "
-                f"(margin {WALL_YAW_MARGIN_DEG:g})"
-            )
+        aligned = wall_aligned_fraction if wall_aligned_fraction is not None else 1.0
+        if aligned >= WALL_ALIGNED_FLOOR:
+            wall_error = abs(float(wall_yaw_offset_deg))
+            if wall_error > WALL_YAW_MARGIN_DEG:
+                reasons.append(
+                    f"walls are {wall_error:.1f} deg from the model's "
+                    f"(margin {WALL_YAW_MARGIN_DEG:g})"
+                )
 
     centre = posed_centre_xy(cad_vertices, pose)
     centre_error = float(

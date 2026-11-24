@@ -351,6 +351,26 @@ def test_a_turn_inside_20_degrees_is_caught_by_the_walls():
     assert judgement.wall_yaw_error_deg == pytest.approx(12.0)
 
 
+def test_a_low_aligned_wall_reading_falls_back_to_the_photo_margin():
+    # g02_01 base's case: 31.9 degrees from the walls at aligned fraction 0.58. Below
+    # WALL_ALIGNED_FLOOR, the wall check is too noisy to use and the pose is judged on the
+    # photo's 20 degrees alone. So a 12-degree turn is right here (inside 20), even though
+    # it would fail the 5-degree wall check.
+    vertices, _faces = _load(S04)
+    normal = _s04_short_side_normal(vertices)
+    pose = _board_pose(0.0)
+    judgement = pose_judgement.judge_pose(
+        vertices,
+        pose,
+        _reading_for(vertices, pose, normal, turn=12.0),
+        named_side_normal_cad_xy=normal,
+        wall_yaw_offset_deg=-12.0,
+        wall_aligned_fraction=0.55,
+    )
+    assert judgement.right
+    assert judgement.wall_yaw_error_deg is None
+
+
 def test_a_pose_beside_a_small_part_is_not_right():
     # 12 mm off is inside a flat 15 mm, but not inside half of a 20 mm square's width.
     vertices, _faces = _box(20.0, 20.0, 10.0)

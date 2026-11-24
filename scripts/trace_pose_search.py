@@ -149,6 +149,7 @@ class _Judge:
             named_side_normal_cad_xy=self.named_side_normal_cad_xy,
             symmetry_deg=self.symmetry_deg,
             wall_yaw_offset_deg=None if wall is None else wall.offset_deg,
+            wall_aligned_fraction=None if wall is None else wall.aligned_fraction,
         )
         reasons = list(judgement.reasons)
         if self.straight_walls and wall is None:

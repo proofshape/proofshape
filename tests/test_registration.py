@@ -1479,6 +1479,19 @@ def test_missing_hole_still_flags_ambiguous_with_the_support_cut(seed: int):
     assert _check_ambiguity(sample, cad_mesh, seed=seed).orientation_ambiguous
 
 
+def test_missing_hole_seed_99_is_the_known_clear_after_the_support_cut():
+    # Seed 99 is the sole missing-hole case that clears after I-15 (ratio 1.026, cutoff 1.025).
+    # Pinned so a future change that clears more fails CI.
+    cad_mesh = _plate_with_hole(20.0)
+    part_vertices, part_faces = _solid_plate()
+    sample = synthetic.generate_synthetic_sample(
+        part_vertices, part_faces, 99, sigma_mm=0.3, patch_fraction=0.2
+    )
+    result = _check_ambiguity(sample, cad_mesh, seed=99)
+    assert not result.orientation_ambiguous
+    assert result.coverage_ratio > 1.0 + registration.DEFAULT_AMBIGUITY_THRESHOLD
+
+
 @pytest.mark.parametrize("seed", [0, 3])
 def test_planted_board_skin_leaves_the_pose_where_it_was(seed: int):
     # I-15's first test: stray surface a few millimetres above the board, away from the part,
