@@ -746,14 +746,19 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     const say = (message: string, kind: StatusKind): void => {
       setStatus(captureStatus, trigger === "auto" ? `Auto: ${message}` : message, kind);
     };
-    // #420 review (@dalwalyk): an automatic photo that fails to upload (network, or the server
-    // rejects it) turns auto-capture off. Holding on target would otherwise send a new photo every
-    // retry gap for as long as the phone stays there. Local gate rejections still retry: the
-    // retry gap is for those.
-    const switchAutoOffAfterUploadFailure = (): void => {
-      if (trigger !== "auto" || !autoCaptureToggle.checked) return;
+    // #420 review (@dalwalyk): any photo that fails to upload (network, or the server rejects it)
+    // turns auto-capture off, automatic or tapped. Holding on target would otherwise send a new
+    // photo every retry gap for as long as the phone stays there. Local gate rejections still
+    // retry: the retry gap is for those. When the session is gone, neither a tap nor auto can
+    // help, so the message doesn't offer them.
+    const switchAutoOffAfterUploadFailure = (sessionGone: boolean): void => {
+      if (!autoCaptureToggle.checked) return;
       autoCaptureToggle.checked = false;
-      captureStatus.textContent = `${captureStatus.textContent} Auto-capture is off now — tap to retry, or turn it back on.`;
+      const suffix = sessionGone
+        ? "Auto-capture is off now."
+        : "Auto-capture is off now — tap to retry, or turn it back on.";
+      captureStatus.textContent = `${captureStatus.textContent} ${suffix}`;
+      gyroOverlayHandle.refresh();
     };
     // Layers of defense beyond the disabled attribute itself (fails loudly rather than silently
     // misbehaving if this handler is ever reached in a state the button shouldn't allow):
@@ -914,13 +919,15 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
               `${describeUploadFrame(result)} This session can't take more frames — start a new session.`,
               "error",
             );
+            switchAutoOffAfterUploadFailure(true);
+          } else {
+            switchAutoOffAfterUploadFailure(false);
           }
-          switchAutoOffAfterUploadFailure();
         }
       } catch (error) {
         lastAcceptedForGate = previousAcceptedForGate;
         say(`Could not upload frame — ${describeUploadError(error)}`, "error");
-        switchAutoOffAfterUploadFailure();
+        switchAutoOffAfterUploadFailure(false);
       } finally {
         uploadInFlight = false;
         updateCaptureAvailability();
@@ -935,6 +942,12 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // overwriting the person's own rejection message.
     autoCaptureState = { holdStartMs: null, holdStartGyro: null, lastAttemptMs: now() };
     attemptCapture("manual");
+  });
+
+  // #420 review (@dalwalyk): the on-target line depends on the switch ("hold steady" or "take the
+  // photo"), so a change re-renders it at once instead of on the phone's next movement.
+  autoCaptureToggle.addEventListener("change", () => {
+    gyroOverlayHandle.refresh();
   });
 
   async function runReconstructionPolling(): Promise<void> {

@@ -31,6 +31,10 @@ export interface GyroOverlayOptions {
 
 export interface GyroOverlayHandle {
   reportAcceptedFrame(gyro: Gyro): void;
+  // C-27 (#420 review): re-render from the last live reading, so text that depends on state the
+  // overlay can't see (onTargetText, read from the auto-capture switch) updates without waiting
+  // for the phone to move.
+  refresh(): void;
   dispose(): void;
 }
 
@@ -177,6 +181,11 @@ export function mountGyroOverlay(
       } else if (computeCoverage(acceptedReadings, orbit).nextTargetIndex === null) {
         // No live reading to judge position by, but a complete orbit is complete regardless.
         showComplete(null);
+      }
+    },
+    refresh(): void {
+      if (latestLiveGyro) {
+        updateArrow(latestLiveGyro);
       }
     },
     dispose,

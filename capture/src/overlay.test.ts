@@ -137,6 +137,24 @@ describe("mountGyroOverlay", () => {
     expect(arrow?.style.visibility).toBe("hidden");
   });
 
+  it("refresh re-reads the on-target text without a new orientation event (C-27)", () => {
+    const { container } = mount();
+    let text1 = "On target — hold steady…";
+    const handle = mountGyroOverlay(container, DEFAULT_ORBIT, { onTargetText: () => text1 });
+    mountedHandles.push(handle);
+    handle.reportAcceptedFrame({
+      alpha: 0,
+      beta: elevationToBeta(requireSlot(0).elevationDeg),
+      gamma: 0,
+    });
+    const target = requireSlot(1);
+    dispatchOrientation(target.azimuthDeg, elevationToBeta(target.elevationDeg), 0);
+    expect(text(container, ".gyro-overlay-status")).toBe("On target — hold steady…");
+    text1 = "On target — take the photo.";
+    handle.refresh();
+    expect(text(container, ".gyro-overlay-status")).toBe("On target — take the photo.");
+  });
+
   it("shows an orbit-complete status once every slot is covered", () => {
     const { container } = mount();
     const handle = mountOverlay(container);
