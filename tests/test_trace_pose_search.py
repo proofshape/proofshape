@@ -239,3 +239,28 @@ def test_lost_at_names_the_stage_after_the_last_one_with_a_right_pose():
 
 def test_lost_at_is_the_seeds_when_no_stage_ever_held_a_right_pose():
     assert trace_module.stage_lost_at(_present()) == "seeds"
+
+
+def test_the_model_is_sliced_at_the_same_heights_whatever_the_pose():
+    # A refined pose can sit a few millimetres up or down. The model's walls are read at fixed
+    # heights above the board, so every pose is measured against the same outlines.
+    _, model, cad_mesh, true_pose = _sample()
+    judge = trace_module._Judge(
+        np.asarray(model[0]),
+        np.asarray(model[1]),
+        np.asarray(cad_mesh[0]),
+        np.asarray(cad_mesh[1]),
+        _reading(cad_mesh[0], true_pose),
+        named_side_normal_cad_xy=NAMED_SIDE,
+        symmetry_deg=pose_judgement.NO_SYMMETRY_DEG,
+        straight_walls=True,
+    )
+    results = []
+    for lift_mm in (-3.0, 0.0, 2.5):
+        lifted = np.eye(4)
+        lifted[2, 3] = lift_mm
+        results.append(judge.wall(lifted @ true_pose))
+    assert set(judge._model_loops) == set(trace_module.WALL_SLICE_FRACTIONS)
+    offsets = [result.offset_deg for result in results]
+    assert max(offsets) - min(offsets) < 0.2
+    assert abs(offsets[1]) < 1.0

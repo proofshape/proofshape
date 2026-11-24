@@ -481,3 +481,53 @@ def test_sheet_reading_rejects_what_the_sheet_cant_say(faces, turned):
             squares_from_caption=1.0,
             face_matches=None,
         )
+
+
+# --- wall offset, folded by the CAD's own direction period -----------------------------------
+
+G02_04 = ROOT / "fixtures" / "reference_cad" / "g02_04_pentagon_r22x25mm.stl"
+G02_05 = ROOT / "fixtures" / "reference_cad" / "g02_05_hexagon_r28x35mm.stl"
+
+
+@pytest.mark.parametrize(
+    ("cad_path", "expected"),
+    [(S04, 180.0), (S05, 90.0), (G02_05, 60.0), (G02_04, 36.0)],
+)
+def test_direction_period_of_each_cad(cad_path: Path, expected: float):
+    vertices, faces = _load(cad_path)
+    loop = _mid_height_loop(vertices, faces, np.eye(4))
+    directions, weights = pose_judgement._wall_directions(
+        pose_judgement._resample_by_arc_length(loop, pose_judgement.WALL_THINNING_MM)
+    )
+    histogram = pose_judgement._smoothed_line_histogram(
+        directions, weights, round(180.0 / pose_judgement.WALL_HISTOGRAM_BIN_DEG)
+    )
+    assert pose_judgement._direction_period_deg(histogram) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("turn_deg", "expected"), [(3.0, 3.0), (-8.0, -8.0), (37.0, 1.0)]
+)
+def test_a_pentagon_wall_offset_is_read_within_its_36_degree_period(turn_deg, expected):
+    # g02_04's case: a pose 1 degree off read 35-36 degrees before the search was folded. A
+    # real 37-degree turn reads as 1 here, which is the photo reading's job to catch.
+    vertices, faces = _load(G02_04)
+    pose = _board_pose(10.0)
+    model_pose = _turn_about_own_centre(vertices, pose, turn_deg)
+    result = pose_judgement.wall_offset(
+        _mid_height_loop(vertices, faces, model_pose),
+        _mid_height_loop(vertices, faces, pose),
+    )
+    assert result.offset_deg == pytest.approx(expected, abs=0.2)
+
+
+def test_a_hexagon_turn_inside_its_period_is_read_as_is():
+    # The hexagon's case on main's mesh: a 16-degree turn must read as 16, not fold away.
+    vertices, faces = _load(G02_05)
+    pose = _board_pose(0.0)
+    model_pose = _turn_about_own_centre(vertices, pose, 16.0)
+    result = pose_judgement.wall_offset(
+        _mid_height_loop(vertices, faces, model_pose),
+        _mid_height_loop(vertices, faces, pose),
+    )
+    assert result.offset_deg == pytest.approx(16.0, abs=0.2)

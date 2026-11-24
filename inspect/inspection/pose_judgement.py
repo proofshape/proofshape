@@ -38,8 +38,9 @@ SAME_POSE_MARGIN_MM = 2.0
 NO_SYMMETRY_DEG = 360.0
 
 # How far either side of zero the wall comparison looks. It is a fine-yaw check: gross turns are
-# the photo reading's job. 45 degrees is half of the smallest symmetry period that matters here
-# (90 degrees for a square), so a square part's walls can't alias onto a neighbouring wall.
+# the photo reading's job. The search is narrowed further to half the CAD's own wall-direction
+# period (see _direction_period_deg), because directions are lines, compared modulo 180 degrees:
+# a pentagon's five walls then repeat every 36 degrees, so beyond 18 a turn reads as its alias.
 DEFAULT_WALL_SEARCH_DEG = 45.0
 # Each outline point's wall direction is read from a straight-line fit to its neighbours within
 # this radius, measured in space rather than along the outline. Along-the-outline measures fail on
@@ -408,7 +409,11 @@ def wall_offset(
     )
     shifts_deg = np.arange(bin_count) * WALL_HISTOGRAM_BIN_DEG
     signed_shifts = np.where(shifts_deg >= 90.0, shifts_deg - 180.0, shifts_deg)
-    candidate_indices = np.flatnonzero(np.abs(signed_shifts) <= search_deg)
+    # Wider than half the CAD's own direction period, the search would find an alias of the
+    # true offset (g02_04, a pentagon, read 35-36 degrees for a pose 1 degree off).
+    period = _direction_period_deg(cad_histogram)
+    window = min(search_deg, period / 2.0)
+    candidate_indices = np.flatnonzero(np.abs(signed_shifts) <= window)
     best_index = int(candidate_indices[np.argmax(correlation[candidate_indices])])
 
     # Parabolic interpolation between neighbouring bins, so the answer isn't quantised to the
@@ -555,6 +560,32 @@ def _resample_by_arc_length(loop: np.ndarray, step_mm: float) -> np.ndarray:
     x = np.interp(stations, distance_along, closed[:, 0])
     y = np.interp(stations, distance_along, closed[:, 1])
     return np.column_stack([x, y])
+
+
+# A shift counts as a repeat of the CAD's wall directions when its overlap is this close to the
+# unshifted one.
+DIRECTION_PERIOD_MATCH = 0.95
+
+
+def _direction_period_deg(cad_histogram: np.ndarray) -> float:
+    """Smallest turn, modulo 180 degrees, that maps the CAD's wall directions onto themselves.
+
+    180 for a part with no repeat (s-04, g02_03), 90 for a square or a rectangle's walls, 60
+    for a hexagon, 36 for a pentagon (its five walls, taken as lines, are 36 degrees apart).
+    Only divisors of 180 can be periods, so those are the only ones tried, smallest first.
+    """
+    zero_shift = float(np.dot(cad_histogram, cad_histogram))
+    if zero_shift <= 0.0:
+        return 180.0
+    for divisions in range(12, 1, -1):
+        period = 180.0 / divisions
+        shift_bins = round(period / WALL_HISTOGRAM_BIN_DEG)
+        if shift_bins * WALL_HISTOGRAM_BIN_DEG != period:
+            continue
+        overlap = float(np.dot(cad_histogram, np.roll(cad_histogram, shift_bins)))
+        if overlap >= DIRECTION_PERIOD_MATCH * zero_shift:
+            return period
+    return 180.0
 
 
 def _wall_directions(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

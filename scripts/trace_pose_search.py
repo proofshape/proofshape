@@ -58,11 +58,15 @@ from recon.provenance import LABEL_OBSERVED
 # reported it ("12 to 44% of the Observed vertices are more than 5 mm from the part").
 STRAY_DISTANCE_MM = 5.0
 
+# The model's walls are read at these fractions of the CAD's height above the board, and the
+# median taken. All three sit above I-15's support cut (at most a quarter of the height).
+WALL_SLICE_FRACTIONS = (0.4, 0.5, 0.6)
+
 STAGES = ("seeds", "deduplication", "selection", "refinement", "final ranking")
 
 
 class _Judge:
-    """Judges poses for one part, caching the model's outline at each slice height."""
+    """Judges poses for one part, caching the model's outline at each fixed slice height."""
 
     def __init__(
         self,
@@ -84,30 +88,57 @@ class _Judge:
         self.named_side_normal_cad_xy = named_side_normal_cad_xy
         self.symmetry_deg = symmetry_deg
         self.straight_walls = straight_walls
+        self.cad_height = float(np.ptp(cad_vertices[:, 2]))
         self._model_loops: dict[float, np.ndarray | None] = {}
 
-    def _model_loop(self, level: float) -> np.ndarray | None:
-        # Slices are cached to the nearest 0.5 mm. Board poses all share a height, so this is
-        # usually one slice per part; refined poses tilt a little and may add one or two.
-        key = round(level * 2.0) / 2.0
-        if key not in self._model_loops:
-            self._model_loops[key] = pose_judgement.outline_at(
-                self.model_vertices, self.model_faces, key
+    def _model_loop(self, fraction: float) -> np.ndarray | None:
+        """The model's outline at a fixed fraction of the CAD's height above the board.
+
+        Fixed for the part, not taken from each pose. A refined pose can sit a few millimetres
+        higher or lower than another, and slicing the model at each pose's own mid-height then
+        compared poses against different outlines of the same model: on `g02_01` (15 mm) the
+        wall error of two poses with nearly the same yaw read 22.3 and 0.4 degrees. The model's
+        walls belong to the model, so every pose is measured against the same slices.
+        """
+        if fraction not in self._model_loops:
+            # Board z points into the table, so h mm above the board is z = -h.
+            level = -fraction * self.cad_height
+            self._model_loops[fraction] = pose_judgement.outline_at(
+                self.model_vertices, self.model_faces, level
             )
-        return self._model_loops[key]
+        return self._model_loops[fraction]
 
     def wall(self, pose: np.ndarray) -> pose_judgement.WallOffset | None:
+        """Median wall offset over three slices, or None if fewer than two give outlines.
+
+        Three heights rather than one, because one slice can pass through a noisy band of the
+        reconstruction; the median of three can't be set by one bad slice. The CAD is cut at the
+        same fractions of its own posed height: its walls are vertical, so its outline is the
+        same at any of them.
+        """
         if not self.straight_walls:
             return None
         posed = pose_judgement._transform(self.cad_vertices, pose)
-        # Mid-height of the posed CAD, whichever way board z points: this is the same slice of
-        # the model and the CAD, and it is well above the board skin I-15 is about.
-        level = float((posed[:, 2].min() + posed[:, 2].max()) / 2.0)
-        model_loop = self._model_loop(level)
-        cad_loop = pose_judgement.outline_at(posed, self.cad_faces, level)
-        if model_loop is None or cad_loop is None:
+        base = float(posed[:, 2].max())
+        top = float(posed[:, 2].min())
+        offsets = []
+        aligned = []
+        for fraction in WALL_SLICE_FRACTIONS:
+            model_loop = self._model_loop(fraction)
+            cad_loop = pose_judgement.outline_at(
+                posed, self.cad_faces, base + fraction * (top - base)
+            )
+            if model_loop is None or cad_loop is None:
+                continue
+            result = pose_judgement.wall_offset(model_loop, cad_loop)
+            offsets.append(result.offset_deg)
+            aligned.append(result.aligned_fraction)
+        if len(offsets) < 2:
             return None
-        return pose_judgement.wall_offset(model_loop, cad_loop)
+        return pose_judgement.WallOffset(
+            offset_deg=float(np.median(offsets)),
+            aligned_fraction=float(np.median(aligned)),
+        )
 
     def record(self, candidate: CandidatePose) -> dict[str, Any]:
         wall = self.wall(candidate.transformation)
@@ -130,6 +161,9 @@ class _Judge:
         )
         return {
             "source": candidate.source,
+            # Kept so two records' poses can be compared as I-15 defines "same" (posed-surface
+            # gap), not only by yaw and centre, which differ by a symmetry turn on symmetric parts.
+            "transformation": np.asarray(candidate.transformation).tolist(),
             "fitness": candidate.fitness,
             "inlier_rmse_mm": candidate.inlier_rmse,
             "named_side_faces_deg": pose_judgement.pose_rotation_of_xy_direction(
