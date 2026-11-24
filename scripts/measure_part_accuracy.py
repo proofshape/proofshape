@@ -78,6 +78,7 @@ from recon import runtime_env as _runtime_env  # noqa: F401  # isort: skip
 import open3d as o3d  # isort: skip
 
 from recon.cad_size_check import compute_height_above_board
+from recon.corner_reanchoring import DEFAULT_MIN_CORNERS_PER_FRAME, fit_rigid
 from recon.metric_alignment import (
     apply_similarity_transform,
     lift_board_corner_observations,
@@ -129,56 +130,13 @@ DEFAULT_TOLERANCES_MM = (
     12.0,
 )
 
-# A photo needs this many of its own corners before a rigid fit to them means anything. Three
-# non-collinear points fix a rigid pose exactly, leaving nothing to average the corner noise
-# over; eight is the review's choice, and R-44 has to state and test its own.
-DEFAULT_MIN_CORNERS_PER_PHOTO = 8
+# A photo needs this many of its own corners before a rigid fit to them means anything. This was
+# the review's own choice of eight; R-44 adopted the same figure for the pipeline, and this reads
+# it from there so the review's numbers and the pipeline's correction can't quietly diverge.
+DEFAULT_MIN_CORNERS_PER_PHOTO = DEFAULT_MIN_CORNERS_PER_FRAME
 
 MEASURE_NPZ = "measure.npz"
 MEASURE_JSON = "measure.json"
-
-
-# --- rigid fit ----------------------------------------------------------------------------------
-
-
-def fit_rigid(
-    source_mm: np.ndarray, target_mm: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Least-squares rotation and translation with `target ~= rotation @ source + translation`.
-
-    Kabsch's method, with the usual determinant guard so a reflection is never returned. No
-    scale: R-44 corrects where a photo sits, not how big its depth is, and the review found a
-    scaled fit bought nothing a rigid one didn't (P-41's notes).
-
-    Coplanar points are fine -- ChArUco corners always are -- as long as they are not all on one
-    line, which is refused rather than answered with an arbitrary rotation about that line.
-    """
-    source = np.asarray(source_mm, dtype=np.float64)
-    target = np.asarray(target_mm, dtype=np.float64)
-    if source.ndim != 2 or source.shape[1] != 3 or source.shape != target.shape:
-        raise ValueError(
-            f"source and target must both be (N,3); got {source.shape} and {target.shape}"
-        )
-    if len(source) < 3:
-        raise ValueError(f"a rigid fit needs at least 3 point pairs, got {len(source)}")
-
-    source_mean = source.mean(axis=0)
-    target_mean = target.mean(axis=0)
-    source_centered = source - source_mean
-    target_centered = target - target_mean
-    # Rank below 2 means every point is on one line (or one spot): the rotation about that
-    # line is then unconstrained, and returning one would be a guess.
-    singular_values = np.linalg.svd(source_centered, compute_uv=False)
-    if singular_values[1] <= 1e-9 * max(singular_values[0], 1.0):
-        raise ValueError("the points are collinear; a rigid fit to them is not unique.")
-
-    left, _values, right_transpose = np.linalg.svd(target_centered.T @ source_centered)
-    correction = np.eye(3)
-    if np.linalg.det(left @ right_transpose) < 0:
-        correction[2, 2] = -1.0
-    rotation = left @ correction @ right_transpose
-    translation = target_mean - rotation @ source_mean
-    return rotation, translation
 
 
 # --- per-photo corner residuals -----------------------------------------------------------------
