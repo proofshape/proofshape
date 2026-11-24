@@ -661,6 +661,7 @@ def global_register(
     ransac_iterations: int = DEFAULT_RANSAC_ITERATIONS,
     ransac_confidence: float = DEFAULT_RANSAC_CONFIDENCE,
     seed: int = 0,
+    stages: dict[str, Any] | None = None,
 ) -> list[CandidatePose]:
     """Return distinct rigid CAD-to-model candidates, best first.
 
@@ -671,6 +672,13 @@ def global_register(
 
     Every returned transform maps the original z-up CAD coordinates directly into the
     reconstruction board frame. The first candidate also carries the free-scale residual.
+
+    stages, if a dict is passed, is filled with what each step kept, for I-15's stage-by-stage
+    record (scripts/trace_pose_search.py): "seeded" (every candidate both seed paths produced,
+    scored), "deduplicated", "reseeded" (the extra RANSAC candidates) and "selected" (what is
+    returned, before the free-scale residual is attached), plus "extent_mm" and
+    "correspondence_distance_mm". It only records the lists this function already builds, so
+    the result is identical with or without it; the served path never passes it.
     """
     if not (math.isfinite(voxel_fraction) and voxel_fraction > 0):
         raise ValueError("voxel_fraction must be positive and finite.")
@@ -774,6 +782,12 @@ def global_register(
         translation_tolerance_mm=translation_tolerance,
         rotation_tolerance_deg=DEFAULT_DISTINCT_ROTATION_DEG,
     )
+    if stages is not None:
+        stages["extent_mm"] = extent
+        stages["correspondence_distance_mm"] = correspondence_distance
+        stages["seeded"] = list(all_candidates)
+        stages["deduplicated"] = list(unique)
+        stages["reseeded"] = []
     selected = _select_orientation_diverse(unique, candidate_count)
     if not any(
         _same_pose(
@@ -806,6 +820,8 @@ def global_register(
             correspondence_distance,
             source_name=f"ransac:{reseed}",
         )
+        if stages is not None:
+            stages["reseeded"].append(candidate)
         unique = _deduplicate_candidates(
             [*selected, candidate],
             translation_tolerance_mm=translation_tolerance,
@@ -820,6 +836,8 @@ def global_register(
         )
 
     selected = sorted(selected, key=_candidate_sort_key)
+    if stages is not None:
+        stages["selected"] = list(selected)
     best = selected[0]
     residual: float | None = None
     if observed_model_faces is not None and len(observed_model_faces):
