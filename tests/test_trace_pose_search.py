@@ -205,3 +205,37 @@ def test_command_line_requires_a_reading(tmp_path: Path):
                 "--straight-walls",
             ]
         )
+
+
+def _present(*stages_with_right: str) -> dict[str, bool]:
+    return {stage: stage in stages_with_right for stage in trace_module.STAGES}
+
+
+def test_lost_at_is_none_when_the_final_pick_is_right_even_after_a_gap():
+    # A right seed missed selection, but another selected seed refined into the right pose.
+    assert (
+        trace_module.stage_lost_at(
+            _present("seeds", "deduplication", "refinement", "final ranking")
+        )
+        is None
+    )
+
+
+def test_lost_at_names_the_stage_after_the_last_one_with_a_right_pose():
+    assert (
+        trace_module.stage_lost_at(
+            _present("seeds", "deduplication", "selection", "refinement")
+        )
+        == "final ranking"
+    )
+    # Present at the seeds, missing at selection, briefly back after refinement, lost at the
+    # end: the loss that mattered is the final ranking, not selection.
+    assert (
+        trace_module.stage_lost_at(_present("seeds", "deduplication", "refinement"))
+        == "final ranking"
+    )
+    assert trace_module.stage_lost_at(_present("seeds")) == "deduplication"
+
+
+def test_lost_at_is_the_seeds_when_no_stage_ever_held_a_right_pose():
+    assert trace_module.stage_lost_at(_present()) == "seeds"

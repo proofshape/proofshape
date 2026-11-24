@@ -173,6 +173,22 @@ def observed_stray_share(
     return float(np.mean(distances > STRAY_DISTANCE_MM))
 
 
+def stage_lost_at(right_at: dict[str, bool]) -> str | None:
+    """The stage at which the right pose was finally lost, or None if the final pick is right.
+
+    Presence isn't monotone: a right seed can miss selection while another selected seed
+    refines into the right pose. So the stage named is the one after the *last* stage that
+    still held a right candidate, not the first stage that didn't.
+    """
+    if right_at[STAGES[-1]]:
+        return None
+    last_present = -1
+    for index, stage in enumerate(STAGES):
+        if right_at[stage]:
+            last_present = index
+    return STAGES[last_present + 1]
+
+
 def trace(
     model: tuple[np.ndarray, np.ndarray, np.ndarray],
     cad_mesh: tuple[np.ndarray, np.ndarray, Any],
@@ -284,11 +300,7 @@ def trace(
         ),
         "final ranking": final.get("refused") is None and final["best"]["right"],
     }
-    lost_at = None
-    for stage in STAGES:
-        if not right_at[stage]:
-            lost_at = stage
-            break
+    lost_at = stage_lost_at(right_at)
 
     # What the service would serve, in I-15's criterion 3 terms.
     if final.get("refused") is not None:
