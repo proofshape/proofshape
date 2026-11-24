@@ -8,7 +8,7 @@
       "object": "metal padlock",
       "reflective": true,
       "sample_id": "s-01",
-      "content_sha256": "76341961a4319e1189db34d057ec0cfcca5120bfe88a3c42dfc5318dbca274d2"
+      "content_sha256": "63ad2e849496368d00566e03ee4c11623ae55c056595992aeb85cb683a58d999"
     },
     {
       "aggregate_bytes": 149634987,
@@ -19,7 +19,7 @@
       "reflective": true,
       "same_object_as": "s-01",
       "sample_id": "s-02",
-      "content_sha256": "4f00c33501f82a0ca77be38211443aff9f5fc2ddab686f6d4c6f9b5d3f73a622"
+      "content_sha256": "da050862683f3436d5164786d247c8b0ea65e896f261123f15980b6dcc1571d2"
     },
     {
       "aggregate_bytes": 93191453,
@@ -29,7 +29,7 @@
       "object": "rounded rigid object",
       "reflective": false,
       "sample_id": "s-03",
-      "content_sha256": "f56a6027f135b970ffd173edc962bf80e0cca45ca6e7fb8304f57f90a105efb8"
+      "content_sha256": "906615a1dcd951fc85b3da1b39c9677870e72bb0db862a4902e09f741096f1dc"
     },
     {
       "aggregate_bytes": 111627804,
@@ -39,7 +39,7 @@
       "object": "yellow triangular prism",
       "reflective": false,
       "sample_id": "s-04",
-      "content_sha256": "2729b717b88dd0dc13b5d33a3fe520102ecd2edef9a564365c8817304891ae5d"
+      "content_sha256": "e9f85e3f6543b8914ce6c5a8995ea6d19dee67d6bcdfbc974b790dc96e93129c"
     },
     {
       "aggregate_bytes": 108896707,
@@ -49,11 +49,11 @@
       "object": "red rectangular prism",
       "reflective": false,
       "sample_id": "s-05",
-      "content_sha256": "f9a873149646d233167abef22fa466224d1d2eccd45910142df19e5199d3af33"
+      "content_sha256": "1fa27ee534ec01cec954756528b071818930338064443ff000faf6a103f4b26c"
     }
   ],
   "drive_root_folder_id": "1Y022tHljQOj2Fvr_kfDuseg7CaKdjWZp",
-  "notes": "s-01 and s-02 are the same reflective metal padlock captured under visibly different lighting/background conditions. Photos remain outside git.",
+  "notes": "s-01 and s-02 are the same reflective metal padlock captured under visibly different lighting/background conditions. Photos remain outside git. Version 2 (G-14, 2026-11-24): each photo's EXIF GPS block was emptied in place by scripts/strip_capture_gps.py; no other byte changed, so frames and aggregate_bytes are the same and only content_sha256 moved.",
   "reference_cad": [
     {
       "drive_file_id": "1c3_NAmUX4YjOv3AGeH9xbowPrF0uFTJW",
@@ -66,5 +66,5 @@
       "sample_id": "s-05"
     }
   ],
-  "version": 1
+  "version": 2
 }
