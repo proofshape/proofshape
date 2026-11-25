@@ -632,37 +632,83 @@ def _wall_directions(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _hu_seventh_moment(loop: np.ndarray) -> float:
-    """Hu's seventh moment of a 2D outline — sign-sensitive to reflection.
+    """Hu's seventh moment of a 2D closed polygon — sign-sensitive to reflection.
 
-    Invariant to translation, scale and rotation, but flips sign when the outline is mirrored.
-    A shape that is its own mirror image under some rotation (box, regular polygon) has h7 ≈ 0.
+    Computed from the polygon's exact area moments via Green's theorem (a sum over edges),
+    so the result depends on the polygon's shape, not on how densely each stretch is sampled.
+    Invariant to translation, scale and rotation; flips sign under reflection.  A shape that
+    is its own mirror image under some rotation (box, regular polygon) has h7 ≈ 0.
     """
     loop = np.asarray(loop, dtype=np.float64)
-    centroid = loop.mean(axis=0)
-    centred = loop - centroid
-    n = len(centred)
-
-    def mu(p: int, q: int) -> float:
-        return float(np.sum(centred[:, 0] ** p * centred[:, 1] ** q)) / n
-
-    mu20 = mu(2, 0)
-    mu02 = mu(0, 2)
-    mu30 = mu(3, 0)
-    mu03 = mu(0, 3)
-    mu21 = mu(2, 1)
-    mu12 = mu(1, 2)
-
-    # Normalised central moments: η_pq = μ_pq / μ_00^((p+q)/2 + 1).
-    # With per-point averaging, μ_00 = 1 so η_pq = μ_pq. Scale-normalise by the second-order
-    # norm so the threshold doesn't depend on the outline's physical size.
-    norm = mu20 + mu02
-    if norm <= 0.0:
+    n = len(loop)
+    if n < 3:
         return 0.0
-    scale = norm**1.5
-    eta30 = mu30 / scale
-    eta03 = mu03 / scale
-    eta21 = mu21 / scale
-    eta12 = mu12 / scale
+
+    x = loop[:, 0]
+    y = loop[:, 1]
+    xn = np.roll(x, -1)
+    yn = np.roll(y, -1)
+    d = x * yn - xn * y  # signed cross-product per edge
+
+    area = d.sum() / 2.0
+    if abs(area) < 1e-30:
+        return 0.0
+
+    # Centroid via Green's theorem.
+    cx = float(np.sum((x + xn) * d)) / (6.0 * area)
+    cy = float(np.sum((y + yn) * d)) / (6.0 * area)
+
+    # Centre the polygon so raw moments on the centred vertices are central moments.
+    x = x - cx
+    y = y - cy
+    xn = xn - cx
+    yn = yn - cy
+    d = x * yn - xn * y
+
+    # Third-order central moments.
+    mu30 = float(np.sum((x**3 + x**2 * xn + x * xn**2 + xn**3) * d)) / 20.0
+    mu03 = float(np.sum((y**3 + y**2 * yn + y * yn**2 + yn**3) * d)) / 20.0
+    mu21 = (
+        float(
+            np.sum(
+                (
+                    3 * x**2 * y
+                    + x**2 * yn
+                    + 2 * x * xn * y
+                    + 2 * x * xn * yn
+                    + xn**2 * y
+                    + 3 * xn**2 * yn
+                )
+                * d
+            )
+        )
+        / 60.0
+    )
+    mu12 = (
+        float(
+            np.sum(
+                (
+                    3 * x * y**2
+                    + xn * y**2
+                    + 2 * x * y * yn
+                    + 2 * xn * y * yn
+                    + x * yn**2
+                    + 3 * xn * yn**2
+                )
+                * d
+            )
+        )
+        / 60.0
+    )
+
+    # Normalise: η_pq = μ_pq / |area|^((p+q+2)/2).  For p+q = 3 the exponent is 5/2.
+    norm = abs(area) ** 2.5
+    if norm < 1e-30:
+        return 0.0
+    eta30 = mu30 / norm
+    eta03 = mu03 / norm
+    eta21 = mu21 / norm
+    eta12 = mu12 / norm
 
     return float(
         (3.0 * eta21 - eta03)
@@ -674,17 +720,15 @@ def _hu_seventh_moment(loop: np.ndarray) -> float:
     )
 
 
-# The CAD outline must be meaningfully chiral for the sign comparison to be reliable.
-# A box or regular polygon gives < 1e-10; a plate whose only asymmetry is a small notch gives
-# ~ 6e-4; a right triangle or non-equilateral prism gives > 3e-3.  At ~ 6e-4, reconstruction
-# noise, partial observation and planted defects can flip the model's h7 sign on a correctly-
-# posed part (G-05 defect-ladder regression, 2026-11-25).  The CAD floor sits above that.
-_HANDEDNESS_H7_CAD_FLOOR = 1e-3
-# The model's h7 must be large enough to trust its sign; below this, noise or missing geometry
-# could have produced the sign.  Much lower than the CAD floor because reconstruction always
-# weakens the moment, and even a small but nonzero model h7 with opposite sign from a strongly
-# chiral CAD is evidence of a face flip (s-04 golden capture h7_model ~ 2e-5).
-_HANDEDNESS_H7_MODEL_FLOOR = 1e-7
+# Outlines whose |h7| is below this floor are treated as having no handedness.  With the
+# Green's-theorem area moments used above, h7 depends only on the polygon's shape, not on
+# vertex density, so the same floor works for both the CAD and the model.  Empirically:
+#   symmetric shapes (box, regular polygon):        |h7| = 0
+#   notched rectangle (G-05, small asymmetry):      |h7| ≈ 2e-9
+#   right triangle (g02_03):                        |h7| ≈ 8e-7
+#   scalene triangular prism (s-04):                |h7| ≈ 2e-6
+# The floor sits between the notch (~2e-9) and the weakest chiral shape (~8e-7).
+_HANDEDNESS_H7_FLOOR = 1e-8
 
 
 @dataclass(frozen=True)
@@ -738,7 +782,7 @@ def check_handedness(
     h7_cad = _hu_seventh_moment(cad_outline)
     h7_model = _hu_seventh_moment(model_outline)
 
-    if abs(h7_cad) < _HANDEDNESS_H7_CAD_FLOOR:
+    if abs(h7_cad) < _HANDEDNESS_H7_FLOOR:
         return HandednessResult(
             mismatched=False,
             has_handedness=False,
@@ -747,7 +791,7 @@ def check_handedness(
             h7_cad=h7_cad,
         )
 
-    if abs(h7_model) < _HANDEDNESS_H7_MODEL_FLOOR:
+    if abs(h7_model) < _HANDEDNESS_H7_FLOOR:
         return HandednessResult(
             mismatched=False,
             has_handedness=True,

@@ -13,6 +13,7 @@ import numpy as np
 import open3d as o3d
 from inspection import cad
 from inspection.pose_judgement import (
+    _HANDEDNESS_H7_FLOOR,
     _hu_seventh_moment,
     check_handedness,
 )
@@ -201,20 +202,36 @@ class TestCheckHandedness:
         assert result.has_handedness
 
     def test_weakly_chiral_cad_treated_as_no_handedness(self):
-        """A CAD whose chirality comes from a small feature (notch on a rectangle) is below
-        the CAD floor and treated as having no handedness, so defects that distort the model
+        """The G-05 control plate's notch gives it a tiny but nonzero h7, well below the
+        floor, so it is treated as having no handedness and defects that distort the model
         outline cannot cause a false flag (G-05 defect-ladder regression)."""
-        v, f = _box(50.0, 32.0, 20.0)
-        # Cut a small notch to break the box's symmetry — chirality is weak
-        notch_mask = (v[:, 0] < 5.0) & (v[:, 1] < 4.0) & (v[:, 2] > 15.0)
-        v[notch_mask, 2] = 15.0
+        g05 = ROOT / "fixtures" / "reference_cad" / "g05_00_control_50x32x20mm.stl"
+        v, f = _load(g05)
         pose = CAD_TO_BOARD_FLIP.copy()
-        # Model has a modified outline (simulating a defect changing the shape)
         model_v = _pose_vertices(v, pose)
         rng = np.random.default_rng(99)
         model_v = model_v + rng.normal(0, 0.3, model_v.shape)
         result = check_handedness(model_v, f, v, f, pose)
         assert not result.mismatched
+        assert 0 < abs(result.h7_cad) < _HANDEDNESS_H7_FLOOR
+
+    def test_resampled_model_does_not_change_answer(self):
+        """h7 is computed from area moments (Green's theorem), so resampling the outline at a
+        different density must not change the answer.  The model here is the s-04 CAD with
+        every edge subdivided — same shape, more vertices."""
+        v, f = _load(S04)
+        pose = CAD_TO_BOARD_FLIP.copy()
+        # Build a denser model mesh by subdividing once
+        model_mesh = o3d.geometry.TriangleMesh(
+            o3d.utility.Vector3dVector(v), o3d.utility.Vector3iVector(f)
+        )
+        model_mesh = model_mesh.subdivide_midpoint(number_of_iterations=2)
+        model_v = np.asarray(model_mesh.vertices, dtype=np.float64)
+        model_f = np.asarray(model_mesh.triangles, dtype=np.int64)
+        model_v = _pose_vertices(model_v, pose)
+        result = check_handedness(model_v, model_f, v, f, pose)
+        assert not result.mismatched
+        assert result.has_handedness
 
     def test_no_model_outline_inconclusive(self):
         """When the model has no outline at the slice height, the result is inconclusive."""
