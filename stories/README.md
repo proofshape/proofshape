@@ -535,6 +535,9 @@ it took much of the wall error with it, on seven of the ten parts.
   the ten parts 12 to 44% of the Observed model is stray surface near the board. With R-44's
   correction on and nothing else changed, the G-05 control comes out 180° off with no ambiguity
   flag. The story names the stage that loses the pose before it fixes anything.
+- **I-16** flags a part that lies on a different face from its CAD, which the pose search can't
+  turn over. In the golden s-04 capture the block lay on its other triangular face and came back
+  unflagged. I-15 records that as a known limit until this lands, after the code freeze.
 - **G-13** measures the verdict's floors and outline margin on the fused mesh, once R-44 and I-15
   have landed. The floors in use (D-073, D-078) were measured on the raw cloud, and the 0 mm
   margin (D-086) on `main`'s meshes. The choice of numbers is inside the story, and the constants
@@ -544,6 +547,7 @@ it took much of the wall error with it, on seven of the ten parts.
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @dalwalyk |
 | [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 6 h | I-05, I-13 | Done | @dalwalyk |
+| [I-16](I/I-16.md) | A part lying on a different face from its CAD is flagged, not served as a clean pose | 4 h | I-15 | Ready | _unclaimed_ |
 | [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---
@@ -726,6 +730,7 @@ Full detail in each story file.
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
 | [P-41](P/P-41.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Done | @TabeenRaoof |
+| [P-42](P/P-42.md) | Write up the accuracy-testing stories from the 2026-11-24 run of `main` | 1.5 h | nothing | Claimed | @TabeenRaoof |
 
 ---
 
