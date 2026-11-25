@@ -25,10 +25,16 @@ export interface GuidanceUpdate {
 
 export interface GyroOverlayOptions {
   onGuidance?: (update: GuidanceUpdate) => void;
+  // C-27: the on-target status line. The shell words it by whether auto-capture is on.
+  onTargetText?: () => string;
 }
 
 export interface GyroOverlayHandle {
   reportAcceptedFrame(gyro: Gyro): void;
+  // C-27 (#420 review): re-render from the last live reading, so text that depends on state the
+  // overlay can't see (onTargetText, read from the auto-capture switch) updates without waiting
+  // for the phone to move.
+  refresh(): void;
   dispose(): void;
 }
 
@@ -128,7 +134,7 @@ export function mountGyroOverlay(
     // this reading to the target (C-26 device check, 2026-11-20).
     const guidance = computeTargetGuidance(liveGyro, anchorDeg, orbit, coverage.nextTargetIndex);
     if (guidance.onTarget) {
-      status.textContent = "On target — take the photo.";
+      status.textContent = options.onTargetText?.() ?? "On target — take the photo.";
       arrow.style.visibility = "hidden";
       emit("on-target", liveGyro);
       return;
@@ -154,7 +160,12 @@ export function mountGyroOverlay(
   }
   window.addEventListener("deviceorientation", handleOrientation);
 
+  // C-27 (#420): once disposed (Finish, or a remount that reused this container), refresh() must
+  // not redraw -- the guidance is stale with the camera off, and after a remount the DOM belongs to
+  // the new mount.
+  let disposed = false;
   function dispose(): void {
+    disposed = true;
     window.removeEventListener("deviceorientation", handleOrientation);
     activeDisposalsByContainer.delete(container);
   }
@@ -175,6 +186,11 @@ export function mountGyroOverlay(
       } else if (computeCoverage(acceptedReadings, orbit).nextTargetIndex === null) {
         // No live reading to judge position by, but a complete orbit is complete regardless.
         showComplete(null);
+      }
+    },
+    refresh(): void {
+      if (!disposed && latestLiveGyro) {
+        updateArrow(latestLiveGyro);
       }
     },
     dispose,
