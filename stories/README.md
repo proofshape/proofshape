@@ -239,6 +239,7 @@ Full detail in each story file.
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Cut | _unclaimed_ |
 | [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Done | @TabeenRaoof |
 | [G-12](G/G-12.md) | Print, caliper and photograph a top-face bump for X-03's planted defect | 3 h | G-05, G-09 | Claimed | @TabeenRaoof |
+| [G-14](G/G-14.md) | The capture photos carry no location, and live somewhere that outlives the semester | 3 h | nothing | Claimed | @TabeenRaoof |
 
 ---
 
@@ -534,6 +535,9 @@ it took much of the wall error with it, on seven of the ten parts.
   the ten parts 12 to 44% of the Observed model is stray surface near the board. With R-44's
   correction on and nothing else changed, the G-05 control comes out 180° off with no ambiguity
   flag. The story names the stage that loses the pose before it fixes anything.
+- **I-16** flags a part that lies on a different face from its CAD, which the pose search can't
+  turn over. In the golden s-04 capture the block lay on its other triangular face and came back
+  unflagged. I-15 records that as a known limit until this lands, after the code freeze.
 - **G-13** measures the verdict's floors and outline margin on the fused mesh, once R-44 and I-15
   have landed. The floors in use (D-073, D-078) were measured on the raw cloud, and the 0 mm
   margin (D-086) on `main`'s meshes. The choice of numbers is inside the story, and the constants
@@ -543,6 +547,7 @@ it took much of the wall error with it, on seven of the ten parts.
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @dalwalyk |
 | [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 6 h | I-05, I-13 | Done | @dalwalyk |
+| [I-16](I/I-16.md) | A part lying on a different face from its CAD is flagged, not served as a clean pose | 4 h | I-15 | Ready | _unclaimed_ |
 | [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---
