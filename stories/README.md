@@ -460,6 +460,7 @@ Full detail in each story file.
 | [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Done | @dalwalyk |
 | [C-26](C/C-26.md) | Capture viewfinder: a visible guidance arrow, an on-target frame colour, a round shutter | 2 h | C-07, C-09 | Done | @TabeenRaoof |
+| [C-27](C/C-27.md) | Auto-capture: take the photo when the phone is on target and steady (freeze exception, off by default) | 3 h | C-26, C-06 | Done | @TabeenRaoof |
 
 ---
 
@@ -501,10 +502,15 @@ Two more pieces of work have to land by Dec 2:
   are never cut (`AGENTS.md`, D-017). It's a new route after M5's freeze and a D-031 round, so it
   merges only at the Dec 2 boundary, by named exception.
 
+**P-40, the expo poster,** was written on 2026-11-20, after the team was given SFBU's poster
+template, and claimed on 2026-11-22. It answers P-39's open question about expo material with a
+story of its own. Its file lists the information still to collect before printing.
+
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
 | [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
+| [P-40](P/P-40.md) | Expo poster | 1 h | nothing | Claimed | @TabeenRaoof |
 | [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Claimed | @mbj1994 |
 
 ---
@@ -535,8 +541,8 @@ it took much of the wall error with it, on seven of the ten parts.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @TabeenRaoof |
-| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 5 h | I-05, I-13 | Claimed | @TabeenRaoof |
+| [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @dalwalyk |
+| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 5 h | I-05, I-13 | Claimed | @dalwalyk |
 | [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---
