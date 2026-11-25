@@ -674,10 +674,17 @@ def _hu_seventh_moment(loop: np.ndarray) -> float:
     )
 
 
-# Outlines whose |h7| is below this are treated as having no handedness (symmetric shape).
-# Empirically, a clean equilateral triangle gives |h7| ~ 1e-4; a box or regular polygon gives
-# < 1e-10. The threshold sits well below any chiral shape's moment.
-_HANDEDNESS_H7_FLOOR = 1e-7
+# The CAD outline must be meaningfully chiral for the sign comparison to be reliable.
+# A box or regular polygon gives < 1e-10; a plate whose only asymmetry is a small notch gives
+# ~ 6e-4; a right triangle or non-equilateral prism gives > 3e-3.  At ~ 6e-4, reconstruction
+# noise, partial observation and planted defects can flip the model's h7 sign on a correctly-
+# posed part (G-05 defect-ladder regression, 2026-11-25).  The CAD floor sits above that.
+_HANDEDNESS_H7_CAD_FLOOR = 1e-3
+# The model's h7 must be large enough to trust its sign; below this, noise or missing geometry
+# could have produced the sign.  Much lower than the CAD floor because reconstruction always
+# weakens the moment, and even a small but nonzero model h7 with opposite sign from a strongly
+# chiral CAD is evidence of a face flip (s-04 golden capture h7_model ~ 2e-5).
+_HANDEDNESS_H7_MODEL_FLOOR = 1e-7
 
 
 @dataclass(frozen=True)
@@ -731,16 +738,16 @@ def check_handedness(
     h7_cad = _hu_seventh_moment(cad_outline)
     h7_model = _hu_seventh_moment(model_outline)
 
-    if abs(h7_cad) < _HANDEDNESS_H7_FLOOR:
+    if abs(h7_cad) < _HANDEDNESS_H7_CAD_FLOOR:
         return HandednessResult(
             mismatched=False,
             has_handedness=False,
-            reason="CAD outline has no handedness (symmetric shape)",
+            reason="CAD outline has no handedness",
             h7_model=h7_model,
             h7_cad=h7_cad,
         )
 
-    if abs(h7_model) < _HANDEDNESS_H7_FLOOR:
+    if abs(h7_model) < _HANDEDNESS_H7_MODEL_FLOOR:
         return HandednessResult(
             mismatched=False,
             has_handedness=True,

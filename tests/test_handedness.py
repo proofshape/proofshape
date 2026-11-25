@@ -200,6 +200,22 @@ class TestCheckHandedness:
         assert not result.mismatched
         assert result.has_handedness
 
+    def test_weakly_chiral_cad_treated_as_no_handedness(self):
+        """A CAD whose chirality comes from a small feature (notch on a rectangle) is below
+        the CAD floor and treated as having no handedness, so defects that distort the model
+        outline cannot cause a false flag (G-05 defect-ladder regression)."""
+        v, f = _box(50.0, 32.0, 20.0)
+        # Cut a small notch to break the box's symmetry — chirality is weak
+        notch_mask = (v[:, 0] < 5.0) & (v[:, 1] < 4.0) & (v[:, 2] > 15.0)
+        v[notch_mask, 2] = 15.0
+        pose = CAD_TO_BOARD_FLIP.copy()
+        # Model has a modified outline (simulating a defect changing the shape)
+        model_v = _pose_vertices(v, pose)
+        rng = np.random.default_rng(99)
+        model_v = model_v + rng.normal(0, 0.3, model_v.shape)
+        result = check_handedness(model_v, f, v, f, pose)
+        assert not result.mismatched
+
     def test_no_model_outline_inconclusive(self):
         """When the model has no outline at the slice height, the result is inconclusive."""
         v, f = _load(S04)
