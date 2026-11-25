@@ -550,6 +550,37 @@ it took much of the wall error with it, on seven of the ten parts.
 | [I-16](I/I-16.md) | A part lying on a different face from its CAD is flagged, not served as a clean pose | 4 h | I-15 | Claimed | @dalwalyk |
 | [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
+
+---
+
+## Accuracy testing (P-42)
+
+On 2026-11-24, after I-15 and R-44 merged, P-41's script was re-run on the ten calipered parts with
+`main` at `70b2773`.
+- **Reconstruction:** every part's model was byte-identical to P-41's run, so R-44's correction,
+  off by default, changes nothing.
+- **Poses:** eight of the ten are the same, by I-15's measure. s-05 and `g05_00` moved, both
+  as I-15's record already shows.
+- **Ambiguity:** unchanged on all ten.
+- **Deviations from each part's own CAD:** these include print and registration error, not
+  reconstruction error alone. They mostly hold. The two exceptions are I-17's.
+
+The ten-part comparison used photographs taken with the camera app. Evidence from app captures
+so far covers one part, s-04. The expo captures through the app, in a hall nobody has seen.
+These stories keep the lane their work lives in. This section only groups them, as P-41's does.
+
+- **G-15** captures the ten parts through the app on `main` and measures them as their
+  photographs were measured. It repeats at least four parts in a second room and light.
+- **I-17** traces `g05_02`'s walls reading 0.42 mm worse with the same pose, and `main`'s s-05
+  pose sitting 9–14° off its walls. It fixes only what can land before the Dec 4 code freeze.
+- **The expo hall itself** (Sat Dec 5, Fremont) belongs to R-36, which owns the room rehearsal.
+  Its network plan, power and warm-up run go into R-36's runbook in #371, not into a new story.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [G-15](G/G-15.md) | The calipered parts, captured through the app, read as their photographs do | 4 h | nothing | Ready | _unclaimed_ |
+| [I-17](I/I-17.md) | Why g05_02's walls read worse after I-15, and why `main`'s s-05 pose sits off its walls | 4 h | nothing | Ready | _unclaimed_ |
+
 ---
 
 ## Capture app: heatmap, report, buyer side and hosting
@@ -730,7 +761,7 @@ Full detail in each story file.
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
 | [P-41](P/P-41.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Done | @TabeenRaoof |
-| [P-42](P/P-42.md) | Write up the accuracy-testing stories from the 2026-11-24 run of `main` | 1.5 h | nothing | Claimed | @TabeenRaoof |
+| [P-42](P/P-42.md) | Write up the accuracy-testing stories from the 2026-11-24 run of `main` | 1.5 h | nothing | Done | @TabeenRaoof |
 
 ---
 
