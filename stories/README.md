@@ -557,11 +557,12 @@ On 2026-11-24, after I-15 and R-44 merged, P-41's script was re-run on the ten c
 - **Poses:** eight of the ten are the same, by I-15's measure. s-05 and `g05_00` moved, both
   as I-15's record already shows.
 - **Ambiguity:** unchanged on all ten.
-- **Accuracy:** mostly holds. The two exceptions are I-17's.
+- **Deviations from each part's own CAD:** these include print and registration error, not
+  reconstruction error alone. They mostly hold. The two exceptions are I-17's.
 
-Every figure so far comes from photographs taken with the camera app. The expo captures through
-the app, in a hall nobody has seen. These stories keep the lane their work lives in. This section
-only groups them, as P-41's does.
+The ten-part comparison used photographs taken with the camera app. Evidence from app captures
+so far covers one part, s-04. The expo captures through the app, in a hall nobody has seen.
+These stories keep the lane their work lives in. This section only groups them, as P-41's does.
 
 - **G-15** captures the ten parts through the app on `main` and measures them as their
   photographs were measured. It repeats at least four parts in a second room and light.
