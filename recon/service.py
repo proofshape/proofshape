@@ -386,6 +386,12 @@ def _classify_board_failure(
 CALIBRATED_BOARD_DIR_NAME = "board_pose_calibrated"
 BOARD_CALIBRATION_RECORD = "board_calibration.json"
 
+# R-44: whether fusion first moves each photo onto its own ChArUco corners. Off until the story's
+# gate (pose, error and coverage on the ten calipered parts, set before the measurement) is met
+# and both other members agree in a numbered decision. Turning it on is a reviewed change to this
+# line, not a configuration switch, so the served path can't change without that decision.
+CORNER_REANCHORING_ENABLED = False
+
 
 def _pose_board_with_session_intrinsics(
     capture_dir: Path,
@@ -533,7 +539,15 @@ def run_reconstruction_pipeline(
 
     started = time.perf_counter()
     try:
-        tsdf_fusion.fuse_run(reconstruction_dir, alignment_path, fusion_dir)
+        # board_dir is the folder load_and_align read above, so R-44's per-photo corners (when
+        # enabled) are the same corners the global alignment was solved from.
+        tsdf_fusion.fuse_run(
+            reconstruction_dir,
+            alignment_path,
+            fusion_dir,
+            corner_reanchoring=CORNER_REANCHORING_ENABLED,
+            board_pose_dir=board_dir,
+        )
     except (FileNotFoundError, ValueError) as exc:
         # R-20: fuse_run reads its confidence threshold from reconstruction_dir's own run.json
         # by default and raises rather than silently guessing one if it's missing or predates
