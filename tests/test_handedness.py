@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 import open3d as o3d
-from inspection import cad
+from inspection import cad, registration, synthetic
 from inspection.pose_judgement import (
     _HANDEDNESS_H7_FLOOR,
     _hu_seventh_moment,
@@ -244,3 +244,47 @@ class TestCheckHandedness:
         assert not result.mismatched
         assert not result.has_handedness
         assert "no model outline" in result.reason
+
+
+# ---------------------------------------------------------------------------
+# Integration: handedness mismatch propagates through check_ambiguity to reason_codes
+# ---------------------------------------------------------------------------
+
+TEST_SAMPLE_COUNT = 100
+TEST_YAW_STEPS = 16
+TEST_CANDIDATE_COUNT = 4
+TEST_RANSAC_ITERATIONS = 200
+
+
+def test_mirrored_model_flags_orientation_ambiguous_through_check_ambiguity():
+    """A mirrored s-04 model (wrong face) must come back with
+    orientation_ambiguous=True and the registration_orientation_ambiguous
+    reason code, through the full check_ambiguity pipeline."""
+    v, f, _units = cad.load_mesh(S04)
+    sample = synthetic.generate_synthetic_sample(
+        v, f, seed=0, sigma_mm=0.3, patch_fraction=0.2
+    )
+    # Mirror the model in y to simulate the part lying on its other face.
+    mirrored_vertices = sample.vertices_mm.copy()
+    mirrored_vertices[:, 1] *= -1
+    mirrored = synthetic.SyntheticSample(
+        vertices_mm=mirrored_vertices,
+        faces=sample.faces,
+        labels=sample.labels,
+        colors=sample.colors,
+        sidecar=dict(sample.sidecar),
+    )
+
+    candidates = registration.global_register(
+        mirrored,
+        (v, f),
+        sample_count=TEST_SAMPLE_COUNT,
+        yaw_steps=TEST_YAW_STEPS,
+        candidate_count=TEST_CANDIDATE_COUNT,
+        ransac_iterations=TEST_RANSAC_ITERATIONS,
+        seed=100,
+    )
+    result = registration.check_ambiguity(candidates, mirrored, (v, f), seed=0)
+
+    assert result.orientation_ambiguous
+    assert registration.REASON_ORIENTATION_AMBIGUOUS in result.reason_codes
