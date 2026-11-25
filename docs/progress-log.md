@@ -3031,3 +3031,24 @@ as primary and gives the confidence, alignment RMS, and per-wall spread for cont
 **Result:** 4 h actual against an estimate of 2 h, measured by @TabeenRaoof. The extra 2 h went to the banner and Finish button, added after the first phone run, and to the ring-overlap fix. Final device check: iPhone 16, iOS 26.6, held in landscape for the whole session. 13 frames reached 13/13, including 7 inside the overlap band, and Finish built the model.
 **Concluded:** the guidance the capture screen shows now agrees with what coverage counts. The one failing sequence that wasn't repeated on the phone (a steep first photo, then a hold at about 58°) is covered by tests built from the recorded readings.
 **Next:** nothing for C-26. C-27 stays a draft until the team decides.
+
+## 2026-11-24 — C-27 Done: auto-capture, off by default, merged under a freeze exception (PR #436, PR #420)
+
+**Who:** @TabeenRaoof. @mbj1994 and @dalwalyk reviewed. @dalwalyk ran an early phone check against the contract stub (2026-11-20) and the final tests on a clean checkout.
+**What changed:**
+- **Auto-capture.** The first photo is still a tap, since it sets the orbit's zero heading. After that, the app takes each photo itself once the phone has been on the next target (C-26's green) for 0.6 s and stayed within 3°. It uses the tap's own gates, upload, rollback and VLM tip, and tries at most once every 1.5 s. The logic is a pure module, `capture/src/auto_capture.ts`. The shutter keeps working, and automatic messages start "Auto:".
+- **Off by default.** The switch "Take the photo automatically when on target" starts off. With it off, every photo is a tap, as before.
+- **The freeze exception.** C-27 is new behaviour after M5's feature freeze (Nov 13), and @mbj1994 objected on #418 and #420 to changing the default. The team granted an exception on #436 (`2052c93`, 2026-11-23) with the switch off by default. The case is ease of use, not accuracy: nothing has measured whether automatic photos are sharper. It had to merge before the Dec 3–4 code freeze.
+- **Fixed at review** (@dalwalyk's reviews, and one fix from the owner's own):
+  - a failed upload, automatic or tapped, turns the switch off instead of sending a new photo every 1.5 s while the phone stays on target; if the session is gone, the message doesn't offer a retry;
+  - a tap restarts the hold and the retry gap;
+  - a gyro reading from before the motion permission was granted no longer enables capture;
+  - turning the switch off updates the on-target line at once, and does nothing after Finish.
+- **The last target, straight down, is the slowest to fire.** On every orbit the 13th photo had been a tap. A diagnostic run with temporary logging showed that auto-capture does take it. The target turns green only within 15° of vertical, often while the phone is still tilting, so the 3° check restarts the hold until the phone stops; the photo came 0.58 s after it did. Recorded as an observation, not a defect.
+- **The manual:** §5, step 3 describes the switch, the 0.6 s hold, the switch-off on a failed upload, and "point straight down over the part and hold still".
+- **How it merged:** the claim is #436 (`2052c93`), and the implementation and close-out #420 (`6a776fa`). Both teammates approved #420's final head, `9a82726`.
+
+**Command / how to reproduce:** `npm test` in `capture/` (vitest, 376 tests across 26 files). The device checks are written checks in `stories/C/C-27.md`.
+**Result:** 5 h actual against an estimate of 3 h, measured by @TabeenRaoof: 2 h to 2026-11-20; 1.5 h from 2026-11-22 to 2026-11-24 for the exception, the default-off change and the first device check; 1.5 h on 2026-11-24 for the review rounds, the device check on the merging code, the straight-down run, the owner's-review fix and the manual. Device check on `660689c`, iPhone 16, iOS 26.6: the switch started off, the first photo was a tap, and auto-capture took the orbit to 13/13 in 13 photos. Reconstruction took 46 s with 82% of the surface Observed, and the phone loaded the model and the report. The part was a toy car against the s-04 CAD, so the report's Rescan says nothing about inspection.
+**Concluded:** auto-capture is on `main` and stays off unless the person capturing turns it on. It is a usability change; no effect on photo sharpness or accuracy has been measured.
+**Next:** keep it off by default for the expo (@mbj1994's condition on #420). After the defense: a story for @dalwalyk's written angle and distance prompts, and the four refactors left from the owner's review (listed in `stories/C/C-27.md`).
