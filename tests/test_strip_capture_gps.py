@@ -161,6 +161,92 @@ def test_a_non_jpeg_is_refused():
         strip.strip_gps(buffer.getvalue())
 
 
+def _app1_bounds(data: bytes) -> tuple[int, int, int]:
+    """(APP1 marker offset, TIFF header offset, end of the APP1 segment) in a test JPEG."""
+    app1 = data.index(b"Exif\x00\x00") - 4
+    assert data[app1 : app1 + 2] == b"\xff\xe1"
+    end = app1 + 2 + struct.unpack(">H", data[app1 + 2 : app1 + 4])[0]
+    return app1, app1 + 10, end
+
+
+@pytest.mark.parametrize("gps", [True, False])
+@pytest.mark.parametrize(
+    "where",
+    [
+        "after SOI",
+        "APP1 length",
+        "APP1 Exif header",
+        "TIFF header",
+        "IFD0",
+        "GPS IFD",
+        "before scan",
+        "scan data",
+    ],
+)
+def test_a_photo_cut_short_is_refused_not_read_as_having_no_gps(where, gps):
+    data = _jpeg(gps=gps)
+    app1, tiff, end = _app1_bounds(data)
+    sos = data.index(b"\xff\xda")
+    cut = {
+        "after SOI": 2,
+        "APP1 length": app1 + 3,
+        "APP1 Exif header": app1 + 8,
+        "TIFF header": tiff + 6,
+        "IFD0": tiff + 20,
+        "GPS IFD": end - 20,
+        "before scan": sos,
+        "scan data": len(data) - 2,  # everything but the end-of-image marker
+    }[where]
+    with pytest.raises(ValueError, match="truncated JPEG"):
+        strip.strip_gps(data[:cut])
+
+
+def test_a_cut_inside_the_exif_segment_is_reported_at_that_segment():
+    data = _jpeg(gps=True)
+    app1, _, end = _app1_bounds(data)
+    with pytest.raises(ValueError, match=f"segment at byte {app1} runs past the end"):
+        strip.strip_gps(data[: end - 1])
+
+
+def _patch(data: bytes, at: int, value: int, endian: str) -> bytes:
+    out = bytearray(data)
+    out[at : at + 4] = struct.pack(endian + "I", value)
+    return bytes(out)
+
+
+@pytest.mark.parametrize("big_endian", [False, True])
+@pytest.mark.parametrize("pointer", ["IFD0", "GPS IFD", "GPS value", "GPS count"])
+@pytest.mark.parametrize("value", [1000, 0xFFFFFFF0])
+def test_an_offset_outside_the_exif_segment_is_refused(big_endian, pointer, value):
+    """EXIF offsets count from the TIFF header. One that lands outside the EXIF segment, even
+    inside the file, would have zeroed image data; it is refused before anything is written."""
+    data = _jpeg(gps=True, big_endian=big_endian)
+    e = ">" if big_endian else "<"
+    _, tiff, end = _app1_bounds(data)
+    # Offset 1000 is past the segment but inside the file, so only the segment check catches it.
+    assert tiff + 1000 > end and tiff + 1000 + 24 < len(data)
+    gps_pointer = data.index(struct.pack(e + "HHI", GPS_IFD, 4, 1), tiff) + 8
+    latitude = data.index(struct.pack(e + "HHI", 2, 5, 3), tiff)
+    at = {
+        "IFD0": tiff + 4,
+        "GPS IFD": gps_pointer,
+        "GPS value": latitude + 8,
+        "GPS count": latitude + 4,
+    }[pointer]
+    with pytest.raises(ValueError, match="outside the EXIF segment"):
+        strip.strip_gps(_patch(data, at, value, e))
+
+
+def test_a_bad_photo_in_a_folder_is_named_and_nothing_is_written(tmp_path):
+    source = tmp_path / "s-01"
+    source.mkdir()
+    (source / "IMG_1.jpeg").write_bytes(_jpeg(gps=True))
+    (source / "IMG_2.jpeg").write_bytes(_jpeg(gps=True)[:200])
+    with pytest.raises(ValueError, match="IMG_2.jpeg: truncated JPEG"):
+        strip.strip_folder(source, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
 def test_a_folder_is_copied_and_its_originals_are_untouched(tmp_path):
     source = tmp_path / "s-01"
     source.mkdir()
