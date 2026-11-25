@@ -249,7 +249,7 @@ fits, or use A4 paper.
 ## 5 · Capturing a part — the supplier
 
 **Status: Works now**, against the mock service, and against the real reconstruction service running
-on a Mac (§0, C-13). Built by C-01 through C-13.
+on a Mac (§0, C-13). Built by C-01 through C-13; auto-capture by C-27.
 
 1. **Open the capture page** on the phone. No install. Enter the order code and tap **Start**.
    The phone then asks for camera permission and for motion/gyroscope permission, both from that
@@ -264,6 +264,21 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    eight around the part at 45°, four higher at 70°, and one straight down (C-07). Your first
    accepted frame sets which way is "around"; after that, an arrow points toward the next
    uncovered position and a counter shows **Covered: n/13**.
+
+   **Auto-capture (C-27), off by default.** The capture screen has a switch, "Take the photo
+   automatically when on target". With it off, every photo is a tap, as above. With it on:
+   - the first photo is still a tap, because it sets which way is "around";
+   - after that, once the frame turns green (the phone is at the next position) and you hold the
+     phone still for about 0.6 s, the photo is taken for you. A short flash shows it was taken,
+     and its messages start with "Auto:". The shutter keeps working, and a tap restarts the
+     wait;
+   - if a photo fails to upload (no network, or the service rejects it), the switch turns
+     itself off and says so. Tap to retry, or turn it back on; if the session has ended, start a
+     new one. A photo the phone's own checks reject (step 4) is tried again after at least 1.5 s,
+     while you hold on target;
+   - the straight-down position is the slowest to fire. It only turns green once the phone is
+     nearly flat, often while you are still tilting, and the photo waits until you stop. Point
+     straight down over the part and hold still.
 4. **Each frame is checked on the phone before it is uploaded** (C-06, C-09): blur, exposure
    (clipped highlights or shadows) and duplicates (the phone barely moved *and* the picture barely
    changed). A rejected frame shows the reason and its code (§9), nothing is uploaded, and the

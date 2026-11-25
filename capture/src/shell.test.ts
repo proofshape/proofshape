@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
 import { measureBlurVariance } from "./frame_gate.js";
 import {
@@ -161,12 +161,12 @@ describe("mountAppShell", () => {
     window.dispatchEvent(event);
   }
 
-  async function startSuccessfulSession(): Promise<
-    ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }
-  > {
+  async function startSuccessfulSession(
+    overrides: Partial<AppShellOptions> = {},
+  ): Promise<ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }> {
     const { trackStopSpy } = stubGrantedCamera();
     stubGyroPermission("granted");
-    const mounted = mount();
+    const mounted = mount(overrides);
     mounted.orderCode.value = "PO-48213-A";
     mounted.button.click();
     await vi.waitFor(() => {
@@ -2068,6 +2068,339 @@ describe("mountAppShell", () => {
     expect(mounted.captureButton.textContent.trim()).toBe("Capture frame");
     expect(mounted.captureButton.disabled).toBe(true);
     expect(document.querySelector("#shell-viewfinder #shell-gyro-overlay")).not.toBeNull();
+  });
+
+  // C-27: auto-capture. The clock is injected; orientation events are dispatched by hand, as a
+  // phone would deliver them. The switch is off by default (#436), so these sessions turn it on,
+  // as the person capturing would, unless a test says otherwise.
+  function autoCaptureToggle(): HTMLInputElement {
+    const toggle = document.getElementById("shell-auto-capture");
+    if (!(toggle instanceof HTMLInputElement)) throw new Error("test: toggle missing");
+    return toggle;
+  }
+
+  async function startAutoSession(
+    firstPhotoBeta = 45,
+    { autoOn = true }: { autoOn?: boolean } = {},
+  ): Promise<{
+    mounted: Awaited<ReturnType<typeof startSuccessfulSession>>;
+    clock: { t: number };
+    canvas: ReturnType<typeof stubCanvasContext>;
+  }> {
+    const clock = { t: 0 };
+    const mounted = await startSuccessfulSession({ now: () => clock.t });
+    // Left alone when autoOn is false, so a test can see the default.
+    if (autoOn) autoCaptureToggle().checked = true;
+    const canvas = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    // alpha 0, beta 45 by default: DEFAULT_ORBIT's slot 0. The first photo is a tap.
+    dispatchOrientation(0, firstPhotoBeta, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    return { mounted, clock, canvas };
+  }
+
+  function holdAt(
+    clock: { t: number },
+    alpha: number,
+    fromMs: number,
+    untilMs: number,
+    beta = 45,
+  ): void {
+    for (let t = fromMs; t <= untilMs; t += 100) {
+      clock.t = t;
+      dispatchOrientation(alpha, beta, 0);
+    }
+  }
+
+  function frameUploads(fetchSpy: MockInstance<typeof fetch>): number {
+    return fetchSpy.mock.calls.filter(([url]) => typeof url === "string" && url.includes("/frames"))
+      .length;
+  }
+
+  it("C-27: after the first tapped photo, holding on the next target takes the next photo by itself", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+
+    // Slot 1 is azimuth 45. 500 ms of holding is not enough.
+    holdAt(clock, 45, 1000, 1500);
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(overlayStatusText()).toMatch(/hold steady/i);
+
+    holdAt(clock, 45, 1600, 1600);
+    await vi.waitFor(() => {
+      if (!/^Covered: 2\//.test(coveredCountText() ?? "")) throw new Error("not yet covered");
+    });
+    expect(frameUploads(fetchSpy)).toBe(1);
+    expect(mounted.captureStatus.textContent).toMatch(/^Auto: .*accepted/i);
+  });
+
+  // The C-26 device-check bug (2026-11-20): after a first photo taken high, the frame went green
+  // at about 58 deg, and auto-capture took a photo every 1.5 s that coverage credited to the
+  // already-covered 70 deg slot, so the count never moved.
+  it("C-27: does not fire where the photo would count for an already-covered slot", async () => {
+    // beta 12 = elevation 78: the first photo covers the 70 deg slot, the next target is slot 0.
+    const { clock } = await startAutoSession(12);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+
+    // beta 32 = elevation 58, within 15 deg of both rings. Held for 3 s: nothing.
+    holdAt(clock, 0, 1000, 4000, 32);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(document.getElementById("shell-viewfinder")?.dataset.guidance).toBe("near");
+
+    // beta 40 = elevation 50: credited to slot 0, so it goes green and fires once.
+    holdAt(clock, 0, 4100, 4800, 40);
+    await vi.waitFor(() => {
+      if (!/^Covered: 2\//.test(coveredCountText() ?? "")) throw new Error("not yet covered");
+    });
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  it("C-27: never fires before the first photo, however long the phone is held", async () => {
+    const clock = { t: 0 };
+    const mounted = await startSuccessfulSession({ now: () => clock.t });
+    autoCaptureToggle().checked = true;
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 0, 0, 5000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(document.getElementById("shell-viewfinder")?.dataset.guidance).toBe("idle");
+  });
+
+  it("C-27: the switch starts off, and a held on-target reading takes nothing until it is turned on", async () => {
+    const { clock } = await startAutoSession(45, { autoOn: false });
+    expect(autoCaptureToggle().checked).toBe(false);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 5000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+
+    autoCaptureToggle().checked = true;
+    holdAt(clock, 45, 5100, 5800);
+    await vi.waitFor(() => {
+      if (!/^Covered: 2\//.test(coveredCountText() ?? "")) throw new Error("not yet covered");
+    });
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  it("C-27: switched off again, holding on target takes nothing and the status says to tap", async () => {
+    const { clock } = await startAutoSession();
+    holdAt(clock, 45, 1000, 1100);
+    expect(overlayStatusText()).toMatch(/hold steady/i);
+    autoCaptureToggle().checked = false;
+    autoCaptureToggle().dispatchEvent(new Event("change"));
+    // Updated by the switch itself, before the phone moves again.
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1200, 5000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+  });
+
+  it("C-27: never starts a second capture while an upload is still in flight", async () => {
+    const { clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return new Promise<Response>(() => undefined); // never settles: the upload hangs
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (frameUploads(fetchSpy) === 0) throw new Error("first auto upload not started");
+    });
+    // Well past both the hold and the retry gap, 5 degrees over: still on target, and far enough
+    // from the hanging frame (2 degree duplicate threshold) that the duplicate gate would pass it.
+    // Only the shutter-enabled guard (no upload in flight) can stop this second capture.
+    holdAt(clock, 50, 1700, 8000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  // #420 review (@dalwalyk): a failed automatic upload used to be retried every retry gap for as
+  // long as the phone stayed on target.
+  it("C-27: an automatic photo the server rejects turns auto-capture off instead of retrying", async () => {
+    const { mounted, clock } = await startAutoSession();
+    stub.rejectNextFrame();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(/^Auto: .*Auto-capture is off now/);
+    // The phone hasn't moved since the failure, and the on-target line already says to tap.
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    holdAt(clock, 45, 1700, 9000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+  });
+
+  it("C-27: an automatic photo that can't reach the server turns auto-capture off instead of retrying", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(
+      /^Auto: Could not upload frame.*Auto-capture is off now/,
+    );
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    holdAt(clock, 45, 1700, 9000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  // #420 review, round 2 (@dalwalyk): when the session is gone, the message must not offer a tap
+  // or auto-capture, since neither can help.
+  it("C-27: an automatic photo on a session that's gone turns auto-capture off without offering a retry", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ code: "session_not_found", message: "Not Found" }), {
+            status: 422,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(
+      /start a new session\. Auto-capture is off now\.$/,
+    );
+    expect(mounted.captureStatus.textContent).not.toMatch(/tap to retry/);
+  });
+
+  // #420 review, round 2 (@dalwalyk): a tapped photo that failed to upload was retried once by
+  // auto-capture 1.5 s later before the switch went off.
+  it("C-27: a tapped photo that fails to upload turns auto-capture off too", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1100);
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(
+      /^Could not upload frame.*Auto-capture is off now/,
+    );
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    holdAt(clock, 45, 1200, 9000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  // #420 review (@dalwalyk): a tap the gate rejected could be followed ~16 ms later by an
+  // automatic photo, overwriting the person's own rejection message.
+  it("C-27: a tap restarts auto-capture's hold and retry gap", async () => {
+    const { mounted, clock, canvas } = await startAutoSession();
+    const flat = sharpWellExposedImageData();
+    flat.data.fill(128);
+    canvas.setImageData(flat);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 1500);
+    mounted.captureButton.click();
+    expect(mounted.captureStatus.textContent).toMatch(/^Frame rejected/);
+    // Past the 0.6 s hold that started at 1000 ms, but within 1.5 s of the tap.
+    holdAt(clock, 45, 1600, 2900);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mounted.captureStatus.textContent).toMatch(/^Frame rejected/);
+    expect(frameUploads(fetchSpy)).toBe(0);
+  });
+
+  // #420 review, round 2 (@dalwalyk): the case the fix is for -- a reading before the grant, then
+  // the grant. Capture waits for a reading that arrives after it.
+  it("C-27: a reading before the gyro grant doesn't count once permission is granted", async () => {
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    const { state, orderCode, button, cameraStatus, gyroStatus, captureButton } = mount();
+    dispatchOrientation(0, 45, 0);
+    orderCode.value = "PO-48213-A";
+    button.click();
+    await vi.waitFor(() => {
+      if (cameraStatus.textContent !== "Camera started.") throw new Error("still pending");
+    });
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("gyro still pending");
+    });
+    expect(state.latestGyro).toBeNull();
+    expect(captureButton.disabled).toBe(true);
+    dispatchOrientation(10, 45, 0);
+    expect(state.latestGyro).not.toBeNull();
+    expect(captureButton.disabled).toBe(false);
+  });
+
+  // #420 review (@dalwalyk): the overlay listens from page load, so a reading before the motion
+  // permission was granted used to count as the shell's gyro reading.
+  it("C-27: a reading before the gyro is granted doesn't enable capture", async () => {
+    stubGrantedCamera();
+    stubGyroPermission("denied");
+    const { state, orderCode, button, cameraStatus, captureButton } = mount();
+    dispatchOrientation(0, 45, 0);
+    orderCode.value = "PO-48213-A";
+    button.click();
+    await vi.waitFor(() => {
+      if (cameraStatus.textContent !== "Camera started.") throw new Error("still pending");
+    });
+    dispatchOrientation(10, 45, 0);
+    expect(state.latestGyro).toBeNull();
+    expect(captureButton.disabled).toBe(true);
+  });
+
+  it("C-27: an automatic frame the gate rejects says so, uploads nothing and leaves coverage alone", async () => {
+    const { mounted, clock, canvas } = await startAutoSession();
+    const flat = sharpWellExposedImageData();
+    flat.data.fill(128);
+    canvas.setImageData(flat);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (!/^Auto: Frame rejected/.test(mounted.captureStatus.textContent)) {
+        throw new Error("no automatic rejection yet");
+      }
+    });
+    expect(mounted.captureStatus.textContent).toMatch(/blur/i);
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
   });
 
   it("C-26: Finish session is the large primary button and keeps its id and name", () => {
