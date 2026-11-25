@@ -545,6 +545,36 @@ it took much of the wall error with it, on seven of the ten parts.
 | [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 6 h | I-05, I-13 | Done | @dalwalyk |
 | [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
+
+---
+
+## Accuracy testing (P-42)
+
+On 2026-11-24, after I-15 and R-44 merged, P-41's script was re-run on the ten calipered parts with
+`main` at `70b2773`.
+- **Reconstruction:** every part's model was byte-identical to P-41's run, so R-44's correction,
+  off by default, changes nothing.
+- **Poses:** eight of the ten are the same, by I-15's measure. s-05 and `g05_00` moved, both
+  as I-15's record already shows.
+- **Ambiguity:** unchanged on all ten.
+- **Accuracy:** mostly holds. The two exceptions are I-17's.
+
+Every figure so far comes from photographs taken with the camera app. The expo captures through
+the app, in a hall nobody has seen. These stories keep the lane their work lives in. This section
+only groups them, as P-41's does.
+
+- **G-15** captures the ten parts through the app on `main` and measures them as their
+  photographs were measured. It repeats at least four parts in a second room and light.
+- **I-17** traces `g05_02`'s walls reading 0.42 mm worse with the same pose, and `main`'s s-05
+  pose sitting 9–14° off its walls. It fixes only what can land before the Dec 4 code freeze.
+- **The expo hall itself** (Sat Dec 5, Fremont) belongs to R-36, which owns the room rehearsal.
+  Its network plan, power and warm-up run go into R-36's runbook in #371, not into a new story.
+
+| ID | Story | Est | Depends on | State | Owner |
+|---|---|---|---|---|---|
+| [G-15](G/G-15.md) | The calipered parts, captured through the app, read as their photographs do | 4 h | nothing | Ready | _unclaimed_ |
+| [I-17](I/I-17.md) | Why g05_02's walls read worse after I-15, and why `main`'s s-05 pose sits off its walls | 4 h | nothing | Ready | _unclaimed_ |
+
 ---
 
 ## Capture app: heatmap, report, buyer side and hosting
