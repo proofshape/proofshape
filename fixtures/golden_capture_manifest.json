@@ -2,7 +2,7 @@
   "captures": [
     {
       "aggregate_bytes": 93112777,
-      "drive_folder_id": "1NB2E7HydD8KsD3tCRKA9j14fkdjCAJMH",
+      "drive_folder_id": "1mJyhnxTzP0rwbI2KF9h6cEWSwYC9Znmk",
       "frames": 26,
       "lighting": "condition A",
       "object": "metal padlock",
@@ -12,7 +12,7 @@
     },
     {
       "aggregate_bytes": 149634987,
-      "drive_folder_id": "1FOPhzL2Bo-_Qfqvk-lVFiXg73WXi_8sU",
+      "drive_folder_id": "1WIcDfB_pUwZozCSTIts7HD-tHhIeWp2G",
       "frames": 30,
       "lighting": "condition B",
       "object": "metal padlock",
@@ -23,7 +23,7 @@
     },
     {
       "aggregate_bytes": 93191453,
-      "drive_folder_id": "10HQtYToX3ptszNI_HE24RZbtQDoJYxyj",
+      "drive_folder_id": "1XtrQaAYUnTsU_9lN8IQyNRHiyv7uGLZr",
       "frames": 27,
       "lighting": "condition A",
       "object": "rounded rigid object",
@@ -33,7 +33,7 @@
     },
     {
       "aggregate_bytes": 111627804,
-      "drive_folder_id": "1a-KgtnW_FueYx0_zMZNlWfNaD-adf3xQ",
+      "drive_folder_id": "1HVWAouVpydOtlIyUcCd9cMlztMuhpLwa",
       "frames": 30,
       "lighting": "condition A",
       "object": "yellow triangular prism",
@@ -43,7 +43,7 @@
     },
     {
       "aggregate_bytes": 108896707,
-      "drive_folder_id": "1EkStcpwZ5eDg-3KUtdaSmuw7iTcAIs5y",
+      "drive_folder_id": "1VfJdrAboxecuECeuW47g5LPMhgeG0ufm",
       "frames": 29,
       "lighting": "condition A",
       "object": "red rectangular prism",
@@ -53,7 +53,7 @@
     }
   ],
   "drive_root_folder_id": "1Y022tHljQOj2Fvr_kfDuseg7CaKdjWZp",
-  "notes": "s-01 and s-02 are the same reflective metal padlock captured under visibly different lighting/background conditions. Photos remain outside git. Version 2 (G-14, 2026-11-24): each photo's EXIF GPS block was emptied in place by scripts/strip_capture_gps.py; no other byte changed, so frames and aggregate_bytes are the same and only content_sha256 moved.",
+  "notes": "s-01 and s-02 are the same reflective metal padlock captured under visibly different lighting/background conditions. Photos remain outside git. Version 2 (G-14, 2026-11-24): each photo's EXIF GPS block was emptied in place by scripts/strip_capture_gps.py; no other byte changed, so frames and aggregate_bytes are the same and content_sha256 moved. The five sample folders were uploaded again the same day, so each drive_folder_id moved too; drive_root_folder_id is unchanged.",
   "reference_cad": [
     {
       "drive_file_id": "1c3_NAmUX4YjOv3AGeH9xbowPrF0uFTJW",
