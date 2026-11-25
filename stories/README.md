@@ -730,6 +730,7 @@ Full detail in each story file.
 | [P-36](P/P-36.md) | Nov 27 progress review (R6) | 2.5 h | nothing | Done | @TabeenRaoof |
 | [P-37](P/P-37.md) | Write up the final report, the final presentation, and the Dec 2 work | — | nothing | Done | @TabeenRaoof |
 | [P-41](P/P-41.md) | Accuracy review: what ten calipered parts read on `main`, why walls are noisy, and the work it calls for | — | nothing | Done | @TabeenRaoof |
+| [P-42](P/P-42.md) | Write up the accuracy-testing stories from the 2026-11-24 run of `main` | 1.5 h | nothing | Claimed | @TabeenRaoof |
 
 ---
 
