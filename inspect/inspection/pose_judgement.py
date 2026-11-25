@@ -631,6 +631,134 @@ def _wall_directions(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return directions, weights
 
 
+def _hu_seventh_moment(loop: np.ndarray) -> float:
+    """Hu's seventh moment of a 2D outline — sign-sensitive to reflection.
+
+    Invariant to translation, scale and rotation, but flips sign when the outline is mirrored.
+    A shape that is its own mirror image under some rotation (box, regular polygon) has h7 ≈ 0.
+    """
+    loop = np.asarray(loop, dtype=np.float64)
+    centroid = loop.mean(axis=0)
+    centred = loop - centroid
+    n = len(centred)
+
+    def mu(p: int, q: int) -> float:
+        return float(np.sum(centred[:, 0] ** p * centred[:, 1] ** q)) / n
+
+    mu20 = mu(2, 0)
+    mu02 = mu(0, 2)
+    mu30 = mu(3, 0)
+    mu03 = mu(0, 3)
+    mu21 = mu(2, 1)
+    mu12 = mu(1, 2)
+
+    # Normalised central moments: η_pq = μ_pq / μ_00^((p+q)/2 + 1).
+    # With per-point averaging, μ_00 = 1 so η_pq = μ_pq. Scale-normalise by the second-order
+    # norm so the threshold doesn't depend on the outline's physical size.
+    norm = mu20 + mu02
+    if norm <= 0.0:
+        return 0.0
+    scale = norm**1.5
+    eta30 = mu30 / scale
+    eta03 = mu03 / scale
+    eta21 = mu21 / scale
+    eta12 = mu12 / scale
+
+    return float(
+        (3.0 * eta21 - eta03)
+        * (eta30 + eta12)
+        * ((eta30 + eta12) ** 2 - 3.0 * (eta21 + eta03) ** 2)
+        - (eta30 - 3.0 * eta12)
+        * (eta21 + eta03)
+        * (3.0 * (eta30 + eta12) ** 2 - (eta21 + eta03) ** 2)
+    )
+
+
+# Outlines whose |h7| is below this are treated as having no handedness (symmetric shape).
+# Empirically, a clean equilateral triangle gives |h7| ~ 1e-4; a box or regular polygon gives
+# < 1e-10. The threshold sits well below any chiral shape's moment.
+_HANDEDNESS_H7_FLOOR = 1e-7
+
+
+@dataclass(frozen=True)
+class HandednessResult:
+    """I-16: whether the model's outline matches the posed CAD's handedness."""
+
+    mismatched: bool
+    has_handedness: bool
+    reason: str
+    h7_model: float
+    h7_cad: float
+
+
+def check_handedness(
+    model_vertices: np.ndarray,
+    model_faces: np.ndarray,
+    cad_vertices: np.ndarray,
+    cad_faces: np.ndarray,
+    pose: np.ndarray,
+) -> HandednessResult:
+    """I-16: compare the handedness of the model's outline with the posed CAD's.
+
+    Cuts a mid-height horizontal outline from each mesh and compares Hu's seventh moment.
+    A sign mismatch means the part is on a different face from the CAD.
+    """
+    posed_cad = _transform(cad_vertices, pose)
+    z_min = float(posed_cad[:, 2].min())
+    z_max = float(posed_cad[:, 2].max())
+    z_mid = (z_min + z_max) / 2.0
+
+    cad_outline = outline_at(posed_cad, cad_faces, z_mid)
+    if cad_outline is None:
+        return HandednessResult(
+            mismatched=False,
+            has_handedness=False,
+            reason="no CAD outline at mid-height",
+            h7_model=0.0,
+            h7_cad=0.0,
+        )
+
+    model_outline = outline_at(model_vertices, model_faces, z_mid)
+    if model_outline is None:
+        return HandednessResult(
+            mismatched=False,
+            has_handedness=False,
+            reason="no model outline at mid-height",
+            h7_model=0.0,
+            h7_cad=0.0,
+        )
+
+    h7_cad = _hu_seventh_moment(cad_outline)
+    h7_model = _hu_seventh_moment(model_outline)
+
+    if abs(h7_cad) < _HANDEDNESS_H7_FLOOR:
+        return HandednessResult(
+            mismatched=False,
+            has_handedness=False,
+            reason="CAD outline has no handedness (symmetric shape)",
+            h7_model=h7_model,
+            h7_cad=h7_cad,
+        )
+
+    if abs(h7_model) < _HANDEDNESS_H7_FLOOR:
+        return HandednessResult(
+            mismatched=False,
+            has_handedness=True,
+            reason="model outline moment too small to judge",
+            h7_model=h7_model,
+            h7_cad=h7_cad,
+        )
+
+    mismatched = (h7_model > 0.0) != (h7_cad > 0.0)
+    return HandednessResult(
+        mismatched=mismatched,
+        has_handedness=True,
+        reason="handedness mismatch" if mismatched else "handedness matches",
+        h7_model=h7_model,
+        h7_cad=h7_cad,
+    )
+
+
 def _smoothed_line_histogram(
     directions_deg: np.ndarray, weights: np.ndarray, bin_count: int
 ) -> np.ndarray:
