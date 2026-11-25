@@ -239,6 +239,7 @@ Full detail in each story file.
 | [G-10](G/G-10.md) | σ_floor for the sheet and card references | 5 h | G-04 | Cut | _unclaimed_ |
 | [G-11](G/G-11.md) | Robustness set (glossy, dark and thin parts, a screen photo, the wrong part) | 4 h | G-01, G-02 | Done | @TabeenRaoof |
 | [G-12](G/G-12.md) | Print, caliper and photograph a top-face bump for X-03's planted defect | 3 h | G-05, G-09 | Claimed | @TabeenRaoof |
+| [G-14](G/G-14.md) | The capture photos carry no location, and live somewhere that outlives the semester | 3 h | nothing | Claimed | @TabeenRaoof |
 
 ---
 
