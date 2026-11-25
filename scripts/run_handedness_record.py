@@ -44,8 +44,14 @@ RUN_TO_CAD = {
 # Phone sessions: map session id to (CAD file, label).
 PHONE_SESSIONS = {
     "sess_20201ffd675a": ("g05_00_control_50x32x20mm.stl", "g05_02 (wrong part, I-15)"),
-    "sess_cdf9822969a4": ("s04_triangular_prism_60-26-65x30mm.stl", "s-04 (unverified)"),
-    "sess_bec6c7dad03e": ("s04_triangular_prism_60-26-65x30mm.stl", "s-04 (no recorded part)"),
+    "sess_cdf9822969a4": (
+        "s04_triangular_prism_60-26-65x30mm.stl",
+        "s-04 (unverified)",
+    ),
+    "sess_bec6c7dad03e": (
+        "s04_triangular_prism_60-26-65x30mm.stl",
+        "s-04 (no recorded part)",
+    ),
 }
 
 

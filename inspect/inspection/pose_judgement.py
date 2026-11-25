@@ -720,14 +720,15 @@ def _hu_seventh_moment(loop: np.ndarray) -> float:
     )
 
 
-# Outlines whose |h7| is below this floor are treated as having no handedness.  With the
+# Outlines whose |h7| is below this floor are treated as too weak to judge.  With the
 # Green's-theorem area moments used above, h7 depends only on the polygon's shape, not on
 # vertex density, so the same floor works for both the CAD and the model.  Empirically:
 #   symmetric shapes (box, regular polygon):        |h7| = 0
-#   notched rectangle (G-05, small asymmetry):      |h7| ≈ 2e-9
+#   weakly chiral (G-05 L-shaped notch):            |h7| ≈ 2e-9
 #   right triangle (g02_03):                        |h7| ≈ 8e-7
 #   scalene triangular prism (s-04):                |h7| ≈ 2e-6
-# The floor sits between the notch (~2e-9) and the weakest chiral shape (~8e-7).
+# The floor sits between the weakly chiral G-05 (~2e-9) and the first reliably chiral
+# shape (~8e-7).  G-05's L *is* chiral, but its third-order moments nearly cancel.
 _HANDEDNESS_H7_FLOOR = 1e-8
 
 
@@ -786,7 +787,7 @@ def check_handedness(
         return HandednessResult(
             mismatched=False,
             has_handedness=False,
-            reason="CAD outline has no handedness",
+            reason="CAD outline handedness too weak to judge",
             h7_model=h7_model,
             h7_cad=h7_cad,
         )
