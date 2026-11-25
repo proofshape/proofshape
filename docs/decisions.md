@@ -1281,6 +1281,24 @@ its two reconstructions (1.1256 and 1.2171), while s-04 was stable at 1.0483 and
 A scalene part near the cutoff may still produce a false Rescan on some reconstructions.
 Both other members must approve the amendment on the final head.
 
+*I-15 amendment (2026-11-24):* I-15's model-side support cut (see
+`POSE_SUPPORT_MIN_HEIGHT_CAP_MM` in `registration.py`) removes surface below
+`min(5 mm, ¼ CAD height)` from `refine`. The coverage ratio itself uses the full observed
+surface and full CAD surface, as before, but the refined poses it compares come from the cut
+surface, so the class counts shift:
+
+| Class | Before I-15 (`main`) | After I-15 |
+|---|---|---|
+| Hole missing (should flag) | 100/100 flagged | 99/100 (seed 99 clears at ratio 1.026) |
+| Hole shifted 3 mm (shouldn't) | 22/100 flagged | 28/100 (seeds 3, 21, 28, 30, 50, 75 newly flag) |
+
+Seed 99 is 0.001 above the 1.025 cutoff, the only missing-hole miss. The shifted-hole rise
+(six more false Rescans, the safe direction) is a consequence of the same refinement change.
+The rule, the cutoff and the reason code are unchanged. Seed 99 is pinned as the known clear,
+so a change that moves it is noticed. Seeds 46, 77 and 87, the nearest flagged, are pinned so
+that a change that clears more fails CI. Accepted by @TabeenRaoof on PR #440 (2026-11-24);
+@mbj1994 conditionally accepts, final on approval of the last head.
+
 **D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
 provenance, and the viewer does the colouring.** (2026-11-09)
 Settles how I-06's per-vertex deviation reaches C-14's viewer. Recorded by P-30, so that I-06, still
