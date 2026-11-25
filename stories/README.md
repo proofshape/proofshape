@@ -460,7 +460,7 @@ Full detail in each story file.
 | [R-39](R/R-39.md) | cad_size_check: the top-face blob is the part, not a pile of stray points | 3 h | R-37 | Done | @mbj1994 |
 | [R-40](R/R-40.md) | Mesh cleanup always terminates and always returns a manifold mesh | 4 h | R-27, R-30 | Done | @dalwalyk |
 | [C-26](C/C-26.md) | Capture viewfinder: a visible guidance arrow, an on-target frame colour, a round shutter | 2 h | C-07, C-09 | Done | @TabeenRaoof |
-| [C-27](C/C-27.md) | Auto-capture: take the photo when the phone is on target and steady (freeze exception, off by default) | 3 h | C-26, C-06 | Claimed | @TabeenRaoof |
+| [C-27](C/C-27.md) | Auto-capture: take the photo when the phone is on target and steady (freeze exception, off by default) | 3 h | C-26, C-06 | Done | @TabeenRaoof |
 
 ---
 
@@ -545,8 +545,8 @@ it took much of the wall error with it, on seven of the ten parts.
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @dalwalyk |
-| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 5 h | I-05, I-13 | Claimed | @dalwalyk |
-| [I-16](I/I-16.md) | A part lying on a different face from its CAD is flagged, not served as a clean pose | 4 h | I-15 | Blocked | _unclaimed_ |
+| [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 6 h | I-05, I-13 | Done | @dalwalyk |
+| [I-16](I/I-16.md) | A part lying on a different face from its CAD is flagged, not served as a clean pose | 4 h | I-15 | Ready | _unclaimed_ |
 | [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
 
 ---

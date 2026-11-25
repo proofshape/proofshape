@@ -893,7 +893,7 @@ def _fake_upstream_stages(monkeypatch, source: completion.PipelineArtifacts) -> 
         copy_into(source.reconstruction_dir, out)
         return {"status": "ok"}
 
-    def fake_fusion(reconstruction_dir, alignment_path, out):
+    def fake_fusion(reconstruction_dir, alignment_path, out, **_kwargs):
         copy_into(source.fusion_dir, out)
         return {}
 

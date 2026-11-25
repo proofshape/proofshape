@@ -459,6 +459,57 @@ def test_pipeline_runs_provenance_and_uncertainty_before_serving_glb(
     assert "uncertainty" in result["stage_timings_s"]
 
 
+def test_pipeline_fuses_with_the_alignments_own_board_folder_and_r44_off(
+    tmp_path,
+    monkeypatch,
+):
+    # R-44: the corners fusion would fit each photo to must be the ones R-23's alignment was
+    # solved from, so fusion gets the same board folder load_and_align read. The correction
+    # itself stays off in the served path until the story's gate and a team decision.
+    from recon import board_pose, metric_alignment, reconstruction_runner, tsdf_fusion
+
+    capture_dir = tmp_path / "capture"
+    artifact_dir = tmp_path / "artifacts"
+    capture_dir.mkdir()
+
+    monkeypatch.setattr(
+        board_pose,
+        "estimate_board_poses",
+        lambda capture, out: {"posed_count": 3, "failure_counts": {}},
+    )
+    monkeypatch.setattr(
+        reconstruction_runner,
+        "run_on_capture",
+        lambda *args, **kwargs: {"status": "ok"},
+    )
+    seen = {}
+
+    def fake_load_and_align(reconstruction_dir, board_dir):
+        seen["alignment_board_dir"] = board_dir
+        return SimpleNamespace(scale=1.0, rms_residual_mm=2.0)
+
+    monkeypatch.setattr(metric_alignment, "load_and_align", fake_load_and_align)
+    monkeypatch.setattr(
+        metric_alignment, "write_alignment", lambda *args, **kwargs: None
+    )
+
+    class StopAfterFusion(Exception):
+        pass
+
+    def fake_fuse_run(*args, **kwargs):
+        seen["fuse_kwargs"] = kwargs
+        raise StopAfterFusion
+
+    monkeypatch.setattr(tsdf_fusion, "fuse_run", fake_fuse_run)
+
+    with pytest.raises(StopAfterFusion):
+        service.run_reconstruction_pipeline(capture_dir, artifact_dir)
+
+    assert service.CORNER_REANCHORING_ENABLED is False
+    assert seen["fuse_kwargs"]["corner_reanchoring"] is False
+    assert seen["fuse_kwargs"]["board_pose_dir"] == seen["alignment_board_dir"]
+
+
 def test_pipeline_maps_fuse_run_failures_to_a_named_fusion_error_not_a_generic_one(
     tmp_path, monkeypatch
 ):
