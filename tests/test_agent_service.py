@@ -366,7 +366,10 @@ def test_agent_message_finished_reflects_session_status_after_manual_finish(tmp_
         assert after.status_code == 200
         assert after.json()["finished"] is True
 
-def test_reconstruction_runs_when_final_agent_message_write_fails(tmp_path, monkeypatch):
+
+def test_reconstruction_runs_when_final_agent_message_write_fails(
+    tmp_path, monkeypatch
+):
     app = _create(tmp_path)
     original_update = app.state.store.update_agent_message
 
@@ -397,4 +400,6 @@ def test_reconstruction_runs_when_final_agent_message_write_fails(tmp_path, monk
         record = app.state.store.load(sid)
         assert record["status"] == "finished"
         assert record["reconstruction"]["status"] == "complete"
-        assert client.get(f"/v1/sessions/{sid}/agent-message").json()["finished"] is True
+        assert (
+            client.get(f"/v1/sessions/{sid}/agent-message").json()["finished"] is True
+        )

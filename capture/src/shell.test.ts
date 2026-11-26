@@ -1977,7 +1977,9 @@ describe("mountAppShell", () => {
         expect(mounted.finishButton.disabled).toBe(false);
       });
       mounted.finishButton.click();
-      await vi.waitFor(() => expect(finishResolvers.length).toBe(1));
+      await vi.waitFor(() => {
+        expect(finishResolvers.length).toBe(1);
+      });
 
       const resolveAgent = finalAgentResolvers[0];
       const resolveFinish = finishResolvers[0];
@@ -1992,9 +1994,9 @@ describe("mountAppShell", () => {
       } else {
         resolveFinish(manualResponse());
       }
-      await vi.waitFor(() =>
-        expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete"),
-      );
+      await vi.waitFor(() => {
+        expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
+      });
       const firstStatus = mounted.finishStatus.textContent;
       if (agentFirst) {
         resolveFinish(manualResponse());
