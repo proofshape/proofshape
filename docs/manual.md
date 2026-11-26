@@ -293,8 +293,7 @@ on a Mac (§0, C-13). Built by C-01 through C-13; auto-capture by C-27.
    each a few frames late; the last frame's check finishes after you've stopped uploading, so
    it is never shown. A tip stays until a newer one replaces it. It is advice only: it never
    rejects a frame or blocks capture. With no Gemini key on the server, no tips appear.
-5. **Finish capture.** A-15 is still in review: on today's `main`, tap **Finish**. Once
-   A-15's D-031 round lands, the service finishes the session automatically when the full guided
+5. **Finish capture.** The service finishes the session automatically when the full guided
    orbit is covered, whether Gemini or A-08's deterministic fallback supplied the guidance. The
    phone then turns the camera off and starts reconstruction polling. Manual **Finish** remains a
    recovery path before automatic finish. The real service needs at least 3 accepted frames; the
@@ -319,7 +318,7 @@ on a Mac (§0, C-13). Built by C-01 through C-13; auto-capture by C-27.
   guessing by the shape-completion model. That map is built on the server whenever completion
   samples exist, which no supplier's session has yet (D-058, D-066).
 
-**In review (A-15), and part of what makes this more than a photo app:**
+**Served capture guidance and generative AI:**
 - **The LLM agent core, real service route and phone conversation view are wired together**
    (A-06, A-07, A-13, C-22, A-15, with A-08's deterministic fallback). Coverage code, not the
    model, decides whether the session continues or may finish: the model cannot finish while
@@ -334,8 +333,7 @@ on a Mac (§0, C-13). Built by C-01 through C-13; auto-capture by C-27.
    If A-07 finishes after coverage is complete, the phone treats the session as finished and
    starts reconstruction polling exactly as it does after the supplier taps Finish. Transport
    failure remains optional guidance failure: capture arrows and the manual Finish path still
-   work. This contract is v1.9 and is a D-031 change, so it cannot merge before the Dec 2
-   boundary and both other members' approval.
+   work. The agent-message route is part of contract v1.9 (A-15 / D-031).
 - **A vision-language model checks sampled frames** (A-01/A-11; A-02 will own the verdict veto):
   frame 0, indices divisible by 5, and the final accepted frame. It is **not an all-frame check**.
   R-36 demonstrated the limit directly: in a 15-frame session, a screen photograph on frame 6

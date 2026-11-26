@@ -3010,6 +3010,23 @@ as primary and gives the confidence, alignment RMS, and per-wall spread for cont
 **Concluded:** The wall error has a contributor that the board's corners can correct, and so far only a scratch test says so. R-44 has to reproduce it in the repository, and its default waits on I-15. No code on the served path, no threshold and no decision changed.
 **Next:** I-15 first, then R-44. I-15's first commit restates how a pose is judged, with the two findings above. G-13 stays Blocked until both are Done.
 
+## 2026-11-24 — Reviewed the G-14 and P-42 claims and follow-up PRs
+
+**Who:** @dalwalyk
+**Result:** Approved the claims in #443 and #444, with #443's P-40 waiting note to land first.
+Requested changes on #445 for G-15's missing required output argument and the scope of the
+accuracy evidence. Requested changes on #446 for malformed JPEG and EXIF handling and the
+Drive cutover criterion. The story-state checker passed on all four heads. The 30 focused
+#446 tests and the v2 manifest checksum passed. The clean Drive run verified s-01 and s-02
+before gdown reported public-link/access errors on s-03.
+
+## 2026-11-24 — Approved the P-42 accuracy-testing write-up on re-review (PR #445)
+
+**Who:** @dalwalyk
+**Result:** Approved `ea3ea6b` after verifying the required output option against the CLI and
+checking the wording for the ten-part camera-photo comparison, app evidence on s-04 and
+CAD deviation. The story-state checker, diff check and all GitHub CI checks passed.
+
 ## 2026-11-24 — P-42 Done: the accuracy-testing stories, from a ten-part re-run of `main` (PR #444, PR #445)
 
 **Who:** @TabeenRaoof. @dalwalyk reviewed.
