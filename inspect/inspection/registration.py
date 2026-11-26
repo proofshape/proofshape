@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 import open3d as o3d
 
+from inspection.pose_judgement import check_handedness
 from recon.provenance import (
     LABEL_INFERRED,
     LABEL_OBSERVED,
@@ -1188,6 +1189,17 @@ def check_ambiguity(
             rmse_ratio = runner_up.inlier_rmse / best.inlier_rmse
         else:
             rmse_ratio = 1.0 if runner_up.inlier_rmse == 0.0 else math.inf
+
+    # I-16: a part on a different face from its CAD is flagged, not served clean.
+    handedness = check_handedness(
+        model_vertices,
+        model_faces,
+        cad_vertices,
+        cad_faces,
+        best.transformation,
+    )
+    if handedness.mismatched:
+        ambiguous = True
 
     return AmbiguityCheck(
         orientation_ambiguous=bool(ambiguous),

@@ -631,6 +631,186 @@ def _wall_directions(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return directions, weights
 
 
+def _hu_seventh_moment(loop: np.ndarray) -> float:
+    """Hu's seventh moment of a 2D closed polygon — sign-sensitive to reflection.
+
+    Computed from the polygon's exact area moments via Green's theorem (a sum over edges),
+    so the result depends on the polygon's shape, not on how densely each stretch is sampled.
+    Invariant to translation, scale and rotation; flips sign under reflection.  A shape that
+    is its own mirror image under some rotation (box, regular polygon) has h7 ≈ 0.
+    """
+    loop = np.asarray(loop, dtype=np.float64)
+    n = len(loop)
+    if n < 3:
+        return 0.0
+
+    x = loop[:, 0]
+    y = loop[:, 1]
+    xn = np.roll(x, -1)
+    yn = np.roll(y, -1)
+    d = x * yn - xn * y  # signed cross-product per edge
+
+    area = d.sum() / 2.0
+    if abs(area) < 1e-30:
+        return 0.0
+
+    # Centroid via Green's theorem.
+    cx = float(np.sum((x + xn) * d)) / (6.0 * area)
+    cy = float(np.sum((y + yn) * d)) / (6.0 * area)
+
+    # Centre the polygon so raw moments on the centred vertices are central moments.
+    x = x - cx
+    y = y - cy
+    xn = xn - cx
+    yn = yn - cy
+    d = x * yn - xn * y
+
+    # Third-order central moments.
+    mu30 = float(np.sum((x**3 + x**2 * xn + x * xn**2 + xn**3) * d)) / 20.0
+    mu03 = float(np.sum((y**3 + y**2 * yn + y * yn**2 + yn**3) * d)) / 20.0
+    mu21 = (
+        float(
+            np.sum(
+                (
+                    3 * x**2 * y
+                    + x**2 * yn
+                    + 2 * x * xn * y
+                    + 2 * x * xn * yn
+                    + xn**2 * y
+                    + 3 * xn**2 * yn
+                )
+                * d
+            )
+        )
+        / 60.0
+    )
+    mu12 = (
+        float(
+            np.sum(
+                (
+                    3 * x * y**2
+                    + xn * y**2
+                    + 2 * x * y * yn
+                    + 2 * xn * y * yn
+                    + x * yn**2
+                    + 3 * xn * yn**2
+                )
+                * d
+            )
+        )
+        / 60.0
+    )
+
+    # Normalise: η_pq = μ_pq / |area|^((p+q+2)/2).  For p+q = 3 the exponent is 5/2.
+    norm = abs(area) ** 2.5
+    if norm < 1e-30:
+        return 0.0
+    eta30 = mu30 / norm
+    eta03 = mu03 / norm
+    eta21 = mu21 / norm
+    eta12 = mu12 / norm
+
+    return float(
+        (3.0 * eta21 - eta03)
+        * (eta30 + eta12)
+        * ((eta30 + eta12) ** 2 - 3.0 * (eta21 + eta03) ** 2)
+        - (eta30 - 3.0 * eta12)
+        * (eta21 + eta03)
+        * (3.0 * (eta30 + eta12) ** 2 - (eta21 + eta03) ** 2)
+    )
+
+
+# Outlines whose |h7| is below this floor are treated as too weak to judge.  With the
+# Green's-theorem area moments used above, h7 depends only on the polygon's shape, not on
+# vertex density, so the same floor works for both the CAD and the model.  Empirically:
+#   symmetric shapes (box, regular polygon):        |h7| = 0
+#   weakly chiral (G-05 L-shaped notch):            |h7| ≈ 2e-9
+#   right triangle (g02_03):                        |h7| ≈ 8e-7
+#   scalene triangular prism (s-04):                |h7| ≈ 2e-6
+# The floor sits between the weakly chiral G-05 (~2e-9) and the first reliably chiral
+# shape (~8e-7).  G-05's L *is* chiral, but its third-order moments nearly cancel.
+_HANDEDNESS_H7_FLOOR = 1e-8
+
+
+@dataclass(frozen=True)
+class HandednessResult:
+    """I-16: whether the model's outline matches the posed CAD's handedness."""
+
+    mismatched: bool
+    has_handedness: bool
+    reason: str
+    h7_model: float
+    h7_cad: float
+
+
+def check_handedness(
+    model_vertices: np.ndarray,
+    model_faces: np.ndarray,
+    cad_vertices: np.ndarray,
+    cad_faces: np.ndarray,
+    pose: np.ndarray,
+) -> HandednessResult:
+    """I-16: compare the handedness of the model's outline with the posed CAD's.
+
+    Cuts a mid-height horizontal outline from each mesh and compares Hu's seventh moment.
+    A sign mismatch means the part is on a different face from the CAD.
+    """
+    posed_cad = _transform(cad_vertices, pose)
+    z_min = float(posed_cad[:, 2].min())
+    z_max = float(posed_cad[:, 2].max())
+    z_mid = (z_min + z_max) / 2.0
+
+    cad_outline = outline_at(posed_cad, cad_faces, z_mid)
+    if cad_outline is None:
+        return HandednessResult(
+            mismatched=False,
+            has_handedness=False,
+            reason="no CAD outline at mid-height",
+            h7_model=0.0,
+            h7_cad=0.0,
+        )
+
+    model_outline = outline_at(model_vertices, model_faces, z_mid)
+    if model_outline is None:
+        return HandednessResult(
+            mismatched=False,
+            has_handedness=False,
+            reason="no model outline at mid-height",
+            h7_model=0.0,
+            h7_cad=0.0,
+        )
+
+    h7_cad = _hu_seventh_moment(cad_outline)
+    h7_model = _hu_seventh_moment(model_outline)
+
+    if abs(h7_cad) < _HANDEDNESS_H7_FLOOR:
+        return HandednessResult(
+            mismatched=False,
+            has_handedness=False,
+            reason="CAD outline handedness too weak to judge",
+            h7_model=h7_model,
+            h7_cad=h7_cad,
+        )
+
+    if abs(h7_model) < _HANDEDNESS_H7_FLOOR:
+        return HandednessResult(
+            mismatched=False,
+            has_handedness=True,
+            reason="model outline moment too small to judge",
+            h7_model=h7_model,
+            h7_cad=h7_cad,
+        )
+
+    mismatched = (h7_model > 0.0) != (h7_cad > 0.0)
+    return HandednessResult(
+        mismatched=mismatched,
+        has_handedness=True,
+        reason="handedness mismatch" if mismatched else "handedness matches",
+        h7_model=h7_model,
+        h7_cad=h7_cad,
+    )
+
+
 def _smoothed_line_histogram(
     directions_deg: np.ndarray, weights: np.ndarray, bin_count: int
 ) -> np.ndarray:
