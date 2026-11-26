@@ -49,6 +49,13 @@ from typing import Any
 
 import numpy as np
 
+from recon.corner_reanchoring import (
+    DEFAULT_MIN_CORNERS_PER_FRAME,
+    STATUS_CORRECTED,
+    FrameCornerReport,
+    lift_run_corners,
+    reanchor_frames_to_corners,
+)
 from recon.metric_alignment import (
     apply_similarity_transform,
     apply_similarity_transform_to_extrinsic,
@@ -877,9 +884,11 @@ def write_fusion_report(
     confidence_dropped_pixel_count: int,
     reanchor_reports: list[FrameReanchorReport],
     board_surface_before_reanchoring: BoardSurface,
+    corner_reanchoring: dict[str, Any],
+    plane_reanchoring: bool,
 ) -> dict[str, Any]:
     report = {
-        "story": ["R-07", "R-20", "R-21", "R-30"],
+        "story": ["R-07", "R-20", "R-21", "R-30", "R-44"],
         "source_run_dir": str(reconstruction_run_dir),
         "source_alignment_json": str(alignment_json_path),
         "units": "mm",
@@ -917,6 +926,12 @@ def write_fusion_report(
             }
             for r in reanchor_reports
         ],
+        # R-44: whether each photo was first moved onto its own ChArUco corners, and for every
+        # photo what that measured and did (or why it was skipped). `plane_reanchoring` says
+        # whether R-30's step above ran at all; it is false only in R-44's measurement arm
+        # that asks what R-30 still adds once the corner fit has run.
+        "corner_reanchoring": corner_reanchoring,
+        "plane_reanchoring": plane_reanchoring,
     }
     path = Path(path)
     path.write_text(
@@ -940,6 +955,10 @@ def fuse_run(
     min_kept_points: int = DEFAULT_MIN_KEPT_POINTS,
     vote_sample_points_mm: np.ndarray | None = None,
     vote_near_surface_mm: float = DEFAULT_NEAR_SURFACE_MM,
+    corner_reanchoring: bool = False,
+    board_pose_dir: Path | None = None,
+    min_corners_per_frame: int = DEFAULT_MIN_CORNERS_PER_FRAME,
+    plane_reanchoring: bool = True,
 ) -> dict[str, Any]:
     """Load R-01 depth/poses and an R-04 alignment, fuse, extract a mesh, and write the outputs.
 
@@ -965,7 +984,22 @@ def fuse_run(
     genuine ambiguity -- falling back to 0.0 would silently fuse pixels the cloud itself
     excluded -- so it is an explicit error rather than a silent default. Pass `min_confidence`
     explicitly to override it (e.g. to reproduce a pre-R-20 fusion for comparison).
+
+    R-44: `corner_reanchoring=True` first moves each photo rigidly onto its own ChArUco corners
+    (`recon.corner_reanchoring`), lifted from `board_pose_dir`'s `board_poses.npz` -- the folder
+    R-23's alignment read -- and then runs R-30's plane step on the result. It is off by default:
+    the story's gate (pose, error and coverage, measured on the ten calipered parts) and a team
+    decision come before it goes on in the served path. A photo that can't be corrected (R-38
+    rejected it, or it has fewer than `min_corners_per_frame` corners) keeps today's behaviour,
+    and `tsdf_fusion.json` says which and why. `plane_reanchoring=False` skips R-30's step; it
+    exists only for R-44's measurement of what R-30 still adds once the corner fit has run, and
+    nothing in the served path sets it.
     """
+    if corner_reanchoring and board_pose_dir is None:
+        raise ValueError(
+            "corner_reanchoring needs board_pose_dir: the corners each photo is fitted to come "
+            "from the board_poses.npz R-23's alignment read."
+        )
     reconstruction_run_dir = Path(reconstruction_run_dir)
     alignment_json_path = Path(alignment_json_path)
     out_dir = Path(out_dir)
@@ -1039,6 +1073,52 @@ def fuse_run(
     if rejected_frame_indices:
         valid_depth[sorted(rejected_frame_indices)] = False
 
+    # R-44: move each photo onto its own corners before R-30 measures the board, so R-30's
+    # consensus plane and per-photo tilt fit both see photos that already sit where their own
+    # corners say. The corners are lifted from the raw reconstruction, exactly as R-23 lifted
+    # them, then moved through the same global similarity as every other point here.
+    corner_frame_reports: list[FrameCornerReport] = []
+    if corner_reanchoring:
+        corner_source, corner_targets_mm, frame_of_corner = lift_run_corners(
+            reconstruction_run_dir,
+            Path(board_pose_dir),
+            frame_names,
+            extrinsic,
+            intrinsic,
+            depth,
+        )
+        corner_points_mm = apply_similarity_transform(
+            corner_source, scale, rotation, translation
+        )
+        # The footprint's centre on the board is where a part sits, so the shift reported there
+        # is "how far off the part was in this photo".
+        reference_point_mm = np.array(
+            [footprint_mm[0] / 2.0, footprint_mm[1] / 2.0, 0.0]
+        )
+        board_frame_points, board_extrinsic, corner_frame_reports = (
+            reanchor_frames_to_corners(
+                board_frame_points,
+                board_extrinsic,
+                corner_points_mm,
+                corner_targets_mm,
+                frame_of_corner,
+                reference_point_mm,
+                min_corners_per_frame=min_corners_per_frame,
+                skip_frame_indices=rejected_frame_indices,
+            )
+        )
+    corrected_corner_frame_count = sum(
+        1 for report in corner_frame_reports if report.status == STATUS_CORRECTED
+    )
+    corner_reanchoring_report: dict[str, Any] = {
+        "enabled": corner_reanchoring,
+        "board_pose_dir": str(board_pose_dir) if board_pose_dir is not None else None,
+        "min_corners_per_frame": min_corners_per_frame,
+        "corrected_frame_count": corrected_corner_frame_count,
+        "skipped_frame_count": len(corner_frame_reports) - corrected_corner_frame_count,
+        "frames": [report.as_report() for report in corner_frame_reports],
+    }
+
     flat_valid_depth = valid_depth.reshape(-1)
     board_surface_before_reanchoring = measure_board_surface(
         board_frame_points.reshape(-1, 3)[flat_valid_depth],
@@ -1054,14 +1134,18 @@ def fuse_run(
     # refuse to fit -- skip it explicitly instead of asking the fit to trust 0 points, and leave
     # its extrinsic at this global-alignment value rather than attempt a per-frame correction on
     # data already known to be bad.
-    board_frame_points, board_extrinsic, reanchor_reports = reanchor_frames_to_board(
-        board_frame_points,
-        board_extrinsic,
-        valid_depth,
-        board_surface_before_reanchoring,
-        footprint_mm,
-        skip_frame_indices=rejected_frame_indices,
-    )
+    reanchor_reports: list[FrameReanchorReport] = []
+    if plane_reanchoring:
+        board_frame_points, board_extrinsic, reanchor_reports = (
+            reanchor_frames_to_board(
+                board_frame_points,
+                board_extrinsic,
+                valid_depth,
+                board_surface_before_reanchoring,
+                footprint_mm,
+                skip_frame_indices=rejected_frame_indices,
+            )
+        )
 
     # Re-fit after correction: the target plane is the same by construction, but this is the
     # fit that now actually describes the (much tighter) corrected cloud, and is what
@@ -1194,6 +1278,8 @@ def fuse_run(
         confidence_dropped_pixel_count=confidence_dropped_pixel_count,
         reanchor_reports=reanchor_reports,
         board_surface_before_reanchoring=board_surface_before_reanchoring,
+        corner_reanchoring=corner_reanchoring_report,
+        plane_reanchoring=plane_reanchoring,
     )
 
 
@@ -1232,6 +1318,28 @@ def build_argument_parser() -> argparse.ArgumentParser:
             "(default: use whatever points.ply was already built with, D-045)"
         ),
     )
+    parser.add_argument(
+        "--corner-reanchoring",
+        action="store_true",
+        help=(
+            "R-44: move each photo onto its own ChArUco corners before R-30's plane step "
+            "(off by default until the story's gate and a team decision); needs --board-pose-dir"
+        ),
+    )
+    parser.add_argument(
+        "--board-pose-dir",
+        type=Path,
+        default=None,
+        help="the folder holding the board_poses.npz R-23's alignment read",
+    )
+    parser.add_argument(
+        "--min-corners-per-frame", type=int, default=DEFAULT_MIN_CORNERS_PER_FRAME
+    )
+    parser.add_argument(
+        "--no-plane-reanchoring",
+        action="store_true",
+        help="skip R-30's per-photo plane step (R-44's measurement only; never served)",
+    )
     return parser
 
 
@@ -1251,6 +1359,10 @@ def main(argv: list[str] | None = None) -> int:
             height_threshold_mm=args.height_threshold_mm,
             max_board_tilt_deg=args.max_board_tilt_deg,
             min_confidence=args.min_confidence,
+            corner_reanchoring=args.corner_reanchoring,
+            board_pose_dir=args.board_pose_dir,
+            min_corners_per_frame=args.min_corners_per_frame,
+            plane_reanchoring=not args.no_plane_reanchoring,
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         print(f"R-07 TSDF FUSION: FAIL - {exc}", file=sys.stderr)

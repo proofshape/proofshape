@@ -6,24 +6,61 @@
 
 import {
   anchorHeadingDeg,
-  computeArrowGuidance,
+  computeTargetGuidance,
   computeCoverage,
   DEFAULT_ORBIT,
+  guidanceLevel,
+  type GuidanceLevel,
   type OrbitSlot,
 } from "./orbit.js";
 import { requireElement } from "./dom.js";
 import type { Gyro } from "./types.js";
 
+// C-26: what the viewfinder needs to colour its frame (and C-27 to decide when to capture).
+// `gyro` is the live reading the level was computed from; null when no live reading exists yet.
+export interface GuidanceUpdate {
+  level: GuidanceLevel;
+  gyro: Gyro | null;
+}
+
+export interface GyroOverlayOptions {
+  onGuidance?: (update: GuidanceUpdate) => void;
+  // C-27: the on-target status line. The shell words it by whether auto-capture is on.
+  onTargetText?: () => string;
+}
+
 export interface GyroOverlayHandle {
   reportAcceptedFrame(gyro: Gyro): boolean;
+  // C-27 (#420 review): re-render from the last live reading, so text that depends on state the
+  // overlay can't see (onTargetText, read from the auto-capture switch) updates without waiting
+  // for the phone to move.
+  refresh(): void;
   dispose(): void;
 }
 
+// C-26: the arrow is an SVG shape, not a text glyph, so it can be sized and coloured (capture.css)
+// and stays crisp at any size. It still points "up" at rotate(0) and is turned by the same
+// transform as before. The completion banner (hidden until every slot is covered) sits in the
+// middle of the preview, so the end of the orbit can't be missed in the small top-left chip.
 const OVERLAY_HTML = `
   <div class="gyro-overlay">
-    <p class="gyro-overlay-status"></p>
-    <div class="gyro-overlay-arrow" aria-hidden="true">&#8593;</div>
-    <p class="gyro-overlay-count"></p>
+    <div class="gyro-overlay-chips">
+      <p class="gyro-overlay-status"></p>
+      <p class="gyro-overlay-count"></p>
+    </div>
+    <div class="gyro-overlay-arrow" aria-hidden="true">
+      <svg viewBox="0 0 100 100" focusable="false">
+        <path d="M50 6 L92 50 L64 50 L64 94 L36 94 L36 50 L8 50 Z" />
+      </svg>
+    </div>
+    <div class="gyro-overlay-complete" role="status" hidden>
+      <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+        <circle cx="24" cy="24" r="22" />
+        <path d="M13 25 L21 33 L35 17" />
+      </svg>
+      <p class="gyro-overlay-complete-title">Orbit complete</p>
+      <p class="gyro-overlay-complete-hint">The assistant will finish automatically if available. Tap Finish if it does not.</p>
+    </div>
   </div>
 `;
 
@@ -47,6 +84,7 @@ const activeDisposalsByContainer = new WeakMap<HTMLElement, () => void>();
 export function mountGyroOverlay(
   container: HTMLElement,
   orbit: readonly OrbitSlot[] = DEFAULT_ORBIT,
+  options: GyroOverlayOptions = {},
 ): GyroOverlayHandle {
   activeDisposalsByContainer.get(container)?.();
 
@@ -55,12 +93,25 @@ export function mountGyroOverlay(
   const status = requireElement(container, ".gyro-overlay-status");
   const arrow = requireElement(container, ".gyro-overlay-arrow");
   const count = requireElement(container, ".gyro-overlay-count");
+  const completeBanner = requireElement(container, ".gyro-overlay-complete");
 
   const acceptedReadings: Gyro[] = [];
   let latestLiveGyro: Gyro | null = null;
   count.textContent = formatCount(0, orbit.length);
-  status.textContent = "Capture the first frame to start.";
+  status.textContent = "Tap the shutter to take the first photo.";
   arrow.style.visibility = "hidden";
+
+  function emit(level: GuidanceLevel, gyro: Gyro | null): void {
+    options.onGuidance?.({ level, gyro });
+  }
+  emit("idle", null);
+
+  function showComplete(gyro: Gyro | null): void {
+    status.textContent = "Orbit complete.";
+    arrow.style.visibility = "hidden";
+    completeBanner.hidden = false;
+    emit("complete", gyro);
+  }
 
   function render(): void {
     const coverage = computeCoverage(acceptedReadings, orbit);
@@ -70,28 +121,28 @@ export function mountGyroOverlay(
   function updateArrow(liveGyro: Gyro): void {
     const coverage = computeCoverage(acceptedReadings, orbit);
     if (coverage.nextTargetIndex === null) {
-      status.textContent = "Orbit complete.";
-      arrow.style.visibility = "hidden";
+      showComplete(liveGyro);
       return;
     }
     const anchorDeg = anchorHeadingDeg(acceptedReadings);
     if (anchorDeg === null) {
       // No accepted frames yet -- nothing to anchor azimuth to, so no arrow guidance yet.
+      emit("idle", liveGyro);
       return;
     }
-    const target = orbit[coverage.nextTargetIndex];
-    if (!target) {
-      return;
-    }
-    const guidance = computeArrowGuidance(liveGyro, anchorDeg, target);
+    // computeTargetGuidance, not computeArrowGuidance: green only when coverage would credit
+    // this reading to the target (C-26 device check, 2026-11-20).
+    const guidance = computeTargetGuidance(liveGyro, anchorDeg, orbit, coverage.nextTargetIndex);
     if (guidance.onTarget) {
-      status.textContent = "On target.";
+      status.textContent = options.onTargetText?.() ?? "On target — take the photo.";
       arrow.style.visibility = "hidden";
+      emit("on-target", liveGyro);
       return;
     }
     status.textContent = "Move toward the next position.";
     arrow.style.visibility = "visible";
     arrow.style.transform = `rotate(${String(arrowRotationDeg(guidance.azimuthDeltaDeg, guidance.elevationDeltaDeg))}deg)`;
+    emit(guidanceLevel(guidance), liveGyro);
   }
 
   // A named reference, not an inline arrow function, specifically so it can be removed again --
@@ -109,7 +160,12 @@ export function mountGyroOverlay(
   }
   window.addEventListener("deviceorientation", handleOrientation);
 
+  // C-27 (#420): once disposed (Finish, or a remount that reused this container), refresh() must
+  // not redraw -- the guidance is stale with the camera off, and after a remount the DOM belongs to
+  // the new mount.
+  let disposed = false;
   function dispose(): void {
+    disposed = true;
     window.removeEventListener("deviceorientation", handleOrientation);
     activeDisposalsByContainer.delete(container);
   }
@@ -127,11 +183,17 @@ export function mountGyroOverlay(
       // the arrow reflects the new target immediately.
       if (latestLiveGyro) {
         updateArrow(latestLiveGyro);
+      } else if (computeCoverage(acceptedReadings, orbit).nextTargetIndex === null) {
+        // No live reading to judge position by, but a complete orbit is complete regardless.
+        showComplete(null);
       }
-      // A-15: the shell only needs repeated agent polling after the accepted frame completes the
-      // deterministic orbit. Returning that fact keeps the agent lifecycle tied to the same
-      // coverage calculation that renders "Orbit complete" instead of duplicating it in shell.ts.
+      // A-15: use the same coverage calculation for the shell's final-turn polling.
       return computeCoverage(acceptedReadings, orbit).nextTargetIndex === null;
+    },
+    refresh(): void {
+      if (!disposed && latestLiveGyro) {
+        updateArrow(latestLiveGyro);
+      }
     },
     dispose,
   };

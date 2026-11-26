@@ -365,3 +365,36 @@ def test_agent_message_finished_reflects_session_status_after_manual_finish(tmp_
         after = client.get(f"/v1/sessions/{sid}/agent-message")
         assert after.status_code == 200
         assert after.json()["finished"] is True
+
+def test_reconstruction_runs_when_final_agent_message_write_fails(tmp_path, monkeypatch):
+    app = _create(tmp_path)
+    original_update = app.state.store.update_agent_message
+
+    def fail_final_message(session_id, *, fallback_reason, message):
+        if app.state.store.load(session_id)["status"] == "finished":
+            raise OSError("synthetic final message write failure")
+        return original_update(
+            session_id, fallback_reason=fallback_reason, message=message
+        )
+
+    monkeypatch.setattr(app.state.store, "update_agent_message", fail_final_message)
+    orbit = [
+        *[
+            {"alpha": float(index * 45), "beta": 45.0, "gamma": 0.0}
+            for index in range(8)
+        ],
+        *[
+            {"alpha": float(index * 90), "beta": 20.0, "gamma": 0.0}
+            for index in range(4)
+        ],
+        {"alpha": 0.0, "beta": 0.0, "gamma": 0.0},
+    ]
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        for index, gyro in enumerate(orbit):
+            assert _upload_gyro(client, sid, index, gyro).status_code == 202
+        record = app.state.store.load(sid)
+        assert record["status"] == "finished"
+        assert record["reconstruction"]["status"] == "complete"
+        assert client.get(f"/v1/sessions/{sid}/agent-message").json()["finished"] is True

@@ -2985,3 +2985,51 @@ older local inputs reversed the 1.5 mm coverage trend. The story reports the sha
 as primary and gives the confidence, alignment RMS, and per-wall spread for context.
 **Concluded:** The screening evidence does not support changing the served grid.
 **Next:** Compare paired caliper edge error across mesh stages with the same physical walls.
+
+## 2026-11-21 — P-41 Done: what ten calipered parts read on `main`, a likely cause of the wall error, and the stories it calls for (PR #426, PR #427)
+
+**Who:** @TabeenRaoof. @dalwalyk ran the script a second time, and @dalwalyk and @mbj1994 reviewed.
+**What changed:**
+- **The measurement:** `main` at `607450a` on the ten printed parts with caliper readings, each against its own CAD, one capture per part. The write-up is `docs/accuracy-review-2026-11-20.md`.
+- **What a good part reads:** top-face vertices scatter 0.10 to 0.35 mm about their own median. Wall vertices read 0.1 to 2.1 mm inside the CAD, and single readings reach 5.6 mm. A good part first Passes at 3.7 to 6 mm with ambiguity set aside. Six of the ten are symmetric and flag ambiguous, as D-061 intends.
+- **A likely contributor to the wall error:** after R-23, a photo's own board corners land a median 2.2 mm from where the board says they are. R-30 corrects each photo's height and tilt, and leaves about 1.6 mm in the board plane.
+- **A scratch test, not repo code:** re-anchoring each photo to its own corners took the typical worst reading on a part from 4.3 to 1.9 mm, and seven parts Pass at 3.7 mm against three today. Three parts read worse. The test doesn't measure how much of the served pipeline's wall error comes from this cause.
+- **Surface that isn't the part reaches the CAD pose search:** on six parts, 12 to 44% of the Observed model is surface a few millimetres above the board. With the correction on, the G-05 control came out 180° off with no ambiguity flag.
+- **The script:** `scripts/measure_part_accuracy.py`, with 38 unit tests, reproduces the per-part table and the per-photo corner residuals.
+- **Stories:** R-44 (6 h) and I-15 (5 h) are claimed by @TabeenRaoof (#426). G-13 (5 h) is filed Blocked on both, and unclaimed.
+- **Corrections at review:**
+  - A deviation from a part's own CAD is not reconstruction accuracy. It also holds the print's own departure from nominal and the registration error.
+  - Every photo is accounted for: 284 photos are 281 measured, 1 skipped and 2 rejected.
+  - "Most of the wall error" became "a likely contributor".
+  - I-15's diagnosis was rewritten to follow `registration.py`.
+- **Found after the write-up, and not in it (2026-11-21):** the golden s-04 model is the mirror image of its CAD, and on `main` the CAD sits about 10° off s-05's own walls and about 15° off the hexagon's. Both are scratch results, posted as comments on #426 and #427. I-15 takes them up.
+- **How it merged:** the claim is #426 (`1b48c68`), and the write-up #427 (`7d28c8d`). #427's branch held #426's commits, so updating it from `main` after #426 merged dismissed both approvals. It merged on a fresh approval of an unchanged tree.
+
+**Command / how to reproduce:** section 8 of the write-up: `python scripts/measure_part_accuracy.py run`, then `report` and `corners`, on the captures in the committed manifests.
+**Result:** 1.8 h actual (no estimate made, D-052), measured from session timestamps. @dalwalyk's fresh run of s-04 and s-05 read the wall figure 0.13 and 0.12 mm away from the first run's.
+**Concluded:** The wall error has a contributor that the board's corners can correct, and so far only a scratch test says so. R-44 has to reproduce it in the repository, and its default waits on I-15. No code on the served path, no threshold and no decision changed.
+**Next:** I-15 first, then R-44. I-15's first commit restates how a pose is judged, with the two findings above. G-13 stays Blocked until both are Done.
+
+## 2026-11-24 — P-42 Done: the accuracy-testing stories, from a ten-part re-run of `main` (PR #444, PR #445)
+
+**Who:** @TabeenRaoof. @dalwalyk reviewed.
+**What changed:**
+- **The run:** after I-15 (#440) and R-44 (#442) merged, P-41's `scripts/measure_part_accuracy.py run` was re-run on the ten calipered parts with `main` at `70b2773`. It was compared with P-41's own committed-script run at `89d0de4`.
+- **Reconstruction:** every part's model was byte-identical, so R-44's correction, off by default, changes nothing.
+- **Poses:** eight of the ten are the same by I-15's `poses_are_same`. s-05 (5.50 mm) and `g05_00` (2.28 mm) moved, both exactly as I-15's criterion-4 record shows.
+- **Ambiguity flags:** unchanged on all ten.
+- **Deviations from each part's own CAD:** these include print and registration error. Wall readings mostly held. `g05_00` improved, 3.46 → 3.00 mm, and s-05 3.93 → 3.77 mm. `g05_02` got worse, 3.02 → 3.44 mm, with the same pose.
+- **Stories:**
+  - **G-15** (4 h, Ready): the calipered parts captured through the app on `main`, and again in a second room and light;
+  - **I-17** (4 h, Ready): trace `g05_02`'s wall change and s-05's pose, and fix only what can land before the Dec 4 code freeze.
+- **The index:** both stories sit in a new "Accuracy testing (P-42)" section of `stories/README.md`. There's no new lane letter: each story keeps its lane.
+- **Routed, not storied:** the expo hall (Sat Dec 5) goes into R-36's runbook in #371.
+- **Corrections at review:**
+  - G-15's command lacked `--out`, which `run` requires.
+  - The text said every figure came from camera-app photos, though P-41 measured three s-04 phone sessions. App-capture evidence so far covers s-04 only.
+- **How it merged:** the claim is #444 (`99c7a9f`) and the write-up #445 (`8006f17`). #445 was stacked on the claim, then retargeted to `main` and updated before its approval.
+
+**Command / how to reproduce:** P-41's `run_committed_script.sh`, pointed at `main`, with `PROOFSHAPE_RECON_DEVICE=mps` and `OMP_NUM_THREADS=1`. Then run `measure_part_accuracy.py report` on the ten output folders.
+**Result:** 1 h actual (est 1.5), owner-confirmed. The full suite on `70b2773` passed: 1798 passed, 7 skipped.
+**Concluded:** `main` after I-15 and R-44 reads the calipered parts as before, with two untraced changes. The app path, which the expo uses, has evidence on one part only. No code, threshold or decision changed.
+**Next:** someone claims G-15 and I-17. I-17 coordinates with I-16 (#441) on `registration.py`, as commented there. R-36's owner adds the expo hall to #371.

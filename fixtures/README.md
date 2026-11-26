@@ -42,6 +42,15 @@ BSD/macOS-native `shasum -a 256` — the documented local dev path is native App
 expected Drive fixture inventory. The per-image `SHA256SUMS.local` generated after download is
 intentionally local because the photographs themselves remain outside git.
 
+**No location in the photos (G-14).** The golden photos were taken with location on, so each
+carried an EXIF GPS block. Version 2 of the manifest is the same photos with that block emptied
+in place by `scripts/strip_capture_gps.py`: no other byte changes, so the frame counts and byte
+totals are the same. `content_sha256` moved, and so did each sample's `drive_folder_id`: the five
+folders were uploaded again on 2026-11-24, into the same root, and the old IDs no longer resolve.
+The pipeline reads the focal length and the orientation from EXIF (`recon/board_pose.py`), which
+is why only the GPS block goes. Run the script on any new capture before it's uploaded. The G-08
+and G-11 photos never had one.
+
 Reference CAD models for `s-04` and `s-05` are committed under `reference_cad/` (both already
 listed in the manifest's `reference_cad` block above). They are the explicit exception to the
 global `*.stl` ignore rule required by F-06; R-22 added `s-05`'s file to let its reconstructed

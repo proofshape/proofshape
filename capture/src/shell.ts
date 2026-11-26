@@ -10,6 +10,7 @@ import {
   setStatus,
   stopCameraStream,
   type CapturedFrame,
+  type StatusKind,
 } from "./camera.js";
 import {
   createSession,
@@ -51,6 +52,12 @@ import {
   type ModelViewerOptions,
   type ModelViewerState,
 } from "./model-viewer.js";
+import {
+  INITIAL_AUTO_CAPTURE_STATE,
+  stepAutoCapture,
+  type AutoCaptureState,
+} from "./auto_capture.js";
+import { DEFAULT_ORBIT } from "./orbit.js";
 import { mountGyroOverlay, type GyroOverlayHandle } from "./overlay.js";
 import type { Gyro, ReconstructionResult } from "./types.js";
 
@@ -104,6 +111,9 @@ export interface AppShellOptions {
   // Test/debug injection only. When omitted, blur-debug uses the browser's sessionStorage.
   // A null value deliberately represents unavailable storage so the warning path is testable.
   blurDebugStorage?: KeyValueStorage | null;
+  // C-27: the clock auto-capture's hold is timed against. Tests pass their own; the browser
+  // default is performance.now().
+  now?: () => number;
 }
 
 export const C25_BLUR_DEBUG_STORAGE_KEY = "proofshape.c25BlurDebug.v1";
@@ -163,19 +173,33 @@ export const APP_SHELL_HTML = `
     <p id="shell-session-status"></p>
     <p id="shell-camera-status"></p>
     <p id="shell-gyro-status"></p>
-    <video id="shell-camera-preview" muted playsinline autoplay style="width: 100%; max-width: 480px;"></video>
-    <button id="shell-capture-button" type="button" disabled>Capture frame</button>
+    <div id="shell-viewfinder" class="viewfinder" data-guidance="idle">
+      <video id="shell-camera-preview" muted playsinline autoplay></video>
+      <div id="shell-gyro-overlay"></div>
+      <button
+        id="shell-capture-button"
+        class="shutter"
+        type="button"
+        aria-label="Capture frame"
+        disabled
+      ><span class="visually-hidden">Capture frame</span></button>
+    </div>
+    <label class="auto-capture-toggle">
+      <input id="shell-auto-capture" type="checkbox" />
+      Take the photo automatically when on target
+    </label>
     <p id="shell-capture-status"></p>
     <p id="shell-blur-debug-status" hidden></p>
     <p id="shell-vlm-hint"></p>
-    <div id="shell-gyro-overlay"></div>
   </section>
   <section>
     <div id="shell-agent-conversation"></div>
   </section>
   <section>
     <h2>Finish and reconstruct (C-10)</h2>
-    <button id="shell-finish-button" type="button" disabled>Finish session</button>
+    <button id="shell-finish-button" class="primary-action" type="button" disabled>
+      Finish session
+    </button>
     <button id="shell-retry-reconstruction-button" type="button" hidden>
       Retry reconstruction
     </button>
@@ -220,6 +244,8 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   const gyroStatus = requireElement(root, "#shell-gyro-status");
   const cameraPreview = requireTyped(root, "#shell-camera-preview", HTMLVideoElement, "<video>");
   const captureButton = requireTyped(root, "#shell-capture-button", HTMLButtonElement, "<button>");
+  const viewfinder = requireElement(root, "#shell-viewfinder");
+  const autoCaptureToggle = requireTyped(root, "#shell-auto-capture", HTMLInputElement, "<input>");
   const captureStatus = requireElement(root, "#shell-capture-status");
   const blurDebugStatus = requireElement(root, "#shell-blur-debug-status");
   const vlmHint = requireElement(root, "#shell-vlm-hint");
@@ -274,12 +300,65 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
   // Scoped to this mount, same reasoning as gyro.ts's own `listening` flag.
   let listeningForGyro = false;
-  // C-09: mounted once here (so the shell shows "Capture the first frame to start." immediately),
+  // C-26: every overlay mount colours the viewfinder's frame by the overlay's guidance level
+  // (capture.css reads data-guidance: idle, far, near, on-target, complete).
+  //
+  // C-27: each update also steps auto-capture. stepAutoCapture only says "the phone has been on
+  // target and steady long enough"; whether a capture may start at all is the shutter's own
+  // enabled state (session, camera, gyro, no upload in flight, not finishing), checked here so
+  // the two paths can never disagree. Before the first photo the level is "idle", so the first
+  // frame is always a tap: it anchors the orbit's heading.
+  //
+  // The switch is off by default (the freeze exception on #436): until the person capturing turns
+  // it on, every photo is a tap, as before C-27.
+  const now = options.now ?? (() => performance.now());
+  let autoCaptureState: AutoCaptureState = INITIAL_AUTO_CAPTURE_STATE;
+  function mountOverlay(): GyroOverlayHandle {
+    autoCaptureState = INITIAL_AUTO_CAPTURE_STATE;
+    return mountGyroOverlay(gyroOverlayContainer, DEFAULT_ORBIT, {
+      onGuidance: (update) => {
+        viewfinder.dataset.guidance = update.level;
+        // #420 review (@dalwalyk): the overlay listens from page load, before the motion prompt,
+        // so its readings count only once the shell's own gyro listener runs (after the grant).
+        // On a first Start its listener runs before the shell's for the same event (the overlay
+        // mounts at the tap, the shell listens only after the grant), so the shutter's state is
+        // refreshed here; otherwise auto-capture would read the previous event's. After a retried
+        // Start the remounted overlay runs second, and this refresh is merely redundant.
+        if (listeningForGyro && update.gyro !== null) {
+          state.latestGyro = update.gyro;
+          updateCaptureAvailability();
+        }
+        const step = stepAutoCapture(autoCaptureState, {
+          nowMs: now(),
+          level: update.level,
+          gyro: update.gyro,
+          enabled: autoCaptureToggle.checked && !captureButton.disabled,
+        });
+        autoCaptureState = step.state;
+        if (step.fire) {
+          attemptCapture("auto");
+        }
+      },
+      onTargetText: () =>
+        autoCaptureToggle.checked ? "On target — hold steady…" : "On target — take the photo.",
+    });
+  }
+
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
+  function flashViewfinder(): void {
+    viewfinder.classList.add("viewfinder-flash");
+    if (flashTimer !== null) clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => {
+      viewfinder.classList.remove("viewfinder-flash");
+      flashTimer = null;
+    }, 150);
+  }
+  // C-09: mounted once here (so the shell shows the first-photo prompt immediately),
   // and remounted at the top of every Start click (below) -- overlay.ts's own comment already
   // anticipates this ("a second mount on the same container... can't leak the first mount's
   // listener"), so a retry after an abandoned session starts coverage tracking fresh rather than
   // carrying over slots covered under a session that never actually happened.
-  let gyroOverlayHandle: GyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
+  let gyroOverlayHandle: GyroOverlayHandle = mountOverlay();
   // C-09: the last frame that passed the *local* gate (frame_gate.ts's own "lastAccepted" naming
   // means "accepted by the gate," not "accepted by the server") -- separate from
   // state.lastCapturedFrame, which is just the most recent capture attempt, accepted or not.
@@ -301,6 +380,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // only if finishSession itself fails (so a retry is possible); left `true` forever once it
   // actually succeeds, since there's nothing left in this session to capture into or finish again.
   let sessionFinishing = false;
+  let finishedSessionId: string | null = null;
   // C-22: only the newest assistant request may update the panel. Accepted frames can trigger
   // overlapping optional guidance calls, so an older reply must never land after a newer one.
   let latestAgentRequestId = 0;
@@ -441,7 +521,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // locally accepted under an abandoned session (e.g. a bad order code, then retried) would
     // still anchor duplicate-detection and orbit coverage for the next, real session
     // (overlay.ts's own comment anticipates this exact remount).
-    gyroOverlayHandle = mountGyroOverlay(gyroOverlayContainer);
+    gyroOverlayHandle = mountOverlay();
     agentConversation.clear();
     lastAcceptedForGate = null;
     // C-24: replaying the accepted readings in order rebuilds coverage exactly, since the overlay
@@ -557,6 +637,9 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
               state.cameraPlaying = true;
               setStatus(cameraStatus, "Camera started.", "info");
               updateCaptureAvailability();
+              // C-26: bring the whole viewfinder (arrow and shutter included) into view, since
+              // the session controls above it can push it below the fold on a phone.
+              viewfinder.scrollIntoView({ block: "start", behavior: "smooth" });
             },
             (playError: unknown) => {
               if (state.cameraStream !== thisStream) {
@@ -648,14 +731,13 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   }
 
   function transitionToFinishedSession(sessionId: string, message: string): void {
-    if (state.sessionId !== sessionId) {
+    // Both manual Finish and the agent can discover the same completed session. Keep this
+    // guard even after the terminal result clears activeSession, and invalidate pending reads.
+    if (state.sessionId !== sessionId || finishedSessionId === sessionId) {
       return;
     }
-    const alreadyFinished =
-      activeSession !== null &&
-      activeSession.sessionId === sessionId &&
-      activeSession.phase === "finished";
-
+    finishedSessionId = sessionId;
+    latestAgentRequestId += 1;
     sessionFinishing = true;
     updateCaptureAvailability();
     updateFinishAvailability();
@@ -664,13 +746,20 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       persistActiveSession();
     }
     setStatus(finishStatus, message, "info");
-
-    if (alreadyFinished) {
-      return;
-    }
-    releaseCamera();
-    gyroOverlayHandle.dispose();
-    void runReconstructionPolling();
+    // A failure loading the reconstruction must not re-enable capture on a finished session.
+    void (async () => {
+      try {
+        releaseCamera();
+        gyroOverlayHandle.dispose();
+        await runReconstructionPolling();
+      } catch (error) {
+        setStatus(
+          reconstructionStatus,
+          `Could not load the reconstruction — ${describeNetworkError(error)}`,
+          "error",
+        );
+      }
+    })();
   }
 
   async function refreshAgentConversation(
@@ -740,19 +829,38 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     }
   }
 
-  captureButton.addEventListener("click", () => {
+  // C-27: one capture path for the shutter and for auto-capture. `trigger` only changes how the
+  // status line reads ("Auto: ..."), so a supplier can tell an automatic rejection from their own.
+  function attemptCapture(trigger: "manual" | "auto"): void {
+    const say = (message: string, kind: StatusKind): void => {
+      setStatus(captureStatus, trigger === "auto" ? `Auto: ${message}` : message, kind);
+    };
+    // #420 review (@dalwalyk): any photo that fails to upload (network, or the server rejects it)
+    // turns auto-capture off, automatic or tapped. Holding on target would otherwise send a new
+    // photo every retry gap for as long as the phone stays there. Local gate rejections still
+    // retry: the retry gap is for those. When the session is gone, neither a tap nor auto can
+    // help, so the message doesn't offer them.
+    const switchAutoOffAfterUploadFailure = (sessionGone: boolean): void => {
+      if (!autoCaptureToggle.checked) return;
+      autoCaptureToggle.checked = false;
+      const suffix = sessionGone
+        ? "Auto-capture is off now."
+        : "Auto-capture is off now — tap to retry, or turn it back on.";
+      captureStatus.textContent = `${captureStatus.textContent} ${suffix}`;
+      gyroOverlayHandle.refresh();
+    };
     // Layers of defense beyond the disabled attribute itself (fails loudly rather than silently
     // misbehaving if this handler is ever reached in a state the button shouldn't allow):
     if (sessionFinishing) {
-      setStatus(captureStatus, "Session is finishing -- cannot capture now.", "error");
+      say("Session is finishing -- cannot capture now.", "error");
       return;
     }
     if (state.latestGyro === null) {
-      setStatus(captureStatus, "No gyro reading yet -- try again in a moment.", "error");
+      say("No gyro reading yet -- try again in a moment.", "error");
       return;
     }
     if (state.sessionId === null) {
-      setStatus(captureStatus, "Start a session first.", "error");
+      say("Start a session first.", "error");
       return;
     }
     const sessionId = state.sessionId;
@@ -761,7 +869,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     try {
       captured = captureFrame(cameraPreview, state.latestGyro);
     } catch (error) {
-      setStatus(captureStatus, error instanceof Error ? error.message : String(error), "error");
+      say(error instanceof Error ? error.message : String(error), "error");
       return;
     }
     state.lastCapturedFrame = captured;
@@ -780,20 +888,12 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     try {
       const exposureResult = checkExposure(captured.pixels);
       if (!exposureResult.ok) {
-        setStatus(
-          captureStatus,
-          `Frame rejected (${exposureResult.code}) — ${exposureResult.message}`,
-          "error",
-        );
+        say(`Frame rejected (${exposureResult.code}) — ${exposureResult.message}`, "error");
         return;
       }
       const blurResult = checkBlur(captured.pixels);
       if (!blurResult.ok) {
-        setStatus(
-          captureStatus,
-          `Frame rejected (${blurResult.code}) — ${blurResult.message}`,
-          "error",
-        );
+        say(`Frame rejected (${blurResult.code}) — ${blurResult.message}`, "error");
         return;
       }
       // A real resolution change (e.g. the phone rotating -- iOS swaps videoWidth/videoHeight,
@@ -810,17 +910,16 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         ? { ok: true as const }
         : checkDuplicate(captured.pixels, captured.gyro, lastAcceptedForGate);
       if (!duplicateResult.ok) {
-        setStatus(
-          captureStatus,
-          `Frame rejected (${duplicateResult.code}) — ${duplicateResult.message}`,
-          "error",
-        );
+        say(`Frame rejected (${duplicateResult.code}) — ${duplicateResult.message}`, "error");
         return;
       }
     } catch (error) {
-      setStatus(captureStatus, error instanceof Error ? error.message : String(error), "error");
+      say(error instanceof Error ? error.message : String(error), "error");
       return;
     }
+
+    // C-27: a brief flash confirms a shot was taken, which matters most when nobody tapped.
+    flashViewfinder();
 
     // Accepted by the local gate -- anchors the next duplicate check, independent of whatever the
     // server goes on to say about this particular upload. Rolled back below if the upload itself
@@ -833,7 +932,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     uploadInFlight = true;
     updateCaptureAvailability();
     updateFinishAvailability();
-    setStatus(captureStatus, "Uploading…", "info");
+    say("Uploading…", "info");
     void (async () => {
       try {
         const jpeg = await encodeFrameAsJpeg(captured.pixels);
@@ -844,7 +943,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           captured.gyro,
           options.authToken,
         );
-        setStatus(captureStatus, describeUploadFrame(result), result.ok ? "info" : "error");
+        say(describeUploadFrame(result), result.ok ? "info" : "error");
         if (result.ok) {
           if (c25PreJpegVariance !== null) {
             const storedCount = appendC25BlurDebugMeasurement(blurDebugStorage, {
@@ -914,22 +1013,39 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
             forgetSession();
             state.sessionId = null;
             startButton.disabled = false;
-            setStatus(
-              captureStatus,
+            say(
               `${describeUploadFrame(result)} This session can't take more frames — start a new session.`,
               "error",
             );
+            switchAutoOffAfterUploadFailure(true);
+          } else {
+            switchAutoOffAfterUploadFailure(false);
           }
         }
       } catch (error) {
         lastAcceptedForGate = previousAcceptedForGate;
-        setStatus(captureStatus, `Could not upload frame — ${describeUploadError(error)}`, "error");
+        say(`Could not upload frame — ${describeUploadError(error)}`, "error");
+        switchAutoOffAfterUploadFailure(false);
       } finally {
         uploadInFlight = false;
         updateCaptureAvailability();
         updateFinishAvailability();
       }
     })();
+  }
+
+  captureButton.addEventListener("click", () => {
+    // #420 review (@dalwalyk): a tap restarts auto-capture's hold and its retry gap. Otherwise a
+    // tap the gate rejects could be followed by an automatic photo on the very next reading,
+    // overwriting the person's own rejection message.
+    autoCaptureState = { holdStartMs: null, holdStartGyro: null, lastAttemptMs: now() };
+    attemptCapture("manual");
+  });
+
+  // #420 review (@dalwalyk): the on-target line depends on the switch ("hold steady" or "take the
+  // photo"), so a change re-renders it at once instead of on the phone's next movement.
+  autoCaptureToggle.addEventListener("change", () => {
+    gyroOverlayHandle.refresh();
   });
 
   async function runReconstructionPolling(): Promise<void> {
@@ -982,13 +1098,11 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
   finishButton.addEventListener("click", () => {
     void (async () => {
-      if (state.sessionId === null) {
+      const sessionId = state.sessionId;
+      if (sessionId === null) {
         setStatus(finishStatus, "Start a session first.", "error");
         return;
       }
-      // Defense in depth beyond the disabled attribute itself, same pattern as the capture
-      // handler's own guards (TabeenRaoof's PR #139 review) -- an upload still in flight must
-      // not race finishSession.
       if (uploadInFlight) {
         setStatus(
           finishStatus,
@@ -997,72 +1111,47 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
         return;
       }
+      if (sessionFinishing) {
+        return;
+      }
 
-      // Set before finishSession is even awaited -- the window this closes is exactly the one
-      // between this click and that call resolving, during which Capture must not be startable
-      // (TabeenRaoof's second-pass review, the reverse of the uploadInFlight race above).
+      // Disable capture immediately, but allow the agent to recover a manual request that
+      // races an automatic finish. Both success paths use the same idempotent transition.
       sessionFinishing = true;
       updateCaptureAvailability();
       finishButton.disabled = true;
       setStatus(reconstructionStatus, "", "info");
-      let finished = false;
       try {
-        const sessionId = state.sessionId;
         const result = await finishSession(options.baseUrl, sessionId, options.authToken);
+        if (state.sessionId !== sessionId || finishedSessionId === sessionId) {
+          return;
+        }
         if (!result.ok && result.error.code === "session_already_finished") {
-          // A-15 backstop for the tap-in-the-gap race: the agent finished between the last
-          // accepted upload and this manual Finish. That is success from the phone's point of
-          // view, so recover into reconstruction polling instead of re-enabling Finish forever.
           transitionToFinishedSession(
             sessionId,
             "The service already finished this session. Loading reconstruction.",
           );
           return;
         }
-        setStatus(finishStatus, describeFinishSession(result), result.ok ? "info" : "error");
-        finished = result.ok;
+        if (result.ok) {
+          transitionToFinishedSession(sessionId, describeFinishSession(result));
+          return;
+        }
+        setStatus(finishStatus, describeFinishSession(result), "error");
       } catch (error) {
+        if (state.sessionId !== sessionId || finishedSessionId === sessionId) {
+          return;
+        }
         setStatus(
           finishStatus,
           `Could not finish session — ${describeNetworkError(error)}`,
           "error",
         );
       }
-      if (!finished) {
-        // Genuinely retryable -- finishSession itself failed, so this session is not finishing
-        // after all. Left `true` only on the success path below.
-        sessionFinishing = false;
-        updateFinishAvailability();
-        updateCaptureAvailability();
-        return;
-      }
-      // C-24: kept until a result has been shown, so a reload while reconstructing offers
-      // "Show result" instead of losing the session.
-      if (activeSession !== null) {
-        activeSession.phase = "finished";
-        persistActiveSession();
-      }
-      // Everything from here on runs only once finishSession has genuinely resolved ok:true, and
-      // outside the try above -- a failure past this point (e.g. the reconstruction poll, or the
-      // viewer it rebuilds) is not a "could not finish session" error, and mislabeling it as one
-      // also wrongly re-enabled Finish on an already-finished session (TabeenRaoof's PR #137
-      // review, item 9). Still inside its own try (TabeenRaoof's PR #139 review) -- moving this
-      // out of the first try fixed the mislabeling, but left failures here genuinely silent (a
-      // fire-and-forget void (async () => {...})() has nothing else to report them to).
-      try {
-        releaseCamera();
-        // The arrow's guidance is stale the moment the camera is off -- dispose rather than leave
-        // it saying "move to the next position" with nothing left to move to (TabeenRaoof's PR
-        // #139 review).
-        gyroOverlayHandle.dispose();
-        await runReconstructionPolling();
-      } catch (error) {
-        setStatus(
-          reconstructionStatus,
-          `Could not load the reconstruction — ${describeNetworkError(error)}`,
-          "error",
-        );
-      }
+      // A genuine manual Finish failure remains retryable. The agent may still be polling.
+      sessionFinishing = false;
+      updateFinishAvailability();
+      updateCaptureAvailability();
     })();
   });
 

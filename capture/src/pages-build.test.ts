@@ -36,6 +36,10 @@ describe("GitHub Pages production build", () => {
       ]);
 
       expect(captureHtml).toContain("/proofshape/assets/");
+      // C-26: the capture page ships its viewfinder stylesheet.
+      expect(captureHtml).toMatch(
+        /<link rel="stylesheet"[^>]*href="\/proofshape\/assets\/[^"]+\.css"/,
+      );
       expect(buyerHtml).toContain("/proofshape/assets/");
       expect(reportHtml).toContain("/proofshape/assets/");
       expect(createHash("sha256").update(boardBytes).digest("hex")).toBe(

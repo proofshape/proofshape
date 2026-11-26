@@ -13,10 +13,13 @@ One-command helpers. Each is runnable on its own; none is part of the shipped sy
 | `container_entrypoint.sh` | **The one exception to "not shipped":** the R-15 image's entrypoint. It fetches the model weights, then serves `recon.service`. |
 | `setup_completion_env.sh` | A-12: builds LaS-Comp's own Python 3.10 / torch 2.4 environment on a CUDA host (Colab or Lightning), at D-057's pins, and prints the `PROOFSHAPE_COMPLETION_RUNNER` line to use. Never touches the host's own torch. See `recon/README.md`, A-12. |
 | `lascomp_runner.py` | A-12: the real model behind A-04's completion contract. Runs inside that environment, launched by the service (or by hand on a prepared completion folder). Also `--check` (setup's last step) and `--ensure-encoder-entry`. |
+| `measure_r43_edges.py` | R-43: compares caliper edge errors across the saved R-32 raw clouds, fusion grids, and final Observed meshes. Reports fitted wall angles, signed error by edge, wall spread, and an optional component-filter diagnostic. |
 | `measure_wall_share.py` | R-33: classifies a served `mesh_provenance.glb`'s faces into part / board skin / volume boundary / wall by centroid, the same diagnostic #231 and #258 ran by hand, so it can be rerun after a pipeline change instead of redone by hand. The part's own x/y footprint and height cap default to being derived from `completion.isolate_part`; `--part-x-mm`/`--part-y-mm`/`--part-height-mm` override any of them. |
 | `measure_frame_vote_consensus.py` | R-33 criterion 2: samples wall and part points via `measure_wall_share`, then reruns `fuse_run` with those points as `vote_sample_points_mm` to compare how many frames vote each group "on the surface" versus merely in front of or behind one. |
 | `make_g05_defect_ladder.py` | G-05: writes the defect ladder's ten CAD files into `fixtures/reference_cad/`, or with `--check` exits 1 if a committed file differs. Standard library only; the design and why are in `stories/G/G-05.md`. |
 | `measure_part_accuracy.py` | P-41: `run` puts one capture through the service's own pipeline and measures it against a CAD, as the service does; `report` prints what each part reads (measured share, top-face and wall deviation, worst reading, stray surface, the tolerance at which v1's rule Passes); `corners` prints how far each photo's own board corners sit from their known positions. `run` needs the weights and a GPU; the other two read saved files. |
+| `build_expo_poster.js` | P-40: builds the expo poster (one 48 × 27 in slide, in the SFBU template's colours and layout) as a `.pptx` into `submissions/`, from the figures and `figure-facts.json` in `submissions/assets/expo/`. `--ids <file>` adds the members' student IDs for the print copy only; that file stays outside git, because the repository is public. |
+| `render_expo_figures.py` | P-40: renders the expo poster's 3D figures into `submissions/assets/expo/` from one real session's deviation mesh, provenance colours and board poses, and writes `figure-facts.json` (counts, coverage, image sizes and label positions). It refuses a mesh without provenance colours. Usage is in the header. |
 
 ## Node helpers
 
@@ -31,7 +34,7 @@ manifest switches on its `tsc`/eslint job — which then fails, because there is
 and no eslint config. Whoever starts C-01 needs to add both in the *same* pull request as the
 root manifest.
 
-`tests/test_generator_scripts.py` smoke-tests all three `build_*.js` scripts by running each one
+`tests/test_generator_scripts.py` smoke-tests the `build_*.js` scripts by running each one
 as a subprocess (the same pattern `tests/test_download_golden_capture.py` uses for its bash
 script) and checking it exits zero and writes a real, nonempty file (#201). It's a `pytest`
 test, not a separate CI job: `.github/workflows/python-ci.yml`'s `pytest` job now installs

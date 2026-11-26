@@ -420,6 +420,12 @@ def _classify_board_failure(
 CALIBRATED_BOARD_DIR_NAME = "board_pose_calibrated"
 BOARD_CALIBRATION_RECORD = "board_calibration.json"
 
+# R-44: whether fusion first moves each photo onto its own ChArUco corners. Off until the story's
+# gate (pose, error and coverage on the ten calipered parts, set before the measurement) is met
+# and both other members agree in a numbered decision. Turning it on is a reviewed change to this
+# line, not a configuration switch, so the served path can't change without that decision.
+CORNER_REANCHORING_ENABLED = False
+
 
 def _pose_board_with_session_intrinsics(
     capture_dir: Path,
@@ -567,7 +573,15 @@ def run_reconstruction_pipeline(
 
     started = time.perf_counter()
     try:
-        tsdf_fusion.fuse_run(reconstruction_dir, alignment_path, fusion_dir)
+        # board_dir is the folder load_and_align read above, so R-44's per-photo corners (when
+        # enabled) are the same corners the global alignment was solved from.
+        tsdf_fusion.fuse_run(
+            reconstruction_dir,
+            alignment_path,
+            fusion_dir,
+            corner_reanchoring=CORNER_REANCHORING_ENABLED,
+            board_pose_dir=board_dir,
+        )
     except (FileNotFoundError, ValueError) as exc:
         # R-20: fuse_run reads its confidence threshold from reconstruction_dir's own run.json
         # by default and raises rather than silently guessing one if it's missing or predates
@@ -734,14 +748,14 @@ def create_app(
             return lock
 
     def run_agent_after_upload(session_id: str) -> None:
+        scheduled_reconstructions: list[str] = []
         lock = agent_turn_lock(session_id)
-        with lock:
-            record = store.load(session_id)
-            if record is None or record.get("status") != "capturing":
-                return
-            scheduled_reconstructions: list[str] = []
-            caller = configured_agent_model_caller or missing_agent_model
-            try:
+        try:
+            with lock:
+                record = store.load(session_id)
+                if record is None or record.get("status") != "capturing":
+                    return
+                caller = configured_agent_model_caller or missing_agent_model
                 agent_result = run_agent_turn(
                     record,
                     store,
@@ -751,21 +765,17 @@ def create_app(
                     min_frames=MIN_FINISH_FRAMES,
                     timeout_s=configured_agent_timeout_s,
                 )
-            # Optional guidance must never turn an accepted upload into a 500.
-            except Exception:
-                logger.exception("Capture agent turn failed for session %s", session_id)
-                return
-
-            latest_record = store.update_agent_message(
-                session_id,
-                fallback_reason=agent_result.fallback_reason,
-                message=agent_result.message,
-            )
-            if latest_record is None:
-                return
-
-            # run_session is defined below in create_app; background tasks execute only after
-            # create_app has returned and all route-local functions exist.
+                store.update_agent_message(
+                    session_id,
+                    fallback_reason=agent_result.fallback_reason,
+                    message=agent_result.message,
+                )
+        except Exception:
+            # Optional guidance must not fail an accepted upload or strand a finished session.
+            logger.exception("Capture agent turn failed for session %s", session_id)
+        finally:
+            # The finish tool has already committed the session state. Even if message
+            # persistence fails, launch its scheduled reconstruction outside the agent lock.
             for scheduled_session_id in scheduled_reconstructions:
                 run_session(scheduled_session_id)
 
