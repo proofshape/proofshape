@@ -403,3 +403,37 @@ def test_reconstruction_runs_when_final_agent_message_write_fails(
         assert (
             client.get(f"/v1/sessions/{sid}/agent-message").json()["finished"] is True
         )
+
+
+def test_manual_reconstruction_preserves_guidance_written_during_pipeline(tmp_path):
+    def pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
+        sid = capture_dir.parent.name
+        # The reconstruction already loaded its input record. Emulate the later write
+        # from a model turn that was in flight when the supplier tapped Finish.
+        app.state.store.update_agent_message(
+            sid, fallback_reason=None, message="Latest guidance"
+        )
+        return _pipeline(capture_dir, artifact_dir)
+
+    app = service.create_app(
+        tmp_path,
+        pipeline_runner=pipeline,
+        known_order_codes={"PO-1"},
+        agent_model_caller=lambda _state: _reply(done=True, message="Earlier guidance"),
+        agent_timeout_s=1.0,
+    )
+    with TestClient(app) as client:
+        sid = _start(client)
+        for index in range(3):
+            assert _upload(client, sid, index).status_code == 202
+        before = client.get(f"/v1/sessions/{sid}/agent-message").json()
+        assert before["message"] == "Earlier guidance"
+
+        assert client.post(f"/v1/sessions/{sid}/finish").status_code == 202
+        after = client.get(f"/v1/sessions/{sid}/agent-message").json()
+        assert after["message"] == "Latest guidance"
+        assert after["finished"] is True
+        record = app.state.store.load(sid)
+        assert record["status"] == "finished"
+        assert record["frame_count"] == 3
+        assert record["reconstruction"]["status"] == "complete"

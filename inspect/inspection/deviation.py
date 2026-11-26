@@ -421,12 +421,9 @@ def publish_deviation_glb(
 
     `store` is a `recon.service.SessionStore` (imported lazily so this module doesn't pull in
     `recon.service`'s FastAPI/pydantic dependencies for callers who only want the computation).
-    Writes the new GLB beside the session's existing one, then updates
-    `record["reconstruction"]["glb_path"]` and calls `store.save(record)` -- reusing
-    `SessionStore`'s own existing atomicity (a temp `session.json`, then `.replace()`) rather
-    than inventing a second mechanism. Not called by the real pipeline yet: no session has a
-    per-order CAD to measure against until R-34 (order store) exists; this exists so whichever
-    story wires that up only has to call it.
+    Writes the new GLB beside the session's existing one, then updates only the GLB path
+    under the SessionStore mutation lock. A concurrent agent-message update must survive
+    the deviation computation, and a changed reconstruction must not be replaced.
     """
     record = store.load(session_id)
     if record is None:
@@ -446,6 +443,5 @@ def publish_deviation_glb(
         existing_glb_path, cad, cad_to_model_transform, board_surface, output_path
     )
 
-    record["reconstruction"]["glb_path"] = str(output_path)
-    store.save(record)
+    store.update_deviation_glb(session_id, reconstruction["glb_path"], str(output_path))
     return output_path

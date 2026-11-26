@@ -271,6 +271,41 @@ class SessionStore:
         with self._lock:
             self._write_record(record)
 
+    def update_reconstruction(
+        self, session_id: str, reconstruction: dict[str, Any]
+    ) -> None:
+        """Publish the terminal reconstruction without replacing concurrent session fields."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is not None:
+                record["reconstruction"] = reconstruction
+                self._write_record(record)
+
+    def update_ambiguity(self, session_id: str, ambiguity: dict[str, Any]) -> None:
+        """Publish measurement status without overwriting guidance or reconstruction."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is not None:
+                record["ambiguity"] = ambiguity
+                self._write_record(record)
+
+    def update_deviation_glb(
+        self, session_id: str, expected_path: str, output_path: str
+    ) -> None:
+        """Switch only the GLB path, preserving the latest record and reconstruction fields."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is None:
+                raise KeyError(session_id)
+            reconstruction = record.get("reconstruction", {})
+            if (
+                reconstruction.get("status") != "complete"
+                or reconstruction.get("glb_path") != expected_path
+            ):
+                raise ValueError("reconstruction changed before deviation publication")
+            reconstruction["glb_path"] = output_path
+            self._write_record(record)
+
     def update_agent_message(
         self,
         session_id: str,
@@ -1232,7 +1267,7 @@ def create_app(
                 raise FileNotFoundError(
                     f"pipeline reported {glb_path}, but no GLB exists there"
                 )
-            record["reconstruction"] = {
+            reconstruction = {
                 "status": "complete",
                 "reference_tier_used": result.get("reference_tier_used"),
                 "metric": result.get("metric"),
@@ -1243,24 +1278,24 @@ def create_app(
                 "glb_path": str(glb_path),
             }
         except ReconstructionFailure as exc:
-            record["reconstruction"] = {"status": "failed", "failure": exc.as_dict()}
+            reconstruction = {"status": "failed", "failure": exc.as_dict()}
         except Exception:  # terminal job boundary, logged below
             # Background reconstruction must never leave a persisted session at
             # status=pending. Unexpected numpy/cv2/model exceptions become a terminal
             # internal_error; the exception text is logged for the operator, not shown to
             # the supplier (#186).
             logger.exception("Reconstruction crashed for session %s", session_id)
-            record["reconstruction"] = {
+            reconstruction = {
                 "status": "failed",
                 "failure": {
                     "code": "internal_error",
                     "message": INTERNAL_ERROR_MESSAGE,
                 },
             }
-        # Join even when reconstruction fails. Results never enter session.json: workers
-        # cannot overwrite reconstruction state, nor can this stale record lose their work.
+        # Join even when reconstruction fails. Publish only the terminal result under the
+        # store lock: a guidance turn may have updated session.json during the pipeline.
         supervisor.join(session_dir, int(record["frame_count"]))
-        store.save(record)
+        store.update_reconstruction(session_id, reconstruction)
         run_post_reconstruction_measurement(session_id)
 
     def run_post_reconstruction_measurement(session_id: str) -> None:
@@ -1300,8 +1335,9 @@ def create_app(
                 # `ambiguity`) left get_verdict answering "measurement has not finished yet"
                 # forever, for a measurement that will now never run. Recorded as an error, the
                 # same as every other best-effort failure in this function.
-                record["ambiguity"] = {"error": "registration_or_deviation_failed"}
-                store.save(record)
+                store.update_ambiguity(
+                    session_id, {"error": "registration_or_deviation_failed"}
+                )
                 return
             cad_vertices, cad_faces, cad_units = load_mesh(cad_path)
             cad_mesh = (cad_vertices, cad_faces, cad_units)
@@ -1331,19 +1367,18 @@ def create_app(
             logger.exception(
                 "Post-reconstruction measurement failed for session %s", session_id
             )
-            record = store.load(session_id)
-            if record is not None:
-                record["ambiguity"] = {"error": "registration_or_deviation_failed"}
-                store.save(record)
+            store.update_ambiguity(
+                session_id, {"error": "registration_or_deviation_failed"}
+            )
             return
 
-        record = store.load(session_id)
-        if record is not None:
-            record["ambiguity"] = {
+        store.update_ambiguity(
+            session_id,
+            {
                 "orientation_ambiguous": ambiguity.orientation_ambiguous,
                 "reason_codes": list(ambiguity.reason_codes),
-            }
-            store.save(record)
+            },
+        )
 
     @app.post(
         "/v1/sessions/{session_id}/finish",

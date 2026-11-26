@@ -2346,6 +2346,89 @@ describe("mountAppShell", () => {
     expect(savedSessionInTab()?.sessionId).toBe(originalSessionId);
   });
 
+  it.each([true, false])(
+    "A-15: Continue recovers a completed orbit without a new photo (already finished: %s)",
+    async (alreadyFinished) => {
+      const { trackStopSpy } = stubGrantedCamera();
+      stubGyroPermission("granted");
+      const sessionId = "sess_reload_agent";
+      saveCaptureSession(browserSessionStorage(), {
+        sessionId,
+        orderCode: "PO-48213-A",
+        phase: "capturing",
+        acceptedFrameCount: DEFAULT_ORBIT.length,
+        acceptedGyro: DEFAULT_ORBIT.map((slot) => ({
+          alpha: slot.azimuthDeg,
+          beta: 90 - slot.elevationDeg,
+          gamma: 0,
+        })),
+      });
+      let agentCalls = 0;
+      let reconstructionCalls = 0;
+      let writeCalls = 0;
+      const realFetch = globalThis.fetch.bind(globalThis);
+      const jsonResponse = (body: unknown): Response =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          const url =
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (init?.method === "POST") {
+            writeCalls += 1;
+          }
+          if (url.endsWith(`/${sessionId}/agent-message`)) {
+            agentCalls += 1;
+            return Promise.resolve(
+              jsonResponse({
+                finished: alreadyFinished || agentCalls > 1,
+                fallback_reason: null,
+                message: "Finishing.",
+              }),
+            );
+          }
+          if (url.endsWith(`/${sessionId}/reconstruction`)) {
+            reconstructionCalls += 1;
+            return Promise.resolve(
+              jsonResponse({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+            );
+          }
+          return realFetch(input, init);
+        }),
+      );
+
+      const reloaded = mount({
+        agentTurnPollIntervalMs: 0,
+        agentTurnPollMaxAttempts: 3,
+        agentRecoveryPollMaxAttempts: 0,
+      });
+      resumeElements().continueButton.click();
+
+      await vi.waitFor(() => {
+        expect(reloaded.reconstructionStatus.textContent).toContain("Reconstruction complete");
+      });
+      expect(reloaded.state.sessionId).toBe(sessionId);
+      expect(coveredCountText()).toBe("Covered: 13/13");
+      expect(agentCalls).toBe(alreadyFinished ? 1 : 2);
+      expect(reconstructionCalls).toBe(1);
+      expect(writeCalls).toBe(0);
+      expect(trackStopSpy).toHaveBeenCalled();
+      expect(reloaded.captureButton.disabled).toBe(true);
+      expect(reloaded.finishButton.disabled).toBe(true);
+      expect(savedSessionInTab()).toBeNull();
+    },
+  );
+
   it("C-24: Start new drops the saved session", async () => {
     await startSuccessfulSession();
     mount();

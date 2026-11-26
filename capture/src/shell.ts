@@ -527,14 +527,16 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // C-24: replaying the accepted readings in order rebuilds coverage exactly, since the overlay
     // anchors on the first one. The duplicate gate's anchor (the last frame's pixels) isn't
     // saved, so the first frame after continuing is checked for blur and exposure only.
+    let restoredOrbitComplete = false;
     if (start.kind === "continue") {
       for (const reading of start.saved.acceptedGyro) {
-        gyroOverlayHandle.reportAcceptedFrame(reading);
+        restoredOrbitComplete = gyroOverlayHandle.reportAcceptedFrame(reading);
       }
     }
     // A previous session's finish (success or in-flight-then-abandoned) must not carry over and
     // leave Capture/Finish permanently disabled for this new attempt.
     sessionFinishing = false;
+    const agentRequestIdAtStart = ++latestAgentRequestId;
 
     // All three started synchronously, before awaiting any of them: getUserMedia and
     // requestPermission (inside requestCameraPermission/requestGyroPermission) must have no
@@ -678,6 +680,17 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       // if session creation itself failed (rejected or resolved ok:false), so the order code
       // can be fixed and retried.
       startButton.disabled = sessionOk;
+      // A-15: a reload may interrupt the final agent poll, or the service may already have
+      // finished the saved session. Recheck on Continue even without another upload. Wait
+      // until camera/gyro setup settles so an automatic finish cannot resurrect the preview.
+      if (
+        start.kind === "continue" &&
+        state.sessionId === start.saved.sessionId &&
+        finishedSessionId !== start.saved.sessionId &&
+        latestAgentRequestId === agentRequestIdAtStart
+      ) {
+        void refreshAgentConversation(start.saved.sessionId, restoredOrbitComplete);
+      }
     })();
   }
 
