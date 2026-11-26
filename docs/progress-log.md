@@ -3026,3 +3026,27 @@ before gdown reported public-link/access errors on s-03.
 **Result:** Approved `ea3ea6b` after verifying the required output option against the CLI and
 checking the wording for the ten-part camera-photo comparison, app evidence on s-04 and
 CAD deviation. The story-state checker, diff check and all GitHub CI checks passed.
+
+## 2026-11-24 — P-42 Done: the accuracy-testing stories, from a ten-part re-run of `main` (PR #444, PR #445)
+
+**Who:** @TabeenRaoof. @dalwalyk reviewed.
+**What changed:**
+- **The run:** after I-15 (#440) and R-44 (#442) merged, P-41's `scripts/measure_part_accuracy.py run` was re-run on the ten calipered parts with `main` at `70b2773`. It was compared with P-41's own committed-script run at `89d0de4`.
+- **Reconstruction:** every part's model was byte-identical, so R-44's correction, off by default, changes nothing.
+- **Poses:** eight of the ten are the same by I-15's `poses_are_same`. s-05 (5.50 mm) and `g05_00` (2.28 mm) moved, both exactly as I-15's criterion-4 record shows.
+- **Ambiguity flags:** unchanged on all ten.
+- **Deviations from each part's own CAD:** these include print and registration error. Wall readings mostly held. `g05_00` improved, 3.46 → 3.00 mm, and s-05 3.93 → 3.77 mm. `g05_02` got worse, 3.02 → 3.44 mm, with the same pose.
+- **Stories:**
+  - **G-15** (4 h, Ready): the calipered parts captured through the app on `main`, and again in a second room and light;
+  - **I-17** (4 h, Ready): trace `g05_02`'s wall change and s-05's pose, and fix only what can land before the Dec 4 code freeze.
+- **The index:** both stories sit in a new "Accuracy testing (P-42)" section of `stories/README.md`. There's no new lane letter: each story keeps its lane.
+- **Routed, not storied:** the expo hall (Sat Dec 5) goes into R-36's runbook in #371.
+- **Corrections at review:**
+  - G-15's command lacked `--out`, which `run` requires.
+  - The text said every figure came from camera-app photos, though P-41 measured three s-04 phone sessions. App-capture evidence so far covers s-04 only.
+- **How it merged:** the claim is #444 (`99c7a9f`) and the write-up #445 (`8006f17`). #445 was stacked on the claim, then retargeted to `main` and updated before its approval.
+
+**Command / how to reproduce:** P-41's `run_committed_script.sh`, pointed at `main`, with `PROOFSHAPE_RECON_DEVICE=mps` and `OMP_NUM_THREADS=1`. Then run `measure_part_accuracy.py report` on the ten output folders.
+**Result:** 1 h actual (est 1.5), owner-confirmed. The full suite on `70b2773` passed: 1798 passed, 7 skipped.
+**Concluded:** `main` after I-15 and R-44 reads the calipered parts as before, with two untraced changes. The app path, which the expo uses, has evidence on one part only. No code, threshold or decision changed.
+**Next:** someone claims G-15 and I-17. I-17 coordinates with I-16 (#441) on `registration.py`, as commented there. R-36's owner adds the expo hall to #371.
