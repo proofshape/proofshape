@@ -90,6 +90,16 @@ export interface AppShellOptions {
   initialOrderCode?: string;
   reconstructionPollIntervalMs?: number;
   reconstructionMaxAttempts?: number;
+  // A-15: after the accepted frame that completes the deterministic orbit, the agent turn still
+  // runs in the background. Poll its read-only result for a bounded window so the phone cannot
+  // miss an automatic finish that lands just after the upload response.
+  agentTurnPollIntervalMs?: number;
+  agentTurnPollMaxAttempts?: number;
+  // If the fast final-turn window expires (for example because earlier accepted uploads queued
+  // agent turns on the per-session lock), keep a slower bounded recovery tail alive. Tests can
+  // shorten both windows; production defaults cover the worst-case queued A-07 budgets.
+  agentRecoveryPollIntervalMs?: number;
+  agentRecoveryPollMaxAttempts?: number;
   modelViewerOptions?: ModelViewerOptions;
   // C-24: where an in-progress session is kept across a reload. Defaults to the tab's
   // sessionStorage; tests pass their own, and null turns resume off.
@@ -144,6 +154,10 @@ function appendC25BlurDebugMeasurement(
 
 const DEFAULT_RECONSTRUCTION_POLL_INTERVAL_MS = 2000;
 const DEFAULT_RECONSTRUCTION_MAX_ATTEMPTS = 300;
+const DEFAULT_AGENT_TURN_POLL_INTERVAL_MS = 500;
+const DEFAULT_AGENT_TURN_POLL_MAX_ATTEMPTS = 25;
+const DEFAULT_AGENT_RECOVERY_POLL_INTERVAL_MS = 2000;
+const DEFAULT_AGENT_RECOVERY_POLL_MAX_ATTEMPTS = 75;
 
 export const APP_SHELL_HTML = `
   <section>
@@ -366,6 +380,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
   // only if finishSession itself fails (so a retry is possible); left `true` forever once it
   // actually succeeds, since there's nothing left in this session to capture into or finish again.
   let sessionFinishing = false;
+  let finishedSessionId: string | null = null;
   // C-22: only the newest assistant request may update the panel. Accepted frames can trigger
   // overlapping optional guidance calls, so an older reply must never land after a newer one.
   let latestAgentRequestId = 0;
@@ -512,14 +527,16 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     // C-24: replaying the accepted readings in order rebuilds coverage exactly, since the overlay
     // anchors on the first one. The duplicate gate's anchor (the last frame's pixels) isn't
     // saved, so the first frame after continuing is checked for blur and exposure only.
+    let restoredOrbitComplete = false;
     if (start.kind === "continue") {
       for (const reading of start.saved.acceptedGyro) {
-        gyroOverlayHandle.reportAcceptedFrame(reading);
+        restoredOrbitComplete = gyroOverlayHandle.reportAcceptedFrame(reading);
       }
     }
     // A previous session's finish (success or in-flight-then-abandoned) must not carry over and
     // leave Capture/Finish permanently disabled for this new attempt.
     sessionFinishing = false;
+    const agentRequestIdAtStart = ++latestAgentRequestId;
 
     // All three started synchronously, before awaiting any of them: getUserMedia and
     // requestPermission (inside requestCameraPermission/requestGyroPermission) must have no
@@ -663,6 +680,17 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
       // if session creation itself failed (rejected or resolved ok:false), so the order code
       // can be fixed and retried.
       startButton.disabled = sessionOk;
+      // A-15: a reload may interrupt the final agent poll, or the service may already have
+      // finished the saved session. Recheck on Continue even without another upload. Wait
+      // until camera/gyro setup settles so an automatic finish cannot resurrect the preview.
+      if (
+        start.kind === "continue" &&
+        state.sessionId === start.saved.sessionId &&
+        finishedSessionId !== start.saved.sessionId &&
+        latestAgentRequestId === agentRequestIdAtStart
+      ) {
+        void refreshAgentConversation(start.saved.sessionId, restoredOrbitComplete);
+      }
     })();
   }
 
@@ -715,30 +743,102 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
     showResumePanel(savedSession);
   }
 
-  async function refreshAgentConversation(sessionId: string): Promise<void> {
+  function transitionToFinishedSession(sessionId: string, message: string): void {
+    // Both manual Finish and the agent can discover the same completed session. Keep this
+    // guard even after the terminal result clears activeSession, and invalidate pending reads.
+    if (state.sessionId !== sessionId || finishedSessionId === sessionId) {
+      return;
+    }
+    finishedSessionId = sessionId;
+    latestAgentRequestId += 1;
+    sessionFinishing = true;
+    updateCaptureAvailability();
+    updateFinishAvailability();
+    if (activeSession !== null && activeSession.sessionId === sessionId) {
+      activeSession.phase = "finished";
+      persistActiveSession();
+    }
+    setStatus(finishStatus, message, "info");
+    // A failure loading the reconstruction must not re-enable capture on a finished session.
+    void (async () => {
+      try {
+        releaseCamera();
+        gyroOverlayHandle.dispose();
+        await runReconstructionPolling();
+      } catch (error) {
+        setStatus(
+          reconstructionStatus,
+          `Could not load the reconstruction — ${describeNetworkError(error)}`,
+          "error",
+        );
+      }
+    })();
+  }
+
+  async function refreshAgentConversation(
+    sessionId: string,
+    waitForCurrentTurn = false,
+  ): Promise<void> {
     const requestId = ++latestAgentRequestId;
-    try {
-      const result = await getAgentMessage(options.baseUrl, sessionId, options.authToken);
-      if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
-        return;
+    const fastAttempts = waitForCurrentTurn
+      ? Math.max(1, options.agentTurnPollMaxAttempts ?? DEFAULT_AGENT_TURN_POLL_MAX_ATTEMPTS)
+      : 1;
+    const recoveryAttempts = waitForCurrentTurn
+      ? Math.max(
+          0,
+          options.agentRecoveryPollMaxAttempts ?? DEFAULT_AGENT_RECOVERY_POLL_MAX_ATTEMPTS,
+        )
+      : 0;
+    const fastIntervalMs = Math.max(
+      0,
+      options.agentTurnPollIntervalMs ?? DEFAULT_AGENT_TURN_POLL_INTERVAL_MS,
+    );
+    const recoveryIntervalMs = Math.max(
+      0,
+      options.agentRecoveryPollIntervalMs ?? DEFAULT_AGENT_RECOVERY_POLL_INTERVAL_MS,
+    );
+    const totalAttempts = fastAttempts + recoveryAttempts;
+
+    for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+      if (attempt > 0) {
+        const intervalMs = attempt < fastAttempts ? fastIntervalMs : recoveryIntervalMs;
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, intervalMs);
+        });
+        if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
+          return;
+        }
       }
-      if (!result.ok) {
-        // Today's real service has no agent route yet. Keep the panel hidden until a real 200 has
-        // existed; after one has existed, transportUnavailable changes only the status line.
+
+      try {
+        const result = await getAgentMessage(options.baseUrl, sessionId, options.authToken);
+        if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
+          return;
+        }
+        if (!result.ok) {
+          // A real 404 means this session is gone, not "the current background turn is late."
+          agentConversation.transportUnavailable();
+          return;
+        }
+        agentConversation.show(result.body);
+        // A-15 / v1.9: A-07 may finish only after coverage is complete. If this GET observes
+        // that state, move into the same lifecycle as a successful manual Finish.
+        if (result.body.finished) {
+          transitionToFinishedSession(sessionId, "Capture assistant finished the session.");
+          return;
+        }
+      } catch {
+        if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
+          return;
+        }
+        // A timeout/503/proxy blip after the final upload is retryable inside the bounded
+        // fast+recovery policy. For ordinary per-frame guidance (one attempt), preserve the old
+        // behavior and return immediately.
         agentConversation.transportUnavailable();
-        return;
+        if (!waitForCurrentTurn) {
+          return;
+        }
       }
-      // C-22 mirrors A-07's finished field for the future D-031 wire, but does not make that
-      // mock-only field drive session lifecycle yet. The real phone contract must define whether
-      // the service has already finished the session and how reconstruction should be resumed.
-      agentConversation.show(result.body);
-    } catch {
-      if (state.sessionId !== sessionId || requestId !== latestAgentRequestId) {
-        return;
-      }
-      // Transport failure is not an A-07 fallback reason. The view keeps that client-side state
-      // separate and leaves deterministic capture guidance usable.
-      agentConversation.transportUnavailable();
     }
   }
 
@@ -889,7 +989,7 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
           }
           // Only a real server acceptance marks orbit coverage -- a 422 shows the server's
           // reason but must not advance the arrow.
-          gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
+          const orbitComplete = gyroOverlayHandle.reportAcceptedFrame(captured.gyro);
           // C-24: saved after every accepted frame, so a reload at any point loses nothing the
           // server has. The count comes from the server's own frame_index.
           if (activeSession !== null && activeSession.sessionId === sessionId) {
@@ -905,15 +1005,24 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
             setStatus(vlmHint, describeVlmFeedback(feedback), "info");
           }
           // Guidance is optional and must never hold the capture/finish lock. Run it separately;
-          // getAgentMessage also bounds the request so a stalled route cannot linger forever.
-          void refreshAgentConversation(sessionId);
+          // getAgentMessage also bounds each request so a stalled route cannot linger forever.
+          // Once this accepted frame completes the orbit, keep checking for the bounded duration
+          // of the background A-07 turn; this closes the real-phone race where the one immediate
+          // GET arrived before the agent persisted finished=true and the phone then waited forever.
+          void refreshAgentConversation(sessionId, orbitComplete);
         } else {
           lastAcceptedForGate = previousAcceptedForGate;
-          // C-24: a continued session can turn out to be over -- finished from this tab before
-          // the reload, or gone because the service lost its data. Retrying can't help, so drop
-          // the saved copy and let Start make a new session.
           const code = result.error.code;
-          if (code === "session_not_found" || code === "session_already_finished") {
+          if (code === "session_already_finished") {
+            // A-15 backstop: the background agent may have finished after the previous upload
+            // while its GET was delayed or lost. Do not discard a reconstruction that is already
+            // running; recover by moving straight to reconstruction polling.
+            transitionToFinishedSession(
+              sessionId,
+              "The service already finished this session. Loading reconstruction.",
+            );
+          } else if (code === "session_not_found") {
+            // C-24: the service genuinely no longer knows this session, so retrying cannot help.
             forgetSession();
             state.sessionId = null;
             startButton.disabled = false;
@@ -1002,13 +1111,11 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
 
   finishButton.addEventListener("click", () => {
     void (async () => {
-      if (state.sessionId === null) {
+      const sessionId = state.sessionId;
+      if (sessionId === null) {
         setStatus(finishStatus, "Start a session first.", "error");
         return;
       }
-      // Defense in depth beyond the disabled attribute itself, same pattern as the capture
-      // handler's own guards (TabeenRaoof's PR #139 review) -- an upload still in flight must
-      // not race finishSession.
       if (uploadInFlight) {
         setStatus(
           finishStatus,
@@ -1017,61 +1124,47 @@ export function mountAppShell(root: HTMLElement, options: AppShellOptions): AppS
         );
         return;
       }
+      if (sessionFinishing) {
+        return;
+      }
 
-      // Set before finishSession is even awaited -- the window this closes is exactly the one
-      // between this click and that call resolving, during which Capture must not be startable
-      // (TabeenRaoof's second-pass review, the reverse of the uploadInFlight race above).
+      // Disable capture immediately, but allow the agent to recover a manual request that
+      // races an automatic finish. Both success paths use the same idempotent transition.
       sessionFinishing = true;
       updateCaptureAvailability();
       finishButton.disabled = true;
       setStatus(reconstructionStatus, "", "info");
-      let finished = false;
       try {
-        const result = await finishSession(options.baseUrl, state.sessionId, options.authToken);
-        setStatus(finishStatus, describeFinishSession(result), result.ok ? "info" : "error");
-        finished = result.ok;
+        const result = await finishSession(options.baseUrl, sessionId, options.authToken);
+        if (state.sessionId !== sessionId || finishedSessionId === sessionId) {
+          return;
+        }
+        if (!result.ok && result.error.code === "session_already_finished") {
+          transitionToFinishedSession(
+            sessionId,
+            "The service already finished this session. Loading reconstruction.",
+          );
+          return;
+        }
+        if (result.ok) {
+          transitionToFinishedSession(sessionId, describeFinishSession(result));
+          return;
+        }
+        setStatus(finishStatus, describeFinishSession(result), "error");
       } catch (error) {
+        if (state.sessionId !== sessionId || finishedSessionId === sessionId) {
+          return;
+        }
         setStatus(
           finishStatus,
           `Could not finish session — ${describeNetworkError(error)}`,
           "error",
         );
       }
-      if (!finished) {
-        // Genuinely retryable -- finishSession itself failed, so this session is not finishing
-        // after all. Left `true` only on the success path below.
-        sessionFinishing = false;
-        updateFinishAvailability();
-        updateCaptureAvailability();
-        return;
-      }
-      // C-24: kept until a result has been shown, so a reload while reconstructing offers
-      // "Show result" instead of losing the session.
-      if (activeSession !== null) {
-        activeSession.phase = "finished";
-        persistActiveSession();
-      }
-      // Everything from here on runs only once finishSession has genuinely resolved ok:true, and
-      // outside the try above -- a failure past this point (e.g. the reconstruction poll, or the
-      // viewer it rebuilds) is not a "could not finish session" error, and mislabeling it as one
-      // also wrongly re-enabled Finish on an already-finished session (TabeenRaoof's PR #137
-      // review, item 9). Still inside its own try (TabeenRaoof's PR #139 review) -- moving this
-      // out of the first try fixed the mislabeling, but left failures here genuinely silent (a
-      // fire-and-forget void (async () => {...})() has nothing else to report them to).
-      try {
-        releaseCamera();
-        // The arrow's guidance is stale the moment the camera is off -- dispose rather than leave
-        // it saying "move to the next position" with nothing left to move to (TabeenRaoof's PR
-        // #139 review).
-        gyroOverlayHandle.dispose();
-        await runReconstructionPolling();
-      } catch (error) {
-        setStatus(
-          reconstructionStatus,
-          `Could not load the reconstruction — ${describeNetworkError(error)}`,
-          "error",
-        );
-      }
+      // A genuine manual Finish failure remains retryable. The agent may still be polling.
+      sessionFinishing = false;
+      updateFinishAvailability();
+      updateCaptureAvailability();
     })();
   });
 

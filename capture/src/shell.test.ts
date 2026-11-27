@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
 import { measureBlurVariance } from "./frame_gate.js";
+import { DEFAULT_ORBIT } from "./orbit.js";
 import {
   browserSessionStorage,
   CAPTURE_SESSION_STORAGE_KEY,
@@ -1651,6 +1652,468 @@ describe("mountAppShell", () => {
     });
   });
 
+  it("moves into reconstruction polling when the agent reports the session finished", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/agent-message")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished: true,
+                fallback_reason: null,
+                message: "Coverage complete.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("finish transition not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
+  it("keeps a recovery tail after the fast final-turn window expires for queued agent work", async () => {
+    const mounted = await startSuccessfulSession({
+      agentTurnPollIntervalMs: 0,
+      agentTurnPollMaxAttempts: 2,
+      agentRecoveryPollIntervalMs: 0,
+      agentRecoveryPollMaxAttempts: 3,
+    });
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    let acceptedUploads = 0;
+    let agentCalls = 0;
+    let finalTurnPolls = 0;
+    let reconstructionCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          acceptedUploads += 1;
+          return realFetch(input, init);
+        }
+        if (url.includes("/agent-message")) {
+          agentCalls += 1;
+          const onFinalTurn = acceptedUploads >= DEFAULT_ORBIT.length;
+          if (onFinalTurn) {
+            finalTurnPolls += 1;
+          }
+          // The first two final-turn reads exhaust the fast window. The answer arrives only on
+          // the second recovery-tail read, representing earlier per-session work ahead in queue.
+          const finished = onFinalTurn && finalTurnPolls >= 4;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished,
+                fallback_reason: null,
+                message: finished
+                  ? "All coverage slots are complete. Finishing the session."
+                  : "Continue to the next guided view.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          reconstructionCalls += 1;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    for (let index = 0; index < DEFAULT_ORBIT.length; index += 1) {
+      const slot = DEFAULT_ORBIT[index];
+      if (slot === undefined) throw new Error("test setup: orbit slot missing");
+      dispatchOrientation(slot.azimuthDeg, 90 - slot.elevationDeg, 0);
+      await vi.waitFor(() => {
+        if (mounted.captureButton.disabled) throw new Error("still disabled");
+      });
+      await captureAndWaitForStatus(mounted, new RegExp(`frame ${String(index)}`, "i"));
+      if (index < DEFAULT_ORBIT.length - 1) {
+        await vi.waitFor(() => {
+          if (agentCalls < index + 1) throw new Error("agent GET not observed yet");
+        });
+      }
+    }
+
+    await vi.waitFor(() => {
+      if (finalTurnPolls < 4) throw new Error("recovery-tail polling not observed");
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("automatic finish transition not observed");
+      }
+      if (reconstructionCalls === 0) throw new Error("reconstruction polling not started");
+    });
+
+    expect(agentCalls).toBeGreaterThan(DEFAULT_ORBIT.length);
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
+    // A terminal reconstruction clears C-24's saved-session recovery record. Reaching this state
+    // without a Finish tap proves the delayed agent poll drove the full lifecycle.
+    expect(savedSessionInTab()).toBeNull();
+  });
+
+  it("retries a transient final-turn GET failure and still enters reconstruction automatically", async () => {
+    const mounted = await startSuccessfulSession({
+      agentTurnPollIntervalMs: 0,
+      agentTurnPollMaxAttempts: 2,
+      agentRecoveryPollIntervalMs: 0,
+      agentRecoveryPollMaxAttempts: 2,
+    });
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    let acceptedUploads = 0;
+    let finalTurnPolls = 0;
+    let reconstructionCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          acceptedUploads += 1;
+          return realFetch(input, init);
+        }
+        if (url.includes("/agent-message")) {
+          const onFinalTurn = acceptedUploads >= DEFAULT_ORBIT.length;
+          if (!onFinalTurn) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  finished: false,
+                  fallback_reason: null,
+                  message: "Continue to the next guided view.",
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+              ),
+            );
+          }
+          finalTurnPolls += 1;
+          if (finalTurnPolls === 1) {
+            return Promise.reject(new TypeError("synthetic transient network failure"));
+          }
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished: true,
+                fallback_reason: null,
+                message: "All coverage slots are complete. Finishing the session.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          reconstructionCalls += 1;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    for (let index = 0; index < DEFAULT_ORBIT.length; index += 1) {
+      const slot = DEFAULT_ORBIT[index];
+      if (slot === undefined) throw new Error("test setup: orbit slot missing");
+      dispatchOrientation(slot.azimuthDeg, 90 - slot.elevationDeg, 0);
+      await vi.waitFor(() => {
+        if (mounted.captureButton.disabled) throw new Error("still disabled");
+      });
+      await captureAndWaitForStatus(mounted, new RegExp(`frame ${String(index)}`, "i"));
+    }
+
+    await vi.waitFor(() => {
+      if (finalTurnPolls < 2) throw new Error("transient retry not observed");
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("automatic finish transition not observed");
+      }
+      if (reconstructionCalls === 0) throw new Error("reconstruction polling not started");
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
+    expect(savedSessionInTab()).toBeNull();
+  });
+
+  it.each([true, false])(
+    "starts one reconstruction poller when manual and agent Finish race (agent first: %s)",
+    async (agentFirst) => {
+      const mounted = await startSuccessfulSession({
+        agentTurnPollIntervalMs: 0,
+        agentTurnPollMaxAttempts: 3,
+      });
+      stubCanvasContext();
+      setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+      const realFetch = globalThis.fetch.bind(globalThis);
+      let acceptedUploads = 0;
+      let reconstructionCalls = 0;
+      const finalAgentResolvers: Array<(response: Response) => void> = [];
+      const finishResolvers: Array<(response: Response) => void> = [];
+      const jsonResponse = (body: unknown, status = 200): Response =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { "content-type": "application/json" },
+        });
+      const finishedMessage = () =>
+        jsonResponse({ finished: true, fallback_reason: null, message: "Finishing." });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          const url =
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (url.includes("/frames")) {
+            acceptedUploads += 1;
+            return realFetch(input, init);
+          }
+          if (url.includes("/agent-message")) {
+            if (acceptedUploads >= DEFAULT_ORBIT.length) {
+              return new Promise<Response>((resolve) => {
+                finalAgentResolvers.push(resolve);
+              });
+            }
+            return Promise.resolve(
+              jsonResponse({ finished: false, fallback_reason: null, message: "Continue." }),
+            );
+          }
+          if (url.endsWith("/finish")) {
+            return new Promise<Response>((resolve) => {
+              finishResolvers.push(resolve);
+            });
+          }
+          if (url.includes("/reconstruction")) {
+            reconstructionCalls += 1;
+            return Promise.resolve(
+              jsonResponse({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+            );
+          }
+          return realFetch(input, init);
+        }),
+      );
+
+      for (let index = 0; index < DEFAULT_ORBIT.length; index += 1) {
+        const slot = DEFAULT_ORBIT[index];
+        if (slot === undefined) throw new Error("test setup: orbit slot missing");
+        dispatchOrientation(slot.azimuthDeg, 90 - slot.elevationDeg, 0);
+        await vi.waitFor(() => {
+          if (mounted.captureButton.disabled) throw new Error("still disabled");
+        });
+        await captureAndWaitForStatus(mounted, new RegExp(`frame ${String(index)}`, "i"));
+      }
+      await vi.waitFor(() => {
+        expect(finalAgentResolvers.length).toBe(1);
+        expect(mounted.finishButton.disabled).toBe(false);
+      });
+      mounted.finishButton.click();
+      await vi.waitFor(() => {
+        expect(finishResolvers.length).toBe(1);
+      });
+
+      const resolveAgent = finalAgentResolvers[0];
+      const resolveFinish = finishResolvers[0];
+      if (!resolveAgent || !resolveFinish) throw new Error("missing request resolver");
+      const manualResponse = () =>
+        jsonResponse(
+          { session_id: mounted.state.sessionId, order_code: "PO-1", status: "finished" },
+          202,
+        );
+      if (agentFirst) {
+        resolveAgent(finishedMessage());
+      } else {
+        resolveFinish(manualResponse());
+      }
+      await vi.waitFor(() => {
+        expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
+      });
+      const firstStatus = mounted.finishStatus.textContent;
+      if (agentFirst) {
+        resolveFinish(manualResponse());
+      } else {
+        resolveAgent(finishedMessage());
+      }
+      // Let the losing request settle after the terminal result has cleared activeSession.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20);
+      });
+      expect(reconstructionCalls).toBe(1);
+      expect(mounted.finishStatus.textContent).toBe(firstStatus);
+      expect(mounted.finishButton.disabled).toBe(true);
+      expect(savedSessionInTab()).toBeNull();
+    },
+  );
+
+  it("recovers an upload session_already_finished response instead of forgetting the session", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                code: "session_already_finished",
+                message: "The session is already finished.",
+              }),
+              { status: 422, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("already finished")) {
+        throw new Error("recovery transition not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.state.sessionId).not.toBeNull();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
+  it("recovers a manual Finish race when the agent already finished the session", async () => {
+    const mounted = await startSuccessfulSession();
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.endsWith("/finish")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                code: "session_already_finished",
+                message: "The session is already finished.",
+              }),
+              { status: 409, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("already finished")) {
+        throw new Error("finish race recovery not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
   it("keeps the assistant panel hidden when today's real-style service has no agent route", async () => {
     const mounted = await startSuccessfulSession();
     stubCanvasContext();
@@ -1882,6 +2345,89 @@ describe("mountAppShell", () => {
     expect(savedSessionInTab()?.acceptedFrameCount).toBe(2);
     expect(savedSessionInTab()?.sessionId).toBe(originalSessionId);
   });
+
+  it.each([true, false])(
+    "A-15: Continue recovers a completed orbit without a new photo (already finished: %s)",
+    async (alreadyFinished) => {
+      const { trackStopSpy } = stubGrantedCamera();
+      stubGyroPermission("granted");
+      const sessionId = "sess_reload_agent";
+      saveCaptureSession(browserSessionStorage(), {
+        sessionId,
+        orderCode: "PO-48213-A",
+        phase: "capturing",
+        acceptedFrameCount: DEFAULT_ORBIT.length,
+        acceptedGyro: DEFAULT_ORBIT.map((slot) => ({
+          alpha: slot.azimuthDeg,
+          beta: 90 - slot.elevationDeg,
+          gamma: 0,
+        })),
+      });
+      let agentCalls = 0;
+      let reconstructionCalls = 0;
+      let writeCalls = 0;
+      const realFetch = globalThis.fetch.bind(globalThis);
+      const jsonResponse = (body: unknown): Response =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          const url =
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (init?.method === "POST") {
+            writeCalls += 1;
+          }
+          if (url.endsWith(`/${sessionId}/agent-message`)) {
+            agentCalls += 1;
+            return Promise.resolve(
+              jsonResponse({
+                finished: alreadyFinished || agentCalls > 1,
+                fallback_reason: null,
+                message: "Finishing.",
+              }),
+            );
+          }
+          if (url.endsWith(`/${sessionId}/reconstruction`)) {
+            reconstructionCalls += 1;
+            return Promise.resolve(
+              jsonResponse({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+            );
+          }
+          return realFetch(input, init);
+        }),
+      );
+
+      const reloaded = mount({
+        agentTurnPollIntervalMs: 0,
+        agentTurnPollMaxAttempts: 3,
+        agentRecoveryPollMaxAttempts: 0,
+      });
+      resumeElements().continueButton.click();
+
+      await vi.waitFor(() => {
+        expect(reloaded.reconstructionStatus.textContent).toContain("Reconstruction complete");
+      });
+      expect(reloaded.state.sessionId).toBe(sessionId);
+      expect(coveredCountText()).toBe("Covered: 13/13");
+      expect(agentCalls).toBe(alreadyFinished ? 1 : 2);
+      expect(reconstructionCalls).toBe(1);
+      expect(writeCalls).toBe(0);
+      expect(trackStopSpy).toHaveBeenCalled();
+      expect(reloaded.captureButton.disabled).toBe(true);
+      expect(reloaded.finishButton.disabled).toBe(true);
+      expect(savedSessionInTab()).toBeNull();
+    },
+  );
 
   it("C-24: Start new drops the saved session", async () => {
     await startSuccessfulSession();

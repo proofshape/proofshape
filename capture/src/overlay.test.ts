@@ -180,11 +180,12 @@ describe("mountGyroOverlay", () => {
     expect(updates.length).toBe(before);
   });
 
-  it("shows an orbit-complete status once every slot is covered", () => {
+  it("shows an orbit-complete status and reports completion once every slot is covered", () => {
     const { container } = mount();
     const handle = mountOverlay(container);
+    let complete = false;
     for (const slot of DEFAULT_ORBIT) {
-      handle.reportAcceptedFrame({
+      complete = handle.reportAcceptedFrame({
         alpha: slot.azimuthDeg,
         beta: elevationToBeta(slot.elevationDeg),
         gamma: 0,
@@ -193,6 +194,7 @@ describe("mountGyroOverlay", () => {
 
     dispatchOrientation(0, elevationToBeta(45), 0);
 
+    expect(complete).toBe(true);
     expect(text(container, ".gyro-overlay-status")).toMatch(/orbit complete/i);
   });
 

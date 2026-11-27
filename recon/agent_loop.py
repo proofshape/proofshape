@@ -201,6 +201,20 @@ def describe_action_for_supplier(action: Action) -> str:
     raise TypeError(f"unhandled action: {action!r}")  # exhaustive by construction
 
 
+def _automatic_finish_allowed(record: dict[str, Any], session_dir: Any) -> bool:
+    """A-15: automatic/model-driven Finish requires the deterministic orbit to be complete.
+
+    Manual Finish keeps its existing contract in agent_tools.finish_session. This guard belongs
+    only to the agent loop so a model cannot bypass the story's coverage requirement merely
+    because the shared manual tool's minimum-frame gate is satisfied.
+    """
+    report = coverage_report(session_dir, record)
+    if not report.available or report.data is None:
+        return False
+    orbit = report.data.get("orbit_coverage")
+    return isinstance(orbit, dict) and orbit.get("next_target_index") is None
+
+
 def run_agent_turn(
     record: dict[str, Any],
     store: Any,
@@ -241,12 +255,17 @@ def run_agent_turn(
         message = describe_action_for_supplier(action)
         finished = False
         if isinstance(action, Finish):
-            result = finish_session(
-                store, session_id, schedule_reconstruction, min_frames=min_frames
-            )
-            finished = result.ok
-            if not result.ok:
-                message = result.error_message or message
+            if not _automatic_finish_allowed(record, session_dir):
+                message = (
+                    "Keep going -- more of the part still needs to be photographed."
+                )
+            else:
+                result = finish_session(
+                    store, session_id, schedule_reconstruction, min_frames=min_frames
+                )
+                finished = result.ok
+                if not result.ok:
+                    message = result.error_message or message
         return AgentLoopResult(
             finished=finished,
             fallback_reason=reason,
@@ -282,6 +301,13 @@ def run_agent_turn(
             history.append(LoopStep(tool=decision.tool, message=decision.message))
 
             if decision.tool == "finish_session":
+                if not _automatic_finish_allowed(record, session_dir):
+                    return AgentLoopResult(
+                        finished=False,
+                        fallback_reason=None,
+                        message="More coverage is required before automatic finish.",
+                        transcript=tuple(history),
+                    )
                 result = finish_session(
                     store, session_id, schedule_reconstruction, min_frames=min_frames
                 )
