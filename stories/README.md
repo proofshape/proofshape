@@ -510,7 +510,7 @@ story of its own. Its file lists the information still to collect before printin
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
-| [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
+| [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Claimed | @mbj1994 |
 | [P-40](P/P-40.md) | Expo poster | 1 h | nothing | Claimed | @TabeenRaoof |
 | [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Done | @mbj1994 |
 
