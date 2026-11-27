@@ -278,6 +278,11 @@ exception) **if both other members explicitly agree**, with both approving the f
 and required CI green. Until then, Dec 2 remains the merge boundary. It does not authorize
 AWS public wiring or change D-072/O-005; those are separate C-21 decisions.
 
+*Outcome (2026-11-26):* #431 merged as `3ec95d1` on both approvals of `866e0f7` and four
+green CI jobs. Tabeen explicitly accepted the timing exception in review 6078072130; @mbj1994
+reported Dalwalyk's separate consent in comment 7209144054 (her GitHub approval itself did not
+state timing consent). The exception is limited to A-15's timing, not public hosting.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already

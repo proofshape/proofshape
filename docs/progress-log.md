@@ -3050,3 +3050,26 @@ CAD deviation. The story-state checker, diff check and all GitHub CI checks pass
 **Result:** 1 h actual (est 1.5), owner-confirmed. The full suite on `70b2773` passed: 1798 passed, 7 skipped.
 **Concluded:** `main` after I-15 and R-44 reads the calipered parts as before, with two untraced changes. The app path, which the expo uses, has evidence on one part only. No code, threshold or decision changed.
 **Next:** someone claims G-15 and I-17. I-17 coordinates with I-16 (#441) on `registration.py`, as commented there. R-36's owner adds the expo hall to #371.
+
+## 2026-11-26 — A-15 Done: the live capture agent (PR #431)
+
+**Who:** @mbj1994; reviewed by @TabeenRaoof and @dalwalyk.
+**Result:** 5 h actual (est 6). Contract v1.9 serves the read-only agent-message route, with
+background turns and deterministic fallback. The final Gemini-enabled iPhone test on
+`894e904` accepted all 13 orbit positions, finished without a manual Finish tap, and downloaded
+the model 36 s after the last upload (87.2% Observed area, not dimensional accuracy; no warnings).
+Both reviewers approved final head `866e0f7`; all four CI jobs passed. Tabeen explicitly accepted
+the D-031 timing exception in review 6078072130 and the owner confirmed Dalwalyk's separate
+consent in comment 7209144054. Merged as `3ec95d1`. Queue pressure under concurrent uploads remains
+a documented follow-up, not proven load safety. The timing exception does not authorize public AWS
+wiring under D-072/O-005.
+
+## 2026-11-26 — R-42 Done: scale agreement in the service (PR #454)
+
+**Who:** @mbj1994; reviewed by @dalwalyk.
+**Result:** 2 h actual (est 3), owner-confirmed. The service now uses the metric ChArUco pitch and
+selected CAD residual with R-41's corrected formula. Missing evidence or a check failure omits
+the diagnostic; deviation and verdict measurement continue. No API change or new verdict rule.
+Dalwalyk reported 94 focused tests, the story-state checker and CI passing on `8cfd0a0`.
+Merged as `c42844c` before D-038 closeout; the separate documentation PR records the omission.
+**Next:** C-21 public deployment preparation; X-03 still waits for G-12.

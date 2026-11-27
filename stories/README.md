@@ -694,7 +694,7 @@ Full detail in each story file.
 | [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Done | @dalwalyk |
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Done | @dalwalyk |
 | [R-41](R/R-41.md) | Scale agreement compares the CAD ratio the right way round (#181, D-039) | 2 h | nothing | Done | @TabeenRaoof |
-| [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Claimed | @mbj1994 |
+| [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Done | @mbj1994 |
 | [R-43](R/R-43.md) | Measure edge loss and test a finer fusion grid | 4 h | R-32, R-33, R-37, R-38 | Done | @dalwalyk |
 | [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42, I-13, I-14, G-12 | Blocked | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |
