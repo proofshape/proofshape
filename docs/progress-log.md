@@ -3058,9 +3058,9 @@ CAD deviation. The story-state checker, diff check and all GitHub CI checks pass
 background turns and deterministic fallback. The final Gemini-enabled iPhone test on
 `894e904` accepted all 13 orbit positions, finished without a manual Finish tap, and downloaded
 the model 36 s after the last upload (87.2% Observed area, not dimensional accuracy; no warnings).
-Both reviewers approved final head `866e0f7`; all four CI jobs passed. Tabeen explicitly accepted
-the D-031 timing exception in review 6078072130 and the owner confirmed Dalwalyk's separate
-consent in comment 7209144054. Merged as `3ec95d1`. Queue pressure under concurrent uploads remains
+Both reviewers approved final head `866e0f7`; all four CI jobs passed. Both explicitly accepted
+the D-031 timing exception before merge: [Tabeen's review](https://github.com/proofshape/proofshape/pull/431#pullrequestreview-6078072130)
+and [Dalwalyk's direct agreement](https://github.com/proofshape/proofshape/pull/431#issuecomment-7209096486). Merged as `3ec95d1`. Queue pressure under concurrent uploads remains
 a documented follow-up, not proven load safety. The timing exception does not authorize public AWS
 wiring under D-072/O-005.
 
@@ -3072,4 +3072,10 @@ selected CAD residual with R-41's corrected formula. Missing evidence or a check
 the diagnostic; deviation and verdict measurement continue. No API change or new verdict rule.
 Dalwalyk reported 94 focused tests, the story-state checker and CI passing on `8cfd0a0`.
 Merged as `c42844c` before D-038 closeout; the separate documentation PR records the omission.
-**Next:** C-21 public deployment preparation; X-03 still waits for G-12.
+**Real-data limitation:** [Tabeen's post-merge review](https://github.com/proofshape/proofshape/pull/454#pullrequestreview-6083636630) reports 88 focused tests passing,
+but the exact scale-check path flagged 7 of 10 correct metric ChArUco parts from the Nov 25
+saved-model run. CAD residuals ranged from -0.1044 to +0.1234; this is not evidence of
+reliable 2% substitution detection. R-42 is complete as wiring only; the warning remains
+live and must not be relied upon for scale accuracy or substitution. See [issue #456](https://github.com/proofshape/proofshape/issues/456).
+**Next:** C-21 public deployment preparation, with the team to settle interim handling of
+the diagnostic before public use; X-03 still waits for G-12 and may use verified shape evidence.

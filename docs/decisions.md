@@ -279,9 +279,8 @@ and required CI green. Until then, Dec 2 remains the merge boundary. It does not
 AWS public wiring or change D-072/O-005; those are separate C-21 decisions.
 
 *Outcome (2026-11-26):* #431 merged as `3ec95d1` on both approvals of `866e0f7` and four
-green CI jobs. Tabeen explicitly accepted the timing exception in review 6078072130; @mbj1994
-reported Dalwalyk's separate consent in comment 7209144054 (her GitHub approval itself did not
-state timing consent). The exception is limited to A-15's timing, not public hosting.
+green CI jobs. Both explicitly accepted the timing exception before merge: [Tabeen's review](https://github.com/proofshape/proofshape/pull/431#pullrequestreview-6078072130)
+and [Dalwalyk's direct agreement](https://github.com/proofshape/proofshape/pull/431#issuecomment-7209096486). The exception is limited to A-15's timing, not public hosting.
 
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
