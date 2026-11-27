@@ -369,9 +369,12 @@ confidently wrong scale with no warning — worse than no scale at all.
 
 ## 7 · Scale integrity
 
-**Status: Planned** (in the service). The comparison itself exists (R-05, D-039), but nothing feeds
-it yet: there is no caliper entry in the app and no CAD registration, so results report no scale
-check. The printed-pitch measurement — §3.3 — **works now**.
+**Status: Works now for metric ChArUco sessions with a usable CAD scale residual** (R-42).
+The service checks board pitch against the selected CAD registration residual after registration.
+There is no typed caliper entry in the app yet. When no independent residual is available, the
+report has no scale check; this does not mean the sources agree. The printed-pitch measurement
+— §3.3 — **works now**. If CAD measurement is still running when the report opens, reload
+after it finishes to see the final scale result.
 
 Scale has **three independent sources that must agree** (D-007):
 

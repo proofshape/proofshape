@@ -281,6 +281,23 @@ class SessionStore:
                 record["reconstruction"] = reconstruction
                 self._write_record(record)
 
+    def update_scale_agreement(
+        self, session_id: str, agreement: ScaleAgreement | None
+    ) -> None:
+        """Merge the scale diagnostic without replacing guidance or the served GLB."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is None:
+                return
+            reconstruction = record["reconstruction"]
+            if reconstruction.get("status") != "complete":
+                return
+            if agreement is None:
+                reconstruction.pop("scale_agreement", None)
+            else:
+                reconstruction["scale_agreement"] = agreement.model_dump()
+            self._write_record(record)
+
     def update_ambiguity(self, session_id: str, ambiguity: dict[str, Any]) -> None:
         """Publish measurement status without overwriting guidance or reconstruction."""
         with self._lock:
@@ -1356,6 +1373,33 @@ def create_app(
 
             candidates = registration.global_register(model, cad_mesh)
             ambiguity = registration.check_ambiguity(candidates, model, cad_mesh)
+
+            # R-42 / D-007: the CAD residual is a second scale source only when the
+            # reconstruction actually used the nominal ChArUco pitch. Neither a missing
+            # residual nor a non-board reconstruction supplies that pair of sources.
+            agreement = None
+            if (
+                reconstruction.get("reference_tier_used") == "charuco_board"
+                and reconstruction.get("metric") is True
+                and ambiguity.best.free_scale_residual is not None
+            ):
+                from recon import scale_agreement
+                from recon.board_pose import BOARD_SQUARE_MM
+
+                try:
+                    agreement = ScaleAgreement.model_validate(
+                        scale_agreement.check_scale_agreement(
+                            board_pitch_mm=BOARD_SQUARE_MM,
+                            cad_registration_residual=ambiguity.best.free_scale_residual,
+                        )
+                    )
+                except Exception:
+                    # Optional diagnostic: failure must not suppress the deviation or verdict.
+                    logger.exception(
+                        "Scale agreement failed for session %s", session_id
+                    )
+            store.update_scale_agreement(session_id, agreement)
+
             publish_deviation_glb(
                 store,
                 session_id,
