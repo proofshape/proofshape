@@ -1395,7 +1395,9 @@ def create_app(
                     )
                 except Exception:
                     # Optional diagnostic: failure must not suppress the deviation or verdict.
-                    logger.exception("Scale agreement failed for session %s", session_id)
+                    logger.exception(
+                        "Scale agreement failed for session %s", session_id
+                    )
             store.update_scale_agreement(session_id, agreement)
 
             publish_deviation_glb(
