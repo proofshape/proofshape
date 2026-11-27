@@ -325,6 +325,13 @@ contract has no typed caliper request field. This diagnostic is not a new Pass/F
 During the existing gap between reconstruction completion and CAD measurement completion,
 the field can be absent; reload the report after measurement to see the final result.
 
+Real-data reliability is unresolved: the Nov 26 post-merge review flagged seven of ten
+correct metric ChArUco parts on the saved-model calculation. See
+[R-42's results](../stories/R/R-42.md#real-data-limitation-2026-11-26-post-merge) and
+[issue #456](https://github.com/proofshape/proofshape/issues/456). A flag is not proof of substitution or scale error, and a non-flag
+does not prove accuracy. The current diagnostic remains live pending a team-agreed
+interim serving policy; no threshold change is made here.
+
 ## R-13 · per-stage latency table
 
 Every backend's `run_on_capture` (`vggt_runner`, `mast3r_runner`, and `colmap_runner` once R-12

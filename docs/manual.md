@@ -369,7 +369,7 @@ confidently wrong scale with no warning — worse than no scale at all.
 
 ## 7 · Scale integrity
 
-**Status: Works now for metric ChArUco sessions with a usable CAD scale residual** (R-42).
+**Status: Implemented, but not validated as a reliable scale diagnostic** (R-42).
 The service checks board pitch against the selected CAD registration residual after registration.
 There is no typed caliper entry in the app yet. When no independent residual is available, the
 report has no scale check; this does not mean the sources agree. The printed-pitch measurement
@@ -386,6 +386,15 @@ Scale has **three independent sources that must agree** (D-007):
 
 Any two disagreeing by more than about 2% flags the session. That 2% is a rule the team set, not a
 measured value.
+
+**Measured limitation (Nov 26):** [Tabeen's post-merge review](https://github.com/proofshape/proofshape/pull/454#pullrequestreview-6083636630) applied the service calculation to ten
+correct metric ChArUco parts from saved reconstructions. Seven of ten were flagged, with
+CAD free-scale residuals from -10.44% to +12.34%. A flag is a diagnostic disagreement,
+not proof of a wrong part or printing error; no flag is not proof of accurate scale.
+Do not rely on this warning to establish substitution, approve a part, or claim dimensional
+accuracy. See [R-42's measured results](../stories/R/R-42.md#real-data-limitation-2026-11-26-post-merge)
+and [issue #456](https://github.com/proofshape/proofshape/issues/456) for the unresolved residual reliability and interim serving decision.
+The threshold and current served behavior are unchanged pending team agreement.
 
 **A known scale error today, measured, not yet fixed.** Using the board itself as a ruler inside
 the reconstruction showed every golden object coming out **4–9% small** (R-22). The cause is in how
