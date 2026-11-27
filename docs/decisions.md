@@ -2608,6 +2608,10 @@ calendar. Confirm it before the schedule is treated as fixed.
 slot, as given by @TabeenRaoof on 2026-11-20. That is still the team's working assumption, not a
 confirmed date, so this stays open. The same report says there is no presentation on Nov 27
 (R6), so the final presentation is the only one left.
+*Update 2026-11-26 (P-39, owner report):* @mbj1994 reports **Sat 2026-12-12** as the final
+presentation date and proposes preparing the deck and script from Dec 6, after the expo.
+The source is the owner's report, not a separately verified course notice. Confirm the time
+and agree the deliverable schedule against M7 with the team; the Dec 4 code freeze is unchanged.
 
 **O-003 · Exact biweekly review dates. — Closed 2026-10-20.**
 ~~Planned for every second Friday from 11 September; re-anchor if the real dates differ.~~
