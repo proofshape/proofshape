@@ -579,7 +579,7 @@ These stories keep the lane their work lives in. This section only groups them, 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [G-15](G/G-15.md) | The calipered parts, captured through the app, read as their photographs do | 4 h | nothing | Ready | _unclaimed_ |
-| [I-17](I/I-17.md) | Why g05_02's walls read worse after I-15, and why `main`'s s-05 pose sits off its walls | 4 h | nothing | Ready | _unclaimed_ |
+| [I-17](I/I-17.md) | Why g05_02's walls read worse after I-15, and why `main`'s s-05 pose sits off its walls | 4 h | nothing | Claimed | @dalwalyk |
 
 ---
 
