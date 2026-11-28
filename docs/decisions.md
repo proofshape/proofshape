@@ -1754,26 +1754,72 @@ conditions become:
    storage costs; the owner checks billing. An auto-assigned public address may change on
    stop/start: recheck DNS, HTTPS ingress, model base URL and rebuild Pages for the actual
    address before each window. No permanent-address purchase is implied.
-4. **O-005 / live gate:** apply the proposed AWS answers below only after both other members
-   agree and the guard and current-image tests pass. The bearer token embedded in Pages is
-   readable, not a user-authentication secret; the buyer key and Gemini key remain server-side.
-   R-34's order gate must reject unknown codes on the actual service before public exposure.
-   A valid order can be reused; it is not a rate limit or a spending cap. One T4 is not a
-   multi-visitor load guarantee (A-15 shared worker follow-up). Use staff-created demo orders,
-   no sensitive CAD/photos, supervised sequential sessions, and close ingress/stop the GPU
-   on misuse or queue pressure. Do not invite uncontrolled simultaneous use. Resolve #456's
-   interim scale-warning serving policy with the team before exposing inspection; neither a
-   flag nor its absence establishes substitution/accuracy.
+4. **O-005 / live gate and enforced usage limits:** both other members must agree to the
+   AWS answers below. The bearer token embedded in Pages is readable, not a user-authentication
+   secret; the buyer key and Gemini key remain server-side. R-34's order gate must reject
+   unknown codes, but a valid order can be reused and one worker alone does not bound queues
+   or spending. Before publication require deployed, tested server/ingress enforcement:
+   - Only staff-created demo orders; at most one active capture/reconstruction session across
+     the deployment and one reconstruction in flight, with no unbounded waiting queue.
+     Reject competing sessions and duplicate Finish requests without starting additional work;
+     release slots on completion or bounded expiry, not simply on client disconnect.
+   - Explicit finite per-window session-creation/attempt and request-rate limits, per-request
+     and per-session upload byte/frame limits, and an aggregate per-window upload/storage
+     budget. Count retries and abandoned sessions; reject over-limit work before accepting
+     uploads or invoking expensive processing. Enforce atomically across clients, not by
+     trusting the browser or a shared order code.
+   - Bound Gemini requests and token usage per session and per window (including retries);
+     disable the optional paid agent path if those bounds cannot be enforced, and verify the
+     agreed fallback behavior. EC2's stop guard is not a Gemini spending limit.
+   - The deployment PR must state the actual numeric limits, timeouts and approved budgets
+     (no unlimited defaults), with evidence that normal capture fits and concurrent clients,
+     repeats, oversized/aggregate uploads and exhausted budgets fail closed. Missing or
+     invalid limit configuration must prevent public access; restart must not silently reset
+     a live window's budgets. Supervision is additional, not the enforcement mechanism.
+   - Ingress must enforce an absolute UTC expiration for the scoped window-specific public
+     transport token no later than the earlier of window end or the four-hour stop deadline;
+     reject expired, revoked and missing tokens on protected routes before forwarding, even
+     if Pages is cached. No public access when expiry configuration is missing/invalid.
+     Keep buyer/admin routes private, do not expose provider keys, and bound any browser
+     model-download capability to the approved window as well.
+   - Resolve #456's interim scale-warning serving policy with the team before exposing
+     inspection; neither a flag nor its absence establishes substitution/accuracy.
+     No sensitive CAD/photos; stop on misuse or resource pressure. If any required control
+     cannot be implemented and verified in time, keep Pages fail-closed and use M2/recording.
 
-Only after the above is recorded on main may an admin set Pages' O-005 confirmations and
-public-recon flag/URL/token. Run a bounded real hosted-phone session and record the evidence;
-on failure close access and use the Mac or recording. After each test/expo window disable
-all four public/O-005 flags, rebuild Pages to fail closed, revoke/rotate the exposed bearer
-token at ingress, stop the instance and verify it stopped; remove stale public address
-configuration. Keep credentials, order codes, raw captures and sensitive logs out of git.
-The 2026-11-25 local-Vite AWS check is evidence for feasibility, not authorization or the
-hosted Pages acceptance check. This amendment takes effect only on both other members'
-approval and merge; until then the existing D-072 public-host conditions remain in force.
+**Staged authorization and evidence (2026-11-28 revision):**
+
+A. **Before public wiring:** both other members explicitly approve this amendment and it
+   lands on main; agree #456 policy and numeric usage budgets. Keep all four public/O-005
+   flags off. In a separately authorized, bounded, non-public test using staff-controlled
+   access (restricted ingress or private tunnel), prove the immutable main-built release,
+   TLS/HTTPS model URLs, Pages-origin OPTIONS and authenticated/non-authenticated API
+   behavior, live known/unknown-order and buyer-key gates, enforced limits under competing
+   requests and token expiry/revocation. Verify the automatic EC2 stop actually fires using
+   instance state and event evidence; confirm credits, restart/address and the new window's
+   stop/expiry before enabling it. Record these checks and the deployment configuration
+   in the deployment PR. A curl preflight is not a hosted browser acceptance test. Do not
+   set any public flags if a check fails or evidence is missing.
+B. **First hosted acceptance window only:** after A passes, an admin may set the four
+   public/O-005 flags plus actual HTTPS URL/token and deploy Pages for one supervised,
+   authorized test, not general expo use. Record deploy ID and a real Pages/iPhone session:
+   browser CORS/auth, order/session creation, frame upload, agent route or agreed fallback,
+   Finish, reconstruction, GLB download, CAD/report behavior under #456 and navigation.
+   Record failures; do not proceed on a partial pass.
+C. **Rollback and expo gate:** at the end of the acceptance window (or immediately on
+   failure), close ingress/revoke the token first, disable all four public/O-005 flags,
+   remove stale URL/token configuration, rebuild Pages fail-closed and verify the hosted
+   build cannot initiate paid work and stale credentials are rejected. Stop EC2 and verify
+   state/time; record deployment IDs and rollback evidence. Expo access is permitted only
+   after successful B and verified C, with second-member verification and agreement on
+   a separately authorized window; recheck A's current-release/address, funding, controls,
+   armed stop and new token expiry for that window. Repeat C afterward. On any failure use
+   the M2 Max or recording fallback. Keep credentials, order codes, raw captures and
+   sensitive logs out of git.
+
+The 2026-11-25 local-Vite AWS check is feasibility evidence, not authorization, usage-limit
+evidence or hosted acceptance. This amendment takes effect only on both other members'
+approval and merge; until then existing D-072 public-host conditions remain in force.
 
 ---
 
@@ -2677,26 +2723,34 @@ whether a token visible in the client bundle is acceptable at all. Third, the or
 access control: the deployed `app = create_app()` sets no `known_order_codes`, so today any
 non-empty code starts a paid GPU run.
 
-*Proposed AWS-specific answers (2026-11-27; D-072 dated amendment, pending both other
-members' approval):*
+*Proposed AWS-specific answers (2026-11-27, revised 2026-11-28; D-072 dated amendment,
+pending both other members' approval):*
 - **Preflight:** on Nov 25 the owner observed HTTP 200 for a token-less OPTIONS from
   `https://proofshape.github.io` requesting POST and authorization/content-type, with
   wildcard allowed origin, allowed headers/methods; an authenticated GET also returned 200
   and an unauthenticated request returned 401. HTTPS ingress forwarded OPTIONS without
   bearer authentication while requiring it on normal API requests. Repeat on the current
-  image/address and actual Pages browser before calling the hosted check passed. These
-  observations do not answer the old Lightning proxy question.
-- **Token:** accept a short-lived, scoped expo transport token in public JS only for the
-  supervised window, if both reviewers agree. CORS is not security; the wildcard policy is
-  intentional per D-048. Never ship the buyer or Gemini key; staff creates known orders
-  privately. Rotate the public transport token after the window and rebuild fail-closed.
-- **Order:** #335 (R-34) merged. Owner observed unknown-order rejection and known-order
-  session 201 on AWS Nov 25. Repeat rejection, known-order creation, and buyer-key rejection
-  on the current deployed revision; no arbitrary-order GPU run. The known-order gate does
-  not bound repeat sessions or resource use. The automatic EC2 stop and supervised access
-  conditions in D-072 are separate prerequisites.
-O-005 remains open for public wiring until the team agrees this amendment and current live
-checks are recorded. The Lightning-specific behavior remains unverified.
+  image/address via restricted staff testing with all public flags off (D-072 stage A).
+  Confirm actual browser behavior only in the bounded stage B hosted acceptance window,
+  after A passes. These observations do not answer the old Lightning proxy question.
+- **Token:** accept a scoped, window-specific public JS transport token only if both
+  reviewers agree and ingress enforces the absolute expiry and revocation specified in
+  D-072. CORS is not security; the wildcard policy is intentional per D-048. Never ship
+  the buyer or Gemini key; staff creates known orders privately. Reject missing, expired
+  and revoked tokens before forwarding protected requests. Revoke at ingress before
+  rebuilding fail-closed; verify old cached bundles cannot start paid work.
+- **Order and usage:** #335 (R-34) merged. Owner observed unknown-order rejection and
+  known-order session 201 on AWS Nov 25. Repeat rejection, known-order creation and
+  unauthorized buyer-route rejection on the current deployed revision. The known-order
+  gate does not bound repeat sessions or resource use. D-072 stage A requires tested
+  server/ingress session, upload, concurrent reconstruction and Gemini usage bounds plus
+  verified automatic EC2 stop before publication; document actual numeric budgets and
+  rejection evidence. No reliance on one worker or supervision alone.
+
+O-005 remains closed to public wiring until agreement/merge and stage A evidence. Stage B
+is the first supervised hosted test, not expo authorization. Successful stage B and verified
+stage C rollback are required before a separately authorized expo window. If any gate fails,
+keep Pages fail-closed and use M2/recording. Lightning-specific behavior remains unverified.
 
 **O-006 · The expo date ~~is unconfirmed: most likely Fri 2026-12-05~~. — Closed 2026-11-22.**
 (2026-11-11)
