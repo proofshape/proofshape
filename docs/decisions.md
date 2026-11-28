@@ -282,6 +282,8 @@ AWS public wiring or change D-072/O-005; those are separate C-21 decisions.
 green CI jobs. Both explicitly accepted the timing exception before merge: [Tabeen's review](https://github.com/proofshape/proofshape/pull/431#pullrequestreview-6078072130)
 and [Dalwalyk's direct agreement](https://github.com/proofshape/proofshape/pull/431#issuecomment-7209096486). The exception is limited to A-15's timing, not public hosting.
 
+*Proposed named M5 feature-freeze / D-031 timing exception (2026-11-28, C-21 deployment safeguards):* @mbj1994 requests permission to implement only the mandatory expo-only controls required by the agreed D-072 amendment before the Dec 2 boundary. Service scope: atomic single active session and single reconstruction, duplicate Finish handling, bounded expiry, finite persistent window/session/attempt/upload/agent budgets, and fail-closed configuration; ingress scope: request/body limits, token expiry/revocation, private buyer routes and bounded model access. Any new busy/limit status or response must be documented in the frozen contract and tested with the capture client. The proposed exception waives only feature-freeze and (if needed) early sprint-boundary timing for this narrow safety work; it requires both other members' explicit agreement before implementation proceeds, both approvals of the final contract-changing head and all CI green before merge. No behavior-changing commits during M7 Dec 3–4. Target code landing by Dec 2, with staged evidence before Dec 5; if this cannot be met, keep Pages fail-closed and use the M2/recording fallback. This proposal is not an approved exception and does not authorize AWS public wiring. #456 interim behavior must be separately agreed; no change to verdict semantics is authorized here.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
@@ -1821,6 +1823,8 @@ The 2026-11-25 local-Vite AWS check is feasibility evidence, not authorization, 
 evidence or hosted acceptance. This amendment takes effect only on both other members'
 approval and merge; until then existing D-072 public-host conditions remain in force.
 
+*Outcome (2026-11-28):* #466 merged as `30ae90d`; Dalwalyk explicitly approved the revised head `69b97bd` in [#466](https://github.com/proofshape/proofshape/pull/466) at 08:36 UTC, and [Tabeen explicitly agreed](https://github.com/proofshape/proofshape/pull/466#issuecomment-7236849005) to the merged text at 08:50 UTC. Both agreements are now recorded; the expo-only amendment is effective. This is not evidence that any usage control, #456 policy, automatic stop or stage A/B/C has passed. Pages remains fail-closed until the agreed deployment gates are satisfied.
+
 ---
 
 **D-073 · G-04: the board reference's σ_floor, from heights only, is 0.86 mm — edges are not
@@ -2751,6 +2755,8 @@ O-005 remains closed to public wiring until agreement/merge and stage A evidence
 is the first supervised hosted test, not expo authorization. Successful stage B and verified
 stage C rollback are required before a separately authorized expo window. If any gate fails,
 keep Pages fail-closed and use M2/recording. Lightning-specific behavior remains unverified.
+
+*Outcome (2026-11-28):* both members' explicit agreements and #466 merge are recorded in D-072 above. The AWS policy answers are agreed, not a live preflight result. O-005 remains gated on stage A evidence; the Lightning-specific behavior remains unverified.
 
 **O-006 · The expo date ~~is unconfirmed: most likely Fri 2026-12-05~~. — Closed 2026-11-22.**
 (2026-11-11)
