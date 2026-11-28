@@ -2590,6 +2590,18 @@ story's pre-freeze scope.
 *Checked against D-028:* D-086 is still unmerged and belongs to this PR, so this review amends it
 rather than allocating a second D-number.
 
+**Amendment (2026-11-28, G-13):** the outline margin is raised from **0 mm to 2 mm**. G-13's
+measurement on 10 calipered parts (PR #464) showed that the 0 mm rule leaves outward wall error
+unmeasurable — every part's wall deviation median is negative, confirming the one-sided
+truncation bias noted above. At 2 mm: (1) verdicts on all 10 good parts are unchanged at every
+tolerance; (2) outward wall error of up to 2 mm becomes Fail-capable; (3) g05_02 against the
+control CAD Fails up to 2.0 mm instead of 1.0 mm; (4) no stray surface is admitted. The
+vertices the margin adds lie outside the CAD outline by construction and their deviation is
+positive; readings beyond +2 mm remain unmeasured. The D-073 and D-078 floors are unchanged:
+the pooled 95% floors (4.9 mm in-plane, 0.1 mm out-of-plane) are well below the current
+constants, and the three per-part shortfalls are registration-error-driven, not scatter.
+Both other members approved this change.
+
 
 ---
 
