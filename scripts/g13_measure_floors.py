@@ -471,6 +471,12 @@ def main(argv: list[str] | None = None) -> int:
             },
         }
 
+    # Record the floors actually used (may have been patched by --floors)
+    from inspection.verdict import (
+        D073_SIGMA_FLOOR_BOARD_MM,
+        D078_SIGMA_FLOOR_IN_PLANE_MM,
+    )
+
     # Save full report
     report = {
         "commit": _current_commit(),
@@ -479,8 +485,8 @@ def main(argv: list[str] | None = None) -> int:
         "pooled": pooled,
         "d077_k": D077_K,
         "top_region_percentile": TOP_REGION_PERCENTILE,
-        "current_d073_floor_mm": 0.86,
-        "current_d078_floor_mm": 5.278,
+        "d073_floor_mm_used": D073_SIGMA_FLOOR_BOARD_MM,
+        "d078_floor_mm_used": D078_SIGMA_FLOOR_IN_PLANE_MM,
     }
     report_file = args.out / "g13_report.json"
     report_file.write_text(
