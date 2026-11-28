@@ -134,16 +134,19 @@ nonexistent stub.
 The Mac path in the C-13 section above remains the fallback when Pages or
 Lightning is unavailable, and the D-072 defense host.
 
-**C-21 AWS public-expo proposal (2026-11-27, not authorization).** The owner reported
-a successful local-Vite iPhone-to-AWS reconstruction on Nov 25; it was not a hosted
-Pages session. [#466](https://github.com/proofshape/proofshape/pull/466) proposes a
-D-072 amendment and AWS-specific O-005 answers. Before setting any public flags,
-both other members must approve and merge that decision, verify the actual live
-HTTPS/CORS/order gate, automatic stop guard, current main-built image and #456
-interim warning policy. The three build-time checks are necessary, not sufficient
-to establish all D-072 conditions. The browser transport token is public-readable;
-never ship buyer/Gemini keys. A valid order is reusable, not a rate or cost limit.
-Use supervised sequential demo sessions only. Recheck address after EC2 restart.
-After each approved window, disable the four public/O-005 flags, rebuild fail-closed,
-rotate the token, stop the GPU and verify stopped state. See the outstanding checklist
-in [C-21](../stories/C/C-21.md).
+**C-21 AWS public-expo amendment (agreed 2026-11-28; not live authorization).**
+The Nov 25 local-Vite iPhone-to-AWS reconstruction was not a hosted Pages session.
+[#466](https://github.com/proofshape/proofshape/pull/466) merged and both other
+members explicitly agreed to the D-072 amendment and AWS-specific O-005 answers.
+Keep all four flags off until stage A proves the current immutable main-built
+image, HTTPS/CORS/auth/order gates, enforced session/attempt/rate/upload/agent
+budgets, one active session/reconstruction, expiring/revocable ingress token,
+bounded downloads, automatic stop and #456 interim policy. The three build-time
+checks above are necessary, not sufficient. Never ship buyer/Gemini keys.
+[#467](https://github.com/proofshape/proofshape/pull/467) requests the named freeze
+exception for the required service/contract controls; no live controls are claimed.
+After A, one bounded hosted-phone test (B) and verified fail-closed rollback (C)
+are required before separately authorized expo use. Recheck address and arm
+automatic stop on every restart. Revoke ingress access first, disable four flags,
+remove stale configuration, rebuild fail-closed, stop EC2 and verify state/time
+after each window. Use M2/recording if any gate fails. See [C-21](../stories/C/C-21.md).
