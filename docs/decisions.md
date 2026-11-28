@@ -2523,7 +2523,7 @@ already Done, and aren't decided here. Any future print for a ground-truth story
 
 ---
 
-**D-086 · I-14 uses the CAD's actual outer top-view outline, with no added xy margin, as the deviation-eligibility boundary.** (2026-11-19; amended on review 2026-11-20)
+**D-086 · I-14 uses the CAD's actual outer top-view outline, with no added xy margin, as the deviation-eligibility boundary.** (2026-11-19; amended on review 2026-11-20; amended 2026-11-28: 2 mm, G-13)
 I-06 originally measured every Observed vertex inside a CAD-local **axis-aligned bounding box plus
 10 mm**. The real-session review shows two separate problems with that rule. First, the broad
 ring admits reconstruction flare: on the 2026-11-20 rerun, the proposed narrow-box gate excluded
@@ -2595,12 +2595,14 @@ measurement on 10 calipered parts (PR #464) showed that the 0 mm rule leaves out
 unmeasurable — every part's wall deviation median is negative, confirming the one-sided
 truncation bias noted above. At 2 mm: (1) verdicts on all 10 good parts are unchanged at every
 tolerance; (2) outward wall error of up to 2 mm becomes Fail-capable; (3) g05_02 against the
-control CAD Fails up to 2.0 mm instead of 1.0 mm; (4) no stray surface is admitted. The
-vertices the margin adds lie outside the CAD outline by construction and their deviation is
-positive; readings beyond +2 mm remain unmeasured. The D-073 and D-078 floors are unchanged:
-the pooled 95% floors (4.9 mm in-plane, 0.1 mm out-of-plane) are well below the current
-constants, and the three per-part shortfalls are registration-error-driven, not scatter.
-Both other members approved this change.
+control CAD Fails up to 2.0 mm instead of 1.0 mm. The vertices the margin adds lie outside the
+CAD outline by construction and their deviation is positive; readings beyond +2 mm remain
+unmeasured. D-086's concern that flare within 2 mm of the outline may look like wall scatter is
+not settled by this record (the stray test cannot fire at these margins); what the record does
+show is that no good part's verdict changes. The D-073 and D-078 floors are unchanged: the
+pooled 95% floors (4.6 mm in-plane at 2 mm margin, 0.1 mm out-of-plane) are below the current
+constants, and the three per-part shortfalls are registration-error-driven, not scatter. The
+approvals of #465 record both members' agreement.
 
 
 ---

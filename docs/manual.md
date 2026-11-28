@@ -506,7 +506,8 @@ The C-14 deviation heatmap opens by default. Only surface that is both Observed 
 coloured by deviation; everything else stays grey (D-005). A region that is not Observed shows
 "—" for deviation, never zero. **I-14/D-086 also leaves Observed surface more than 2 mm outside
 the CAD's actual outer top-view outline unmeasured.** Concave outer notches are outside that
-boundary; interior holes remain eligible so hole defects can still be measured. The 2 mm margin
+boundary (though a narrow band up to 2 mm inside concave notches is measured);
+interior holes remain eligible so hole defects can still be measured. The 2 mm margin
 (amended from 0 mm by G-13) makes outward wall error of up to 2 mm Fail-capable; readings
 beyond +2 mm remain unmeasured. The grey outside-outline surface is explicitly **not checked**
 and cannot contribute to Pass or Fail.

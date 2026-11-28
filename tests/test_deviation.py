@@ -248,6 +248,41 @@ def test_compute_deviation_pins_the_cad_outer_outline_boundary():
     assert deviation_measured[beyond_index] == 0.0
 
 
+def test_outline_margin_pins_at_2mm():
+    # G-13 review: the margin constant must be pinned by a test that fails if someone changes it.
+    # A probe 1.0 mm outside the CAD outline is within the 2 mm margin and must be measured;
+    # a probe 2.5 mm outside is beyond it and must not be.  These are literal distances, not
+    # expressions of DEFAULT_FOOTPRINT_MARGIN_MM, so changing the constant breaks the test.
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    cad_max_x = float(cad_vertices[:, 0].max())
+    cad_mid_y = float((cad_vertices[:, 1].min() + cad_vertices[:, 1].max()) / 2.0)
+    within_margin = _cad_point_to_model(
+        sample, np.array([cad_max_x + 1.0, cad_mid_y, 15.0])
+    )
+    beyond_margin = _cad_point_to_model(
+        sample, np.array([cad_max_x + 2.5, cad_mid_y, 15.0])
+    )
+
+    model_vertices = np.vstack([sample.vertices_mm, within_margin, beyond_margin])
+    model_labels = np.concatenate([sample.labels, [sample.labels[0], sample.labels[0]]])
+    deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, model_labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+
+    within_index = len(sample.vertices_mm)
+    beyond_index = within_index + 1
+    assert deviation_measured[within_index] == 1.0, "1.0 mm outside should be measured at 2 mm margin"
+    assert deviation_mm[within_index] > 0.0, "outside-outline probe deviation should be positive"
+    assert deviation_measured[beyond_index] == 0.0, "2.5 mm outside should not be measured at 2 mm margin"
+
+
 @pytest.mark.parametrize("cad_path", REFERENCE_CADS, ids=lambda path: path.stem)
 def test_outer_outline_builder_handles_every_reference_cad(cad_path: Path):
     # Review on #416 found that the first silhouette implementation raised on pockets, bumps and
