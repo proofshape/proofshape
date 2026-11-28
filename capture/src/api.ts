@@ -241,10 +241,7 @@ export async function getVerdict(
   unexpectedStatus("getVerdict", response, body);
 }
 
-/**
- * C-22 mock-only route. A-07 explicitly leaves the real phone-facing D-031 contract for a
- * boundary decision; keeping this isolated makes replacing the mock route mechanical later.
- */
+/** A-15 / contract v1.9: read the latest persisted capture-agent turn. */
 export async function getAgentMessage(
   baseUrl: string,
   sessionId: string,

@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 import open3d as o3d
 
+from inspection.pose_judgement import check_handedness
 from recon.provenance import (
     LABEL_INFERRED,
     LABEL_OBSERVED,
@@ -183,6 +184,53 @@ def _observed_faces(
         return None
     observed = label_faces(faces, labels) == LABEL_OBSERVED
     return faces[observed]
+
+
+# I-15: refinement and the ambiguity check ignore surface lower than this above the board.
+#
+# Why: P-41 found that on six of the ten calipered parts 12-44% of the Observed vertices are not
+# the part, sitting a median 3-4 mm above the board (board skin just over the fusion's cut).
+# On the G-05 control with R-44's correction on, 37% stray surface diluted the refined fitness
+# until a pose turned 179 degrees won the final ranking by 0.606 to 0.594, and the coverage
+# ratio preferred it too, so it was served unflagged. I-15's stage-by-stage trace found the
+# right pose intact up to that final ranking, so this is where the fix goes.
+#
+# The cut is the smaller of two things, agreed on I-15 before the ten-part comparison was run:
+#  - 5 mm, which clears the board skin's measured 3-4 mm median;
+#  - a quarter of the CAD's height, so a short part keeps three quarters of its walls. D-061's
+#    8 mm test plate keeps all but its lowest 2 mm, and its orientation still reads from its
+#    hole; the shortest calipered part, g02_01 (15 mm), loses its lowest 3.75 mm.
+# These are algorithm settings, not inspection tolerances. The deviation and the verdict still
+# use all Observed surface; only which surface may move or rank the pose changes.
+POSE_SUPPORT_MIN_HEIGHT_CAP_MM = 5.0
+POSE_SUPPORT_MIN_HEIGHT_FRACTION = 0.25
+
+
+def _pose_support_cut_mm(cad_vertices: np.ndarray) -> float:
+    """Height above the board below which surface doesn't support the pose (see above)."""
+    cad_height = float(np.ptp(np.asarray(cad_vertices, dtype=np.float64)[:, 2]))
+    return min(
+        POSE_SUPPORT_MIN_HEIGHT_CAP_MM, POSE_SUPPORT_MIN_HEIGHT_FRACTION * cad_height
+    )
+
+
+def _pose_support_faces(
+    model_vertices: np.ndarray,
+    observed_faces: np.ndarray | None,
+    cut_mm: float,
+) -> np.ndarray | None:
+    """Observed faces lying wholly at or above cut_mm over the board.
+
+    The board frame's z points into the table (recon/board_pose.py), so height above the board
+    is -z. A face straddling the cut is dropped whole: half of a board-skin triangle is still
+    board skin. None (no provenance) passes through unchanged, so the callers' own refusals still
+    say why.
+    """
+    if observed_faces is None or len(observed_faces) == 0:
+        return observed_faces
+    height = -np.asarray(model_vertices, dtype=np.float64)[:, 2]
+    keep = np.all(height[observed_faces] >= cut_mm, axis=1)
+    return observed_faces[keep]
 
 
 def _triangle_mesh(
@@ -661,6 +709,7 @@ def global_register(
     ransac_iterations: int = DEFAULT_RANSAC_ITERATIONS,
     ransac_confidence: float = DEFAULT_RANSAC_CONFIDENCE,
     seed: int = 0,
+    stages: dict[str, Any] | None = None,
 ) -> list[CandidatePose]:
     """Return distinct rigid CAD-to-model candidates, best first.
 
@@ -671,6 +720,13 @@ def global_register(
 
     Every returned transform maps the original z-up CAD coordinates directly into the
     reconstruction board frame. The first candidate also carries the free-scale residual.
+
+    stages, if a dict is passed, is filled with what each step kept, for I-15's stage-by-stage
+    record (scripts/trace_pose_search.py): "seeded" (every candidate both seed paths produced,
+    scored), "deduplicated", "reseeded" (the extra RANSAC candidates) and "selected" (what is
+    returned, before the free-scale residual is attached), plus "extent_mm" and
+    "correspondence_distance_mm". It only records the lists this function already builds, so
+    the result is identical with or without it; the served path never passes it.
     """
     if not (math.isfinite(voxel_fraction) and voxel_fraction > 0):
         raise ValueError("voxel_fraction must be positive and finite.")
@@ -774,6 +830,12 @@ def global_register(
         translation_tolerance_mm=translation_tolerance,
         rotation_tolerance_deg=DEFAULT_DISTINCT_ROTATION_DEG,
     )
+    if stages is not None:
+        stages["extent_mm"] = extent
+        stages["correspondence_distance_mm"] = correspondence_distance
+        stages["seeded"] = list(all_candidates)
+        stages["deduplicated"] = list(unique)
+        stages["reseeded"] = []
     selected = _select_orientation_diverse(unique, candidate_count)
     if not any(
         _same_pose(
@@ -806,6 +868,8 @@ def global_register(
             correspondence_distance,
             source_name=f"ransac:{reseed}",
         )
+        if stages is not None:
+            stages["reseeded"].append(candidate)
         unique = _deduplicate_candidates(
             [*selected, candidate],
             translation_tolerance_mm=translation_tolerance,
@@ -820,6 +884,8 @@ def global_register(
         )
 
     selected = sorted(selected, key=_candidate_sort_key)
+    if stages is not None:
+        stages["selected"] = list(selected)
     best = selected[0]
     residual: float | None = None
     if observed_model_faces is not None and len(observed_model_faces):
@@ -878,6 +944,9 @@ def refine(
     nobody measured influence a pass or fail (the hard rule, D-005). A model without provenance,
     or with no fully Observed face, is refused rather than refined on guessed geometry.
 
+    I-15: of those, only faces at least `_pose_support_cut_mm` above the board count, so board
+    skin labelled Observed can't pull the fit (see POSE_SUPPORT_MIN_HEIGHT_CAP_MM).
+
     The ICP runs Observed model -> CAD, the same direction as I-03's scale diagnostic. Every
     Observed model point has a real CAD counterpart; the reverse would let CAD samples over a
     hidden patch pull toward the hole. It also puts the face normals point-to-plane needs on the
@@ -902,7 +971,10 @@ def refine(
 
     model_vertices, model_faces, model_labels = _mesh_arrays(model, name="model")
     cad_vertices, cad_faces, _cad_labels = _mesh_arrays(cad, name="cad")
-    observed_model_faces = _observed_faces(model_faces, model_labels)
+    support_cut = _pose_support_cut_mm(cad_vertices)
+    observed_model_faces = _pose_support_faces(
+        model_vertices, _observed_faces(model_faces, model_labels), support_cut
+    )
     if observed_model_faces is None:
         raise ValueError(
             "refine needs model provenance: without Observed/Unobserved labels there is no way "
@@ -910,8 +982,9 @@ def refine(
         )
     if len(observed_model_faces) == 0:
         raise ValueError(
-            "refine needs at least one fully Observed model face; refusing to fit the pose to "
-            "Unobserved or Inferred geometry alone."
+            "refine needs at least one fully Observed model face at least "
+            f"{support_cut:.3g} mm above the board; refusing to fit the pose to Unobserved or "
+            "Inferred geometry, or to board-level surface, alone."
         )
 
     # CAD extent only, not the model's: a whole-scene reconstruction (floaters, board skin)
@@ -1017,6 +1090,12 @@ def check_ambiguity(
     coverage-aware ratio uses `ambiguity_threshold` (I-13/D-061), rather than inlier-only RMSE;
     `rmse_ratio` remains diagnostic. A single surviving pose is not ambiguous.
 
+    I-15: the Observed model surface that `refine` fits to leaves out what lies below
+    `_pose_support_cut_mm` over the board, so board skin can't pull refinement or change the
+    fitness ranking. The coverage ratio uses the full observed surface and full CAD surface,
+    as on `main`, but the refined poses it compares come from the cut surface, so the D-061
+    class counts move slightly (see the I-15 amendment under D-061 in `docs/decisions.md`).
+
     A candidate that can't be refined (I-03's `ransac:0` is often an identity pose at fitness 0)
     is recorded in `failed` with its reason; if none can be refined, this raises. A model without
     provenance, or with no fully Observed face, is refused up front rather than being reported as
@@ -1030,13 +1109,13 @@ def check_ambiguity(
 
     model_vertices, model_faces, model_labels = _mesh_arrays(model, name="model")
     cad_vertices, cad_faces, _cad_labels = _mesh_arrays(cad, name="cad")
-    observed_model_faces = _observed_faces(model_faces, model_labels)
-    if observed_model_faces is None:
+    all_observed_faces = _observed_faces(model_faces, model_labels)
+    if all_observed_faces is None:
         raise ValueError(
             "check_ambiguity needs model provenance: without Observed/Unobserved labels no "
             "candidate can be refined on measured geometry."
         )
-    if len(observed_model_faces) == 0:
+    if len(all_observed_faces) == 0:
         raise ValueError(
             "check_ambiguity needs at least one fully Observed model face; refusing to judge "
             "the orientation on Unobserved or Inferred geometry alone."
@@ -1070,9 +1149,13 @@ def check_ambiguity(
     rmse_ratio: float | None = None
     coverage_ratio: float | None = None
     if runner_up is not None:
+        # The coverage ratio uses all Observed surface, not the support-cut subset that refine
+        # fits to. The cut helps refinement ignore board skin; the ratio sees the same surface
+        # as on main, though the refined poses it scores come from the cut, so the D-061 class
+        # counts shift slightly (I-15 amendment under D-061).
         observed_model_surface = _sample_surface(
             model_vertices,
-            observed_model_faces,
+            all_observed_faces,
             sample_count=DEFAULT_AMBIGUITY_SAMPLE_COUNT,
             seed=seed,
         )
@@ -1106,6 +1189,17 @@ def check_ambiguity(
             rmse_ratio = runner_up.inlier_rmse / best.inlier_rmse
         else:
             rmse_ratio = 1.0 if runner_up.inlier_rmse == 0.0 else math.inf
+
+    # I-16: a part on a different face from its CAD is flagged, not served clean.
+    handedness = check_handedness(
+        model_vertices,
+        model_faces,
+        cad_vertices,
+        cad_faces,
+        best.transformation,
+    )
+    if handedness.mismatched:
+        ambiguous = True
 
     return AmbiguityCheck(
         orientation_ambiguous=bool(ambiguous),

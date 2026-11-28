@@ -3009,3 +3009,73 @@ as primary and gives the confidence, alignment RMS, and per-wall spread for cont
 **Result:** 1.8 h actual (no estimate made, D-052), measured from session timestamps. @dalwalyk's fresh run of s-04 and s-05 read the wall figure 0.13 and 0.12 mm away from the first run's.
 **Concluded:** The wall error has a contributor that the board's corners can correct, and so far only a scratch test says so. R-44 has to reproduce it in the repository, and its default waits on I-15. No code on the served path, no threshold and no decision changed.
 **Next:** I-15 first, then R-44. I-15's first commit restates how a pose is judged, with the two findings above. G-13 stays Blocked until both are Done.
+
+## 2026-11-24 — Reviewed the G-14 and P-42 claims and follow-up PRs
+
+**Who:** @dalwalyk
+**Result:** Approved the claims in #443 and #444, with #443's P-40 waiting note to land first.
+Requested changes on #445 for G-15's missing required output argument and the scope of the
+accuracy evidence. Requested changes on #446 for malformed JPEG and EXIF handling and the
+Drive cutover criterion. The story-state checker passed on all four heads. The 30 focused
+#446 tests and the v2 manifest checksum passed. The clean Drive run verified s-01 and s-02
+before gdown reported public-link/access errors on s-03.
+
+## 2026-11-24 — Approved the P-42 accuracy-testing write-up on re-review (PR #445)
+
+**Who:** @dalwalyk
+**Result:** Approved `ea3ea6b` after verifying the required output option against the CLI and
+checking the wording for the ten-part camera-photo comparison, app evidence on s-04 and
+CAD deviation. The story-state checker, diff check and all GitHub CI checks passed.
+
+## 2026-11-24 — P-42 Done: the accuracy-testing stories, from a ten-part re-run of `main` (PR #444, PR #445)
+
+**Who:** @TabeenRaoof. @dalwalyk reviewed.
+**What changed:**
+- **The run:** after I-15 (#440) and R-44 (#442) merged, P-41's `scripts/measure_part_accuracy.py run` was re-run on the ten calipered parts with `main` at `70b2773`. It was compared with P-41's own committed-script run at `89d0de4`.
+- **Reconstruction:** every part's model was byte-identical, so R-44's correction, off by default, changes nothing.
+- **Poses:** eight of the ten are the same by I-15's `poses_are_same`. s-05 (5.50 mm) and `g05_00` (2.28 mm) moved, both exactly as I-15's criterion-4 record shows.
+- **Ambiguity flags:** unchanged on all ten.
+- **Deviations from each part's own CAD:** these include print and registration error. Wall readings mostly held. `g05_00` improved, 3.46 → 3.00 mm, and s-05 3.93 → 3.77 mm. `g05_02` got worse, 3.02 → 3.44 mm, with the same pose.
+- **Stories:**
+  - **G-15** (4 h, Ready): the calipered parts captured through the app on `main`, and again in a second room and light;
+  - **I-17** (4 h, Ready): trace `g05_02`'s wall change and s-05's pose, and fix only what can land before the Dec 4 code freeze.
+- **The index:** both stories sit in a new "Accuracy testing (P-42)" section of `stories/README.md`. There's no new lane letter: each story keeps its lane.
+- **Routed, not storied:** the expo hall (Sat Dec 5) goes into R-36's runbook in #371.
+- **Corrections at review:**
+  - G-15's command lacked `--out`, which `run` requires.
+  - The text said every figure came from camera-app photos, though P-41 measured three s-04 phone sessions. App-capture evidence so far covers s-04 only.
+- **How it merged:** the claim is #444 (`99c7a9f`) and the write-up #445 (`8006f17`). #445 was stacked on the claim, then retargeted to `main` and updated before its approval.
+
+**Command / how to reproduce:** P-41's `run_committed_script.sh`, pointed at `main`, with `PROOFSHAPE_RECON_DEVICE=mps` and `OMP_NUM_THREADS=1`. Then run `measure_part_accuracy.py report` on the ten output folders.
+**Result:** 1 h actual (est 1.5), owner-confirmed. The full suite on `70b2773` passed: 1798 passed, 7 skipped.
+**Concluded:** `main` after I-15 and R-44 reads the calipered parts as before, with two untraced changes. The app path, which the expo uses, has evidence on one part only. No code, threshold or decision changed.
+**Next:** someone claims G-15 and I-17. I-17 coordinates with I-16 (#441) on `registration.py`, as commented there. R-36's owner adds the expo hall to #371.
+
+## 2026-11-26 — A-15 Done: the live capture agent (PR #431)
+
+**Who:** @mbj1994; reviewed by @TabeenRaoof and @dalwalyk.
+**Result:** 5 h actual (est 6). Contract v1.9 serves the read-only agent-message route, with
+background turns and deterministic fallback. The final Gemini-enabled iPhone test on
+`894e904` accepted all 13 orbit positions, finished without a manual Finish tap, and downloaded
+the model 36 s after the last upload (87.2% Observed area, not dimensional accuracy; no warnings).
+Both reviewers approved final head `866e0f7`; all four CI jobs passed. Both explicitly accepted
+the D-031 timing exception before merge: [Tabeen's review](https://github.com/proofshape/proofshape/pull/431#pullrequestreview-6078072130)
+and [Dalwalyk's direct agreement](https://github.com/proofshape/proofshape/pull/431#issuecomment-7209096486). Merged as `3ec95d1`. Queue pressure under concurrent uploads remains
+a documented follow-up, not proven load safety. The timing exception does not authorize public AWS
+wiring under D-072/O-005.
+
+## 2026-11-26 — R-42 Done: scale agreement in the service (PR #454)
+
+**Who:** @mbj1994; reviewed by @dalwalyk.
+**Result:** 2 h actual (est 3), owner-confirmed. The service now uses the metric ChArUco pitch and
+selected CAD residual with R-41's corrected formula. Missing evidence or a check failure omits
+the diagnostic; deviation and verdict measurement continue. No API change or new verdict rule.
+Dalwalyk reported 94 focused tests, the story-state checker and CI passing on `8cfd0a0`.
+Merged as `c42844c` before D-038 closeout; the separate documentation PR records the omission.
+**Real-data limitation:** [Tabeen's post-merge review](https://github.com/proofshape/proofshape/pull/454#pullrequestreview-6083636630) reports 88 focused tests passing,
+but the exact scale-check path flagged 7 of 10 correct metric ChArUco parts from the Nov 25
+saved-model run. CAD residuals ranged from -0.1044 to +0.1234; this is not evidence of
+reliable 2% substitution detection. R-42 is complete as wiring only; the warning remains
+live and must not be relied upon for scale accuracy or substitution. See [issue #456](https://github.com/proofshape/proofshape/issues/456).
+**Next:** C-21 public deployment preparation, with the team to settle interim handling of
+the diagnostic before public use; X-03 still waits for G-12 and may use verified shape evidence.

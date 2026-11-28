@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createSession, finishSession, uploadFrame } from "./api.js";
 import { measureBlurVariance } from "./frame_gate.js";
+import { DEFAULT_ORBIT } from "./orbit.js";
 import {
   browserSessionStorage,
   CAPTURE_SESSION_STORAGE_KEY,
@@ -161,12 +162,12 @@ describe("mountAppShell", () => {
     window.dispatchEvent(event);
   }
 
-  async function startSuccessfulSession(): Promise<
-    ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }
-  > {
+  async function startSuccessfulSession(
+    overrides: Partial<AppShellOptions> = {},
+  ): Promise<ReturnType<typeof mount> & { trackStopSpy: ReturnType<typeof vi.fn> }> {
     const { trackStopSpy } = stubGrantedCamera();
     stubGyroPermission("granted");
-    const mounted = mount();
+    const mounted = mount(overrides);
     mounted.orderCode.value = "PO-48213-A";
     mounted.button.click();
     await vi.waitFor(() => {
@@ -1651,6 +1652,468 @@ describe("mountAppShell", () => {
     });
   });
 
+  it("moves into reconstruction polling when the agent reports the session finished", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/agent-message")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished: true,
+                fallback_reason: null,
+                message: "Coverage complete.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("finish transition not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
+  it("keeps a recovery tail after the fast final-turn window expires for queued agent work", async () => {
+    const mounted = await startSuccessfulSession({
+      agentTurnPollIntervalMs: 0,
+      agentTurnPollMaxAttempts: 2,
+      agentRecoveryPollIntervalMs: 0,
+      agentRecoveryPollMaxAttempts: 3,
+    });
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    let acceptedUploads = 0;
+    let agentCalls = 0;
+    let finalTurnPolls = 0;
+    let reconstructionCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          acceptedUploads += 1;
+          return realFetch(input, init);
+        }
+        if (url.includes("/agent-message")) {
+          agentCalls += 1;
+          const onFinalTurn = acceptedUploads >= DEFAULT_ORBIT.length;
+          if (onFinalTurn) {
+            finalTurnPolls += 1;
+          }
+          // The first two final-turn reads exhaust the fast window. The answer arrives only on
+          // the second recovery-tail read, representing earlier per-session work ahead in queue.
+          const finished = onFinalTurn && finalTurnPolls >= 4;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished,
+                fallback_reason: null,
+                message: finished
+                  ? "All coverage slots are complete. Finishing the session."
+                  : "Continue to the next guided view.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          reconstructionCalls += 1;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    for (let index = 0; index < DEFAULT_ORBIT.length; index += 1) {
+      const slot = DEFAULT_ORBIT[index];
+      if (slot === undefined) throw new Error("test setup: orbit slot missing");
+      dispatchOrientation(slot.azimuthDeg, 90 - slot.elevationDeg, 0);
+      await vi.waitFor(() => {
+        if (mounted.captureButton.disabled) throw new Error("still disabled");
+      });
+      await captureAndWaitForStatus(mounted, new RegExp(`frame ${String(index)}`, "i"));
+      if (index < DEFAULT_ORBIT.length - 1) {
+        await vi.waitFor(() => {
+          if (agentCalls < index + 1) throw new Error("agent GET not observed yet");
+        });
+      }
+    }
+
+    await vi.waitFor(() => {
+      if (finalTurnPolls < 4) throw new Error("recovery-tail polling not observed");
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("automatic finish transition not observed");
+      }
+      if (reconstructionCalls === 0) throw new Error("reconstruction polling not started");
+    });
+
+    expect(agentCalls).toBeGreaterThan(DEFAULT_ORBIT.length);
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
+    // A terminal reconstruction clears C-24's saved-session recovery record. Reaching this state
+    // without a Finish tap proves the delayed agent poll drove the full lifecycle.
+    expect(savedSessionInTab()).toBeNull();
+  });
+
+  it("retries a transient final-turn GET failure and still enters reconstruction automatically", async () => {
+    const mounted = await startSuccessfulSession({
+      agentTurnPollIntervalMs: 0,
+      agentTurnPollMaxAttempts: 2,
+      agentRecoveryPollIntervalMs: 0,
+      agentRecoveryPollMaxAttempts: 2,
+    });
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    let acceptedUploads = 0;
+    let finalTurnPolls = 0;
+    let reconstructionCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          acceptedUploads += 1;
+          return realFetch(input, init);
+        }
+        if (url.includes("/agent-message")) {
+          const onFinalTurn = acceptedUploads >= DEFAULT_ORBIT.length;
+          if (!onFinalTurn) {
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  finished: false,
+                  fallback_reason: null,
+                  message: "Continue to the next guided view.",
+                }),
+                { status: 200, headers: { "content-type": "application/json" } },
+              ),
+            );
+          }
+          finalTurnPolls += 1;
+          if (finalTurnPolls === 1) {
+            return Promise.reject(new TypeError("synthetic transient network failure"));
+          }
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                finished: true,
+                fallback_reason: null,
+                message: "All coverage slots are complete. Finishing the session.",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          reconstructionCalls += 1;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    for (let index = 0; index < DEFAULT_ORBIT.length; index += 1) {
+      const slot = DEFAULT_ORBIT[index];
+      if (slot === undefined) throw new Error("test setup: orbit slot missing");
+      dispatchOrientation(slot.azimuthDeg, 90 - slot.elevationDeg, 0);
+      await vi.waitFor(() => {
+        if (mounted.captureButton.disabled) throw new Error("still disabled");
+      });
+      await captureAndWaitForStatus(mounted, new RegExp(`frame ${String(index)}`, "i"));
+    }
+
+    await vi.waitFor(() => {
+      if (finalTurnPolls < 2) throw new Error("transient retry not observed");
+      if (!mounted.finishStatus.textContent.includes("finished the session")) {
+        throw new Error("automatic finish transition not observed");
+      }
+      if (reconstructionCalls === 0) throw new Error("reconstruction polling not started");
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
+    expect(savedSessionInTab()).toBeNull();
+  });
+
+  it.each([true, false])(
+    "starts one reconstruction poller when manual and agent Finish race (agent first: %s)",
+    async (agentFirst) => {
+      const mounted = await startSuccessfulSession({
+        agentTurnPollIntervalMs: 0,
+        agentTurnPollMaxAttempts: 3,
+      });
+      stubCanvasContext();
+      setVideoDimensions(mounted.cameraPreview, 640, 480);
+
+      const realFetch = globalThis.fetch.bind(globalThis);
+      let acceptedUploads = 0;
+      let reconstructionCalls = 0;
+      const finalAgentResolvers: Array<(response: Response) => void> = [];
+      const finishResolvers: Array<(response: Response) => void> = [];
+      const jsonResponse = (body: unknown, status = 200): Response =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { "content-type": "application/json" },
+        });
+      const finishedMessage = () =>
+        jsonResponse({ finished: true, fallback_reason: null, message: "Finishing." });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          const url =
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (url.includes("/frames")) {
+            acceptedUploads += 1;
+            return realFetch(input, init);
+          }
+          if (url.includes("/agent-message")) {
+            if (acceptedUploads >= DEFAULT_ORBIT.length) {
+              return new Promise<Response>((resolve) => {
+                finalAgentResolvers.push(resolve);
+              });
+            }
+            return Promise.resolve(
+              jsonResponse({ finished: false, fallback_reason: null, message: "Continue." }),
+            );
+          }
+          if (url.endsWith("/finish")) {
+            return new Promise<Response>((resolve) => {
+              finishResolvers.push(resolve);
+            });
+          }
+          if (url.includes("/reconstruction")) {
+            reconstructionCalls += 1;
+            return Promise.resolve(
+              jsonResponse({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+            );
+          }
+          return realFetch(input, init);
+        }),
+      );
+
+      for (let index = 0; index < DEFAULT_ORBIT.length; index += 1) {
+        const slot = DEFAULT_ORBIT[index];
+        if (slot === undefined) throw new Error("test setup: orbit slot missing");
+        dispatchOrientation(slot.azimuthDeg, 90 - slot.elevationDeg, 0);
+        await vi.waitFor(() => {
+          if (mounted.captureButton.disabled) throw new Error("still disabled");
+        });
+        await captureAndWaitForStatus(mounted, new RegExp(`frame ${String(index)}`, "i"));
+      }
+      await vi.waitFor(() => {
+        expect(finalAgentResolvers.length).toBe(1);
+        expect(mounted.finishButton.disabled).toBe(false);
+      });
+      mounted.finishButton.click();
+      await vi.waitFor(() => {
+        expect(finishResolvers.length).toBe(1);
+      });
+
+      const resolveAgent = finalAgentResolvers[0];
+      const resolveFinish = finishResolvers[0];
+      if (!resolveAgent || !resolveFinish) throw new Error("missing request resolver");
+      const manualResponse = () =>
+        jsonResponse(
+          { session_id: mounted.state.sessionId, order_code: "PO-1", status: "finished" },
+          202,
+        );
+      if (agentFirst) {
+        resolveAgent(finishedMessage());
+      } else {
+        resolveFinish(manualResponse());
+      }
+      await vi.waitFor(() => {
+        expect(mounted.reconstructionStatus.textContent).toContain("Reconstruction complete");
+      });
+      const firstStatus = mounted.finishStatus.textContent;
+      if (agentFirst) {
+        resolveFinish(manualResponse());
+      } else {
+        resolveAgent(finishedMessage());
+      }
+      // Let the losing request settle after the terminal result has cleared activeSession.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 20);
+      });
+      expect(reconstructionCalls).toBe(1);
+      expect(mounted.finishStatus.textContent).toBe(firstStatus);
+      expect(mounted.finishButton.disabled).toBe(true);
+      expect(savedSessionInTab()).toBeNull();
+    },
+  );
+
+  it("recovers an upload session_already_finished response instead of forgetting the session", async () => {
+    const mounted = await startSuccessfulSession();
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    dispatchOrientation(0, 45, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes("/frames")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                code: "session_already_finished",
+                message: "The session is already finished.",
+              }),
+              { status: 422, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("already finished")) {
+        throw new Error("recovery transition not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.state.sessionId).not.toBeNull();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
+  it("recovers a manual Finish race when the agent already finished the session", async () => {
+    const mounted = await startSuccessfulSession();
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+    await uploadAcceptedFrame(mounted.state.sessionId as string);
+
+    const realFetch = globalThis.fetch.bind(globalThis);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.endsWith("/finish")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                code: "session_already_finished",
+                message: "The session is already finished.",
+              }),
+              { status: 409, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.includes("/reconstruction")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "pending" }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    mounted.finishButton.click();
+    await vi.waitFor(() => {
+      if (!mounted.finishStatus.textContent.includes("already finished")) {
+        throw new Error("finish race recovery not observed");
+      }
+    });
+
+    expect(mounted.trackStopSpy).toHaveBeenCalled();
+    expect(mounted.captureButton.disabled).toBe(true);
+    expect(mounted.finishButton.disabled).toBe(true);
+    expect(savedSessionInTab()?.phase).toBe("finished");
+  });
+
   it("keeps the assistant panel hidden when today's real-style service has no agent route", async () => {
     const mounted = await startSuccessfulSession();
     stubCanvasContext();
@@ -1883,6 +2346,89 @@ describe("mountAppShell", () => {
     expect(savedSessionInTab()?.sessionId).toBe(originalSessionId);
   });
 
+  it.each([true, false])(
+    "A-15: Continue recovers a completed orbit without a new photo (already finished: %s)",
+    async (alreadyFinished) => {
+      const { trackStopSpy } = stubGrantedCamera();
+      stubGyroPermission("granted");
+      const sessionId = "sess_reload_agent";
+      saveCaptureSession(browserSessionStorage(), {
+        sessionId,
+        orderCode: "PO-48213-A",
+        phase: "capturing",
+        acceptedFrameCount: DEFAULT_ORBIT.length,
+        acceptedGyro: DEFAULT_ORBIT.map((slot) => ({
+          alpha: slot.azimuthDeg,
+          beta: 90 - slot.elevationDeg,
+          gamma: 0,
+        })),
+      });
+      let agentCalls = 0;
+      let reconstructionCalls = 0;
+      let writeCalls = 0;
+      const realFetch = globalThis.fetch.bind(globalThis);
+      const jsonResponse = (body: unknown): Response =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+          const url =
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (init?.method === "POST") {
+            writeCalls += 1;
+          }
+          if (url.endsWith(`/${sessionId}/agent-message`)) {
+            agentCalls += 1;
+            return Promise.resolve(
+              jsonResponse({
+                finished: alreadyFinished || agentCalls > 1,
+                fallback_reason: null,
+                message: "Finishing.",
+              }),
+            );
+          }
+          if (url.endsWith(`/${sessionId}/reconstruction`)) {
+            reconstructionCalls += 1;
+            return Promise.resolve(
+              jsonResponse({
+                status: "complete",
+                glb_url: "https://example.test/model.glb",
+                reference_tier_used: "charuco_board",
+                metric: true,
+                observed_fraction: 0.9,
+                warnings: [],
+              }),
+            );
+          }
+          return realFetch(input, init);
+        }),
+      );
+
+      const reloaded = mount({
+        agentTurnPollIntervalMs: 0,
+        agentTurnPollMaxAttempts: 3,
+        agentRecoveryPollMaxAttempts: 0,
+      });
+      resumeElements().continueButton.click();
+
+      await vi.waitFor(() => {
+        expect(reloaded.reconstructionStatus.textContent).toContain("Reconstruction complete");
+      });
+      expect(reloaded.state.sessionId).toBe(sessionId);
+      expect(coveredCountText()).toBe("Covered: 13/13");
+      expect(agentCalls).toBe(alreadyFinished ? 1 : 2);
+      expect(reconstructionCalls).toBe(1);
+      expect(writeCalls).toBe(0);
+      expect(trackStopSpy).toHaveBeenCalled();
+      expect(reloaded.captureButton.disabled).toBe(true);
+      expect(reloaded.finishButton.disabled).toBe(true);
+      expect(savedSessionInTab()).toBeNull();
+    },
+  );
+
   it("C-24: Start new drops the saved session", async () => {
     await startSuccessfulSession();
     mount();
@@ -2068,6 +2614,339 @@ describe("mountAppShell", () => {
     expect(mounted.captureButton.textContent.trim()).toBe("Capture frame");
     expect(mounted.captureButton.disabled).toBe(true);
     expect(document.querySelector("#shell-viewfinder #shell-gyro-overlay")).not.toBeNull();
+  });
+
+  // C-27: auto-capture. The clock is injected; orientation events are dispatched by hand, as a
+  // phone would deliver them. The switch is off by default (#436), so these sessions turn it on,
+  // as the person capturing would, unless a test says otherwise.
+  function autoCaptureToggle(): HTMLInputElement {
+    const toggle = document.getElementById("shell-auto-capture");
+    if (!(toggle instanceof HTMLInputElement)) throw new Error("test: toggle missing");
+    return toggle;
+  }
+
+  async function startAutoSession(
+    firstPhotoBeta = 45,
+    { autoOn = true }: { autoOn?: boolean } = {},
+  ): Promise<{
+    mounted: Awaited<ReturnType<typeof startSuccessfulSession>>;
+    clock: { t: number };
+    canvas: ReturnType<typeof stubCanvasContext>;
+  }> {
+    const clock = { t: 0 };
+    const mounted = await startSuccessfulSession({ now: () => clock.t });
+    // Left alone when autoOn is false, so a test can see the default.
+    if (autoOn) autoCaptureToggle().checked = true;
+    const canvas = stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    // alpha 0, beta 45 by default: DEFAULT_ORBIT's slot 0. The first photo is a tap.
+    dispatchOrientation(0, firstPhotoBeta, 0);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("still disabled");
+    });
+    await captureAndWaitForStatus(mounted, /accepted/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    return { mounted, clock, canvas };
+  }
+
+  function holdAt(
+    clock: { t: number },
+    alpha: number,
+    fromMs: number,
+    untilMs: number,
+    beta = 45,
+  ): void {
+    for (let t = fromMs; t <= untilMs; t += 100) {
+      clock.t = t;
+      dispatchOrientation(alpha, beta, 0);
+    }
+  }
+
+  function frameUploads(fetchSpy: MockInstance<typeof fetch>): number {
+    return fetchSpy.mock.calls.filter(([url]) => typeof url === "string" && url.includes("/frames"))
+      .length;
+  }
+
+  it("C-27: after the first tapped photo, holding on the next target takes the next photo by itself", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+
+    // Slot 1 is azimuth 45. 500 ms of holding is not enough.
+    holdAt(clock, 45, 1000, 1500);
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(overlayStatusText()).toMatch(/hold steady/i);
+
+    holdAt(clock, 45, 1600, 1600);
+    await vi.waitFor(() => {
+      if (!/^Covered: 2\//.test(coveredCountText() ?? "")) throw new Error("not yet covered");
+    });
+    expect(frameUploads(fetchSpy)).toBe(1);
+    expect(mounted.captureStatus.textContent).toMatch(/^Auto: .*accepted/i);
+  });
+
+  // The C-26 device-check bug (2026-11-20): after a first photo taken high, the frame went green
+  // at about 58 deg, and auto-capture took a photo every 1.5 s that coverage credited to the
+  // already-covered 70 deg slot, so the count never moved.
+  it("C-27: does not fire where the photo would count for an already-covered slot", async () => {
+    // beta 12 = elevation 78: the first photo covers the 70 deg slot, the next target is slot 0.
+    const { clock } = await startAutoSession(12);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+
+    // beta 32 = elevation 58, within 15 deg of both rings. Held for 3 s: nothing.
+    holdAt(clock, 0, 1000, 4000, 32);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(document.getElementById("shell-viewfinder")?.dataset.guidance).toBe("near");
+
+    // beta 40 = elevation 50: credited to slot 0, so it goes green and fires once.
+    holdAt(clock, 0, 4100, 4800, 40);
+    await vi.waitFor(() => {
+      if (!/^Covered: 2\//.test(coveredCountText() ?? "")) throw new Error("not yet covered");
+    });
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  it("C-27: never fires before the first photo, however long the phone is held", async () => {
+    const clock = { t: 0 };
+    const mounted = await startSuccessfulSession({ now: () => clock.t });
+    autoCaptureToggle().checked = true;
+    stubCanvasContext();
+    setVideoDimensions(mounted.cameraPreview, 640, 480);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 0, 0, 5000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(document.getElementById("shell-viewfinder")?.dataset.guidance).toBe("idle");
+  });
+
+  it("C-27: the switch starts off, and a held on-target reading takes nothing until it is turned on", async () => {
+    const { clock } = await startAutoSession(45, { autoOn: false });
+    expect(autoCaptureToggle().checked).toBe(false);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 5000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+
+    autoCaptureToggle().checked = true;
+    holdAt(clock, 45, 5100, 5800);
+    await vi.waitFor(() => {
+      if (!/^Covered: 2\//.test(coveredCountText() ?? "")) throw new Error("not yet covered");
+    });
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  it("C-27: switched off again, holding on target takes nothing and the status says to tap", async () => {
+    const { clock } = await startAutoSession();
+    holdAt(clock, 45, 1000, 1100);
+    expect(overlayStatusText()).toMatch(/hold steady/i);
+    autoCaptureToggle().checked = false;
+    autoCaptureToggle().dispatchEvent(new Event("change"));
+    // Updated by the switch itself, before the phone moves again.
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1200, 5000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+  });
+
+  it("C-27: never starts a second capture while an upload is still in flight", async () => {
+    const { clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return new Promise<Response>(() => undefined); // never settles: the upload hangs
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (frameUploads(fetchSpy) === 0) throw new Error("first auto upload not started");
+    });
+    // Well past both the hold and the retry gap, 5 degrees over: still on target, and far enough
+    // from the hanging frame (2 degree duplicate threshold) that the duplicate gate would pass it.
+    // Only the shutter-enabled guard (no upload in flight) can stop this second capture.
+    holdAt(clock, 50, 1700, 8000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  // #420 review (@dalwalyk): a failed automatic upload used to be retried every retry gap for as
+  // long as the phone stayed on target.
+  it("C-27: an automatic photo the server rejects turns auto-capture off instead of retrying", async () => {
+    const { mounted, clock } = await startAutoSession();
+    stub.rejectNextFrame();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(/^Auto: .*Auto-capture is off now/);
+    // The phone hasn't moved since the failure, and the on-target line already says to tap.
+    expect(overlayStatusText()).toMatch(/take the photo/i);
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    holdAt(clock, 45, 1700, 9000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
+  });
+
+  it("C-27: an automatic photo that can't reach the server turns auto-capture off instead of retrying", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(
+      /^Auto: Could not upload frame.*Auto-capture is off now/,
+    );
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    holdAt(clock, 45, 1700, 9000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  // #420 review, round 2 (@dalwalyk): when the session is gone, the message must not offer a tap
+  // or auto-capture, since neither can help.
+  it("C-27: an automatic photo on a session that's gone turns auto-capture off without offering a retry", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ code: "session_not_found", message: "Not Found" }), {
+            status: 422,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(
+      /start a new session\. Auto-capture is off now\.$/,
+    );
+    expect(mounted.captureStatus.textContent).not.toMatch(/tap to retry/);
+  });
+
+  // #420 review, round 2 (@dalwalyk): a tapped photo that failed to upload was retried once by
+  // auto-capture 1.5 s later before the switch went off.
+  it("C-27: a tapped photo that fails to upload turns auto-capture off too", async () => {
+    const { mounted, clock } = await startAutoSession();
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      if (typeof input === "string" && input.includes("/frames")) {
+        return Promise.reject(new TypeError("Failed to fetch"));
+      }
+      return realFetch(input, init);
+    });
+    holdAt(clock, 45, 1000, 1100);
+    mounted.captureButton.click();
+    await vi.waitFor(() => {
+      if (autoCaptureToggle().checked) throw new Error("auto still on");
+    });
+    expect(mounted.captureStatus.textContent).toMatch(
+      /^Could not upload frame.*Auto-capture is off now/,
+    );
+    await vi.waitFor(() => {
+      if (mounted.captureButton.disabled) throw new Error("upload still in flight");
+    });
+    holdAt(clock, 45, 1200, 9000);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(frameUploads(fetchSpy)).toBe(1);
+  });
+
+  // #420 review (@dalwalyk): a tap the gate rejected could be followed ~16 ms later by an
+  // automatic photo, overwriting the person's own rejection message.
+  it("C-27: a tap restarts auto-capture's hold and retry gap", async () => {
+    const { mounted, clock, canvas } = await startAutoSession();
+    const flat = sharpWellExposedImageData();
+    flat.data.fill(128);
+    canvas.setImageData(flat);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 1500);
+    mounted.captureButton.click();
+    expect(mounted.captureStatus.textContent).toMatch(/^Frame rejected/);
+    // Past the 0.6 s hold that started at 1000 ms, but within 1.5 s of the tap.
+    holdAt(clock, 45, 1600, 2900);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mounted.captureStatus.textContent).toMatch(/^Frame rejected/);
+    expect(frameUploads(fetchSpy)).toBe(0);
+  });
+
+  // #420 review, round 2 (@dalwalyk): the case the fix is for -- a reading before the grant, then
+  // the grant. Capture waits for a reading that arrives after it.
+  it("C-27: a reading before the gyro grant doesn't count once permission is granted", async () => {
+    stubGrantedCamera();
+    stubGyroPermission("granted");
+    const { state, orderCode, button, cameraStatus, gyroStatus, captureButton } = mount();
+    dispatchOrientation(0, 45, 0);
+    orderCode.value = "PO-48213-A";
+    button.click();
+    await vi.waitFor(() => {
+      if (cameraStatus.textContent !== "Camera started.") throw new Error("still pending");
+    });
+    await vi.waitFor(() => {
+      if (gyroStatus.textContent === "") throw new Error("gyro still pending");
+    });
+    expect(state.latestGyro).toBeNull();
+    expect(captureButton.disabled).toBe(true);
+    dispatchOrientation(10, 45, 0);
+    expect(state.latestGyro).not.toBeNull();
+    expect(captureButton.disabled).toBe(false);
+  });
+
+  // #420 review (@dalwalyk): the overlay listens from page load, so a reading before the motion
+  // permission was granted used to count as the shell's gyro reading.
+  it("C-27: a reading before the gyro is granted doesn't enable capture", async () => {
+    stubGrantedCamera();
+    stubGyroPermission("denied");
+    const { state, orderCode, button, cameraStatus, captureButton } = mount();
+    dispatchOrientation(0, 45, 0);
+    orderCode.value = "PO-48213-A";
+    button.click();
+    await vi.waitFor(() => {
+      if (cameraStatus.textContent !== "Camera started.") throw new Error("still pending");
+    });
+    dispatchOrientation(10, 45, 0);
+    expect(state.latestGyro).toBeNull();
+    expect(captureButton.disabled).toBe(true);
+  });
+
+  it("C-27: an automatic frame the gate rejects says so, uploads nothing and leaves coverage alone", async () => {
+    const { mounted, clock, canvas } = await startAutoSession();
+    const flat = sharpWellExposedImageData();
+    flat.data.fill(128);
+    canvas.setImageData(flat);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    holdAt(clock, 45, 1000, 1600);
+    await vi.waitFor(() => {
+      if (!/^Auto: Frame rejected/.test(mounted.captureStatus.textContent)) {
+        throw new Error("no automatic rejection yet");
+      }
+    });
+    expect(mounted.captureStatus.textContent).toMatch(/blur/i);
+    expect(frameUploads(fetchSpy)).toBe(0);
+    expect(coveredCountText()).toMatch(/^Covered: 1\//);
   });
 
   it("C-26: Finish session is the large primary button and keeps its id and name", () => {

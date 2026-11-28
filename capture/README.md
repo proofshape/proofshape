@@ -132,4 +132,18 @@ Pages build displays a clear message instead of trying and failing to call a
 nonexistent stub.
 
 The Mac path in the C-13 section above remains the fallback when Pages or
-Lightning is unavailable.
+Lightning is unavailable, and the D-072 defense host.
+
+**C-21 AWS public-expo proposal (2026-11-27, not authorization).** The owner reported
+a successful local-Vite iPhone-to-AWS reconstruction on Nov 25; it was not a hosted
+Pages session. [#466](https://github.com/proofshape/proofshape/pull/466) proposes a
+D-072 amendment and AWS-specific O-005 answers. Before setting any public flags,
+both other members must approve and merge that decision, verify the actual live
+HTTPS/CORS/order gate, automatic stop guard, current main-built image and #456
+interim warning policy. The three build-time checks are necessary, not sufficient
+to establish all D-072 conditions. The browser transport token is public-readable;
+never ship buyer/Gemini keys. A valid order is reusable, not a rate or cost limit.
+Use supervised sequential demo sessions only. Recheck address after EC2 restart.
+After each approved window, disable the four public/O-005 flags, rebuild fail-closed,
+rotate the token, stop the GPU and verify stopped state. See the outstanding checklist
+in [C-21](../stories/C/C-21.md).

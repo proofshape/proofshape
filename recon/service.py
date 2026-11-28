@@ -9,6 +9,7 @@ import secrets
 import threading
 import time
 import uuid
+import weakref
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -152,6 +153,14 @@ class UploadFrameResult(BaseModel):
     )
 
 
+class AgentMessageResult(BaseModel):
+    """A-15 / contract v1.9: the latest persisted capture-agent turn for this session."""
+
+    finished: bool
+    fallback_reason: Literal["model_error", "timeout", "loop_detected"] | None
+    message: str | None
+
+
 class ScaleAgreement(BaseModel):
     sources_compared: list[str]
     flagged: bool
@@ -261,6 +270,83 @@ class SessionStore:
     def save(self, record: dict[str, Any]) -> None:
         with self._lock:
             self._write_record(record)
+
+    def update_reconstruction(
+        self, session_id: str, reconstruction: dict[str, Any]
+    ) -> None:
+        """Publish the terminal reconstruction without replacing concurrent session fields."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is not None:
+                record["reconstruction"] = reconstruction
+                self._write_record(record)
+
+    def update_scale_agreement(
+        self, session_id: str, agreement: ScaleAgreement | None
+    ) -> None:
+        """Merge the scale diagnostic without replacing guidance or the served GLB."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is None:
+                return
+            reconstruction = record["reconstruction"]
+            if reconstruction.get("status") != "complete":
+                return
+            if agreement is None:
+                reconstruction.pop("scale_agreement", None)
+            else:
+                reconstruction["scale_agreement"] = agreement.model_dump()
+            self._write_record(record)
+
+    def update_ambiguity(self, session_id: str, ambiguity: dict[str, Any]) -> None:
+        """Publish measurement status without overwriting guidance or reconstruction."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is not None:
+                record["ambiguity"] = ambiguity
+                self._write_record(record)
+
+    def update_deviation_glb(
+        self, session_id: str, expected_path: str, output_path: str
+    ) -> None:
+        """Switch only the GLB path, preserving the latest record and reconstruction fields."""
+        with self._lock:
+            record = self.load(session_id)
+            if record is None:
+                raise KeyError(session_id)
+            reconstruction = record.get("reconstruction", {})
+            if (
+                reconstruction.get("status") != "complete"
+                or reconstruction.get("glb_path") != expected_path
+            ):
+                raise ValueError("reconstruction changed before deviation publication")
+            reconstruction["glb_path"] = output_path
+            self._write_record(record)
+
+    def update_agent_message(
+        self,
+        session_id: str,
+        *,
+        fallback_reason: str | None,
+        message: str | None,
+    ) -> dict[str, Any] | None:
+        """Merge only the phone-facing agent result into the latest session record.
+
+        A-15 runs the model turn outside the store lock so uploads stay fast. Reloading under the
+        lock here prevents a turn that started from an older snapshot from overwriting a concurrent
+        frame_count update or a Finish transition.
+        """
+        with self._lock:
+            record = self.load(session_id)
+            if record is None:
+                return None
+            record["agent_message"] = {
+                "finished": record.get("status") == "finished",
+                "fallback_reason": fallback_reason,
+                "message": message,
+            }
+            self._write_record(record)
+            return record
 
     def add_frame(
         self, session_id: str, frame_bytes: bytes, gyro: dict[str, float]
@@ -385,6 +471,12 @@ def _classify_board_failure(
 
 CALIBRATED_BOARD_DIR_NAME = "board_pose_calibrated"
 BOARD_CALIBRATION_RECORD = "board_calibration.json"
+
+# R-44: whether fusion first moves each photo onto its own ChArUco corners. Off until the story's
+# gate (pose, error and coverage on the ten calipered parts, set before the measurement) is met
+# and both other members agree in a numbered decision. Turning it on is a reviewed change to this
+# line, not a configuration switch, so the served path can't change without that decision.
+CORNER_REANCHORING_ENABLED = False
 
 
 def _pose_board_with_session_intrinsics(
@@ -533,7 +625,15 @@ def run_reconstruction_pipeline(
 
     started = time.perf_counter()
     try:
-        tsdf_fusion.fuse_run(reconstruction_dir, alignment_path, fusion_dir)
+        # board_dir is the folder load_and_align read above, so R-44's per-photo corners (when
+        # enabled) are the same corners the global alignment was solved from.
+        tsdf_fusion.fuse_run(
+            reconstruction_dir,
+            alignment_path,
+            fusion_dir,
+            corner_reanchoring=CORNER_REANCHORING_ENABLED,
+            board_pose_dir=board_dir,
+        )
     except (FileNotFoundError, ValueError) as exc:
         # R-20: fuse_run reads its confidence threshold from reconstruction_dir's own run.json
         # by default and raises rather than silently guessing one if it's missing or predates
@@ -636,6 +736,8 @@ def create_app(
     orders_dir: Path | None = None,
     buyer_key: str | None = None,
     spec_parser: Callable[[str], Any] | None = None,
+    agent_model_caller: Callable[[Any], Any] | None = None,
+    agent_timeout_s: float | None = None,
 ) -> FastAPI:
     # R-31: keep agent_tools lazy so the runtime guard above has already run before its
     # provenance dependency can import Open3D.
@@ -659,6 +761,75 @@ def create_app(
     configured_spec_parser = spec_parser
     if configured_spec_parser is None and gemini_key:
         configured_spec_parser = GeminiSpecParser(gemini_key)
+
+    # A-15: the phone-facing agent uses A-07's existing loop. The model caller is injectable so
+    # service tests never need a live provider. With no key, deliberately enter A-07's
+    # deterministic fallback path rather than silently disabling the assistant.
+    from recon.agent_loop import DEFAULT_TIMEOUT_S as AGENT_DEFAULT_TIMEOUT_S
+    from recon.agent_loop import run_agent_turn
+    from recon.agent_model import GeminiAgentCaller
+
+    configured_agent_timeout_s = (
+        AGENT_DEFAULT_TIMEOUT_S if agent_timeout_s is None else float(agent_timeout_s)
+    )
+    if configured_agent_timeout_s <= 0:
+        raise ValueError("agent_timeout_s must be positive")
+    configured_agent_model_caller = agent_model_caller
+    if configured_agent_model_caller is None and gemini_key:
+        configured_agent_model_caller = GeminiAgentCaller(gemini_key)
+
+    def missing_agent_model(_state: Any) -> Any:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+
+    # A-15 review: accepted frame uploads must return promptly and stay accepted even if the
+    # optional capture agent fails. One background turn per accepted upload is serialized per
+    # session. The map holds locks weakly: active/waiting turns keep their lock alive, and once no
+    # turn references a finished/abandoned session its entry disappears instead of growing for the
+    # life of a long-running deployment.
+    agent_turn_locks_guard = threading.Lock()
+    agent_turn_locks: weakref.WeakValueDictionary[str, threading.Lock] = (
+        weakref.WeakValueDictionary()
+    )
+
+    def agent_turn_lock(session_id: str) -> threading.Lock:
+        with agent_turn_locks_guard:
+            lock = agent_turn_locks.get(session_id)
+            if lock is None:
+                lock = threading.Lock()
+                agent_turn_locks[session_id] = lock
+            return lock
+
+    def run_agent_after_upload(session_id: str) -> None:
+        scheduled_reconstructions: list[str] = []
+        lock = agent_turn_lock(session_id)
+        try:
+            with lock:
+                record = store.load(session_id)
+                if record is None or record.get("status") != "capturing":
+                    return
+                caller = configured_agent_model_caller or missing_agent_model
+                agent_result = run_agent_turn(
+                    record,
+                    store,
+                    session_id,
+                    scheduled_reconstructions.append,
+                    caller,
+                    min_frames=MIN_FINISH_FRAMES,
+                    timeout_s=configured_agent_timeout_s,
+                )
+                store.update_agent_message(
+                    session_id,
+                    fallback_reason=agent_result.fallback_reason,
+                    message=agent_result.message,
+                )
+        except Exception:
+            # Optional guidance must not fail an accepted upload or strand a finished session.
+            logger.exception("Capture agent turn failed for session %s", session_id)
+        finally:
+            # The finish tool has already committed the session state. Even if message
+            # persistence fails, launch its scheduled reconstruction outside the agent lock.
+            for scheduled_session_id in scheduled_reconstructions:
+                run_session(scheduled_session_id)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -999,6 +1170,7 @@ def create_app(
     )
     async def upload_frame(
         session_id: str,
+        background_tasks: BackgroundTasks,
         frame: Annotated[UploadFile, File()],
         gyro: Annotated[UploadFile, File()],
     ):
@@ -1059,8 +1231,44 @@ def create_app(
             feedback = VlmFeedback(
                 frame_index=checked.frame_index, **checked.observation.model_dump()
             )
+
+        # A-15 option (a): the accepted upload returns immediately. The agent turn starts after
+        # the response is sent, is serialized per session, and persists only its latest
+        # phone-facing result. GET /agent-message remains read-only.
+        background_tasks.add_task(run_agent_after_upload, session_id)
+
         return UploadFrameResult(
             accepted=True, frame_index=frame_index, vlm_feedback=feedback
+        )
+
+    @app.get(
+        "/v1/sessions/{session_id}/agent-message",
+        response_model=AgentMessageResult,
+        responses={404: {"model": ErrorDetail}},
+        operation_id="getAgentMessage",
+    )
+    def get_agent_message(session_id: str):
+        record = store.load(session_id)
+        if record is None:
+            return error(
+                404,
+                ErrorDetail(
+                    code="session_not_found", message="No session with that id."
+                ),
+            )
+        message = record.get("agent_message")
+        if message is None:
+            # Normally the phone asks only after an accepted upload, but a direct caller may ask
+            # earlier. This is a valid empty state, not a fake "session not found".
+            return AgentMessageResult(
+                finished=record.get("status") == "finished",
+                fallback_reason=None,
+                message=None,
+            )
+        return AgentMessageResult(
+            finished=record.get("status") == "finished",
+            fallback_reason=message.get("fallback_reason"),
+            message=message.get("message"),
         )
 
     def run_session(session_id: str) -> None:
@@ -1076,7 +1284,7 @@ def create_app(
                 raise FileNotFoundError(
                     f"pipeline reported {glb_path}, but no GLB exists there"
                 )
-            record["reconstruction"] = {
+            reconstruction = {
                 "status": "complete",
                 "reference_tier_used": result.get("reference_tier_used"),
                 "metric": result.get("metric"),
@@ -1087,24 +1295,24 @@ def create_app(
                 "glb_path": str(glb_path),
             }
         except ReconstructionFailure as exc:
-            record["reconstruction"] = {"status": "failed", "failure": exc.as_dict()}
+            reconstruction = {"status": "failed", "failure": exc.as_dict()}
         except Exception:  # terminal job boundary, logged below
             # Background reconstruction must never leave a persisted session at
             # status=pending. Unexpected numpy/cv2/model exceptions become a terminal
             # internal_error; the exception text is logged for the operator, not shown to
             # the supplier (#186).
             logger.exception("Reconstruction crashed for session %s", session_id)
-            record["reconstruction"] = {
+            reconstruction = {
                 "status": "failed",
                 "failure": {
                     "code": "internal_error",
                     "message": INTERNAL_ERROR_MESSAGE,
                 },
             }
-        # Join even when reconstruction fails. Results never enter session.json: workers
-        # cannot overwrite reconstruction state, nor can this stale record lose their work.
+        # Join even when reconstruction fails. Publish only the terminal result under the
+        # store lock: a guidance turn may have updated session.json during the pipeline.
         supervisor.join(session_dir, int(record["frame_count"]))
-        store.save(record)
+        store.update_reconstruction(session_id, reconstruction)
         run_post_reconstruction_measurement(session_id)
 
     def run_post_reconstruction_measurement(session_id: str) -> None:
@@ -1144,8 +1352,9 @@ def create_app(
                 # `ambiguity`) left get_verdict answering "measurement has not finished yet"
                 # forever, for a measurement that will now never run. Recorded as an error, the
                 # same as every other best-effort failure in this function.
-                record["ambiguity"] = {"error": "registration_or_deviation_failed"}
-                store.save(record)
+                store.update_ambiguity(
+                    session_id, {"error": "registration_or_deviation_failed"}
+                )
                 return
             cad_vertices, cad_faces, cad_units = load_mesh(cad_path)
             cad_mesh = (cad_vertices, cad_faces, cad_units)
@@ -1164,6 +1373,33 @@ def create_app(
 
             candidates = registration.global_register(model, cad_mesh)
             ambiguity = registration.check_ambiguity(candidates, model, cad_mesh)
+
+            # R-42 / D-007: the CAD residual is a second scale source only when the
+            # reconstruction actually used the nominal ChArUco pitch. Neither a missing
+            # residual nor a non-board reconstruction supplies that pair of sources.
+            agreement = None
+            if (
+                reconstruction.get("reference_tier_used") == "charuco_board"
+                and reconstruction.get("metric") is True
+                and ambiguity.best.free_scale_residual is not None
+            ):
+                from recon import scale_agreement
+                from recon.board_pose import BOARD_SQUARE_MM
+
+                try:
+                    agreement = ScaleAgreement.model_validate(
+                        scale_agreement.check_scale_agreement(
+                            board_pitch_mm=BOARD_SQUARE_MM,
+                            cad_registration_residual=ambiguity.best.free_scale_residual,
+                        )
+                    )
+                except Exception:
+                    # Optional diagnostic: failure must not suppress the deviation or verdict.
+                    logger.exception(
+                        "Scale agreement failed for session %s", session_id
+                    )
+            store.update_scale_agreement(session_id, agreement)
+
             publish_deviation_glb(
                 store,
                 session_id,
@@ -1175,19 +1411,18 @@ def create_app(
             logger.exception(
                 "Post-reconstruction measurement failed for session %s", session_id
             )
-            record = store.load(session_id)
-            if record is not None:
-                record["ambiguity"] = {"error": "registration_or_deviation_failed"}
-                store.save(record)
+            store.update_ambiguity(
+                session_id, {"error": "registration_or_deviation_failed"}
+            )
             return
 
-        record = store.load(session_id)
-        if record is not None:
-            record["ambiguity"] = {
+        store.update_ambiguity(
+            session_id,
+            {
                 "orientation_ambiguous": ambiguity.orientation_ambiguous,
                 "reason_codes": list(ambiguity.reason_codes),
-            }
-            store.save(record)
+            },
+        )
 
     @app.post(
         "/v1/sessions/{session_id}/finish",

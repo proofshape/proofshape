@@ -128,11 +128,7 @@ export interface VerdictResult {
   narrative?: string;
 }
 
-/**
- * C-22 temporary capture-side shape used only by the contract stub until A-07's D-031
- * phone-facing field/route is agreed. This is deliberately not added to the frozen OpenAPI
- * contract yet.
- */
+/** A-15 / contract v1.9: latest persisted A-07 capture-agent turn. */
 export type AgentFallbackReason = "model_error" | "timeout" | "loop_detected";
 
 export interface AgentMessageResult {

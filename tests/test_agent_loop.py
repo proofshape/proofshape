@@ -369,7 +369,7 @@ def test_fallback_with_no_real_session_still_reports_rather_than_crashing(tmp_pa
 # --- run_agent_turn: the normal path ------------------------------------------------------------
 
 
-def test_normal_path_calls_finish_session_when_the_model_asks_to(tmp_path):
+def test_normal_path_refuses_finish_when_coverage_is_incomplete(tmp_path, monkeypatch):
     store = service.SessionStore(tmp_path)
     record = store.create("order-1")
     for _ in range(3):
@@ -377,6 +377,48 @@ def test_normal_path_calls_finish_session_when_the_model_asks_to(tmp_path):
             record["session_id"], b"jpeg", {"alpha": 0.0, "beta": 0.0, "gamma": 0.0}
         )
     record = store.load(record["session_id"])
+
+    incomplete = ToolResult(
+        available=True,
+        data={"orbit_coverage": {"covered": [True, False], "next_target_index": 1}},
+    )
+    monkeypatch.setattr(
+        "recon.agent_loop.coverage_report", lambda session_dir, rec: incomplete
+    )
+
+    scheduled: list[str] = []
+    result = run_agent_turn(
+        record,
+        store,
+        record["session_id"],
+        scheduled.append,
+        lambda _state: _reply(tool="finish_session", message="finish now"),
+        min_frames=1,
+    )
+
+    assert result.finished is False
+    assert result.fallback_reason is None
+    assert result.message == "More coverage is required before automatic finish."
+    assert scheduled == []
+    assert store.load(record["session_id"])["status"] == "capturing"
+
+
+def test_normal_path_calls_finish_session_when_the_model_asks_to(tmp_path, monkeypatch):
+    store = service.SessionStore(tmp_path)
+    record = store.create("order-1")
+    for _ in range(3):
+        store.add_frame(
+            record["session_id"], b"jpeg", {"alpha": 0.0, "beta": 0.0, "gamma": 0.0}
+        )
+    record = store.load(record["session_id"])
+
+    fully_covered = ToolResult(
+        available=True,
+        data={"orbit_coverage": {"covered": [True], "next_target_index": None}},
+    )
+    monkeypatch.setattr(
+        "recon.agent_loop.coverage_report", lambda session_dir, rec: fully_covered
+    )
 
     def model_caller(state):
         return _reply(tool="finish_session", message="Looks complete, finishing up.")
@@ -396,7 +438,7 @@ def test_normal_path_calls_finish_session_when_the_model_asks_to(tmp_path):
     assert scheduled == [record["session_id"]]
 
 
-def test_normal_path_takes_several_steps_before_finishing(tmp_path):
+def test_normal_path_takes_several_steps_before_finishing(tmp_path, monkeypatch):
     store = service.SessionStore(tmp_path)
     record = store.create("order-1")
     for _ in range(3):
@@ -404,6 +446,14 @@ def test_normal_path_takes_several_steps_before_finishing(tmp_path):
             record["session_id"], b"jpeg", {"alpha": 0.0, "beta": 0.0, "gamma": 0.0}
         )
     record = store.load(record["session_id"])
+    fully_covered = ToolResult(
+        available=True,
+        data={"orbit_coverage": {"covered": [True], "next_target_index": None}},
+    )
+    monkeypatch.setattr(
+        "recon.agent_loop.coverage_report", lambda session_dir, rec: fully_covered
+    )
+
     script = iter(
         [
             _reply(tool="coverage_report"),

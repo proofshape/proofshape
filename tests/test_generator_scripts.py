@@ -13,8 +13,11 @@ Node tooling at all, so the skip only has to protect that one, local-only gap.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -41,6 +44,7 @@ _ENV_WITHOUT_THEME = {k: v for k, v in os.environ.items() if k != "PPTX_APPLY_TH
         ("build_review_deck.js", "review.pptx"),
         ("build_midterm_deck.js", "midterm.pptx"),
         ("build_midterm_report.js", "report.docx"),
+        ("build_expo_poster.js", "poster.pptx"),
     ],
 )
 def test_generator_script_builds_a_nonempty_file(tmp_path, script_name, out_name):
@@ -81,3 +85,68 @@ def test_build_midterm_deck_skips_the_theme_pass_without_crashing(tmp_path):
     assert "PPTX_APPLY_THEME not set" in result.stdout
     assert out_path.is_file()
     assert out_path.stat().st_size > 0
+
+
+def _run_poster(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["node", "build_expo_poster.js", *args],
+        cwd=SCRIPTS_DIR,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env=_ENV_WITHOUT_THEME,
+    )
+
+
+def _slide_text(pptx_path: Path) -> str:
+    """Every text run on every slide, joined."""
+    with zipfile.ZipFile(pptx_path) as archive:
+        xml = "".join(
+            archive.read(name).decode("utf-8")
+            for name in archive.namelist()
+            if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)
+        )
+    return "\n".join(re.findall(r"<a:t>(.*?)</a:t>", xml, flags=re.DOTALL))
+
+
+# Made-up IDs: the real ones live only in an untracked file (P-40).
+FAKE_IDS = {
+    "Mamadou Jallow": "900001",
+    "Yashi Dalwala": "900002",
+    "Tabeen Raoof": "900003",
+}
+
+
+def test_expo_poster_has_student_ids_only_when_given_an_ids_file(tmp_path):
+    """P-40: the repository is public (D-013), so the committed poster carries names only.
+    Student IDs come from an untracked file, for the print copy."""
+    ids_path = tmp_path / "student-ids.json"
+    ids_path.write_text(json.dumps(FAKE_IDS))
+    plain = tmp_path / "plain.pptx"
+    printed = tmp_path / "print.pptx"
+
+    for args in ([str(plain)], [str(printed), "--ids", str(ids_path)]):
+        result = _run_poster(*args)
+        assert result.returncode == 0, result.stderr
+
+    plain_text = _slide_text(plain)
+    printed_text = _slide_text(printed)
+    for name, student_id in FAKE_IDS.items():
+        assert name in plain_text
+        assert student_id not in plain_text
+        assert f"{name} · {student_id}" in printed_text
+    # nothing in the committed build reads like a student ID
+    assert not re.search(r"(?<!\d)\d{6}(?!\d)", plain_text)
+
+
+def test_expo_poster_refuses_an_ids_file_that_misses_a_member(tmp_path):
+    ids_path = tmp_path / "student-ids.json"
+    ids_path.write_text(json.dumps({"Mamadou Jallow": "900001"}))
+    out_path = tmp_path / "poster.pptx"
+
+    result = _run_poster(str(out_path), "--ids", str(ids_path))
+
+    assert result.returncode != 0
+    assert "Yashi Dalwala" in result.stderr
+    assert not out_path.exists()

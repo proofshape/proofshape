@@ -2,7 +2,7 @@ openapi: "3.1.0"
 
 info:
   title: ProofShape capture/reconstruction/inspection API
-  version: "1.8.0"
+  version: "1.9.0"
   description: >
     The frozen interface between the capture app and the reconstruction/inspection service
     (F-03). Capture codes against this file; reconstruction implements it. Changing it requires
@@ -23,7 +23,10 @@ info:
     session exists. 1.8.0 (A-09, D-082) additively adds an optional `VerdictResult.narrative`: a
     short plain-language summary built deterministically from the verdict's own fields, never
     from a model -- D-082 found no way to make a free-text LLM narrative safe against the hard
-    rule, so v1 serves the templated half only.
+    rule, so v1 serves the templated half only. 1.9.0 (A-15, D-031) additively serves the capture
+    agent's latest persisted turn at GET /sessions/{session_id}/agent-message. The GET is read-only:
+    the turn runs after an accepted frame upload, and the result tells the phone whether A-07
+    finished the session and whether its deterministic fallback was used.
 
 servers:
   - url: /v1
@@ -236,6 +239,31 @@ paths:
                 $ref: "#/components/schemas/ReconstructionResult"
         "404":
           description: No session with this id, or finishSession has not been called yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /sessions/{session_id}/agent-message:
+    get:
+      operationId: getAgentMessage
+      summary: Fetch the latest capture-agent message
+      description: >
+        A-15 / v1.9. The agent turn runs after an accepted frame upload and is persisted on the
+        session. This GET is read-only so polling never repeats model calls or session-finishing
+        side effects. When A-07 finishes the session after full orbit coverage, finished is true
+        and the phone transitions to reconstruction polling.
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Latest agent result, or an empty message before the first turn.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentMessageResult"
+        "404":
+          description: No session has this id.
           content:
             application/json:
               schema:
@@ -616,6 +644,25 @@ components:
           $ref: "#/components/schemas/VlmFeedback"
           description: >
             v1.1. Absent (never null) until a VLM check of this session has completed.
+
+    AgentMessageResult:
+      type: object
+      additionalProperties: false
+      required: [finished, fallback_reason, message]
+      description: >
+        A-15 / A-07 phone-facing result for the latest accepted-frame turn. fallback_reason is
+        null on the normal model path and names the deterministic A-08 fallback when no Gemini key
+        is configured, or when the model errors, times out, or loops. message is plain text and
+        may be null before any useful supplier-facing line exists.
+      properties:
+        finished:
+          type: boolean
+          description: True whenever the session is finished, whether by A-07/A-08 after coverage or by manual Finish.
+        fallback_reason:
+          type: [string, "null"]
+          enum: [model_error, timeout, loop_detected, null]
+        message:
+          type: [string, "null"]
 
     VlmFeedback:
       type: object

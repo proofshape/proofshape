@@ -473,7 +473,9 @@ def test_write_deviation_glb_rejects_a_mesh_with_no_color0(tmp_path):
         )
 
 
-def test_publish_deviation_glb_flips_the_session_record_atomically(tmp_path):
+def test_publish_deviation_glb_flips_the_session_record_atomically(
+    tmp_path, monkeypatch
+):
     # Review on #309: the third acceptance criterion ("flips the session record to it in one
     # atomic write, the same pattern SessionStore already uses") needs its own test against a
     # real SessionStore, not just a documented future hook.
@@ -493,6 +495,16 @@ def test_publish_deviation_glb_flips_the_session_record_atomically(tmp_path):
     }
     store.save(record)
 
+    from inspection import deviation
+
+    def write_with_agent_update(*args, **kwargs):
+        # The publisher has loaded its input record, but a late agent turn writes now.
+        store.update_agent_message(
+            session_id, fallback_reason=None, message="Latest guidance"
+        )
+        return write_deviation_glb(*args, **kwargs)
+
+    monkeypatch.setattr(deviation, "write_deviation_glb", write_with_agent_update)
     transform = _ground_truth_transform(sample)
     output_path = publish_deviation_glb(
         store, session_id, (cad_vertices, cad_faces), transform, FLAT_BOARD
@@ -503,6 +515,7 @@ def test_publish_deviation_glb_flips_the_session_record_atomically(tmp_path):
     updated_record = store.load(session_id)
     assert updated_record["reconstruction"]["glb_path"] == str(output_path)
     assert updated_record["reconstruction"]["status"] == "complete"
+    assert updated_record["agent_message"]["message"] == "Latest guidance"
 
     # The new file is a real, complete deviation GLB, and the original is untouched.
     vertices, _faces, _colors = read_glb(output_path)

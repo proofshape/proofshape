@@ -25,10 +25,16 @@ export interface GuidanceUpdate {
 
 export interface GyroOverlayOptions {
   onGuidance?: (update: GuidanceUpdate) => void;
+  // C-27: the on-target status line. The shell words it by whether auto-capture is on.
+  onTargetText?: () => string;
 }
 
 export interface GyroOverlayHandle {
-  reportAcceptedFrame(gyro: Gyro): void;
+  reportAcceptedFrame(gyro: Gyro): boolean;
+  // C-27 (#420 review): re-render from the last live reading, so text that depends on state the
+  // overlay can't see (onTargetText, read from the auto-capture switch) updates without waiting
+  // for the phone to move.
+  refresh(): void;
   dispose(): void;
 }
 
@@ -53,7 +59,7 @@ const OVERLAY_HTML = `
         <path d="M13 25 L21 33 L35 17" />
       </svg>
       <p class="gyro-overlay-complete-title">Orbit complete</p>
-      <p class="gyro-overlay-complete-hint">Tap Finish session below.</p>
+      <p class="gyro-overlay-complete-hint">The assistant will finish automatically if available. Tap Finish if it does not.</p>
     </div>
   </div>
 `;
@@ -128,7 +134,7 @@ export function mountGyroOverlay(
     // this reading to the target (C-26 device check, 2026-11-20).
     const guidance = computeTargetGuidance(liveGyro, anchorDeg, orbit, coverage.nextTargetIndex);
     if (guidance.onTarget) {
-      status.textContent = "On target — take the photo.";
+      status.textContent = options.onTargetText?.() ?? "On target — take the photo.";
       arrow.style.visibility = "hidden";
       emit("on-target", liveGyro);
       return;
@@ -154,14 +160,19 @@ export function mountGyroOverlay(
   }
   window.addEventListener("deviceorientation", handleOrientation);
 
+  // C-27 (#420): once disposed (Finish, or a remount that reused this container), refresh() must
+  // not redraw -- the guidance is stale with the camera off, and after a remount the DOM belongs to
+  // the new mount.
+  let disposed = false;
   function dispose(): void {
+    disposed = true;
     window.removeEventListener("deviceorientation", handleOrientation);
     activeDisposalsByContainer.delete(container);
   }
   activeDisposalsByContainer.set(container, dispose);
 
   return {
-    reportAcceptedFrame(gyro: Gyro): void {
+    reportAcceptedFrame(gyro: Gyro): boolean {
       acceptedReadings.push(gyro);
       render();
       status.textContent =
@@ -175,6 +186,13 @@ export function mountGyroOverlay(
       } else if (computeCoverage(acceptedReadings, orbit).nextTargetIndex === null) {
         // No live reading to judge position by, but a complete orbit is complete regardless.
         showComplete(null);
+      }
+      // A-15: use the same coverage calculation for the shell's final-turn polling.
+      return computeCoverage(acceptedReadings, orbit).nextTargetIndex === null;
+    },
+    refresh(): void {
+      if (!disposed && latestLiveGyro) {
+        updateArrow(latestLiveGyro);
       }
     },
     dispose,

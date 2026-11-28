@@ -1,0 +1,439 @@
+"""A-15 service wiring tests for the real phone-facing capture-agent route."""
+
+from __future__ import annotations
+
+import json
+import time
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+from fastapi.testclient import TestClient
+
+from recon import service
+
+
+@pytest.fixture(autouse=True)
+def _no_real_gemini(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
+def _pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    glb_path = artifact_dir / "model.glb"
+    glb_path.write_bytes(b"glTF-agent-test")
+    return {
+        "glb_path": str(glb_path),
+        "reference_tier_used": "charuco_board",
+        "metric": True,
+        "stage_timings_s": {},
+        "warnings": [],
+    }
+
+
+def _reply(**decision):
+    return SimpleNamespace(text=json.dumps(decision))
+
+
+def _create(tmp_path, *, caller=None, timeout_s=1.0):
+    return service.create_app(
+        tmp_path,
+        pipeline_runner=_pipeline,
+        known_order_codes={"PO-1"},
+        agent_model_caller=caller,
+        agent_timeout_s=timeout_s,
+    )
+
+
+def _start(client: TestClient) -> str:
+    response = client.post("/v1/sessions", json={"order_code": "PO-1"})
+    assert response.status_code == 201
+    return response.json()["session_id"]
+
+
+def _upload(client: TestClient, session_id: str, index: int = 0):
+    gyro = {"alpha": float(index * 45), "beta": 45.0, "gamma": 0.0}
+    return _upload_gyro(client, session_id, index, gyro)
+
+
+def _upload_gyro(
+    client: TestClient,
+    session_id: str,
+    index: int,
+    gyro_value: dict[str, float],
+):
+    gyro = json.dumps(gyro_value)
+    return client.post(
+        f"/v1/sessions/{session_id}/frames",
+        files={
+            "frame": (f"frame{index}.jpg", b"jpeg-data", "image/jpeg"),
+            "gyro": ("blob", gyro, "application/json"),
+        },
+    )
+
+
+def test_model_reply_is_persisted_and_get_is_read_only(tmp_path):
+    calls = []
+
+    def caller(state):
+        calls.append(state)
+        if state.tools.coverage_report.reason == "not_requested":
+            return _reply(tool="coverage_report", message="Checking coverage.")
+        return _reply(done=True, message="Move to the next guided view.")
+
+    app = _create(tmp_path, caller=caller)
+    with TestClient(app) as client:
+        sid = _start(client)
+        assert _upload(client, sid).status_code == 202
+        first_call_count = len(calls)
+
+        result = client.get(f"/v1/sessions/{sid}/agent-message")
+        assert result.status_code == 200
+        assert result.json() == {
+            "finished": False,
+            "fallback_reason": None,
+            "message": "Move to the next guided view.",
+        }
+
+        # Polling the GET must never run another model turn.
+        assert client.get(f"/v1/sessions/{sid}/agent-message").status_code == 200
+        assert len(calls) == first_call_count
+
+
+@pytest.mark.parametrize(
+    ("caller_factory", "timeout_s", "reason"),
+    [
+        (
+            lambda: lambda _state: (_ for _ in ()).throw(RuntimeError("boom")),
+            1.0,
+            "model_error",
+        ),
+        (
+            lambda: (
+                lambda _state: (time.sleep(0.05), _reply(done=True, message="late"))[1]
+            ),
+            0.01,
+            "timeout",
+        ),
+        (lambda: lambda _state: _reply(tool="coverage_report"), 1.0, "loop_detected"),
+    ],
+)
+def test_each_a07_fallback_reason_is_served(
+    tmp_path, caller_factory, timeout_s, reason
+):
+    app = _create(tmp_path, caller=caller_factory(), timeout_s=timeout_s)
+    with TestClient(app) as client:
+        sid = _start(client)
+        assert _upload(client, sid).status_code == 202
+        result = client.get(f"/v1/sessions/{sid}/agent-message")
+        assert result.status_code == 200
+        body = result.json()
+        assert body["finished"] is False
+        assert body["fallback_reason"] == reason
+        assert isinstance(body["message"], str)
+        assert body["message"]
+
+
+def test_no_key_uses_deterministic_fallback_instead_of_hiding_route(tmp_path):
+    app = _create(tmp_path)
+    with TestClient(app) as client:
+        sid = _start(client)
+        assert _upload(client, sid).status_code == 202
+        body = client.get(f"/v1/sessions/{sid}/agent-message").json()
+        assert body["finished"] is False
+        assert body["fallback_reason"] == "model_error"
+        assert "more of the part" in body["message"].lower()
+
+
+def test_unknown_session_is_contract_404(tmp_path):
+    app = _create(tmp_path)
+    with TestClient(app) as client:
+        result = client.get("/v1/sessions/sess_missing/agent-message")
+        assert result.status_code == 404
+        assert result.json() == {
+            "code": "session_not_found",
+            "message": "No session with that id.",
+        }
+
+
+def test_model_finish_is_refused_when_orbit_is_still_incomplete(tmp_path):
+    def caller(_state):
+        return _reply(tool="finish_session", message="Coverage is complete. Finishing.")
+
+    app = _create(tmp_path, caller=caller)
+    with TestClient(app) as client:
+        sid = _start(client)
+        assert _upload(client, sid, 0).status_code == 202
+        assert _upload(client, sid, 1).status_code == 202
+        assert _upload(client, sid, 2).status_code == 202
+
+        agent = client.get(f"/v1/sessions/{sid}/agent-message")
+        assert agent.status_code == 200
+        assert agent.json()["finished"] is False
+        assert agent.json()["fallback_reason"] is None
+        assert "more coverage" in agent.json()["message"].lower()
+
+        record = app.state.store.load(sid)
+        assert record["status"] == "capturing"
+        assert record["reconstruction"]["status"] == "not_started"
+
+
+def test_model_finish_succeeds_after_full_thirteen_slot_orbit(tmp_path):
+    def caller(_state):
+        return _reply(tool="finish_session", message="Coverage is complete. Finishing.")
+
+    app = _create(tmp_path, caller=caller)
+    orbit = [
+        *[
+            {"alpha": float(index * 45), "beta": 45.0, "gamma": 0.0}
+            for index in range(8)
+        ],
+        *[
+            {"alpha": float(index * 90), "beta": 20.0, "gamma": 0.0}
+            for index in range(4)
+        ],
+        {"alpha": 0.0, "beta": 0.0, "gamma": 0.0},
+    ]
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        for index, gyro in enumerate(orbit):
+            assert _upload_gyro(client, sid, index, gyro).status_code == 202
+            record = app.state.store.load(sid)
+            if index < len(orbit) - 1:
+                assert record["status"] == "capturing"
+
+        agent = client.get(f"/v1/sessions/{sid}/agent-message")
+        assert agent.status_code == 200
+        assert agent.json()["finished"] is True
+        assert agent.json()["fallback_reason"] is None
+
+        record = app.state.store.load(sid)
+        assert record["status"] == "finished"
+        assert record["reconstruction"]["status"] in {"pending", "complete"}
+
+
+def test_agent_tool_error_does_not_fail_an_already_accepted_upload(
+    tmp_path, monkeypatch
+):
+    from recon import agent_loop
+
+    def broken_coverage(*_args, **_kwargs):
+        raise OSError("synthetic coverage failure")
+
+    monkeypatch.setattr(agent_loop, "coverage_report", broken_coverage)
+    app = _create(
+        tmp_path,
+        caller=lambda _state: (_ for _ in ()).throw(RuntimeError("model down")),
+    )
+    with TestClient(app) as client:
+        sid = _start(client)
+        response = _upload(client, sid)
+
+        assert response.status_code == 202
+        assert response.json()["accepted"] is True
+        record = app.state.store.load(sid)
+        assert record["frame_count"] == 1
+        assert record["status"] == "capturing"
+
+
+def test_agent_message_merge_preserves_a_concurrent_finish(tmp_path, monkeypatch):
+    app = _create(
+        tmp_path,
+        caller=lambda _state: _reply(done=True, message="Keep capturing."),
+    )
+    original_update = app.state.store.update_agent_message
+    interleaved = False
+
+    def finish_then_update(session_id, *, fallback_reason, message):
+        nonlocal interleaved
+        if not interleaved:
+            interleaved = True
+            app.state.store.mark_finished(session_id)
+        return original_update(
+            session_id,
+            fallback_reason=fallback_reason,
+            message=message,
+        )
+
+    monkeypatch.setattr(app.state.store, "update_agent_message", finish_then_update)
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        response = _upload(client, sid)
+
+        assert response.status_code == 202
+        record = app.state.store.load(sid)
+        assert interleaved is True
+        assert record["status"] == "finished"
+        assert record["reconstruction"]["status"] == "pending"
+        assert record["frame_count"] == 1
+        assert record["agent_message"]["finished"] is True
+        assert record["agent_message"]["message"] == "Keep capturing."
+
+
+def test_agent_message_merge_preserves_a_concurrent_frame_count_update(
+    tmp_path, monkeypatch
+):
+    app = _create(
+        tmp_path,
+        caller=lambda _state: _reply(done=True, message="Keep capturing."),
+    )
+    original_update = app.state.store.update_agent_message
+    interleaved = False
+
+    def add_frame_then_update(session_id, *, fallback_reason, message):
+        nonlocal interleaved
+        if not interleaved:
+            interleaved = True
+            app.state.store.add_frame(
+                session_id,
+                b"second-frame",
+                {"alpha": 90.0, "beta": 45.0, "gamma": 0.0},
+            )
+        return original_update(
+            session_id,
+            fallback_reason=fallback_reason,
+            message=message,
+        )
+
+    monkeypatch.setattr(app.state.store, "update_agent_message", add_frame_then_update)
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        response = _upload(client, sid)
+
+        assert response.status_code == 202
+        record = app.state.store.load(sid)
+        assert interleaved is True
+        assert record["status"] == "capturing"
+        assert record["frame_count"] == 2
+        assert record["agent_message"]["finished"] is False
+        assert record["agent_message"]["message"] == "Keep capturing."
+
+
+def test_keyless_fallback_finishes_only_after_full_thirteen_slot_orbit(tmp_path):
+    app = _create(tmp_path)
+    orbit = [
+        *[
+            {"alpha": float(index * 45), "beta": 45.0, "gamma": 0.0}
+            for index in range(8)
+        ],
+        *[
+            {"alpha": float(index * 90), "beta": 20.0, "gamma": 0.0}
+            for index in range(4)
+        ],
+        {"alpha": 0.0, "beta": 0.0, "gamma": 0.0},
+    ]
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        for index, gyro in enumerate(orbit):
+            response = _upload_gyro(client, sid, index, gyro)
+            assert response.status_code == 202
+            record = app.state.store.load(sid)
+            if index < len(orbit) - 1:
+                assert record["status"] == "capturing"
+
+        record = app.state.store.load(sid)
+        assert record["status"] == "finished"
+        assert record["reconstruction"]["status"] == "complete"
+
+        message = client.get(f"/v1/sessions/{sid}/agent-message")
+        assert message.status_code == 200
+        assert message.json()["finished"] is True
+        assert message.json()["fallback_reason"] == "model_error"
+
+
+def test_agent_message_finished_reflects_session_status_after_manual_finish(tmp_path):
+    app = _create(
+        tmp_path,
+        caller=lambda _state: _reply(done=True, message="Keep capturing."),
+    )
+    with TestClient(app) as client:
+        sid = _start(client)
+        for index in range(3):
+            assert _upload(client, sid, index).status_code == 202
+
+        before = client.get(f"/v1/sessions/{sid}/agent-message")
+        assert before.status_code == 200
+        assert before.json()["finished"] is False
+
+        finished = client.post(f"/v1/sessions/{sid}/finish")
+        assert finished.status_code == 202
+
+        after = client.get(f"/v1/sessions/{sid}/agent-message")
+        assert after.status_code == 200
+        assert after.json()["finished"] is True
+
+
+def test_reconstruction_runs_when_final_agent_message_write_fails(
+    tmp_path, monkeypatch
+):
+    app = _create(tmp_path)
+    original_update = app.state.store.update_agent_message
+
+    def fail_final_message(session_id, *, fallback_reason, message):
+        if app.state.store.load(session_id)["status"] == "finished":
+            raise OSError("synthetic final message write failure")
+        return original_update(
+            session_id, fallback_reason=fallback_reason, message=message
+        )
+
+    monkeypatch.setattr(app.state.store, "update_agent_message", fail_final_message)
+    orbit = [
+        *[
+            {"alpha": float(index * 45), "beta": 45.0, "gamma": 0.0}
+            for index in range(8)
+        ],
+        *[
+            {"alpha": float(index * 90), "beta": 20.0, "gamma": 0.0}
+            for index in range(4)
+        ],
+        {"alpha": 0.0, "beta": 0.0, "gamma": 0.0},
+    ]
+
+    with TestClient(app) as client:
+        sid = _start(client)
+        for index, gyro in enumerate(orbit):
+            assert _upload_gyro(client, sid, index, gyro).status_code == 202
+        record = app.state.store.load(sid)
+        assert record["status"] == "finished"
+        assert record["reconstruction"]["status"] == "complete"
+        assert (
+            client.get(f"/v1/sessions/{sid}/agent-message").json()["finished"] is True
+        )
+
+
+def test_manual_reconstruction_preserves_guidance_written_during_pipeline(tmp_path):
+    def pipeline(capture_dir: Path, artifact_dir: Path) -> dict:
+        sid = capture_dir.parent.name
+        # The reconstruction already loaded its input record. Emulate the later write
+        # from a model turn that was in flight when the supplier tapped Finish.
+        app.state.store.update_agent_message(
+            sid, fallback_reason=None, message="Latest guidance"
+        )
+        return _pipeline(capture_dir, artifact_dir)
+
+    app = service.create_app(
+        tmp_path,
+        pipeline_runner=pipeline,
+        known_order_codes={"PO-1"},
+        agent_model_caller=lambda _state: _reply(done=True, message="Earlier guidance"),
+        agent_timeout_s=1.0,
+    )
+    with TestClient(app) as client:
+        sid = _start(client)
+        for index in range(3):
+            assert _upload(client, sid, index).status_code == 202
+        before = client.get(f"/v1/sessions/{sid}/agent-message").json()
+        assert before["message"] == "Earlier guidance"
+
+        assert client.post(f"/v1/sessions/{sid}/finish").status_code == 202
+        after = client.get(f"/v1/sessions/{sid}/agent-message").json()
+        assert after["message"] == "Latest guidance"
+        assert after["finished"] is True
+        record = app.state.store.load(sid)
+        assert record["status"] == "finished"
+        assert record["frame_count"] == 3
+        assert record["reconstruction"]["status"] == "complete"

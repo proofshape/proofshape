@@ -315,7 +315,22 @@ The conversions are:
 - CAD: `1 / (1 + r)`.
 
 The CAD one is a reciprocal because a page printed small makes the model come out large (#181,
-R-41, D-039's 2026-11-19 amendment). The service doesn't call the check yet; R-42 wires it in.
+R-41, D-039's 2026-11-19 amendment). R-42 calls the check after CAD registration, using
+the nominal ChArUco pitch and the selected candidate's Observed-only free-scale residual.
+It persists and serves the existing optional `scale_agreement` result (source names and
+flag only). Without CAD, a usable residual, or metric ChArUco scale, no board/CAD comparison
+is invented; a check error is logged and the result omitted without failing reconstruction
+or suppressing deviation measurement. The caliper source remains out of scope: the frozen
+contract has no typed caliper request field. This diagnostic is not a new Pass/Fail rule.
+During the existing gap between reconstruction completion and CAD measurement completion,
+the field can be absent; reload the report after measurement to see the final result.
+
+Real-data reliability is unresolved: the Nov 26 post-merge review flagged seven of ten
+correct metric ChArUco parts on the saved-model calculation. See
+[R-42's results](../stories/R/R-42.md#real-data-limitation-2026-11-26-post-merge) and
+[issue #456](https://github.com/proofshape/proofshape/issues/456). A flag is not proof of substitution or scale error, and a non-flag
+does not prove accuracy. The current diagnostic remains live pending a team-agreed
+interim serving policy; no threshold change is made here.
 
 ## R-13 · per-stage latency table
 

@@ -270,6 +270,18 @@ invalidates those approvals in the normal way. The exception changes no runtime 
 contract semantics; it only allows the already-reviewed I-10 contract addition to merge as soon
 as the final-head review gates are satisfied.
 
+*Proposed timing exception (2026-11-26, A-15 / PR #431):* @mbj1994 requests an early-boundary
+merge to allow time for public expo deployment and validation before Dec 5. A-15 adds the
+read-only agent-message route in v1.9 and has passed the Gemini-enabled iPhone acceptance
+test on `894e904`. This proposal waives only timing (including the named feature-freeze
+exception) **if both other members explicitly agree**, with both approving the final head
+and required CI green. Until then, Dec 2 remains the merge boundary. It does not authorize
+AWS public wiring or change D-072/O-005; those are separate C-21 decisions.
+
+*Outcome (2026-11-26):* #431 merged as `3ec95d1` on both approvals of `866e0f7` and four
+green CI jobs. Both explicitly accepted the timing exception before merge: [Tabeen's review](https://github.com/proofshape/proofshape/pull/431#pullrequestreview-6078072130)
+and [Dalwalyk's direct agreement](https://github.com/proofshape/proofshape/pull/431#issuecomment-7209096486). The exception is limited to A-15's timing, not public hosting.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
@@ -1281,6 +1293,24 @@ its two reconstructions (1.1256 and 1.2171), while s-04 was stable at 1.0483 and
 A scalene part near the cutoff may still produce a false Rescan on some reconstructions.
 Both other members must approve the amendment on the final head.
 
+*I-15 amendment (2026-11-24):* I-15's model-side support cut (see
+`POSE_SUPPORT_MIN_HEIGHT_CAP_MM` in `registration.py`) removes surface below
+`min(5 mm, ¼ CAD height)` from `refine`. The coverage ratio itself uses the full observed
+surface and full CAD surface, as before, but the refined poses it compares come from the cut
+surface, so the class counts shift:
+
+| Class | Before I-15 (`main`) | After I-15 |
+|---|---|---|
+| Hole missing (should flag) | 100/100 flagged | 99/100 (seed 99 clears at ratio 1.026) |
+| Hole shifted 3 mm (shouldn't) | 22/100 flagged | 28/100 (seeds 3, 21, 28, 30, 50, 75 newly flag) |
+
+Seed 99 is 0.001 above the 1.025 cutoff, the only missing-hole miss. The shifted-hole rise
+(six more false Rescans, the safe direction) is a consequence of the same refinement change.
+The rule, the cutoff and the reason code are unchanged. Seed 99 is pinned as the known clear,
+so a change that moves it is noticed. Seeds 46, 77 and 87, the nearest flagged, are pinned so
+that a change that clears more fails CI. Accepted by @TabeenRaoof on PR #440 (2026-11-24);
+@mbj1994 conditionally accepts, final on approval of the last head.
+
 **D-062 · The heatmap's data travels in the served GLB as numbers, not colours; COLOR_0 keeps
 provenance, and the viewer does the colouring.** (2026-11-09)
 Settles how I-06's per-vertex deviation reaches C-14's viewer. Recorded by P-30, so that I-06, still
@@ -1419,8 +1449,9 @@ cutting it:
 - **Until it runs,** the capture app is tested on an iPhone in Safari only. The manual says so
   (§2), so a supplier knows to use one. X-04 (I4) runs on the iPhone, and adds an Android phone
   only if C-23 has run.
-- **The revisit point.** Before the expo, if time allows. The expo is most likely Fri 2026-12-05
-  (O-006), the day after M7's code freeze (Dec 3–4: "no behavior-changing commits"). So:
+- **The revisit point.** Before the expo, if time allows. The expo is ~~most likely Fri
+  2026-12-05~~ Sat 2026-12-05, confirmed 2026-11-22 (O-006), the day after M7's code freeze
+  (Dec 3–4: "no behavior-changing commits"). So:
   - the check is decided at the Dec 2 boundary at the latest;
   - any fix C-23 finds lands before Dec 4;
   - after the freeze, it can only be recorded.
@@ -2599,8 +2630,14 @@ whether a token visible in the client bundle is acceptable at all. Third, the or
 access control: the deployed `app = create_app()` sets no `known_order_codes`, so today any
 non-empty code starts a paid GPU run.
 
-**O-006 · The expo date is unconfirmed: most likely Fri 2026-12-05.** (2026-11-11)
+**O-006 · The expo date ~~is unconfirmed: most likely Fri 2026-12-05~~. — Closed 2026-11-22.**
+(2026-11-11)
 Recorded as the team's working assumption, given by @TabeenRaoof on 2026-11-11, because nothing in
 the repository named a date. It falls the day after M7's code freeze (Dec 3–4), so what is shown
 at the expo is what is on `main` at the freeze. D-065 times C-23's revisit against it. Confirm it,
 and update this entry and D-065, once the date is known.
+*Closed 2026-11-22 (P-40):* the expo flyer, shared by @TabeenRaoof, gives **Saturday 2026-12-05,
+10:00 AM to 3:00 PM**, at San Francisco Bay University, 161 Mission Falls Lane, Fremont. It's a
+public event with over 40 teams from CS, EE, CE, Business and General Education. The working
+assumption had the right date and the wrong weekday. It is still the day after M7's code freeze,
+so the expo shows what is on `main` at the freeze. D-065's revisit point is marked to match.

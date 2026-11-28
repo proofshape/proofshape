@@ -249,7 +249,7 @@ fits, or use A4 paper.
 ## 5 · Capturing a part — the supplier
 
 **Status: Works now**, against the mock service, and against the real reconstruction service running
-on a Mac (§0, C-13). Built by C-01 through C-13.
+on a Mac (§0, C-13). Built by C-01 through C-13; auto-capture by C-27.
 
 1. **Open the capture page** on the phone. No install. Enter the order code and tap **Start**.
    The phone then asks for camera permission and for motion/gyroscope permission, both from that
@@ -264,6 +264,21 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    eight around the part at 45°, four higher at 70°, and one straight down (C-07). Your first
    accepted frame sets which way is "around"; after that, an arrow points toward the next
    uncovered position and a counter shows **Covered: n/13**.
+
+   **Auto-capture (C-27), off by default.** The capture screen has a switch, "Take the photo
+   automatically when on target". With it off, every photo is a tap, as above. With it on:
+   - the first photo is still a tap, because it sets which way is "around";
+   - after that, once the frame turns green (the phone is at the next position) and you hold the
+     phone still for about 0.6 s, the photo is taken for you. A short flash shows it was taken,
+     and its messages start with "Auto:". The shutter keeps working, and a tap restarts the
+     wait;
+   - if a photo fails to upload (no network, or the service rejects it), the switch turns
+     itself off and says so. Tap to retry, or turn it back on; if the session has ended, start a
+     new one. A photo the phone's own checks reject (step 4) is tried again after at least 1.5 s,
+     while you hold on target;
+   - the straight-down position is the slowest to fire. It only turns green once the phone is
+     nearly flat, often while you are still tilting, and the photo waits until you stop. Point
+     straight down over the part and hold still.
 4. **Each frame is checked on the phone before it is uploaded** (C-06, C-09): blur, exposure
    (clipped highlights or shadows) and duplicates (the phone barely moved *and* the picture barely
    changed). A rejected frame shows the reason and its code (§9), nothing is uploaded, and the
@@ -278,9 +293,11 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
    each a few frames late; the last frame's check finishes after you've stopped uploading, so
    it is never shown. A tip stays until a newer one replaces it. It is advice only: it never
    rejects a frame or blocks capture. With no Gemini key on the server, no tips appear.
-5. **Tap Finish.** The camera turns off (the phone's green camera indicator goes away), and
-   reconstruction runs once, on the whole set. The page waits for the result and shows it (§8.1).
-   The real service needs at least 3 accepted frames; the full orbit is what the guidance is for.
+5. **Finish capture.** The service finishes the session automatically when the full guided
+   orbit is covered, whether Gemini or A-08's deterministic fallback supplied the guidance. The
+   phone then turns the camera off and starts reconstruction polling. Manual **Finish** remains a
+   recovery path before automatic finish. The real service needs at least 3 accepted frames; the
+   full orbit is what the guidance is for.
 
 **Known limits of capture today:**
 - **Frames are captured at the preview's size, 480 × 640 on the iPhones tried so far**, because
@@ -301,22 +318,22 @@ on a Mac (§0, C-13). Built by C-01 through C-13.
   guessing by the shape-completion model. That map is built on the server whenever completion
   samples exist, which no supplier's session has yet (D-058, D-066).
 
-**Planned, and part of what makes this more than a photo app:**
-- **The LLM agent core and phone conversation view are built** (A-06, A-07, A-13, C-22, with
-   A-08's deterministic fallback). Coverage code, not the model, decides whether the session
-   continues or may finish: the model cannot finish while orbit slots remain uncovered. The
-   model may choose whether to consult VLM before coverage is read and how to phrase its
-   supplier-facing guidance; it never computes geometry or decides Pass/Fail. If it errors, times
-   out, or loops, capture falls back to the deterministic policy.
+**Served capture guidance and generative AI:**
+- **The LLM agent core, real service route and phone conversation view are wired together**
+   (A-06, A-07, A-13, C-22, A-15, with A-08's deterministic fallback). Coverage code, not the
+   model, decides whether the session continues or may finish: the model cannot finish while
+   orbit slots remain uncovered. The model may choose whether to consult VLM before coverage is
+   read and how to phrase supplier-facing guidance; it never computes geometry or decides
+   Pass/Fail. If there is no Gemini key, or the model errors, times out, or loops, the same turn
+   falls back to A-08's deterministic policy.
 
-   C-22 adds a Capture assistant panel built against a mock of A-07's phone-facing result. The
-   panel is deliberately hidden against today's real service because that service does not yet
-   expose the D-031 agent-message route; the real route waits for A-07's D-031 round, no earlier
-   than Dec 2. A missing route never blocks Capture or Finish. When the route does answer,
-   transport failure is shown as plain language rather than a raw code, repeated identical lines
-   are not appended, and stale replies are ignored. The mock `finished` field is display-only
-   until the real D-031 phone contract defines lifecycle behavior, including the end-of-session
-   summary. The service does not yet invoke the agent loop for supplier sessions.
+   A-15 runs one turn after each accepted frame upload, stores the latest result on the session,
+   and serves it from read-only `GET /v1/sessions/{id}/agent-message`; polling that GET never
+   repeats a model call or a side effect. C-22's existing panel displays the returned message.
+   If A-07 finishes after coverage is complete, the phone treats the session as finished and
+   starts reconstruction polling exactly as it does after the supplier taps Finish. Transport
+   failure remains optional guidance failure: capture arrows and the manual Finish path still
+   work. The agent-message route is part of contract v1.9 (A-15 / D-031).
 - **A vision-language model checks sampled frames** (A-01/A-11; A-02 will own the verdict veto):
   frame 0, indices divisible by 5, and the final accepted frame. It is **not an all-frame check**.
   R-36 demonstrated the limit directly: in a 15-frame session, a screen photograph on frame 6
@@ -352,9 +369,12 @@ confidently wrong scale with no warning — worse than no scale at all.
 
 ## 7 · Scale integrity
 
-**Status: Planned** (in the service). The comparison itself exists (R-05, D-039), but nothing feeds
-it yet: there is no caliper entry in the app and no CAD registration, so results report no scale
-check. The printed-pitch measurement — §3.3 — **works now**.
+**Status: Implemented, but not validated as a reliable scale diagnostic** (R-42).
+The service checks board pitch against the selected CAD registration residual after registration.
+There is no typed caliper entry in the app yet. When no independent residual is available, the
+report has no scale check; this does not mean the sources agree. The printed-pitch measurement
+— §3.3 — **works now**. If CAD measurement is still running when the report opens, reload
+after it finishes to see the final scale result.
 
 Scale has **three independent sources that must agree** (D-007):
 
@@ -366,6 +386,15 @@ Scale has **three independent sources that must agree** (D-007):
 
 Any two disagreeing by more than about 2% flags the session. That 2% is a rule the team set, not a
 measured value.
+
+**Measured limitation (Nov 26):** [Tabeen's post-merge review](https://github.com/proofshape/proofshape/pull/454#pullrequestreview-6083636630) applied the service calculation to ten
+correct metric ChArUco parts from saved reconstructions. Seven of ten were flagged, with
+CAD free-scale residuals from -10.44% to +12.34%. A flag is a diagnostic disagreement,
+not proof of a wrong part or printing error; no flag is not proof of accurate scale.
+Do not rely on this warning to establish substitution, approve a part, or claim dimensional
+accuracy. See [R-42's measured results](../stories/R/R-42.md#real-data-limitation-2026-11-26-post-merge)
+and [issue #456](https://github.com/proofshape/proofshape/issues/456) for the unresolved residual reliability and interim serving decision.
+The threshold and current served behavior are unchanged pending team agreement.
 
 **A known scale error today, measured, not yet fixed.** Using the board itself as a ruler inside
 the reconstruction showed every golden object coming out **4–9% small** (R-22). The cause is in how
