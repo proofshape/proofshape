@@ -95,6 +95,11 @@ whenever a push to `main` changes `capture/**`. The workflow uses the base path
 reported by `actions/configure-pages`, so repository Pages and a future custom
 domain both build the correct asset URLs, then publishes `capture/dist`.
 
+The verified hosted URL is `https://proofshape.github.io/proofshape/`. Capture Pages
+run [43193610764](https://github.com/proofshape/proofshape/actions/runs/43193610764)
+completed successfully on 2026-11-12; its build and deploy jobs both passed and the
+deploy step reported that exact environment URL.
+
 An organisation/repository admin must set
 **Settings → Pages → Build and deployment → Source** to **GitHub Actions** once.
 No laptop dev server is required to open the resulting HTTPS page.
@@ -127,4 +132,21 @@ Pages build displays a clear message instead of trying and failing to call a
 nonexistent stub.
 
 The Mac path in the C-13 section above remains the fallback when Pages or
-Lightning is unavailable.
+Lightning is unavailable, and the D-072 defense host.
+
+**C-21 AWS public-expo amendment (agreed 2026-11-28; not live authorization).**
+The Nov 25 local-Vite iPhone-to-AWS reconstruction was not a hosted Pages session.
+[#466](https://github.com/proofshape/proofshape/pull/466) merged and both other
+members explicitly agreed to the D-072 amendment and AWS-specific O-005 answers.
+Keep all four flags off until stage A proves the current immutable main-built
+image, HTTPS/CORS/auth/order gates, enforced session/attempt/rate/upload/agent
+budgets, one active session/reconstruction, expiring/revocable ingress token,
+bounded downloads, automatic stop and #456 interim policy. The three build-time
+checks above are necessary, not sufficient. Never ship buyer/Gemini keys.
+[#467](https://github.com/proofshape/proofshape/pull/467) requests the named freeze
+exception for the required service/contract controls; no live controls are claimed.
+After A, one bounded hosted-phone test (B) and verified fail-closed rollback (C)
+are required before separately authorized expo use. Recheck address and arm
+automatic stop on every restart. Revoke ingress access first, disable four flags,
+remove stale configuration, rebuild fail-closed, stop EC2 and verify state/time
+after each window. Use M2/recording if any gate fails. See [C-21](../stories/C/C-21.md).
