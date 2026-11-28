@@ -6,14 +6,17 @@ in isolation (see tests/test_verdict.py for that)."""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
-from inspection import cad, synthetic
+from inspection import cad, registration, synthetic
 
-from recon import service
+from recon import scale_agreement, service
+from recon.board_pose import BOARD_SQUARE_MM
 from recon.mesh_cleanup import write_glb
 from recon.provenance import labels_to_colors
 from recon.report_narrative import VerdictInput, template_narrative
@@ -400,3 +403,91 @@ def test_i10_getverdict_returns_intake_unverifiable_before_reconstruction(tmp_pa
     # model's.
     expected["narrative"] = template_narrative(VerdictInput.model_validate(expected))
     assert response.json() == expected
+
+
+@pytest.mark.parametrize(
+    ("residual", "raises", "reference_tier", "expected_flag"),
+    [
+        (0.0, False, "charuco_board", False),
+        (0.03, False, "charuco_board", True),
+        (None, False, "charuco_board", None),
+        (0.03, True, "charuco_board", None),
+        (0.03, False, "blank_sheet", None),
+    ],
+)
+def test_r42_scale_agreement_after_registration(
+    tmp_path, monkeypatch, caplog, residual, raises, reference_tier, expected_flag
+):
+    real_ambiguity = registration.check_ambiguity
+    real_check = scale_agreement.check_scale_agreement
+    calls = []
+
+    def ambiguity_with_residual(*args, **kwargs):
+        result = real_ambiguity(*args, **kwargs)
+        return replace(result, best=replace(result.best, free_scale_residual=residual))
+
+    def check(*, board_pitch_mm, cad_registration_residual):
+        calls.append((board_pitch_mm, cad_registration_residual))
+        # Simulate an agent message arriving after the measurement loaded its record.
+        app.state.store.update_agent_message(
+            session_id_for_check[0], fallback_reason=None, message="Latest guidance"
+        )
+        if raises:
+            raise ValueError("synthetic scale-check failure")
+        return real_check(
+            board_pitch_mm=board_pitch_mm,
+            cad_registration_residual=cad_registration_residual,
+        )
+
+    pipeline = _make_pipeline_runner()
+    session_id_for_check = []
+
+    def pipeline_with_reference(capture_dir, artifact_dir):
+        session_id_for_check.append(capture_dir.parent.name)
+        return {
+            **pipeline(capture_dir, artifact_dir),
+            "reference_tier_used": reference_tier,
+        }
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setattr(registration, "check_ambiguity", ambiguity_with_residual)
+    monkeypatch.setattr(scale_agreement, "check_scale_agreement", check)
+    app = service.create_app(
+        tmp_path / "sessions",
+        orders_dir=tmp_path / "orders",
+        buyer_key="buyer-secret",
+        pipeline_runner=pipeline_with_reference,
+        vlm_supervisor=VlmSupervisor(inspector=_clean_vlm_reply),
+    )
+    with TestClient(app) as client:
+        spec = {
+            "features": [{"name": "overall_A", "kind": "overall", "tolerance_mm": 5.0}]
+        }
+        sid = _finish_a_session_with_cad(client, spec)
+        response = client.get(f"/v1/sessions/{sid}/reconstruction")
+        assert response.status_code == 200
+        body = response.json()
+        record = app.state.store.load(sid)
+
+        assert body["status"] == "complete"
+        assert "error" not in record["ambiguity"]
+        assert record["reconstruction"]["glb_path"].endswith("_deviation.glb")
+        assert client.get(f"/v1/sessions/{sid}/verdict").status_code == 200
+        if residual is None or reference_tier != "charuco_board":
+            assert calls == []
+        else:
+            assert calls == [(BOARD_SQUARE_MM, residual)]
+            assert record["agent_message"]["message"] == "Latest guidance"
+
+        if expected_flag is None:
+            assert "scale_agreement" not in body
+            assert "scale_agreement" not in record["reconstruction"]
+        else:
+            expected = {
+                "sources_compared": ["board_pitch", "cad_registration_residual"],
+                "flagged": expected_flag,
+            }
+            assert body["scale_agreement"] == expected
+            assert record["reconstruction"]["scale_agreement"] == expected
+        if raises:
+            assert "Scale agreement failed for session" in caplog.text

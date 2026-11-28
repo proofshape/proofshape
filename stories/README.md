@@ -510,9 +510,9 @@ story of its own. Its file lists the information still to collect before printin
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [P-38](P/P-38.md) | Final report | 10 h | nothing | Ready | _unclaimed_ |
-| [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Ready | _unclaimed_ |
+| [P-39](P/P-39.md) | Final presentation and demo script | 5 h | nothing | Claimed | @mbj1994 |
 | [P-40](P/P-40.md) | Expo poster | 1 h | nothing | Claimed | @TabeenRaoof |
-| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Claimed | @mbj1994 |
+| [A-15](A/A-15.md) | Serve the capture agent: the agent-message route (D-031) and C-22's panel live | 6 h | A-07, A-13, C-22 | Done | @mbj1994 |
 
 ---
 
@@ -545,10 +545,10 @@ it took much of the wall error with it, on seven of the ten parts.
 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
-| [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Claimed | @dalwalyk |
+| [R-44](R/R-44.md) | Fusion re-anchors each photo to its own board corners, sideways as well as in height and tilt | 6 h | R-23, R-30, R-38 | Done | @dalwalyk |
 | [I-15](I/I-15.md) | The CAD pose holds when the model contains surface that isn't the part | 6 h | I-05, I-13 | Done | @dalwalyk |
-| [I-16](I/I-16.md) | A part lying on a different face from its CAD is flagged, not served as a clean pose | 4 h | I-15 | Ready | _unclaimed_ |
-| [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Blocked | _unclaimed_ |
+| [I-16](I/I-16.md) | A part lying on a different face from its CAD is flagged, not served as a clean pose | 4 h | I-15 | Done | @dalwalyk |
+| [G-13](G/G-13.md) | The verdict's floors and outline margin, measured on what the verdict measures | 5 h | R-44, I-15 | Claimed | @dalwalyk |
 
 
 ---
@@ -579,7 +579,7 @@ These stories keep the lane their work lives in. This section only groups them, 
 | ID | Story | Est | Depends on | State | Owner |
 |---|---|---|---|---|---|
 | [G-15](G/G-15.md) | The calipered parts, captured through the app, read as their photographs do | 4 h | nothing | Done | @TabeenRaoof |
-| [I-17](I/I-17.md) | Why g05_02's walls read worse after I-15, and why `main`'s s-05 pose sits off its walls | 4 h | nothing | Ready | _unclaimed_ |
+| [I-17](I/I-17.md) | Why g05_02's walls read worse after I-15, and why `main`'s s-05 pose sits off its walls | 4 h | nothing | Done | @dalwalyk |
 
 ---
 
@@ -694,7 +694,7 @@ Full detail in each story file.
 | [X-01](X/X-01.md) | Integration point I1 | 1 h | C-01, C-02, C-03, C-04, C-05, C-06, C-07, C-09, R-14, R-15, F-05, F-07 | Done | @dalwalyk |
 | [X-02](X/X-02.md) | Integration point I2 | 2 h | C-06, C-07, C-08, R-13, A-01, A-11 | Done | @dalwalyk |
 | [R-41](R/R-41.md) | Scale agreement compares the CAD ratio the right way round (#181, D-039) | 2 h | nothing | Done | @TabeenRaoof |
-| [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Claimed | @mbj1994 |
+| [R-42](R/R-42.md) | The service runs the scale-agreement check and returns its result | 3 h | R-41 | Done | @mbj1994 |
 | [R-43](R/R-43.md) | Measure edge loss and test a finer fusion grid | 4 h | R-32, R-33, R-37, R-38 | Done | @dalwalyk |
 | [X-03](X/X-03.md) | Integration point I3 | 3 h | I-06, I-07, G-04, G-09, I-05, R-41, R-42, I-13, I-14, G-12 | Blocked | _unclaimed_ |
 | [X-04](X/X-04.md) | Integration point I4 | 3 h | C-18, X-03 | Blocked | _unclaimed_ |

@@ -270,6 +270,18 @@ invalidates those approvals in the normal way. The exception changes no runtime 
 contract semantics; it only allows the already-reviewed I-10 contract addition to merge as soon
 as the final-head review gates are satisfied.
 
+*Proposed timing exception (2026-11-26, A-15 / PR #431):* @mbj1994 requests an early-boundary
+merge to allow time for public expo deployment and validation before Dec 5. A-15 adds the
+read-only agent-message route in v1.9 and has passed the Gemini-enabled iPhone acceptance
+test on `894e904`. This proposal waives only timing (including the named feature-freeze
+exception) **if both other members explicitly agree**, with both approving the final head
+and required CI green. Until then, Dec 2 remains the merge boundary. It does not authorize
+AWS public wiring or change D-072/O-005; those are separate C-21 decisions.
+
+*Outcome (2026-11-26):* #431 merged as `3ec95d1` on both approvals of `866e0f7` and four
+green CI jobs. Both explicitly accepted the timing exception before merge: [Tabeen's review](https://github.com/proofshape/proofshape/pull/431#pullrequestreview-6078072130)
+and [Dalwalyk's direct agreement](https://github.com/proofshape/proofshape/pull/431#issuecomment-7209096486). The exception is limited to A-15's timing, not public hosting.
+
 **D-032 · Contract v1 freezes Tier 1 in full; the verdict is an envelope only.** (2026-09-13)
 `contracts/openapi.yaml` v1 specifies session creation, frame upload, session finish and the
 reconstruction result completely — real stories (R-02, R-04, R-08, R-09, R-10, R-13) already
