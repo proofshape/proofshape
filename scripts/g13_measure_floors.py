@@ -139,8 +139,12 @@ def measure_part(
     data_dir: Path,
     part: str,
     margins_mm: tuple[float, ...],
-) -> dict[str, Any]:
-    """Run registration + deviation for one part, then analyse at each margin."""
+) -> tuple[dict[str, Any], dict[str, dict[str, np.ndarray]]]:
+    """Run registration + deviation for one part, then analyse at each margin.
+
+    Returns (result_dict, pool_arrays) where pool_arrays is keyed by margin string
+    and holds {oop_dev, oop_sig, ip_dev, ip_sig} numpy arrays for pooled analysis.
+    """
     variant_dir = data_dir / part / "variants" / "base"
     model_path = variant_dir / "uncertainty" / "mesh_uncertainty.glb"
     sigma_path = variant_dir / "uncertainty" / "sigma_mm.npz"
@@ -169,6 +173,7 @@ def measure_part(
     )
 
     margin_results = {}
+    pool_arrays: dict[str, dict[str, np.ndarray]] = {}
     for margin in margins_mm:
         deviation_mm, deviation_measured = compute_deviation(
             model,
@@ -190,6 +195,13 @@ def measure_part(
         dev_ip = deviation_mm[in_plane]
         sig_oop = sigma_mm[out_of_plane]
         sig_ip = sigma_mm[in_plane]
+
+        pool_arrays[str(margin)] = {
+            "oop_dev": dev_oop,
+            "oop_sig": sig_oop,
+            "ip_dev": dev_ip,
+            "ip_sig": sig_ip,
+        }
 
         # Surface outside CAD (stray)
         distance = distance_outside_cad_mm(
@@ -266,15 +278,18 @@ def measure_part(
     sweep = tolerance_sweep(measure_dict)
     pools = verdict_pool_sizes(measure_dict)
 
-    return {
-        "part": part,
-        "fitness": float(best.fitness),
-        "orientation_ambiguous": ambiguity.orientation_ambiguous,
-        "coverage_ratio": ambiguity.coverage_ratio,
-        "margins": margin_results,
-        "tolerance_sweep": sweep,
-        "verdict_pools": pools,
-    }
+    return (
+        {
+            "part": part,
+            "fitness": float(best.fitness),
+            "orientation_ambiguous": ambiguity.orientation_ambiguous,
+            "coverage_ratio": ambiguity.coverage_ratio,
+            "margins": margin_results,
+            "tolerance_sweep": sweep,
+            "verdict_pools": pools,
+        },
+        pool_arrays,
+    )
 
 
 def _print_summary_table(results: list[dict[str, Any]], margin: str) -> None:
@@ -342,6 +357,14 @@ def main(argv: list[str] | None = None) -> int:
         default="all",
         help="Comma-separated part names, or 'all' (default: all)",
     )
+    parser.add_argument(
+        "--floors",
+        type=str,
+        default=None,
+        help="Override floor constants as OOP,IP in mm (e.g. '1.0,5.7'). "
+        "Patches verdict.D073_SIGMA_FLOOR_BOARD_MM and D078_SIGMA_FLOOR_IN_PLANE_MM "
+        "before measuring. Default: use the constants in verdict.py.",
+    )
     args = parser.parse_args(argv)
 
     if args.out.exists() and any(args.out.iterdir()):
@@ -353,13 +376,23 @@ def main(argv: list[str] | None = None) -> int:
     margins_mm = tuple(float(m) for m in args.margins.split(","))
     parts = PARTS if args.parts == "all" else args.parts.split(",")
 
+    if args.floors is not None:
+        import inspection.verdict as verdict_mod
+
+        oop_floor, ip_floor = (float(f) for f in args.floors.split(","))
+        verdict_mod.D073_SIGMA_FLOOR_BOARD_MM = oop_floor
+        verdict_mod.D078_SIGMA_FLOOR_IN_PLANE_MM = ip_floor
+        print(f"Patched floors: OOP={oop_floor}, IP={ip_floor}")
+
     args.out.mkdir(parents=True, exist_ok=True)
 
     results = []
+    all_pool_arrays: list[dict[str, dict[str, np.ndarray]]] = []
     for part in parts:
         print(f"\n--- {part} ---")
-        result = measure_part(args.data_dir, part, margins_mm)
+        result, pool_arrays = measure_part(args.data_dir, part, margins_mm)
         results.append(result)
+        all_pool_arrays.append(pool_arrays)
 
         # Save per-part result
         part_file = args.out / f"{part}.json"
@@ -379,47 +412,71 @@ def main(argv: list[str] | None = None) -> int:
 
     # Pooled floor analysis
     print(f"\n{'=' * 80}")
-    print("POOLED FLOOR ANALYSIS (all 10 parts combined)")
+    print(f"POOLED FLOOR ANALYSIS ({len(results)} parts combined)")
     print(f"{'=' * 80}")
     print("Statistic: smallest floor at which k * max(sigma, floor) covers 95%")
     print(f"k = {D077_K}, TOP_REGION_PERCENTILE = {TOP_REGION_PERCENTILE}")
 
     for margin in [str(m) for m in margins_mm]:
-        all_dev_oop = []
-        all_sig_oop = []
-        all_dev_ip = []
-        all_sig_ip = []
-        for r in results:
-            m = r["margins"][margin]
-            oop_d = m["out_of_plane"]["deviation"]
-            ip_d = m["in_plane"]["deviation"]
-            if oop_d:
-                all_dev_oop.append(np.zeros(0))
-                all_sig_oop.append(np.zeros(0))
-            if ip_d:
-                all_dev_ip.append(np.zeros(0))
-                all_sig_ip.append(np.zeros(0))
+        all_dev_oop = [pa[margin]["oop_dev"] for pa in all_pool_arrays]
+        all_sig_oop = [pa[margin]["oop_sig"] for pa in all_pool_arrays]
+        all_dev_ip = [pa[margin]["ip_dev"] for pa in all_pool_arrays]
+        all_sig_ip = [pa[margin]["ip_sig"] for pa in all_pool_arrays]
+
+        pooled_dev_oop = np.concatenate(all_dev_oop) if all_dev_oop else np.array([])
+        pooled_sig_oop = np.concatenate(all_sig_oop) if all_sig_oop else np.array([])
+        pooled_dev_ip = np.concatenate(all_dev_ip) if all_dev_ip else np.array([])
+        pooled_sig_ip = np.concatenate(all_sig_ip) if all_sig_ip else np.array([])
+
+        pooled_oop_floor = _smallest_covering_floor(pooled_dev_oop, pooled_sig_oop)
+        pooled_ip_floor = _smallest_covering_floor(pooled_dev_ip, pooled_sig_ip)
+        pooled_oop_cov = _floor_coverage(pooled_dev_oop, pooled_sig_oop, 0.86)
+        pooled_ip_cov = _floor_coverage(pooled_dev_ip, pooled_sig_ip, 5.278)
 
         print(f"\n  Margin = {margin} mm:")
-        for r in results:
-            m = r["margins"][margin]
-            oop_fl = m["out_of_plane"]["smallest_95_floor_mm"]
-            ip_fl = m["in_plane"]["smallest_95_floor_mm"]
-            oop_cov = m["out_of_plane"]["coverage_at_current_floor"]
-            ip_cov = m["in_plane"]["coverage_at_current_floor"]
-            print(
-                f"    {r['part']:<10}: "
-                f"OOP floor={oop_fl or 'N/A':>5}, "
-                f"IP floor={ip_fl or 'N/A':>5}, "
-                f"OOP coverage@0.86={oop_cov * 100:.1f}%, "
-                f"IP coverage@5.278={ip_cov * 100:.1f}%"
-            )
+        print(
+            f"    OOP: {len(pooled_dev_oop)} verts, "
+            f"pooled 95% floor = {pooled_oop_floor or 'N/A'} mm, "
+            f"coverage at 0.86 = {pooled_oop_cov * 100:.1f}%"
+        )
+        print(
+            f"    IP:  {len(pooled_dev_ip)} verts, "
+            f"pooled 95% floor = {pooled_ip_floor or 'N/A'} mm, "
+            f"coverage at 5.278 = {pooled_ip_cov * 100:.1f}%"
+        )
+
+    # Compute pooled stats for the report
+    pooled: dict[str, Any] = {}
+    for margin in [str(m) for m in margins_mm]:
+        all_dev_oop = [pa[margin]["oop_dev"] for pa in all_pool_arrays]
+        all_sig_oop = [pa[margin]["oop_sig"] for pa in all_pool_arrays]
+        all_dev_ip = [pa[margin]["ip_dev"] for pa in all_pool_arrays]
+        all_sig_ip = [pa[margin]["ip_sig"] for pa in all_pool_arrays]
+        p_dev_oop = np.concatenate(all_dev_oop) if all_dev_oop else np.array([])
+        p_sig_oop = np.concatenate(all_sig_oop) if all_sig_oop else np.array([])
+        p_dev_ip = np.concatenate(all_dev_ip) if all_dev_ip else np.array([])
+        p_sig_ip = np.concatenate(all_sig_ip) if all_sig_ip else np.array([])
+        pooled[margin] = {
+            "out_of_plane": {
+                "count": len(p_dev_oop),
+                "smallest_95_floor_mm": _smallest_covering_floor(p_dev_oop, p_sig_oop),
+                "coverage_at_current_floor": _floor_coverage(
+                    p_dev_oop, p_sig_oop, 0.86
+                ),
+            },
+            "in_plane": {
+                "count": len(p_dev_ip),
+                "smallest_95_floor_mm": _smallest_covering_floor(p_dev_ip, p_sig_ip),
+                "coverage_at_current_floor": _floor_coverage(p_dev_ip, p_sig_ip, 5.278),
+            },
+        }
 
     # Save full report
     report = {
         "commit": _current_commit(),
         "margins_mm": list(margins_mm),
         "parts": results,
+        "pooled": pooled,
         "d077_k": D077_K,
         "top_region_percentile": TOP_REGION_PERCENTILE,
         "current_d073_floor_mm": 0.86,
