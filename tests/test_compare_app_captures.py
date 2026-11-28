@@ -247,6 +247,30 @@ def test_too_few_points_near_the_cad_is_an_error_not_a_gap():
         c.compare_poses(photos, app)
 
 
+def test_captures_that_do_not_overlap_are_indeterminate_not_the_same():
+    # The #450 review's case: four points on each of two opposite faces of a 30 mm tall box, so
+    # no start finds a pair within ICP_MAX_DISTANCE_MM. The first start used to win by default
+    # and read as a gap of about zero, "same".
+    box_v, box_f = _box_mesh((0.0, 0.0, 0.0), (20.0, 20.0, 30.0))
+    corners = [[5.0, 5.0], [15.0, 5.0], [15.0, 15.0], [5.0, 15.0]]
+    top = np.array([[x, y, 30.0] for x, y in corners])
+    bottom = np.array([[x, y, 0.0] for x, y in corners])
+
+    def capture(points: np.ndarray) -> dict[str, np.ndarray]:
+        return {
+            "vertices": points,
+            "observed": np.ones(len(points), dtype=bool),
+            "cad_to_model": np.eye(4),
+            "cad_vertices": box_v,
+            "cad_faces": box_f,
+        }
+
+    result = c.compare_poses(capture(top), capture(bottom))
+    assert result.gap_mm is None
+    assert result.same is None
+    assert result.icp_fitness == 0.0
+
+
 # --- service_verdict / markdown_table ---------------------------------------------------------
 
 
@@ -279,6 +303,28 @@ def _figures(wall: float, ambiguous: bool, first_pass: float) -> dict:
         "sweep": {"first_pass_mm": first_pass},
         "registration": {"orientation_ambiguous": ambiguous},
     }
+
+
+def test_table_shows_a_dash_for_a_surface_with_nothing_measured():
+    # report_parts gives None for an unmeasured surface's spread, and for figures with nothing
+    # measured at all; the table used to raise TypeError on them.
+    photos = _figures(2.89, True, 3.7)
+    photos["summary"]["top"] = None
+    photos["summary"]["worst_reading_mm"] = None
+    photos["sweep"]["first_pass_mm"] = None
+    row = {
+        "part": "g02_04",
+        "photos": photos,
+        "app": _figures(1.2, False, 3.7),
+        "pose_gap_mm": None,
+        "pose_same": None,
+        "service_verdict": "Rescan",
+        "service_reason_codes": [],
+    }
+    line = c.markdown_table([row]).splitlines()[2]
+    assert "| 2.89 / 1.20 | — / 0.70 | — / 4.28 |" in line
+    assert "| — / 3.7 |" in line
+    assert "| indeterminate (no overlap) | Rescan |" in line
 
 
 def test_table_has_one_row_per_part_with_photographs_first():

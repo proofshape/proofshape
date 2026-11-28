@@ -18,8 +18,12 @@ transform is how differently the two poses sit the CAD on the part. Its size is 
 moved by that transform, judged against I-15's own margin (`SAME_POSE_MARGIN_MM`).
 
 What this does not tell you: which of two different poses is the right one. A gap says only that
-they differ. Only points within `NEAR_CAD_MM` of each capture's own posed CAD are used, so that
-surface that isn't the part (board skin, mostly) doesn't drag the alignment; that cut is made
+they differ. If no start finds at least three point pairs within `ICP_MAX_DISTANCE_MM`, the two
+captures don't overlap and there is nothing to measure a gap from, so the comparison is
+indeterminate (no gap, no "same"), never a gap of zero.
+
+Only points within `NEAR_CAD_MM` of each capture's own posed CAD are used, so that surface that
+isn't the part (board skin, mostly) doesn't drag the alignment; that cut is made
 against each capture's own pose, so it slightly favours the poses agreeing, never disagreeing.
 `NEAR_CAD_MM` and `ICP_MAX_DISTANCE_MM` are reporting choices for this comparison, not measured
 thresholds, and no verdict or pipeline code reads them.
@@ -50,13 +54,21 @@ ICP_MAX_DISTANCE_MM = 3.0
 YAW_START_STEP_DEG = 10
 
 
+# A rigid fit needs three point pairs; with fewer the alignment has found nothing.
+MIN_CORRESPONDENCES = 3
+
+
 @dataclass(frozen=True)
 class PoseComparison:
-    gap_mm: float
+    """`gap_mm` is None when the captures don't overlap (see the module docstring)."""
+
+    gap_mm: float | None
     icp_fitness: float
 
     @property
-    def same(self) -> bool:
+    def same(self) -> bool | None:
+        if self.gap_mm is None:
+            return None
         return self.gap_mm <= SAME_POSE_MARGIN_MM
 
 
@@ -141,6 +153,10 @@ def compare_poses(
             best = (key, result)
     assert best is not None
     result = best[1]
+    if len(result.correspondence_set) < MIN_CORRESPONDENCES:
+        # Every start found (almost) nothing: the first start would win by default, and its
+        # transform is just the start, so a gap read from it would be made up.
+        return PoseComparison(gap_mm=None, icp_fitness=float(result.fitness))
     gap = surface_gap_mm(
         cad_vertices, cad_faces, np.eye(4), np.asarray(result.transformation)
     )
@@ -198,8 +214,23 @@ def compare_parts(
     return rows
 
 
-def _pair(photos: float, app: float) -> str:
-    return f"{photos:.2f} / {app:.2f}"
+def _cell(value: float | None, digits: int = 2) -> str:
+    return "—" if value is None else f"{value:.{digits}f}"
+
+
+def _pair(photos: float | None, app: float | None, digits: int = 2) -> str:
+    """report_parts gives None for a figure with nothing measured (an unmeasured surface)."""
+    return f"{_cell(photos, digits)} / {_cell(app, digits)}"
+
+
+def _p95(spread: dict[str, Any] | None) -> float | None:
+    return None if spread is None else spread["abs_p95_mm"]
+
+
+def _pose_cell(gap_mm: float | None, same: bool | None) -> str:
+    if gap_mm is None:
+        return "indeterminate (no overlap)"
+    return f"{gap_mm:.2f} ({'same' if same else 'different'})"
 
 
 def _yes_no(flag: bool) -> str:
@@ -224,20 +255,24 @@ def markdown_table(rows: Sequence[dict[str, Any]]) -> str:
             + " | ".join(
                 [
                     row["part"],
-                    _pair(ps["wall"]["abs_p95_mm"], as_["wall"]["abs_p95_mm"]),
-                    _pair(ps["top"]["abs_p95_mm"], as_["top"]["abs_p95_mm"]),
+                    _pair(_p95(ps["wall"]), _p95(as_["wall"])),
+                    _pair(_p95(ps["top"]), _p95(as_["top"])),
                     _pair(ps["worst_reading_mm"], as_["worst_reading_mm"]),
                     _pair(ps["stray_observed_share"], as_["stray_observed_share"]),
                     _pair(
                         ps["unmeasured_observed_share"],
                         as_["unmeasured_observed_share"],
                     ),
-                    f"{p['sweep']['first_pass_mm']} / {a['sweep']['first_pass_mm']}",
+                    _pair(
+                        p["sweep"]["first_pass_mm"],
+                        a["sweep"]["first_pass_mm"],
+                        digits=1,
+                    ),
                     (
                         f"{_yes_no(p['registration']['orientation_ambiguous'])} / "
                         f"{_yes_no(a['registration']['orientation_ambiguous'])}"
                     ),
-                    f"{row['pose_gap_mm']:.2f} ({'same' if row['pose_same'] else 'different'})",
+                    _pose_cell(row["pose_gap_mm"], row["pose_same"]),
                     f"{row['service_verdict']} {codes}".strip(),
                 ]
             )
