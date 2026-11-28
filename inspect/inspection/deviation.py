@@ -52,13 +52,15 @@ from recon.provenance import LABEL_OBSERVED, _mesh_is_watertight, colors_to_labe
 DEVIATION_MM_ATTRIBUTE = "_DEVIATION_MM"
 DEVIATION_MEASURED_ATTRIBUTE = "_DEVIATION_MEASURED"
 
-# I-14 / D-086: the saved-session rerun found no positive xy margin that cleanly separates
-# reconstruction flare from ordinary wall scatter. Use the CAD's actual outer top-view outline
-# itself (0 mm extra allowance), rather than I-06's axis-aligned bounding box + 10 mm. Concave
-# outer corners/notches are therefore excluded, while interior holes are deliberately ignored by
-# the outline gate so reconstructed hole geometry stays measurable. Geometry outside this outline
-# is explicitly unmeasured and cannot contribute to Pass or Fail (D-005/D-062).
-DEFAULT_FOOTPRINT_MARGIN_MM = 0.0
+# I-14 / D-086 (amended G-13, 2026-11-28): the outline-eligibility boundary extends 2 mm beyond
+# the CAD's actual outer top-view outline, rather than I-06's axis-aligned bounding box + 10 mm.
+# The original 0 mm rule left outward wall error unmeasurable; G-13's measurement on 10 calipered
+# parts showed that 2 mm leaves all good-part verdicts unchanged,
+# while making outward wall error of up to 2 mm Fail-capable. Readings beyond +2 mm stay
+# unmeasured. Concave outer corners/notches are excluded, interior holes are deliberately kept
+# measurable. At 2 mm, a narrow band inside concave notches (up to 2 mm from the outer
+# outline) is also measured. Geometry outside this outline is explicitly unmeasured (D-005/D-062).
+DEFAULT_FOOTPRINT_MARGIN_MM = 2.0
 
 
 def _oriented_edge_in_face(face: np.ndarray, u: int, v: int) -> tuple[int, int]:
@@ -284,10 +286,12 @@ def compute_deviation(
       essentially nothing, since fusion's own cut already removed that surface before this
       function ever sees the mesh -- it defends against a degenerate input, not real skin;
     - within the registered CAD's actual outer xy outline, evaluated in CAD-local coordinates.
-      Concave outer features such as G-05's notch are part of that outline; interior holes are
+      Concave outer features such as G-05's notch are part of that outline (though the 2 mm
+      margin measures a narrow band inside concave notches); interior holes are
       intentionally filled for this eligibility test so a reconstructed hole/shift remains
-      measurable. I-14/D-086 sets the default extra allowance to 0 mm because the real-session
-      rerun found no positive margin that separates flare from normal wall scatter. Observed
+      measurable. I-14/D-086 (amended G-13) sets the default extra allowance to 2 mm; the
+      original 0 mm left outward wall error unmeasurable, and G-13's measurement showed 2 mm
+      makes outward wall error Fail-capable without changing any good part's verdict. Observed
       geometry outside that outer outline is served with `_DEVIATION_MEASURED = 0`: it is not
       Pass evidence and cannot Fail the part (D-005).
 

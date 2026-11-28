@@ -190,15 +190,18 @@ def test_compute_deviation_keeps_top_face_defects_inside_the_footprint_measured(
 
 def test_compute_deviation_excludes_outward_flare_beyond_the_cad_outer_outline():
     # I-14 / #407: the false base flare is multi-millimetre geometry beyond the CAD outline.
-    # Put the probe 2 mm beyond the CAD's +x outline in CAD-local coordinates, then transform it
-    # with I-01's nonzero-yaw pose. This specifically prevents a rotated board-frame AABB from
+    # Put the probe beyond the CAD's +x outline + margin in CAD-local coordinates, then transform
+    # it with I-01's nonzero-yaw pose. This specifically prevents a rotated board-frame AABB from
     # re-admitting outside-outline geometry at its enlarged corners.
     cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
     sample = synthetic.generate_synthetic_sample(
         cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
     )
     transform = _ground_truth_transform(sample)
-    flare_probe = _cad_point_to_model(sample, np.array([32.0, 15.0, 5.4]))
+    flare_probe = _cad_point_to_model(
+        sample,
+        np.array([30.0 + DEFAULT_FOOTPRINT_MARGIN_MM + 1.0, 15.0, 5.4]),
+    )
 
     model_vertices = np.vstack([sample.vertices_mm, flare_probe])
     model_labels = np.concatenate([sample.labels, [sample.labels[0]]])
@@ -245,6 +248,39 @@ def test_compute_deviation_pins_the_cad_outer_outline_boundary():
     assert deviation_measured[beyond_index] == 0.0
 
 
+def test_outline_margin_pins_at_2mm():
+    # Probes at 1.9 mm (just inside) and 2.1 mm (just outside) the outline pin the 2 mm constant.
+    # Literal distances, not expressions of DEFAULT_FOOTPRINT_MARGIN_MM.
+    cad_vertices, cad_faces, _units = cad.load_mesh(G01_CUBE)
+    sample = synthetic.generate_synthetic_sample(
+        cad_vertices, cad_faces, seed=0, sigma_mm=0.0, patch_fraction=0.0
+    )
+    transform = _ground_truth_transform(sample)
+    cad_max_x = float(cad_vertices[:, 0].max())
+    cad_mid_y = float((cad_vertices[:, 1].min() + cad_vertices[:, 1].max()) / 2.0)
+    within_margin = _cad_point_to_model(
+        sample, np.array([cad_max_x + 1.9, cad_mid_y, 15.0])
+    )
+    beyond_margin = _cad_point_to_model(
+        sample, np.array([cad_max_x + 2.1, cad_mid_y, 15.0])
+    )
+
+    model_vertices = np.vstack([sample.vertices_mm, within_margin, beyond_margin])
+    model_labels = np.concatenate([sample.labels, [sample.labels[0], sample.labels[0]]])
+    deviation_mm, deviation_measured = compute_deviation(
+        (model_vertices, sample.faces, model_labels),
+        (cad_vertices, cad_faces),
+        transform,
+        FLAT_BOARD,
+    )
+
+    within_idx = len(sample.vertices_mm)
+    beyond_idx = within_idx + 1
+    assert deviation_measured[within_idx] == 1.0
+    assert deviation_mm[within_idx] == pytest.approx(1.9, abs=0.1)
+    assert deviation_measured[beyond_idx] == 0.0
+
+
 @pytest.mark.parametrize("cad_path", REFERENCE_CADS, ids=lambda path: path.stem)
 def test_outer_outline_builder_handles_every_reference_cad(cad_path: Path):
     # Review on #416 found that the first silhouette implementation raised on pockets, bumps and
@@ -270,7 +306,7 @@ def test_g05_outer_outline_excludes_notch_but_keeps_through_hole_measurable():
             [42.0, 26.0],  # inside the designed corner notch: outside the outer outline
             [12.0, 16.0],  # centre of the through-hole: keep measurable
             [40.0, 10.0],  # ordinary material inside the outline
-            [51.0, 16.0],  # beyond the plate's +x edge
+            [53.0, 16.0],  # beyond the plate's +x edge + 2 mm margin
         ],
         dtype=float,
     )
