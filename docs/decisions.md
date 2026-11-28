@@ -1728,6 +1728,53 @@ is still held only here.
 *Agreement:* it settles X-04's run mode and C-21's open question, which @mbj1994 holds, so its pull
 request asks both @mbj1994 and @dalwalyk to agree.
 
+*Proposed dated amendment to D-072 (2026-11-27, C-21; both other members must approve
+this PR before it takes effect).* This is an exception for a supervised public expo test
+and the Dec 5 expo only, not a replacement for the M2 Max defense, X-03/X-04 or X-05 path.
+The owner proposes visitors can reach Pages over normal internet without joining the Mac's
+LAN. Keep the existing Lightning conditions for any future Lightning deployment; do not
+assume the outage or credit problem is solved. For the AWS alternative, the four public-host
+conditions become:
+
+1. **Host and release:** one EC2 G4dn T4, one service replica/worker, HTTPS ingress only;
+   port 8000 private. Use the latest agreed main-built GHCR image by immutable digest and
+   record its revision (D-042). Verify TLS, GPU readiness, persistent data and returned HTTPS
+   model URLs. No long-lived paid service or automatic launch on merge.
+2. **Funding and duration:** confirm sufficient AWS credits/budget and owner approval for
+   each bounded run. AWS budgets/alerts do not stop compute. Reuse the existing instance,
+   not a second GPU; no new recurring paid resource without approval. Keep stopped outside
+   the approved window.
+3. **Effective stop guard:** an automatic scheduled EC2 stop or independently verified
+   shutdown timer must be armed for every run, no later than four hours from start
+   (D-042). Verify the scheduler target, IAM scope and successful stop in a bounded test,
+   using instance state and CloudTrail/event evidence; manually stop sooner if done.
+   A configured schedule alone is not proof. A five-hour expo cannot be one continuous
+   five-hour run under this cap: use separately authorized, separately guarded windows,
+   or the M2/recording fallback. No automatic restart. A stopped instance may still incur
+   storage costs; the owner checks billing. An auto-assigned public address may change on
+   stop/start: recheck DNS, HTTPS ingress, model base URL and rebuild Pages for the actual
+   address before each window. No permanent-address purchase is implied.
+4. **O-005 / live gate:** apply the proposed AWS answers below only after both other members
+   agree and the guard and current-image tests pass. The bearer token embedded in Pages is
+   readable, not a user-authentication secret; the buyer key and Gemini key remain server-side.
+   R-34's order gate must reject unknown codes on the actual service before public exposure.
+   A valid order can be reused; it is not a rate limit or a spending cap. One T4 is not a
+   multi-visitor load guarantee (A-15 shared worker follow-up). Use staff-created demo orders,
+   no sensitive CAD/photos, supervised sequential sessions, and close ingress/stop the GPU
+   on misuse or queue pressure. Do not invite uncontrolled simultaneous use. Resolve #456's
+   interim scale-warning serving policy with the team before exposing inspection; neither a
+   flag nor its absence establishes substitution/accuracy.
+
+Only after the above is recorded on main may an admin set Pages' O-005 confirmations and
+public-recon flag/URL/token. Run a bounded real hosted-phone session and record the evidence;
+on failure close access and use the Mac or recording. After each test/expo window disable
+all four public/O-005 flags, rebuild Pages to fail closed, revoke/rotate the exposed bearer
+token at ingress, stop the instance and verify it stopped; remove stale public address
+configuration. Keep credentials, order codes, raw captures and sensitive logs out of git.
+The 2026-11-25 local-Vite AWS check is evidence for feasibility, not authorization or the
+hosted Pages acceptance check. This amendment takes effect only on both other members'
+approval and merge; until then the existing D-072 public-host conditions remain in force.
+
 ---
 
 **D-073 · G-04: the board reference's σ_floor, from heights only, is 0.86 mm — edges are not
@@ -2629,6 +2676,27 @@ assumed. First, whether `--token-auth` refuses the token-less CORS preflight tha
 whether a token visible in the client bundle is acceptable at all. Third, the order code as the
 access control: the deployed `app = create_app()` sets no `known_order_codes`, so today any
 non-empty code starts a paid GPU run.
+
+*Proposed AWS-specific answers (2026-11-27; D-072 dated amendment, pending both other
+members' approval):*
+- **Preflight:** on Nov 25 the owner observed HTTP 200 for a token-less OPTIONS from
+  `https://proofshape.github.io` requesting POST and authorization/content-type, with
+  wildcard allowed origin, allowed headers/methods; an authenticated GET also returned 200
+  and an unauthenticated request returned 401. HTTPS ingress forwarded OPTIONS without
+  bearer authentication while requiring it on normal API requests. Repeat on the current
+  image/address and actual Pages browser before calling the hosted check passed. These
+  observations do not answer the old Lightning proxy question.
+- **Token:** accept a short-lived, scoped expo transport token in public JS only for the
+  supervised window, if both reviewers agree. CORS is not security; the wildcard policy is
+  intentional per D-048. Never ship the buyer or Gemini key; staff creates known orders
+  privately. Rotate the public transport token after the window and rebuild fail-closed.
+- **Order:** #335 (R-34) merged. Owner observed unknown-order rejection and known-order
+  session 201 on AWS Nov 25. Repeat rejection, known-order creation, and buyer-key rejection
+  on the current deployed revision; no arbitrary-order GPU run. The known-order gate does
+  not bound repeat sessions or resource use. The automatic EC2 stop and supervised access
+  conditions in D-072 are separate prerequisites.
+O-005 remains open for public wiring until the team agrees this amendment and current live
+checks are recorded. The Lightning-specific behavior remains unverified.
 
 **O-006 · The expo date ~~is unconfirmed: most likely Fri 2026-12-05~~. — Closed 2026-11-22.**
 (2026-11-11)
